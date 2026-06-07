@@ -1,0 +1,798 @@
+[
+  {
+    "report_meta": {
+      "title": "반도체사업부 26년 22주차",
+      "author": "김민서 사원",
+      "date": "2026-05-29"
+    },
+    "products": [
+      {
+        "name": "챔버",
+        "category": "메이저모듈",
+        "status": "RED",
+        "headline": "PO 미접수 5종, 출하 지연",
+        "kpis": [
+          {
+            "label": "총모델 수",
+            "value": "27",
+            "target": "399",
+            "status": "RED"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "PO 미접수",
+            "detail": "LAM 직납 PO 미접수",
+            "impact": "출하 지연"
+          }
+        ],
+        "milestones": [
+          {
+            "date": "2026-05-27",
+            "event": "자재 선발주 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "PO 접수",
+          "고객사 요청 대응"
+        ],
+        "source_slide_numbers": [
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "name": "엔클로저",
+        "category": "메이저모듈",
+        "status": "BLACK",
+        "headline": "출하 계획 및 실적 정상 진행",
+        "kpis": [
+          {
+            "label": "총모델 수",
+            "value": "3573",
+            "target": "3002",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-04-22",
+            "event": "PDR 승인 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "출하 지속",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          5,
+          6
+        ]
+      },
+      {
+        "name": "하바플레이트",
+        "category": "메이저모듈",
+        "status": "BLUE",
+        "headline": "양산 전환 및 개발 진행 중",
+        "kpis": [
+          {
+            "label": "총모델 수",
+            "value": "141",
+            "target": "3036",
+            "status": "BLUE"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-06-22",
+            "event": "양산 전환 LAM TEST 진행 중",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "LAM TEST 완료",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "name": "플레이팅 셀",
+        "category": "메이저모듈",
+        "status": "RED",
+        "headline": "신규 RFQ 접수 및 수주 완료",
+        "kpis": [
+          {
+            "label": "연간수량",
+            "value": "210",
+            "target": "210",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "고객 문의",
+            "detail": "용접 부위 확인 필요",
+            "impact": "출하 지연 가능성"
+          }
+        ],
+        "milestones": [
+          {
+            "date": "2026-05-08",
+            "event": "PO 발행일",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$7,500",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "고객 미팅",
+          "LAM 검토 완료"
+        ],
+        "source_slide_numbers": [
+          11
+        ]
+      },
+      {
+        "name": "CUP",
+        "category": "메이저모듈",
+        "status": "BLUE",
+        "headline": "양산 및 개발 진행 중",
+        "kpis": [
+          {
+            "label": "총모델 수",
+            "value": "29",
+            "target": "464",
+            "status": "BLUE"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-06-12",
+            "event": "LAP TEST 승인 목표",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "LAP TEST 진행",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          12,
+          13,
+          14
+        ]
+      },
+      {
+        "name": "자일란 코팅",
+        "category": "메이저모듈",
+        "status": "BLUE",
+        "headline": "자일란 코팅 진행 중",
+        "kpis": [
+          {
+            "label": "PO 수량",
+            "value": "3",
+            "target": "3",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-06-10",
+            "event": "샌딩 승인 예정",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "DOE 완료",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          15
+        ]
+      },
+      {
+        "name": "톨론",
+        "category": "메이저모듈",
+        "status": "RED",
+        "headline": "LAP TEST 진행 중",
+        "kpis": [
+          {
+            "label": "연간수량",
+            "value": "476,252",
+            "target": "476,252",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "품질 이슈",
+            "detail": "기존 공급업체 품질 이슈 발생",
+            "impact": "신규 업체 전환 지연"
+          }
+        ],
+        "milestones": [
+          {
+            "date": "2026-05-08",
+            "event": "업데이트 사항",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "품질 이슈 해결",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          16
+        ]
+      },
+      {
+        "name": "EOS 챔버",
+        "category": "메이저모듈",
+        "status": "BLACK",
+        "headline": "LAP TEST 진행 중",
+        "kpis": [
+          {
+            "label": "연간수량",
+            "value": "220",
+            "target": "220",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-04-14",
+            "event": "출하 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$5,108",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "LAP TEST 완료",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          17
+        ]
+      },
+      {
+        "name": "램 캐스팅",
+        "category": "메이저모듈",
+        "status": "BLACK",
+        "headline": "출하 완료",
+        "kpis": [
+          {
+            "label": "연간물량",
+            "value": "2000-3000",
+            "target": "2000-3000",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-04-16",
+            "event": "30EA 출하 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$100.7",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          18
+        ]
+      },
+      {
+        "name": "Space X",
+        "category": "메이저모듈",
+        "status": "BLUE",
+        "headline": "신규 견적 요청 및 협업 진행 중",
+        "kpis": [
+          {
+            "label": "요청수량",
+            "value": "20",
+            "target": "20",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-12-08",
+            "event": "견적 제출 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$4,950",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "PO 발행",
+          "고객 협의"
+        ],
+        "source_slide_numbers": [
+          19
+        ]
+      },
+      {
+        "name": "KLA",
+        "category": "메이저모듈",
+        "status": "BLACK",
+        "headline": "LAP TEST 진행 중",
+        "kpis": [
+          {
+            "label": "완제품 발송",
+            "value": "1EA",
+            "target": "1EA",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-03-18",
+            "event": "기구테스트 승인 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "LAP TEST 완료",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          20
+        ]
+      },
+      {
+        "name": "세정",
+        "category": "메이저모듈",
+        "status": "RED",
+        "headline": "세정 라인 퀄 최종 승인 완료",
+        "kpis": [
+          {
+            "label": "총 제품 수",
+            "value": "118",
+            "target": "118",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "아노다이징 쿠폰 문제",
+            "detail": "소듐 성분 침투",
+            "impact": "세정 라인 퀄 지연"
+          }
+        ],
+        "milestones": [
+          {
+            "date": "2026-04-17",
+            "event": "개선 계획 수립",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "개선 계획 논의",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          21
+        ]
+      }
+    ],
+    "slide_images": {
+      "1": "/slides/2d686c14caa3/slide_01.png",
+      "2": "/slides/2d686c14caa3/slide_02.png",
+      "3": "/slides/2d686c14caa3/slide_03.png",
+      "4": "/slides/2d686c14caa3/slide_04.png",
+      "5": "/slides/2d686c14caa3/slide_05.png",
+      "6": "/slides/2d686c14caa3/slide_06.png",
+      "7": "/slides/2d686c14caa3/slide_07.png",
+      "8": "/slides/2d686c14caa3/slide_08.png",
+      "9": "/slides/2d686c14caa3/slide_09.png",
+      "10": "/slides/2d686c14caa3/slide_10.png",
+      "11": "/slides/2d686c14caa3/slide_11.png",
+      "12": "/slides/2d686c14caa3/slide_12.png",
+      "13": "/slides/2d686c14caa3/slide_13.png",
+      "14": "/slides/2d686c14caa3/slide_14.png",
+      "15": "/slides/2d686c14caa3/slide_15.png",
+      "16": "/slides/2d686c14caa3/slide_16.png",
+      "17": "/slides/2d686c14caa3/slide_17.png",
+      "18": "/slides/2d686c14caa3/slide_18.png",
+      "19": "/slides/2d686c14caa3/slide_19.png",
+      "20": "/slides/2d686c14caa3/slide_20.png",
+      "21": "/slides/2d686c14caa3/slide_21.png"
+    },
+    "doc_id": "2d686c14caa3",
+    "file_name": "260529_26년22주차 반도체사업부 프로젝트 진행사항.pptx"
+  },
+  {
+    "report_meta": {
+      "title": "파워박스진행현황",
+      "author": "박재우차장",
+      "date": "2026-05-28"
+    },
+    "products": [
+      {
+        "name": "Aether GDX",
+        "category": "파워박스",
+        "status": "RED",
+        "headline": "온도컨트롤러 쇼티지로 출하 제한",
+        "kpis": [
+          {
+            "label": "6월 전망",
+            "value": "포캐스트 280EA",
+            "target": "280EA",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "온도컨트롤러 쇼티지",
+            "detail": "7월 이후 온도컨트롤러 공급 예정",
+            "impact": "출하 제한 및 매출 영향"
+          }
+        ],
+        "milestones": [],
+        "financials": {
+          "revenue": "$2,028,040",
+          "note": "매출 영향 예상"
+        },
+        "next_actions": [
+          "LAM과 지속 협의"
+        ],
+        "source_slide_numbers": [
+          2
+        ]
+      },
+      {
+        "name": "파워박스 양산 및 개발",
+        "category": "파워박스",
+        "status": "BLUE",
+        "headline": "양산 및 개발 진행 중",
+        "kpis": [
+          {
+            "label": "양산 모델",
+            "value": "14종",
+            "target": "14종",
+            "status": "BLACK"
+          },
+          {
+            "label": "개발 모델",
+            "value": "16종",
+            "target": "16종",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-07",
+            "event": "양산 준비 검토 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$237,643",
+          "note": "연간 수량 대비 실적 진행 중"
+        },
+        "next_actions": [
+          "고객 승인 대응",
+          "양산 준비"
+        ],
+        "source_slide_numbers": [
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "name": "EMA",
+        "category": "파워박스",
+        "status": "BLUE",
+        "headline": "EMA 개발 진행 중",
+        "kpis": [
+          {
+            "label": "개발 모델",
+            "value": "33종",
+            "target": "33종",
+            "status": "BLACK"
+          },
+          {
+            "label": "승인 완료",
+            "value": "2종",
+            "target": "2종",
+            "status": "BLACK"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [],
+        "financials": {
+          "revenue": "N/A",
+          "note": "자재 준비 중"
+        },
+        "next_actions": [
+          "자재 준비 완료",
+          "고객 승인 요청"
+        ],
+        "source_slide_numbers": [
+          8,
+          9
+        ]
+      }
+    ],
+    "slide_images": {
+      "1": "/slides/ed5f67c5c4c4/slide_01.png",
+      "2": "/slides/ed5f67c5c4c4/slide_02.png",
+      "3": "/slides/ed5f67c5c4c4/slide_03.png",
+      "4": "/slides/ed5f67c5c4c4/slide_04.png",
+      "5": "/slides/ed5f67c5c4c4/slide_05.png",
+      "6": "/slides/ed5f67c5c4c4/slide_06.png",
+      "7": "/slides/ed5f67c5c4c4/slide_07.png",
+      "8": "/slides/ed5f67c5c4c4/slide_08.png",
+      "9": "/slides/ed5f67c5c4c4/slide_09.png"
+    },
+    "doc_id": "ed5f67c5c4c4",
+    "file_name": "260528_파워박스 진행현황.pptx"
+  },
+  {
+    "report_meta": {
+      "title": "메이져모듈",
+      "author": "박재우 차장",
+      "date": "2026-05-28"
+    },
+    "products": [
+      {
+        "name": "EFEM",
+        "category": "메이저모듈",
+        "status": "RED",
+        "headline": "출하 지연 및 고객 이슈 발생",
+        "kpis": [
+          {
+            "label": "5월 출하",
+            "value": "4대",
+            "target": "8대",
+            "status": "RED"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "자재 미입고",
+            "detail": "로드락 ETA 미정",
+            "impact": "출하 지연"
+          }
+        ],
+        "milestones": [
+          {
+            "date": "2026-08-31",
+            "event": "MACH I 양산 승인",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$130,000",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "W22 출하",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "name": "VTM",
+        "category": "메이저모듈",
+        "status": "RED",
+        "headline": "출하 지연 및 고객 이슈 발생",
+        "kpis": [
+          {
+            "label": "5월 출하",
+            "value": "13대",
+            "target": "17대",
+            "status": "RED"
+          }
+        ],
+        "critical_issues": [
+          {
+            "severity": "RED",
+            "title": "자재 미입고",
+            "detail": "로드락 ETA 미정",
+            "impact": "출하 지연"
+          }
+        ],
+        "milestones": [
+          {
+            "date": "2026-08-31",
+            "event": "MACH I VTM 장비 추가 승인",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "$240,000",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "W23 출하",
+          "고객 승인 대응"
+        ],
+        "source_slide_numbers": [
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "name": "CEFEM",
+        "category": "내재화 프레임",
+        "status": "BLUE",
+        "headline": "프레임 승인 및 출하 계획 진행 중",
+        "kpis": [
+          {
+            "label": "5월 출하",
+            "value": "2대",
+            "target": "3대",
+            "status": "BLUE"
+          }
+        ],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-06-10",
+            "event": "승인 서류 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "승인 서류 진행",
+          "출하 준비"
+        ],
+        "source_slide_numbers": [
+          6,
+          10,
+          11
+        ]
+      },
+      {
+        "name": "SABRE 프레임",
+        "category": "내재화 프레임",
+        "status": "BLUE",
+        "headline": "프레임 승인 일정 진행 중",
+        "kpis": [],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-06-22",
+            "event": "세이버 승인 일정",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "프레임 승인 준비",
+          "고객 대응"
+        ],
+        "source_slide_numbers": [
+          5,
+          12
+        ]
+      },
+      {
+        "name": "QUAROS",
+        "category": "직납프레임",
+        "status": "BLUE",
+        "headline": "개발 진행 및 승인 준비 중",
+        "kpis": [],
+        "critical_issues": [],
+        "milestones": [
+          {
+            "date": "2026-06-30",
+            "event": "액션아이템 완료",
+            "status": "ON_TRACK"
+          }
+        ],
+        "financials": {
+          "revenue": "N/A",
+          "note": "매출 영향 없음"
+        },
+        "next_actions": [
+          "샘플 제작 완료",
+          "승인 준비"
+        ],
+        "source_slide_numbers": [
+          14
+        ]
+      }
+    ],
+    "slide_images": {
+      "1": "/slides/706d2d9df4fe/slide_01.png",
+      "2": "/slides/706d2d9df4fe/slide_02.png",
+      "3": "/slides/706d2d9df4fe/slide_03.png",
+      "4": "/slides/706d2d9df4fe/slide_04.png",
+      "5": "/slides/706d2d9df4fe/slide_05.png",
+      "6": "/slides/706d2d9df4fe/slide_06.png",
+      "7": "/slides/706d2d9df4fe/slide_07.png",
+      "8": "/slides/706d2d9df4fe/slide_08.png",
+      "9": "/slides/706d2d9df4fe/slide_09.png",
+      "10": "/slides/706d2d9df4fe/slide_10.png",
+      "11": "/slides/706d2d9df4fe/slide_11.png",
+      "12": "/slides/706d2d9df4fe/slide_12.png",
+      "13": "/slides/706d2d9df4fe/slide_13.png",
+      "14": "/slides/706d2d9df4fe/slide_14.png",
+      "15": "/slides/706d2d9df4fe/slide_15.png"
+    },
+    "doc_id": "706d2d9df4fe",
+    "file_name": "260528_내재화프레임, 메이져모듈 진행현황.pptx"
+  }
+]

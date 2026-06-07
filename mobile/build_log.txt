@@ -1,0 +1,302 @@
+[  +41 ms] executing: sysctl hw.optional.arm64
+[   +9 ms] Exit code 0 from: sysctl hw.optional.arm64
+[        ] hw.optional.arm64: 1
+[  +11 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[   +1 ms] executing: [/opt/homebrew/share/flutter/] git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[  +41 ms] Exit code 0 from: git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[        ] 2026-05-29 12:13:22 -0400
+[  +38 ms] executing: sysctl hw.optional.arm64
+[   +5 ms] Exit code 0 from: sysctl hw.optional.arm64
+[        ] hw.optional.arm64: 1
+[        ] executing: /usr/bin/arch -arm64e xcrun xcodebuild -version
+[  +17 ms] Exit code 72 from: /usr/bin/arch -arm64e xcrun xcodebuild -version
+[        ] xcrun: error: unable to find utility "xcodebuild", not a developer tool or in PATH
+[   +1 ms] Xcode not found. Run 'flutter doctor' for more information.
+[   +6 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +36 ms] executing: /Users/minseo/Library/Android/sdk/platform-tools/adb devices -l
+[   +2 ms] executing: /usr/bin/arch -arm64e xcrun xcodebuild -version
+[  +15 ms] Exit code 72 from: /usr/bin/arch -arm64e xcrun xcodebuild -version
+[        ] xcrun: error: unable to find utility "xcodebuild", not a developer tool or in PATH
+[   +2 ms] executing: /usr/bin/arch -arm64e xcrun simctl list devices booted
+[  +60 ms] List of devices attached
+           emulator-5554          device product:sdk_gphone16k_arm64 model:sdk_gphone16k_arm64 device:emu64a16k transport_id:2
+[   +4 ms] /Users/minseo/Library/Android/sdk/platform-tools/adb -s emulator-5554 shell getprop
+[  +77 ms] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +16 ms] executing: /usr/bin/arch -arm64e xcrun xcodebuild -version
+[  +15 ms] Exit code 72 from: /usr/bin/arch -arm64e xcrun xcodebuild -version
+[        ] xcrun: error: unable to find utility "xcodebuild", not a developer tool or in PATH
+[  +83 ms] Skipping pub get: version match.
+[  +80 ms] Generating /Users/minseo/Desktop/project_summary/mobile/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+[  +10 ms] Skipping generating GeneratedPluginRegistrant.java because it is up-to-date.
+[   +1 ms] ro.hardware = ranchu
+[  +59 ms] Initializing file store
+[   +9 ms] Skipping target: gen_localizations
+[   +1 ms] gen_dart_plugin_registrant: Starting due to {InvalidatedReasonKind.inputChanged: The following inputs have updated contents: /Users/minseo/Desktop/project_summary/mobile/.dart_tool/package_config.json}
+[  +44 ms] gen_dart_plugin_registrant: Complete
+[   +2 ms] Skipping target: _composite
+[   +1 ms] complete
+[   +4 ms] Launching lib/main.dart on sdk gphone16k arm64 in debug mode...
+[   +4 ms] /opt/homebrew/share/flutter/bin/cache/dart-sdk/bin/dartaotruntime /opt/homebrew/share/flutter/bin/cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot --sdk-root /opt/homebrew/share/flutter/bin/cache/artifacts/engine/common/flutter_patched_sdk/ --incremental --target=flutter --experimental-emit-debug-metadata -DFLUTTER_VERSION=3.44.1 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=924134a44c -DFLUTTER_ENGINE_REVISION=c416acfeb8 -DFLUTTER_DART_VERSION=3.12.1 --output-dill /var/folders/0s/1w7q1ws152dfly_p5ycp62hc0000gn/T/flutter_tools.rpWD8c/flutter_tool.MJfFgM/app.dill --packages /Users/minseo/Desktop/project_summary/mobile/.dart_tool/package_config.json -Ddart.vm.profile=false -Ddart.vm.product=false --enable-asserts --track-widget-creation --filesystem-scheme org-dartlang-root --initialize-from-dill build/0ea6338a9744699c4765127c07d5f7ae.cache.dill.track.dill --verbosity=error --enable-experiment=alternative-invalidation-strategy
+[   +8 ms] executing: /Users/minseo/Library/Android/sdk/platform-tools/adb -s emulator-5554 shell -x logcat -v time -t 1
+[  +10 ms] <- compile package:mobile/main.dart
+[  +92 ms] --------- beginning of main
+           06-05 10:37:16.131 I/wpa_supplicant( 2262): wlan0: CTRL-EVENT-BEACON-LOSS
+[   +9 ms] executing: /Users/minseo/Library/Android/sdk/platform-tools/adb version
+[  +80 ms] Android Debug Bridge version 1.0.41
+           Version 37.0.0-14910828
+           Installed as /Users/minseo/Library/Android/sdk/platform-tools/adb
+           Running on Darwin 25.5.0 (arm64)
+[        ] executing: /Users/minseo/Library/Android/sdk/platform-tools/adb start-server
+[  +25 ms] Building APK
+[ +141 ms] executing: /usr/bin/plutil -convert xml1 -o - /Applications/Android Studio.app/Contents/Info.plist
+[  +13 ms] Exit code 0 from: /usr/bin/plutil -convert xml1 -o - /Applications/Android Studio.app/Contents/Info.plist
+[        ] <?xml version="1.0" encoding="UTF-8"?>
+           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+           <plist version="1.0">
+           <dict>
+           	<key>CFBundleDevelopmentRegion</key>
+           	<string>English</string>
+           	<key>CFBundleDocumentTypes</key>
+           	<array>
+           		<dict>
+           			<key>CFBundleTypeExtensions</key>
+           			<array>
+           				<string>ipr</string>
+           			</array>
+           			<key>CFBundleTypeIconFile</key>
+           			<string>studio.icns</string>
+           			<key>CFBundleTypeName</key>
+           			<string>Android Studio Project File</string>
+           			<key>CFBundleTypeRole</key>
+           			<string>Editor</string>
+           		</dict>
+           		<dict>
+           			<key>CFBundleTypeExtensions</key>
+           			<array>
+           				<string>*</string>
+           			</array>
+           			<key>CFBundleTypeName</key>
+           			<string>All documents</string>
+           			<key>CFBundleTypeOSTypes</key>
+           			<array>
+           				<string>****</string>
+           			</array>
+           			<key>CFBundleTypeRole</key>
+           			<string>Editor</string>
+           			<key>LSTypeIsPackage</key>
+           			<false/>
+           		</dict>
+           	</array>
+           	<key>CFBundleExecutable</key>
+           	<string>studio</string>
+           	<key>CFBundleGetInfoString</key>
+           	<string>Android Studio 2026.1, build AI-261.23567.138.2611.15503007. Copyright JetBrains s.r.o., (c) 2000-2026</string>
+           	<key>CFBundleIconFile</key>
+           	<string>studio.icns</string>
+           	<key>CFBundleIdentifier</key>
+           	<string>com.google.android.studio</string>
+           	<key>CFBundleInfoDictionaryVersion</key>
+           	<string>6.0</string>
+           	<key>CFBundleName</key>
+           	<string>Android Studio</string>
+           	<key>CFBundlePackageType</key>
+           	<string>APPL</string>
+           	<key>CFBundleShortVersionString</key>
+           	<string>2026.1</string>
+           	<key>CFBundleURLTypes</key>
+           	<array>
+           		<dict>
+           			<key>CFBundleTypeRole</key>
+           			<string>Editor</string>
+           			<key>CFBundleURLName</key>
+           			<string>Stacktrace</string>
+           			<key>CFBundleURLSchemes</key>
+           			<array>
+           				<string>idea</string>
+           			</array>
+           		</dict>
+           	</array>
+           	<key>CFBundleVersion</key>
+           	<string>AI-261.23567.138.2611.15503007</string>
+           	<key>LSApplicationCategoryType</key>
+           	<string>public.app-category.developer-tools</string>
+           	<key>LSArchitecturePriority</key>
+           	<array>
+           		<string>arm64</string>
+           	</array>
+           	<key>LSMinimumSystemVersion</key>
+           	<string>10.13</string>
+           	<key>LSRequiresNativeExecution</key>
+           	<string>YES</string>
+           	<key>NSAppleEventsUsageDescription</key>
+           	<string>An application in Android Studio requests the ability to send Apple events.</string>
+           	<key>NSBluetoothAlwaysUsageDescription</key>
+           	<string>An application in Android Studio requests access to Bluetooth.</string>
+           	<key>NSCameraUsageDescription</key>
+           	<string>An application in Android Studio requests access to the device's camera.</string>
+           	<key>NSDesktopFolderUsageDescription</key>
+           	<string>An application in Android Studio requests access to the user's Desktop folder.</string>
+           	<key>NSDocumentsFolderUsageDescription</key>
+           	<string>An application in Android Studio requests access to the user's Documents folder.</string>
+           	<key>NSDownloadsFolderUsageDescription</key>
+           	<string>An application in Android Studio requests access to the user's Downloads folder.</string>
+           	<key>NSHighResolutionCapable</key>
+           	<true/>
+           	<key>NSLocalNetworkUsageDescription</key>
+           	<string>Android Studio's features, such as SSH and database connectivity, require permissions for accessing the local network and sending broadcast requests.</string>
+           	<key>NSLocationUsageDescription</key>
+           	<string>An application in Android Studio requests access to the user's location information.</string>
+           	<key>NSMicrophoneUsageDescription</key>
+           	<string>An application in Android Studio requests access to the device's microphone.</string>
+           	<key>NSNetworkVolumesUsageDescription</key>
+           	<string>An application in Android Studio requests access to files on a network volume.</string>
+           	<key>NSRemovableVolumesUsageDescription</key>
+           	<string>An application in Android Studio requests access to files on a removable volume.</string>
+           	<key>NSSupportsAutomaticGraphicsSwitching</key>
+           	<true/>
+           </dict>
+           </plist>
+[   +7 ms] executing: /Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java -version
+[ +157 ms] Exit code 0 from: /Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java -version
+[        ] openjdk version "21.0.10" 2026-01-20
+           OpenJDK Runtime Environment (build 21.0.10+-117844308-b1163.108)
+           OpenJDK 64-Bit Server VM (build 21.0.10+-117844308-b1163.108, mixed mode)
+[   +6 ms] Top-level Gradle build file not found, skipping migration of task "clean".
+[   +1 ms] executing: /opt/homebrew/opt/openjdk@17/bin/java --version
+[  +58 ms] Exit code 0 from: /opt/homebrew/opt/openjdk@17/bin/java --version
+[        ] openjdk 17.0.19 2026-04-21
+           OpenJDK Runtime Environment Homebrew (build 17.0.19+0)
+           OpenJDK 64-Bit Server VM Homebrew (build 17.0.19+0, mixed mode, sharing)
+[   +4 ms] CMake project not found, skipping support Android 15 16k page size migration.
+[   +4 ms] The developer has already configured the Built-In Kotlin flag, skipping migration.
+[        ] The developer has already configured the new DSL flag, skipping migration.
+[   +3 ms] Using gradle from /Users/minseo/Desktop/project_summary/mobile/android/gradlew.
+[  +13 ms] LocalFile: '/Users/minseo/Desktop/project_summary/mobile/android/build.gradle.kts' doesn't provide an AGP version. Checking settings.
+[        ] LocalFile: '/Users/minseo/Desktop/project_summary/mobile/android/settings.gradle.kts' provides AGP version: 8.3.0
+[   +2 ms] Running Gradle task 'assembleDebug'...
+[        ] executing: [/Users/minseo/Desktop/project_summary/mobile/android/] /Users/minseo/Desktop/project_summary/mobile/android/gradlew --full-stacktrace --info -Pverbose=true -Ptarget-platform=android-arm64 -Ptarget=/Users/minseo/Desktop/project_summary/mobile/lib/main.dart -Pbase-application-name=android.app.Application -Pdart-defines=RkxVVFRFUl9WRVJTSU9OPTMuNDQuMQ==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049OTI0MTM0YTQ0Yw==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049YzQxNmFjZmViOA==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMi4x -Pdart-obfuscation=false -Ptrack-widget-creation=true -Ptree-shake-icons=false -Pfilesystem-scheme=org-dartlang-root assembleDebug
+[ +449 ms] Initialized native services in: /Users/minseo/.gradle/native
+[        ] Initialized jansi services in: /Users/minseo/.gradle/native
+[ +119 ms] Welcome to Gradle 8.7!
+[        ] Here are the highlights of this release:
+[        ]  - Compiling and testing with Java 22
+[        ]  - Cacheable Groovy script compilation
+[        ]  - New methods in lazy collection properties
+[        ] For more details see https://docs.gradle.org/8.7/release-notes.html
+[        ] Received JVM installation metadata from '/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home': {JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home, JAVA_VERSION=17.0.19, JAVA_VENDOR=Homebrew, RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=17.0.19+0, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=17.0.19+0, VM_VENDOR=Homebrew, OS_ARCH=aarch64}
+[  +93 ms] Found daemon DaemonInfo{pid=10159, address=[4a89a081-e511-4df9-95f0-3761f3a6d669 port:53650, addresses:[/127.0.0.1]], state=Idle, lastBusy=1780629859282, context=DefaultDaemonContext[uid=1e876609-c4d5-4b93-b9a1-e09c037ca2e5,javaHome=/Applications/Android Studio.app/Contents/jbr/Contents/Home,daemonRegistryDir=/Users/minseo/.gradle/daemon,pid=10159,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=KR,-Duser.language=ko,-Duser.variant]} however its context does not match the desired criteria.
+[        ] Java home is different.
+[        ] Wanted: DefaultDaemonContext[uid=null,javaHome=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home,daemonRegistryDir=/Users/minseo/.gradle/daemon,pid=14809,idleTimeout=null,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=KR,-Duser.language=ko,-Duser.variant]
+[   +1 ms] Actual: DefaultDaemonContext[uid=1e876609-c4d5-4b93-b9a1-e09c037ca2e5,javaHome=/Applications/Android Studio.app/Contents/jbr/Contents/Home,daemonRegistryDir=/Users/minseo/.gradle/daemon,pid=10159,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=-XX:MaxMetaspaceSize=4G,-XX:ReservedCodeCacheSize=512m,-XX:+HeapDumpOnOutOfMemoryError,--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Xmx8G,-Dfile.encoding=UTF-8,-Duser.country=KR,-Duser.language=ko,-Duser.variant]
+[        ]   Looking for a different daemon...
+[ +246 ms] The client will now receive all logging from the daemon (pid: 14364). The daemon log file: /Users/minseo/.gradle/daemon/8.7/daemon-14364.out.log
+[   +2 ms] Starting 2nd build in daemon [uptime: 1 mins 18.388 secs, performance: 99%, GC rate: 0.00/s, heap usage: 0% of 8 GiB, non-heap usage: 3% of 4 GiB]
+[        ] Using 8 worker leases.
+[  +46 ms] The Dart compiler exited unexpectedly.
+[   +5 ms] 
+           #0      throwToolExit (package:flutter_tools/src/base/common.dart:34:3)
+           #1      DefaultResidentCompiler._compile.<anonymous closure> (package:flutter_tools/src/compile.dart:997:15)
+           #2      _rootRun (dart:async/zone_root.dart:27:47)
+           #3      _CustomZone.run (dart:async/zone.dart:726:19)
+           #4      _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+           #5      _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+           #6      _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+           #7      _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+           #8      _SinkTransformerStreamSubscription._close (dart:async/stream_transformers.dart:91:11)
+           #9      _EventSinkWrapper.close (dart:async/stream_transformers.dart:21:11)
+           #10     _StringAdapterSink.close (dart:convert/string_conversion.dart:244:11)
+           #11     _LineSplitterSink.close (dart:convert/line_splitter.dart:141:11)
+           #12     _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+           #13     _rootRun (dart:async/zone_root.dart:27:47)
+           #14     _CustomZone.run (dart:async/zone.dart:726:19)
+           #15     _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+           #16     _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+           #17     _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+           #18     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+           #19     _SinkTransformerStreamSubscription._close (dart:async/stream_transformers.dart:91:11)
+           #20     _EventSinkWrapper.close (dart:async/stream_transformers.dart:21:11)
+           #21     _HandlerEventSink.close (dart:async/stream_transformers.dart:258:12)
+           #22     _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+           #23     _rootRun (dart:async/zone_root.dart:27:47)
+           #24     _CustomZone.run (dart:async/zone.dart:726:19)
+           #25     _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+           #26     _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+           #27     _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+           #28     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+           #29     _SinkTransformerStreamSubscription._close (dart:async/stream_transformers.dart:91:11)
+           #30     _EventSinkWrapper.close (dart:async/stream_transformers.dart:21:11)
+           #31     _StringAdapterSink.close (dart:convert/string_conversion.dart:244:11)
+           #32     _Utf8ConversionSink.close (dart:convert/string_conversion.dart:304:20)
+           #33     _ConverterStreamEventSink.close (dart:convert/chunked_conversion.dart:79:18)
+           #34     _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+           #35     _rootRun (dart:async/zone_root.dart:27:47)
+           #36     _CustomZone.run (dart:async/zone.dart:726:19)
+           #37     _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+           #38     _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+           #39     _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+           #40     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+           #41     _SyncStreamControllerDispatch._sendDone (dart:async/stream_controller.dart:806:19)
+           #42     _StreamController._closeUnchecked (dart:async/stream_controller.dart:652:7)
+           #43     _StreamController.close (dart:async/stream_controller.dart:645:5)
+           #44     _Socket._onData (dart:io-patch/socket_patch.dart:2881:21)
+           #45     _rootRunUnary (dart:async/zone_root.dart:56:13)
+           #46     _CustomZone.runUnary (dart:async/zone.dart:733:19)
+           #47     _CustomZone.runUnaryGuarded (dart:async/zone.dart:633:7)
+           #48     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+           #49     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+           #50     _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+           #51     _StreamController._add (dart:async/stream_controller.dart:663:7)
+           #52     _StreamController.add (dart:async/stream_controller.dart:618:5)
+           #53     new _RawSocket.<anonymous closure> (dart:io-patch/socket_patch.dart:2319:33)
+           #54     _NativeSocket.issueReadEvent.issue (dart:io-patch/socket_patch.dart:1640:18)
+           #55     _microtaskLoop (dart:async/schedule_microtask.dart:40:35)
+           #56     _startMicrotaskLoop (dart:async/schedule_microtask.dart:49:5)
+           #57     _runPendingImmediateCallback (dart:isolate-patch/isolate_patch.dart:127:13)
+           #58     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:193:5)
+
+
+[   +1 ms] Running 3 shutdown hooks
+[   +4 ms] Shutdown hooks complete
+[  +49 ms] exiting with code 1
