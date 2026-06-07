@@ -36,13 +36,19 @@ UPLOAD_PASSWORD = os.getenv("UPLOAD_PASSWORD", "1234")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 BASE_DIR = Path(__file__).parent.resolve()
-UPLOAD_DIR = BASE_DIR / "uploads"
-SLIDES_DIR = BASE_DIR / "slides"
-SLIDE_IMAGES_DIR = BASE_DIR / "slide_images"   # 기존 호환용
-CROPPED_DIR = BASE_DIR / "cropped"
-CUSTOM_IMAGES_DIR = BASE_DIR / "custom_images"
-LATEST_FILE = BASE_DIR / "reports_latest.json"
-HISTORY_FILE = BASE_DIR / "reports_history.json"
+
+# Railway/프로덕션: /data (영구 Volume)
+# 로컬 개발: backend 폴더 안
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+UPLOAD_DIR = DATA_DIR / "uploads"
+SLIDES_DIR = DATA_DIR / "slides"
+SLIDE_IMAGES_DIR = DATA_DIR / "slide_images"   # 기존 호환용
+CROPPED_DIR = DATA_DIR / "cropped"
+CUSTOM_IMAGES_DIR = DATA_DIR / "custom_images"
+LATEST_FILE = DATA_DIR / "reports_latest.json"
+HISTORY_FILE = DATA_DIR / "reports_history.json"
 IMAGE_MAPPINGS_FILE = BASE_DIR / "image_mappings.json"
 
 for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR, CUSTOM_IMAGES_DIR]:

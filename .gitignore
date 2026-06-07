@@ -67,3 +67,10 @@ mobile/android/local.properties
 .vscode/
 .idea/
 *.swp
+
+# 백업 파일 추가
+backend/main_backup_*.py
+backend/project_templates_backup*.py
+backend/*_old.py
+backend/extractor.py
+backend/reports.json

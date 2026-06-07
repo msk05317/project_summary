@@ -1,0 +1,30 @@
+# Python 가상환경
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 업로드/생성된 파일 (서버에서 새로 생성)
+uploads/
+slides/
+slide_images/
+cropped/
+custom_images/
+reports_latest.json
+reports_history.json
+reports.json
+image_mappings.json
+
+# 환경 변수 (Railway 환경변수로 별도 설정)
+.env
+
+# 백업 파일
+*.bak
+*.bak2
+*_backup_*.py
+*_old.py
+main_backup_*.py
+
+# macOS
+.DS_Store
