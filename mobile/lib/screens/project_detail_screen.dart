@@ -1,8 +1,8 @@
+import '../config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-const String baseUrl = 'http://10.0.2.2:8000';
 
 class ProjectDetailScreen extends StatefulWidget {
   final String projectKey;
@@ -34,7 +34,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   Future<void> _load() async {
     try {
       final res = await http.get(
-        Uri.parse('$baseUrl/projects/${widget.projectKey}'),
+        Uri.parse('$kApiBaseUrl/projects/${widget.projectKey}'),
       );
       if (res.statusCode != 200) {
         throw Exception('${res.statusCode}');
@@ -67,8 +67,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   String _absUrl(String url) {
     if (url.startsWith('http')) return url;
-    if (url.startsWith('/')) return '$baseUrl$url';
-    return '$baseUrl/$url';
+    if (url.startsWith('/')) return '$kApiBaseUrl$url';
+    return '$kApiBaseUrl/$url';
   }
 
   @override

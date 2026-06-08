@@ -1,14 +1,14 @@
+import '../config/app_config.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/product_card.dart';
 
 // Android 에뮬레이터에서 macOS localhost 접근용
-const String baseUrl = 'http://10.0.2.2:8000';
 
 class ApiClient {
   /// 대시보드 카드 목록
   Future<List<ProductCard>> fetchDashboard() async {
-    final res = await http.get(Uri.parse('$baseUrl/dashboard'));
+    final res = await http.get(Uri.parse('$kApiBaseUrl/dashboard'));
     print('🟡 /dashboard 응답: ${res.statusCode}');
 
     if (res.statusCode != 200) {
@@ -26,7 +26,7 @@ class ApiClient {
 
   /// 프로젝트 버튼 목록
   Future<List<Map<String, dynamic>>> fetchProjects() async {
-    final res = await http.get(Uri.parse('$baseUrl/projects'));
+    final res = await http.get(Uri.parse('$kApiBaseUrl/projects'));
     print('🟡 /projects 응답: ${res.statusCode}');
 
     if (res.statusCode != 200) {
@@ -44,7 +44,7 @@ class ApiClient {
 
   /// 프로젝트 상세
   Future<Map<String, dynamic>> fetchProjectDetail(String key) async {
-    final res = await http.get(Uri.parse('$baseUrl/projects/$key'));
+    final res = await http.get(Uri.parse('$kApiBaseUrl/projects/$key'));
     print('🟡 /projects/$key 응답: ${res.statusCode}');
 
     if (res.statusCode != 200) {
@@ -61,7 +61,7 @@ class ApiClient {
     String productName,
   ) async {
     final url = Uri.parse(
-      '$baseUrl/reports/$docId/${Uri.encodeComponent(productName)}',
+      '$kApiBaseUrl/reports/$docId/${Uri.encodeComponent(productName)}',
     );
     final res = await http.get(url);
 

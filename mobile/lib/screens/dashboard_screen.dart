@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../config/app_settings.dart';
 import '../models/product_card.dart';
 import '../services/api_client.dart';
 import 'project_detail_screen.dart';
@@ -18,18 +20,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool loading = true;
   String? error;
 
+  // ✨ Level 2 상태
+  Timer? _autoRefreshTimer;
+  DateTime? _lastRefreshAt;
+  String _lastDataFingerprint = '';
+  bool _loadedOnce = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _startAutoRefresh();
   }
 
-  Future<void> _load() async {
-    print('🟡 _load 시작');
-    setState(() {
-      loading = true;
-      error = null;
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (!mounted) return;
+      _load(silent: true);
     });
+  }
+
+  String _makeFingerprint(List<ProductCard> list) {
+    final parts = list.map((c) {
+      return [
+        c.projectKey ?? '',
+        c.product,
+        c.status,
+        c.headline,
+        c.reportDate,
+        c.docId,
+      ].join('|');
+    }).toList()
+      ..sort();
+    return parts.join('||');
+  }
+
+  String? _latestReportDate() {
+    final dates = cards
+        .map((c) => c.reportDate)
+        .where((d) => d.isNotEmpty)
+        .toList();
+    if (dates.isEmpty) return null;
+    dates.sort();
+    return dates.last;
+  }
+
+  String _formatReportDate(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+      final weekday = weekdays[dt.weekday - 1];
+      return '보고 기준: ${dt.month}/${dt.day} ($weekday)';
+    } catch (_) {
+      return '보고 기준: $iso';
+    }
+  }
+
+  String _formatRefreshTime(DateTime dt) {
+    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    final weekday = weekdays[dt.weekday - 1];
+    final isAm = dt.hour < 12;
+    final ampm = isAm ? '오전' : '오후';
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '새로고침: ${dt.month}/${dt.day} ($weekday) $ampm $hour12:$minute';
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      print('🟡 _load 시작');
+      setState(() {
+        loading = true;
+        error = null;
+      });
+    } else {
+      print('🟡 _load (silent) 자동 새로고침');
+    }
+
     try {
       final results = await Future.wait([
         _api.fetchDashboard(),
@@ -44,17 +118,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
         print('🟢 첫 카드: ${fetchedCards.first.product} / ${fetchedCards.first.projectKey}');
       }
 
+      if (!mounted) return;
+
+      final newFingerprint = _makeFingerprint(fetchedCards);
+      final hasNewData = _loadedOnce &&
+          _lastDataFingerprint.isNotEmpty &&
+          _lastDataFingerprint != newFingerprint;
+
       setState(() {
         cards = fetchedCards;
         projects = fetchedProjects;
         loading = false;
+        error = null;
+        _lastRefreshAt = DateTime.now();
+        _lastDataFingerprint = newFingerprint;
+        _loadedOnce = true;
       });
+
+      if (hasNewData && mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.notifications_active, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('새 데이터가 업데이트되었습니다.'),
+                ],
+              ),
+              duration: Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.blueAccent,
+            ),
+          );
+      }
     } catch (e) {
       print('🔴 _load 오류: $e');
-      setState(() {
-        error = e.toString();
-        loading = false;
-      });
+      if (!mounted) return;
+
+      if (!silent) {
+        setState(() {
+          error = e.toString();
+          loading = false;
+        });
+      }
     }
   }
 
@@ -84,11 +192,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // 카드 탭 시 적절한 상세 화면으로 이동
   void _navigateToDetail(ProductCard card) {
     if (card.projectKey != null && card.projectKey!.isNotEmpty) {
-      // project_key 있으면 부서별 상세
-      // 라벨은 projects에서 찾기 (없으면 product명 사용)
       final matched = projects.firstWhere(
         (p) => p['key'] == card.projectKey,
         orElse: () => <String, dynamic>{},
@@ -108,7 +213,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     } else {
-      // 매핑 실패한 경우 fallback
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -136,13 +240,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final latestReport = _latestReportDate();
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('사업부 진행현황'),
+        toolbarHeight: 88,
+        backgroundColor: const Color(0xFF1E3A5F),
+        foregroundColor: Colors.white,
+        elevation: 2,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              '사업부 진행현황',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 2),
+            if (latestReport != null)
+              Row(
+                children: [
+                  const Icon(Icons.description_outlined,
+                      size: 12, color: Colors.white),
+                  const SizedBox(width: 4),
+                  Text(
+                    _formatReportDate(latestReport),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            if (_lastRefreshAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Row(
+                  children: [
+                    const Icon(Icons.refresh,
+                        size: 12, color: Colors.white70),
+                    const SizedBox(width: 4),
+                    Text(
+                      _formatRefreshTime(_lastRefreshAt!),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
         actions: [
+          // ✨ 글자 크기 버튼 추가
+          PopupMenuButton<double>(
+            tooltip: '글자 크기',
+            icon: const Icon(Icons.text_fields, color: Colors.white),
+            initialValue: AppSettings.instance.fontScale,
+            onSelected: (value) async {
+              await AppSettings.instance.setFontScale(value);
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(context)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        '글자 크기: ${AppSettings.instance.labelFor(value)}'),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 0.9, child: Text('작게')),
+              PopupMenuItem(value: 1.0, child: Text('기본')),
+              PopupMenuItem(value: 1.15, child: Text('크게')),
+              PopupMenuItem(value: 1.3, child: Text('아주 크게')),
+            ],
+          ),
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _load,
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: '새로고침',
+            onPressed: () => _load(),
           ),
         ],
       ),
@@ -151,8 +338,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : error != null
               ? _buildError()
               : (cards.isEmpty && projects.isEmpty)
-                  ? const Center(child: Text('데이터가 없습니다'))
+                  ? _buildEmpty()
                   : _buildContent(),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return RefreshIndicator(
+      onRefresh: () => _load(),
+      child: ListView(
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox_outlined, size: 64, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text('데이터가 없습니다',
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
+                  SizedBox(height: 4),
+                  Text('당겨서 새로고침',
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -167,7 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 12),
             Text('오류: $error', textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _load, child: const Text('다시 시도')),
+            ElevatedButton(onPressed: () => _load(), child: const Text('다시 시도')),
           ],
         ),
       ),
@@ -175,17 +389,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildContent() {
-    // status별 카드 그룹화
     final redCards = cards.where((c) => c.status == 'RED').toList();
     final blueCards = cards.where((c) => c.status == 'BLUE').toList();
     final blackCards = cards.where((c) => c.status == 'BLACK').toList();
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(),
       child: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          // ========== 부서별 보기 (가로 스크롤) ==========
           if (projects.isNotEmpty) ...[
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
@@ -235,8 +447,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 16),
           ],
-
-          // ========== 신호등 카드 그룹 ==========
           if (redCards.isNotEmpty)
             _buildStatusGroup('🔴 즉시 확인', redCards, 'RED'),
           if (blueCards.isNotEmpty)
@@ -275,14 +485,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 좌측 상태 원
               Container(
                 width: 14,
                 height: 14,
                 margin: const EdgeInsets.only(right: 12, top: 2),
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
-              // 본문
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,7 +531,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
               ),
-              // 우측 화살표
               Icon(Icons.chevron_right, color: Colors.grey.shade400),
             ],
           ),

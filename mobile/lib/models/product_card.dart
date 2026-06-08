@@ -1,3 +1,5 @@
+import '../config/app_config.dart';
+
 // 대시보드 카드 모델 + 상세 화면용 ProductDetail 모델
 
 class ProductCard {
@@ -107,7 +109,7 @@ class ProductDetail {
 
   // 절대 URL로 변환된 슬라이드 이미지 리스트
   List<String> get slideImageUrls {
-    const base = 'http://10.0.2.2:8000';
+    final base = kApiBaseUrl;
     if (sourceSlideNumbers.isNotEmpty && slideImages.isNotEmpty) {
       final urls = <String>[];
       final seen = <String>{};
