@@ -49,7 +49,7 @@ CROPPED_DIR = DATA_DIR / "cropped"
 CUSTOM_IMAGES_DIR = DATA_DIR / "custom_images"
 LATEST_FILE = DATA_DIR / "reports_latest.json"
 HISTORY_FILE = DATA_DIR / "reports_history.json"
-IMAGE_MAPPINGS_FILE = BASE_DIR / "image_mappings.json"
+IMAGE_MAPPINGS_FILE = DATA_DIR / "image_mappings.json"
 
 for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR, CUSTOM_IMAGES_DIR]:
     d.mkdir(exist_ok=True)
