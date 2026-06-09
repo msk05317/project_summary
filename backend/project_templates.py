@@ -8,6 +8,50 @@ import json
 import re
 from pathlib import Path
 
+import re as _re_section_title
+
+def _normalize_section_title(title) -> str:
+    """
+    N2 정규화: 앞부분의 번호 prefix만 제거.
+    예) "2-1. 내재화 프레임 진행현황(화성 17종)" -> "내재화 프레임 진행현황(화성 17종)"
+        "5. 직납프레임 TREOS"                  -> "직납프레임 TREOS"
+    """
+    if not isinstance(title, str):
+        return ""
+    t = title.strip()
+    t = _re_section_title.sub(r"^\s*\d+(?:[-.]\d+)*[.)\]]?\s+", "", t)
+    t = _re_section_title.sub(r"\s+", " ", t)
+    return t.strip()
+
+
+def _canonical_section_match_key(title, existing_keys):
+    """
+    하이브리드 매칭(C):
+    - 기본 키는 _normalize_section_title 결과 (lowercase)
+    - 단, 그 키가 기존에 채택된 어떤 키와 'prefix 포함 관계' 이면 그 키로 합침
+      예) 기존 '내재화 프레임 진행현황(화성 17종)' 가 채택돼 있으면
+          새로 들어온 '내재화 프레임 진행현황' 은 같은 카드로 봄
+    - prefix 비교는 양방향: 더 긴 쪽이 더 짧은 쪽을 prefix 로 가지면 같은 카드
+    - 단, prefix 뒤가 (한글/영문/숫자) 글자로 바로 이어지면 안 됨 → 공백/괄호/구분자만 허용
+    """
+    base = _normalize_section_title(title).lower()
+    if not base:
+        return base
+    for k in existing_keys:
+        if not k:
+            continue
+        a, b = (base, k) if len(base) >= len(k) else (k, base)
+        if a == b:
+            return k
+        if a.startswith(b):
+            rest = a[len(b):]
+            # 다음 글자가 단어 경계여야 함 (괄호/공백/구분자)
+            if rest[:1] in (" ", "(", "[", "{", "-", "_", ".", ",", ":", "/"):
+                return k
+    return base
+
+
+
 BASE_DIR = Path(__file__).parent
 import os
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
@@ -204,28 +248,46 @@ def build_project_detail(project_key: str, grouped: dict) -> dict | None:
     overrides = load_manual_overrides().get(project_key, {})
     merged_sections: dict[str, dict] = {}
     section_order: list[str] = []
+    # 정규화된 title 키 → 이미 채택된 원본 title 매핑.
+    # 최신 보고서가 먼저 들어오므로 처음 등장한 title 이 "이김" (R1: 최신 덮어쓰기).
+    key_to_title: dict[str, str] = {}
+
 
     for sec in project.get("gpt_sections", []):
         title = sec.get("title", "기타").strip()
         if not title:
             continue
-        if title not in merged_sections:
-            merged_sections[title] = {"items": [], "notes": []}
-            section_order.append(title)
-        merged_sections[title]["items"].extend(sec.get("items", []) or [])
-        merged_sections[title]["notes"].extend(sec.get("notes", []) or [])
+        key = _canonical_section_match_key(title, list(key_to_title.keys()))
+        if key in key_to_title:
+            # 이미 더 최신 보고서의 동일 카드가 채택됨 → 옛날 보고서는 무시 (overlap 방지)
+            continue
+        key_to_title[key] = title
+        merged_sections[title] = {
+            "items": list(sec.get("items", []) or []),
+            "notes": list(sec.get("notes", []) or []),
+        }
+        section_order.append(title)
 
-    # manual overrides add-ons
+    # manual overrides add-ons (관리자 수동 보강은 누적으로 더해줌)
     for title, items in (overrides.get("extra_items", {}) or {}).items():
-        if title not in merged_sections:
-            merged_sections[title] = {"items": [], "notes": []}
+        key = _canonical_section_match_key(title, list(key_to_title.keys()))
+        target_title = key_to_title.get(key)
+        if target_title is None:
+            merged_sections[title] = {"items": list(items), "notes": []}
             section_order.append(title)
-        merged_sections[title]["items"].extend(items)
+            key_to_title[key] = title
+        else:
+            merged_sections[target_title]["items"].extend(items)
+
     for title, notes in (overrides.get("extra_notes", {}) or {}).items():
-        if title not in merged_sections:
-            merged_sections[title] = {"items": [], "notes": []}
+        key = _canonical_section_match_key(title, list(key_to_title.keys()))
+        target_title = key_to_title.get(key)
+        if target_title is None:
+            merged_sections[title] = {"items": [], "notes": list(notes)}
             section_order.append(title)
-        merged_sections[title]["notes"].extend(notes)
+            key_to_title[key] = title
+        else:
+            merged_sections[target_title]["notes"].extend(notes)
 
     sections = []
     for title in section_order:
