@@ -1018,13 +1018,48 @@ _ADMIN_UPLOAD_HTML = """
 
   <!-- ============================== 탭 1: PPT 업로드 ============================== -->
   <section class="tab-content active" id="tab-ppt">
-    <div class="placeholder">
-      <div class="icon">📤</div>
-      <h3>PPT 업로드 (5-2b 단계에서 구현)</h3>
-      <p>현재는 Swagger UI 의 <code>/upload</code> 엔드포인트로 업로드해주세요.</p>
-      <p style="margin-top:8px;">
-        <a href="/docs" target="_blank" style="color: #1E3A5F; font-weight: 600;">→ Swagger UI 열기</a>
-      </p>
+    <div class="card">
+      <h2>📤 새 PPT 업로드</h2>
+      <form id="pptUploadForm">
+        <label for="pptPassword">업로드 비밀번호</label>
+        <input type="password" id="pptPassword" placeholder="관리자 비밀번호" required />
+
+        <label for="pptFiles">PPT 파일 (여러 개 선택 가능)</label>
+        <input type="file" id="pptFiles" accept=".pptx" multiple required />
+        <div id="pptFileList" style="margin-top: 8px; font-size: 13px; color: #555;"></div>
+
+        <label for="reportFamily">리포트 패밀리 (선택)</label>
+        <input type="text" id="reportFamily" placeholder="default" value="default" />
+
+        <details style="margin-top: 20px;">
+          <summary style="cursor: pointer; font-weight: 600; color: #1E3A5F; padding: 10px 0;">
+            ▼ 사전 매핑 (선택) — 모든 파일에 동일 적용
+          </summary>
+          <div style="padding: 12px 0; border-top: 1px solid #eee; margin-top: 8px;">
+            <p style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">
+              자동 분류가 실패한 카드만 여기서 정한 값으로 폴백됩니다. 자동 분류 잘 되는 카드는 영향 없음.
+            </p>
+
+            <label for="pptDivision">사업부</label>
+            <select id="pptDivision">
+              <option value="">— 자동 분류 —</option>
+            </select>
+
+            <label for="pptProject">프로젝트</label>
+            <select id="pptProject" disabled>
+              <option value="">— 사업부 먼저 선택 —</option>
+            </select>
+          </div>
+        </details>
+
+        <button type="submit" id="pptUploadBtn">업로드 시작</button>
+      </form>
+    </div>
+
+    <div class="card" id="pptProgressCard" style="display: none;">
+      <h2>📊 업로드 진행</h2>
+      <div id="pptProgressSummary" style="font-size: 14px; color: #374151; margin-bottom: 12px;"></div>
+      <div id="pptProgressList"></div>
     </div>
   </section>
 
@@ -1197,6 +1232,166 @@ _ADMIN_UPLOAD_HTML = """
   // 초기 로드
   loadProjects();
   loadImages();
+
+  // ============================================================
+  // 5-2b-2: PPT 업로드 폼 (다중 파일 + 사전 매핑 + 진행 표시)
+  // ============================================================
+
+  // 사업부 dropdown 채우기
+  async function loadDivisionsForPpt() {
+    try {
+      const res = await fetch('/admin/config/divisions');
+      const data = await res.json();
+      const sel = document.getElementById('pptDivision');
+      data.divisions.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.label;
+        sel.appendChild(opt);
+      });
+    } catch (e) {
+      console.error('사업부 로드 실패:', e);
+    }
+  }
+
+  // 사업부 선택 시 프로젝트 dropdown 채우기
+  document.getElementById('pptDivision').addEventListener('change', async (e) => {
+    const divId = e.target.value;
+    const projSel = document.getElementById('pptProject');
+    projSel.innerHTML = '<option value="">— 자동 분류 —</option>';
+
+    if (!divId) {
+      projSel.disabled = true;
+      projSel.innerHTML = '<option value="">— 사업부 먼저 선택 —</option>';
+      return;
+    }
+
+    try {
+      const res = await fetch('/admin/config/projects?division_id=' + encodeURIComponent(divId));
+      const data = await res.json();
+      data.projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.label + (p.group ? ' (' + p.group + ')' : '');
+        projSel.appendChild(opt);
+      });
+      projSel.disabled = false;
+    } catch (e) {
+      console.error('프로젝트 로드 실패:', e);
+    }
+  });
+
+  // 파일 선택 시 목록 표시
+  document.getElementById('pptFiles').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    const listDiv = document.getElementById('pptFileList');
+    if (files.length === 0) {
+      listDiv.innerHTML = '';
+      document.getElementById('pptUploadBtn').textContent = '업로드 시작';
+    } else {
+      listDiv.innerHTML = files.map(f => `<div>📄 ${f.name} <span style="color:#9ca3af;">(${(f.size/1024/1024).toFixed(1)}MB)</span></div>`).join('');
+      document.getElementById('pptUploadBtn').textContent = `${files.length}개 업로드`;
+    }
+  });
+
+  // 한 파일 업로드 (Promise 반환)
+  async function uploadSinglePpt(file, password, reportFamily, divisionId, projectId, itemEl) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('password', password);
+    fd.append('report_family', reportFamily || 'default');
+    if (divisionId) fd.append('division_id', divisionId);
+    if (projectId) fd.append('project_id', projectId);
+
+    // 상태: 처리 중
+    itemEl.querySelector('.status').textContent = '🔄';
+    itemEl.querySelector('.detail').textContent = '처리 중...';
+
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '업로드 실패');
+
+      // 성공
+      itemEl.querySelector('.status').textContent = '✅';
+      itemEl.querySelector('.detail').textContent = `카드 ${data.product_count}개 추출 (슬라이드 ${data.slide_count}장)`;
+      return { ok: true, file: file.name, data };
+    } catch (e) {
+      itemEl.querySelector('.status').textContent = '❌';
+      itemEl.querySelector('.detail').innerHTML = `<span style="color:#dc2626;">${e.message}</span>`;
+      return { ok: false, file: file.name, error: e.message };
+    }
+  }
+
+  // 업로드 폼 submit
+  document.getElementById('pptUploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const files = Array.from(document.getElementById('pptFiles').files);
+    if (files.length === 0) {
+      alert('PPT 파일을 1개 이상 선택해주세요.');
+      return;
+    }
+
+    const password = document.getElementById('pptPassword').value;
+    const reportFamily = document.getElementById('reportFamily').value || 'default';
+    const divisionId = document.getElementById('pptDivision').value;
+    const projectId = document.getElementById('pptProject').value;
+
+    // 진행 영역 표시 + 초기화
+    const progressCard = document.getElementById('pptProgressCard');
+    const progressList = document.getElementById('pptProgressList');
+    const progressSummary = document.getElementById('pptProgressSummary');
+    progressCard.style.display = 'block';
+    progressList.innerHTML = '';
+    progressSummary.textContent = `총 ${files.length}개 파일 처리 시작...`;
+
+    // 각 파일별 진행 항목 생성
+    const itemEls = files.map((f, idx) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #f1f5f9; gap: 12px; font-size: 14px;';
+      div.innerHTML = `
+        <span class="status" style="width: 24px; text-align: center;">⏳</span>
+        <strong style="min-width: 200px;">${f.name}</strong>
+        <span class="detail" style="color: #6b7280; flex: 1;">대기 중</span>
+      `;
+      progressList.appendChild(div);
+      return div;
+    });
+
+    // 업로드 버튼 비활성화
+    const btn = document.getElementById('pptUploadBtn');
+    btn.disabled = true;
+    btn.textContent = '업로드 중...';
+
+    // 순차 업로드
+    const results = [];
+    for (let i = 0; i < files.length; i++) {
+      progressSummary.textContent = `${i+1}/${files.length} 처리 중...`;
+      const result = await uploadSinglePpt(files[i], password, reportFamily, divisionId, projectId, itemEls[i]);
+      results.push(result);
+    }
+
+    // 완료 후 통계
+    const ok = results.filter(r => r.ok).length;
+    const fail = results.length - ok;
+    const totalCards = results.filter(r => r.ok).reduce((s, r) => s + (r.data.product_count || 0), 0);
+    progressSummary.innerHTML = `
+      <strong>완료:</strong> ${ok}/${files.length}개 성공
+      ${fail > 0 ? `, <span style="color:#dc2626;">${fail}개 실패</span>` : ''}
+      · 총 카드 <strong>${totalCards}개</strong> 추출
+    `;
+
+    // 버튼 복구
+    btn.disabled = false;
+    btn.textContent = '업로드 시작';
+
+    // 이미지 탭의 사업부 목록 갱신 (새로 업로드된 PPT 의 프로젝트가 잡힐 수 있게)
+    try { loadProjects(); } catch (e) {}
+  });
+
+  // PPT 탭 진입 시 dropdown 초기 채우기
+  loadDivisionsForPpt();
 </script>
 </body>
 </html>
