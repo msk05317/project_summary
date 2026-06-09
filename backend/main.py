@@ -5,6 +5,10 @@
 - 프로젝트별 상세 API 제공
 """
 import os
+import base64
+import time
+import secrets
+import hmac
 import json
 import shutil
 import hashlib
@@ -12,11 +16,11 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Response, Cookie, Depends
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -226,6 +230,146 @@ app.mount("/slides", StaticFiles(directory=str(SLIDES_DIR)), name="slides")
 app.mount("/slide_images", StaticFiles(directory=str(SLIDE_IMAGES_DIR)), name="slide_images")
 app.mount("/cropped", StaticFiles(directory=str(CROPPED_DIR)), name="cropped")
 app.mount("/custom_images", StaticFiles(directory=str(CUSTOM_IMAGES_DIR)), name="custom_images")
+
+# ============================================================
+# 관리자 세션 (8시간)
+# ============================================================
+ADMIN_SESSION_COOKIE = "admin_auth"
+ADMIN_SESSION_TTL_SEC = 8 * 60 * 60
+ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "")
+if not ADMIN_SESSION_SECRET:
+    ADMIN_SESSION_SECRET = hashlib.sha256(("session::" + UPLOAD_PASSWORD).encode()).hexdigest()
+
+def _b64u(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+def _b64u_decode(s: str) -> bytes:
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
+
+def _sign_session(exp_ts: int) -> str:
+    msg = str(exp_ts).encode()
+    sig = hmac.new(ADMIN_SESSION_SECRET.encode(), msg, hashlib.sha256).digest()
+    return f"{exp_ts}.{_b64u(sig)}"
+
+def _verify_session(token: Optional[str]) -> Optional[int]:
+    if not token or "." not in token:
+        return None
+    try:
+        exp_str, sig_b64 = token.split(".", 1)
+        exp_ts = int(exp_str)
+        expected = hmac.new(ADMIN_SESSION_SECRET.encode(), exp_str.encode(), hashlib.sha256).digest()
+        provided = _b64u_decode(sig_b64)
+        if not hmac.compare_digest(expected, provided):
+            return None
+        if exp_ts < int(time.time()):
+            return None
+        return exp_ts
+    except Exception:
+        return None
+
+def _issue_session_cookie(response: Response):
+    exp_ts = int(time.time()) + ADMIN_SESSION_TTL_SEC
+    token = _sign_session(exp_ts)
+    response.set_cookie(
+        key=ADMIN_SESSION_COOKIE,
+        value=token,
+        max_age=ADMIN_SESSION_TTL_SEC,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/",
+    )
+    return exp_ts
+
+def get_admin_session(admin_auth: Optional[str] = Cookie(default=None)) -> int:
+    exp = _verify_session(admin_auth)
+    if not exp:
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
+    return exp
+
+_ADMIN_LOGIN_HTML = """<!doctype html>
+<html lang=\"ko\"><head>
+<meta charset=\"utf-8\" />
+<title>관리자 인증</title>
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; background:#f1f5f9; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .card { background:#fff; padding:32px; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,0.08); width:340px; }
+  h2 { margin:0 0 8px; color:#1E3A5F; font-size:20px; }
+  p { color:#64748b; font-size:13px; margin:0 0 18px; }
+  input[type=password] { width:100%; padding:12px; font-size:14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box; }
+  button { width:100%; padding:12px; margin-top:14px; background:#1E3A5F; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer; }
+  .err { color:#b91c1c; font-size:13px; margin-top:10px; min-height:18px; }
+</style></head>
+<body>
+<div id="adminSessionBar" style="position:sticky;top:0;z-index:50;background:#1E3A5F;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+  <div>
+    🔐 관리자 세션 유지 중 · <span id="adminSessionRemain">확인 중...</span>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button type="button" id="adminExtendBtn" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">8시간 연장</button>
+    <button type="button" id="adminLogoutBtn" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">로그아웃</button>
+  </div>
+</div>
+  <form class=\"card\" id=\"loginForm\">
+    <h2>🔒 관리자 인증</h2>
+    <p>업로드 비밀번호를 입력하세요. 8시간 유지됩니다.</p>
+    <input type=\"password\" id=\"pw\" placeholder=\"비밀번호\" required autofocus />
+    <button type=\"submit\">로그인</button>
+    <div class=\"err\" id=\"err\"></div>
+  </form>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pw = document.getElementById('pw').value;
+  const err = document.getElementById('err');
+  err.textContent = '';
+  try {
+    const fd = new FormData();
+    fd.append('password', pw);
+    const r = await fetch('/admin/login', { method: 'POST', body: fd, credentials: 'same-origin' });
+    if (r.ok) {
+      const next = new URLSearchParams(location.search).get('next') || '/admin/upload';
+      location.href = next;
+    } else {
+      const j = await r.json().catch(()=>({}));
+      err.textContent = j.detail || '비밀번호가 올바르지 않습니다.';
+    }
+  } catch (e) {
+    err.textContent = '네트워크 오류';
+  }
+});
+</script>
+</body></html>"""
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page(admin_auth: Optional[str] = Cookie(default=None)):
+    if _verify_session(admin_auth):
+        return RedirectResponse(url="/admin/upload", status_code=302)
+    return HTMLResponse(content=_ADMIN_LOGIN_HTML)
+
+@app.post("/admin/login")
+def admin_login_submit(response: Response, password: str = Form(...)):
+    if password != UPLOAD_PASSWORD:
+        raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
+    exp = _issue_session_cookie(response)
+    return {"ok": True, "expires_at": exp}
+
+@app.post("/admin/logout")
+def admin_logout(response: Response):
+    response.delete_cookie(ADMIN_SESSION_COOKIE, path="/")
+    return {"ok": True}
+
+@app.post("/admin/extend")
+def admin_extend(response: Response, _exp: int = Depends(get_admin_session)):
+    exp = _issue_session_cookie(response)
+    return {"ok": True, "expires_at": exp}
+
+@app.get("/admin/session")
+def admin_session_info(_exp: int = Depends(get_admin_session)):
+    return {"ok": True, "expires_at": _exp, "ttl_sec": ADMIN_SESSION_TTL_SEC}
+
 
 
 # =========================================================
@@ -450,13 +594,15 @@ def _record_upload_hash(file_hash: str, saved_name: str, doc_id: str):
 @app.post("/upload")
 async def upload_ppt(
     file: UploadFile = File(...),
-    password: str = Form(...),
+    password: Optional[str] = Form(None),
+    admin_auth: Optional[str] = Cookie(default=None),
     report_family: str = Form("default"),
     division_id: Optional[str] = Form(None),  # 5-2b: 사업부 사전 매핑 (선택)
     project_id: Optional[str] = Form(None),   # 5-2b: 프로젝트 사전 매핑 (선택)
     allow_duplicate: bool = Form(False),  # 중복 업로드 허용
 ):
-    if password != UPLOAD_PASSWORD:
+    _has_session = bool(_verify_session(admin_auth))
+    if not _has_session and password != UPLOAD_PASSWORD:
         raise HTTPException(status_code=401, detail="비밀번호가 틀립니다.")
     if not file.filename.lower().endswith((".pptx", ".ppt")):
         raise HTTPException(status_code=400, detail=".pptx 또는 .ppt 파일만 업로드 가능합니다.")
@@ -753,7 +899,7 @@ def delete_custom_image(image_id: str):
 # ============================================================
 
 @app.get("/admin/config/divisions")
-def admin_config_divisions():
+def admin_config_divisions(_exp: int = Depends(get_admin_session)):
     """
     admin 페이지의 사업부 dropdown 용.
     config_loader.get_divisions() 결과를 그대로 노출.
@@ -802,7 +948,7 @@ def admin_config_projects(division_id: str | None = None):
 
 
 @app.get("/admin/config/sections")
-def admin_config_sections(project_key: str):
+def admin_config_sections(project_key: str, _exp: int = Depends(get_admin_session)):
     """
     admin 이미지 업로드 탭의 섹션 dropdown 용.
     현재 분석된 PPT 결과에서 해당 프로젝트의 실제 GPT 섹션 제목들을 가져옴.
@@ -832,7 +978,7 @@ def admin_config_sections(project_key: str):
 
 
 @app.get("/admin/config/stats")
-def admin_config_stats():
+def admin_config_stats(_exp: int = Depends(get_admin_session)):
     """
     매핑 관리 탭용 통계.
     - 현재 사업부/프로젝트 수
@@ -881,13 +1027,16 @@ def admin_config_stats():
 # 6. 어드민 페이지 (브라우저용)
 # =========================================================
 @app.get("/admin/upload", response_class=HTMLResponse)
-def admin_upload_page():
+def admin_upload_page(admin_auth: Optional[str] = Cookie(default=None)):
+    if not _verify_session(admin_auth):
+        return RedirectResponse(url="/admin/login?next=/admin/upload", status_code=302)
     return HTMLResponse(content=_ADMIN_UPLOAD_HTML)
 
 
 @app.post("/admin/reset")
 def admin_reset(password: str = Form(...)):
-    if password != UPLOAD_PASSWORD:
+    _has_session = bool(_verify_session(admin_auth))
+    if not _has_session and password != UPLOAD_PASSWORD:
         raise HTTPException(status_code=401, detail="비밀번호가 틀립니다.")
     _write_json(LATEST_FILE, [])
     return {"ok": True, "message": "최신 데이터가 초기화되었습니다."}
@@ -1341,6 +1490,74 @@ _ADMIN_UPLOAD_HTML = """
       msg.className = 'error';
     }
   });
+
+
+  // ============================================================
+  // 관리자 세션 UI
+  // ============================================================
+  let adminSessionExpiresAt = null;
+
+  function fmtRemain(sec) {
+    if (sec < 0) sec = 0;
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return `${h}시간 ${m}분`;
+  }
+
+  async function refreshAdminSessionInfo() {
+    try {
+      const r = await fetch('/admin/session', { credentials: 'same-origin' });
+      if (!r.ok) {
+        location.href = '/admin/login?next=/admin/upload';
+        return;
+      }
+      const j = await r.json();
+      adminSessionExpiresAt = j.expires_at;
+
+      // password input 숨김 + required 해제
+      document.querySelectorAll('input[type="password"]').forEach(el => {
+        el.required = false;
+        const label = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
+        if (label) label.style.display = 'none';
+        el.style.display = 'none';
+      });
+    } catch (e) {
+      console.error('session load fail', e);
+    }
+  }
+
+  function tickAdminSessionRemain() {
+    const el = document.getElementById('adminSessionRemain');
+    if (!el || !adminSessionExpiresAt) return;
+    const remain = adminSessionExpiresAt - Math.floor(Date.now() / 1000);
+    el.textContent = fmtRemain(remain);
+    if (remain <= 0) {
+      location.href = '/admin/login?next=/admin/upload';
+    }
+  }
+
+  document.getElementById('adminExtendBtn')?.addEventListener('click', async () => {
+    const r = await fetch('/admin/extend', { method: 'POST', credentials: 'same-origin' });
+    if (r.ok) {
+      const j = await r.json();
+      adminSessionExpiresAt = j.expires_at;
+      tickAdminSessionRemain();
+      alert('세션이 8시간 연장되었습니다.');
+    } else {
+      location.href = '/admin/login?next=/admin/upload';
+    }
+  });
+
+  document.getElementById('adminLogoutBtn')?.addEventListener('click', async () => {
+    await fetch('/admin/logout', { method: 'POST', credentials: 'same-origin' });
+    location.href = '/admin/login?next=/admin/upload';
+  });
+
+  refreshAdminSessionInfo().then(() => {
+    tickAdminSessionRemain();
+    setInterval(tickAdminSessionRemain, 30000);
+  });
+
 
   // 초기 로드
   loadProjects();
