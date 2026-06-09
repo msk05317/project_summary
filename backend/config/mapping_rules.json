@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-08",
+  "rules": [
+    {
+      "type": "merge",
+      "from_keywords": ["EMA"],
+      "to_project_id": "powerbox",
+      "note": "EMA로 분류되더라도 파워박스로 강제 귀속"
+    },
+    {
+      "type": "split",
+      "protect_project_id": "major_module",
+      "must_contain_any": ["메이저모듈", "Major Module"],
+      "must_not_contain_any": ["파워박스", "PowerBox", "Power Box"],
+      "note": "메이저모듈은 파워박스 키워드 섞여도 별도 유지"
+    },
+    {
+      "type": "alias",
+      "project_id": "net_korea_hq",
+      "aliases": ["한국향", "한국 본사", "본사", "KR 본사"],
+      "note": "한국향 표기 차이 통합"
+    },
+    {
+      "type": "alias",
+      "project_id": "frame",
+      "aliases": ["내재화 프레임", "Frame", "프레임"],
+      "note": "프레임 표기 차이 통합"
+    }
+  ]
+}

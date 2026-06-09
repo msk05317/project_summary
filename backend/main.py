@@ -24,6 +24,145 @@ from project_templates import (
     aggregate_projects,
     build_project_detail,
 )
+
+# ============================================================
+# config_loader 기반 분류 enrichment
+# - 기존 응답 필드는 절대 변경하지 않는다.
+# - division/project 정보는 "추가만" 한다.
+# - 분류 실패해도 응답이 깨지지 않게 안전 처리한다.
+# ============================================================
+import config_loader as _cl
+
+
+def _safe_text_for_card(card: dict) -> str:
+    """카드 텍스트 분류에 사용할 문자열 합치기."""
+    parts = [
+        card.get("product") or "",
+        card.get("headline") or "",
+        card.get("project_key") or "",
+    ]
+    return " ".join([p for p in parts if p]).strip()
+
+
+def enrich_card(card: dict) -> dict:
+    """
+    /dashboard 카드에 division/project 분류 정보를 '추가'한다.
+    기존 필드는 절대 건드리지 않는다.
+    실패 시 새 필드는 None으로만 들어가고, 카드 자체는 정상 반환한다.
+    """
+    try:
+        text = _safe_text_for_card(card)
+
+        # 1순위: 백엔드가 이미 정한 project_key 가 있으면 그걸 신뢰
+        hint_pid = card.get("project_key")
+        project_id = None
+        if hint_pid:
+            # project_key 가 config 의 project_id 와 일치하는 경우 우선 사용
+            if _cl.get_project(hint_pid):
+                project_id = hint_pid
+
+        # 2순위: config_loader 분류기
+        if not project_id:
+            project_id = _cl.classify_project(text)
+
+        division_id = _cl.derive_division_from_project(project_id)
+
+        project = _cl.get_project(project_id) if project_id else None
+        division = _cl.get_division(division_id) if division_id else None
+
+        # ⚠️ 기존 필드 그대로 두고 새 필드만 추가
+        card["division_id"] = division_id
+        card["division_label"] = division.get("label") if division else None
+        card["project_id"] = project_id
+        card["project_label"] = project.get("label") if project else None
+        card["project_badge"] = _cl.badge_label_for_project(project_id)
+    except Exception as e:
+        # 어떤 이유로든 분류 실패해도 응답이 깨지지 않게
+        card.setdefault("division_id", None)
+        card.setdefault("division_label", None)
+        card.setdefault("project_id", None)
+        card.setdefault("project_label", None)
+        card.setdefault("project_badge", None)
+        card["_enrich_error"] = str(e)
+    return card
+
+
+def enrich_project_entry(entry: dict) -> dict:
+    """
+    /projects 응답 각 항목에 division/project 분류 정보를 '추가'한다.
+    """
+    try:
+        # /projects 항목은 보통 project_key 또는 name/label 을 가짐
+        hint_pid = entry.get("project_key") or entry.get("key")
+        text = " ".join([
+            str(entry.get("label") or ""),
+            str(entry.get("name") or ""),
+            str(hint_pid or ""),
+        ]).strip()
+
+        project_id = None
+        if hint_pid and _cl.get_project(hint_pid):
+            project_id = hint_pid
+        if not project_id:
+            project_id = _cl.classify_project(text)
+
+        division_id = _cl.derive_division_from_project(project_id)
+        project = _cl.get_project(project_id) if project_id else None
+        division = _cl.get_division(division_id) if division_id else None
+
+        entry["division_id"] = division_id
+        entry["division_label"] = division.get("label") if division else None
+        entry["project_id"] = project_id
+        entry["project_label"] = project.get("label") if project else None
+        entry["project_badge"] = _cl.badge_label_for_project(project_id)
+    except Exception as e:
+        entry.setdefault("division_id", None)
+        entry.setdefault("division_label", None)
+        entry.setdefault("project_id", None)
+        entry.setdefault("project_label", None)
+        entry.setdefault("project_badge", None)
+        entry["_enrich_error"] = str(e)
+    return entry
+
+
+def enrich_project_detail(detail: dict) -> dict:
+    """
+    /projects/{key} 상세 응답 최상위에 분류 정보를 '추가'한다.
+    """
+    if not isinstance(detail, dict):
+        return detail
+    try:
+        hint_pid = detail.get("project_key") or detail.get("key")
+        text = " ".join([
+            str(detail.get("label") or ""),
+            str(detail.get("name") or ""),
+            str(hint_pid or ""),
+        ]).strip()
+
+        project_id = None
+        if hint_pid and _cl.get_project(hint_pid):
+            project_id = hint_pid
+        if not project_id:
+            project_id = _cl.classify_project(text)
+
+        division_id = _cl.derive_division_from_project(project_id)
+        project = _cl.get_project(project_id) if project_id else None
+        division = _cl.get_division(division_id) if division_id else None
+
+        detail["division_id"] = division_id
+        detail["division_label"] = division.get("label") if division else None
+        detail["project_id"] = project_id
+        detail["project_label"] = project.get("label") if project else None
+        detail["project_badge"] = _cl.badge_label_for_project(project_id)
+    except Exception as e:
+        detail.setdefault("division_id", None)
+        detail.setdefault("division_label", None)
+        detail.setdefault("project_id", None)
+        detail.setdefault("project_label", None)
+        detail.setdefault("project_badge", None)
+        detail["_enrich_error"] = str(e)
+    return detail
+
 from chart_extractor import extract_charts_from_pptx
 
 
@@ -377,6 +516,10 @@ def dashboard():
                 "report_family": report_family,
                 "project_key": project_key,  # ← 추가
             })
+
+    # 🟢 카드별로 division/project 분류 정보 enrichment (기존 필드 변경 없음)
+    cards = [enrich_card(c) for c in cards]
+
     severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
     cards.sort(key=lambda c: -severity.get(c["status"], 0))
     return {"cards": cards}
@@ -427,6 +570,10 @@ def list_projects():
         for k, v in grouped.items()
     ]
     severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
+
+    # 🟢 프로젝트 목록 enrichment (기존 필드 변경 없음)
+    projects = [enrich_project_entry(p) for p in projects]
+
     projects.sort(key=lambda p: -severity.get(p["status"], 0))
     return {"projects": projects}
 
@@ -439,6 +586,10 @@ def get_project_detail(project_key: str):
     detail = build_project_detail(project_key, grouped)
     if not detail:
         raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+    
+    # 🟢 프로젝트 상세 enrichment (기존 필드 변경 없음)
+    detail = enrich_project_detail(detail)
+
     return detail
 
 

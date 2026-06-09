@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-08",
+  "card_badge": {
+    "show_project_badge": true,
+    "show_division_badge": false,
+    "badge_position": "auto",
+    "badge_style": "filled",
+    "wrap_long_titles": true,
+    "color_mode": "neutral_then_division",
+    "max_badge_chars": 12
+  },
+  "division_picker": {
+    "show_on_launch": true,
+    "remember_last_selection": true
+  },
+  "card_amounts": {
+    "show_order_amount": true,
+    "show_sales_amount": true,
+    "currency_default": "USD"
+  },
+  "font_scaling": {
+    "min_scale": 0.9,
+    "max_scale": 1.3,
+    "bottom_safe_padding_extra": 24
+  }
+}

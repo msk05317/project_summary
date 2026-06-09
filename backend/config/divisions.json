@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-08",
+  "divisions": [
+    {
+      "id": "semiconductor",
+      "label": "반도체사업부",
+      "mode": "project",
+      "order": 1,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "반도체",
+      "description": "Chamber, PowerBox, Frame 등 반도체 관련 프로젝트"
+    },
+    {
+      "id": "pcb",
+      "label": "PCB사업부",
+      "mode": "function",
+      "order": 2,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "PCB",
+      "description": "기능 단위(개발/양산/품질/영업) 기반"
+    },
+    {
+      "id": "network",
+      "label": "네트워크사업부",
+      "mode": "dual",
+      "order": 3,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "네트워크",
+      "description": "제조(고객사) + 개발(캐스팅/필터)"
+    },
+    {
+      "id": "system",
+      "label": "시스템사업부",
+      "mode": "project",
+      "order": 4,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "시스템",
+      "description": "블룸, 아리스타, 케이블"
+    }
+  ]
+}

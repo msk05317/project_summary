@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-08",
+  "models": [
+    {
+      "name": "AetherGDX",
+      "project_id": "powerbox",
+      "aliases": ["Aether GDX", "AETHER GDX"]
+    },
+    {
+      "name": "양산14종",
+      "project_id": "powerbox",
+      "aliases": ["양산 14종"]
+    },
+    {
+      "name": "양산13종",
+      "project_id": "powerbox",
+      "aliases": ["양산 13종"]
+    },
+    {
+      "name": "MACH I",
+      "project_id": "chamber",
+      "aliases": ["MACH 1", "마하 1", "MACHI"]
+    },
+    {
+      "name": "MACH I 모델",
+      "project_id": "chamber",
+      "aliases": []
+    },
+    {
+      "name": "내재화 프레임",
+      "project_id": "frame",
+      "aliases": ["내재화프레임"]
+    }
+  ]
+}

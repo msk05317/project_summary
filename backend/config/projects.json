@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-08",
+  "projects": [
+    {
+      "id": "chamber",
+      "division_id": "semiconductor",
+      "label": "챔버",
+      "badge_label": "챔버",
+      "aliases": ["Chamber", "chamber"],
+      "keywords": ["챔버", "Chamber"],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "hava_plate",
+      "division_id": "semiconductor",
+      "label": "Hava Plate",
+      "badge_label": "Hava Plate",
+      "aliases": ["하바플레이트", "Hava", "Hava plate"],
+      "keywords": ["Hava", "하바"],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "enclosure",
+      "division_id": "semiconductor",
+      "label": "Enclosure",
+      "badge_label": "Enclosure",
+      "aliases": ["인클로저", "enclosure"],
+      "keywords": ["Enclosure", "인클로저"],
+      "visible": true,
+      "order": 3
+    },
+    {
+      "id": "casting_enclosure",
+      "division_id": "semiconductor",
+      "label": "Casting Enclosure",
+      "badge_label": "Casting Enclosure",
+      "aliases": ["주조 인클로저"],
+      "keywords": ["Casting Enclosure", "주조 인클로저"],
+      "visible": true,
+      "order": 4
+    },
+    {
+      "id": "cup",
+      "division_id": "semiconductor",
+      "label": "CUP",
+      "badge_label": "CUP",
+      "aliases": ["컵", "Cup"],
+      "keywords": ["CUP"],
+      "visible": true,
+      "order": 5
+    },
+    {
+      "id": "powerbox",
+      "division_id": "semiconductor",
+      "label": "파워박스",
+      "badge_label": "파워박스",
+      "aliases": ["PowerBox", "Power Box", "powerbox", "EMA"],
+      "keywords": ["파워박스", "PowerBox", "Power Box", "EMA"],
+      "visible": true,
+      "order": 6
+    },
+    {
+      "id": "major_module",
+      "division_id": "semiconductor",
+      "label": "메이저모듈",
+      "badge_label": "메이저모듈",
+      "aliases": ["Major Module", "메이저 모듈", "MajorModule"],
+      "keywords": ["메이저모듈", "Major Module"],
+      "visible": true,
+      "order": 7
+    },
+    {
+      "id": "frame",
+      "division_id": "semiconductor",
+      "label": "프레임",
+      "badge_label": "프레임",
+      "aliases": ["Frame", "내재화 프레임"],
+      "keywords": ["프레임", "Frame"],
+      "visible": true,
+      "order": 8
+    },
+
+    {
+      "id": "pcb_dev",
+      "division_id": "pcb",
+      "label": "개발",
+      "badge_label": "PCB 개발",
+      "aliases": ["PCB 개발", "개발"],
+      "keywords": ["개발", "Development", "R&D"],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "pcb_mass",
+      "division_id": "pcb",
+      "label": "양산",
+      "badge_label": "PCB 양산",
+      "aliases": ["PCB 양산", "양산"],
+      "keywords": ["양산", "Mass Production"],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "pcb_quality",
+      "division_id": "pcb",
+      "label": "품질",
+      "badge_label": "PCB 품질",
+      "aliases": ["PCB 품질", "품질"],
+      "keywords": ["품질", "Quality", "QC", "QA"],
+      "visible": true,
+      "order": 3
+    },
+    {
+      "id": "pcb_sales",
+      "division_id": "pcb",
+      "label": "영업",
+      "badge_label": "PCB 영업",
+      "aliases": ["PCB 영업", "영업"],
+      "keywords": ["영업", "Sales"],
+      "visible": true,
+      "order": 4
+    },
+
+    {
+      "id": "net_samsung",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "SAMSUNG",
+      "badge_label": "SAMSUNG",
+      "aliases": ["삼성", "Samsung", "삼성향"],
+      "keywords": ["SAMSUNG", "삼성"],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "net_ericsson",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "ERICSSON",
+      "badge_label": "ERICSSON",
+      "aliases": ["에릭슨", "Ericsson"],
+      "keywords": ["ERICSSON", "에릭슨"],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "net_nokia",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "NOKIA",
+      "badge_label": "NOKIA",
+      "aliases": ["노키아", "Nokia"],
+      "keywords": ["NOKIA", "노키아"],
+      "visible": true,
+      "order": 3
+    },
+    {
+      "id": "net_korea_hq",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "한국향(본사)",
+      "badge_label": "한국향",
+      "aliases": ["한국향", "본사", "한국 본사", "KR 본사"],
+      "keywords": ["한국향", "본사"],
+      "visible": true,
+      "order": 4
+    },
+    {
+      "id": "net_lse",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "LSE",
+      "badge_label": "LSE",
+      "aliases": ["엘에스이"],
+      "keywords": ["LSE"],
+      "visible": true,
+      "order": 5
+    },
+    {
+      "id": "net_intellian",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "인텔리안",
+      "badge_label": "인텔리안",
+      "aliases": ["Intellian"],
+      "keywords": ["인텔리안", "Intellian"],
+      "visible": true,
+      "order": 6
+    },
+    {
+      "id": "net_kmw",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "KMW",
+      "badge_label": "KMW",
+      "aliases": ["케이엠더블유"],
+      "keywords": ["KMW"],
+      "visible": true,
+      "order": 7
+    },
+    {
+      "id": "net_etc",
+      "division_id": "network",
+      "group": "manufacturing",
+      "label": "기타",
+      "badge_label": "기타",
+      "aliases": ["Others", "기타 고객사"],
+      "keywords": ["기타"],
+      "visible": true,
+      "order": 8
+    },
+    {
+      "id": "net_dev_casting_kr",
+      "division_id": "network",
+      "group": "development",
+      "label": "국내 캐스팅 개발",
+      "badge_label": "국내 캐스팅",
+      "aliases": ["국내 주조 개발", "국내 캐스팅"],
+      "keywords": ["국내 캐스팅", "국내 주조"],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "net_dev_casting_global",
+      "division_id": "network",
+      "group": "development",
+      "label": "글로벌 캐스팅 개발",
+      "badge_label": "글로벌 캐스팅",
+      "aliases": ["해외 캐스팅 개발", "글로벌 주조 개발"],
+      "keywords": ["글로벌 캐스팅", "해외 캐스팅"],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "net_dev_filter",
+      "division_id": "network",
+      "group": "development",
+      "label": "필터개발",
+      "badge_label": "필터개발",
+      "aliases": ["Filter 개발", "필터"],
+      "keywords": ["필터", "Filter"],
+      "visible": true,
+      "order": 3
+    },
+
+    {
+      "id": "sys_bloom",
+      "division_id": "system",
+      "label": "블룸",
+      "badge_label": "블룸",
+      "aliases": ["Bloom"],
+      "keywords": ["블룸", "Bloom"],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "sys_arista",
+      "division_id": "system",
+      "label": "아리스타",
+      "badge_label": "아리스타",
+      "aliases": ["Arista"],
+      "keywords": ["아리스타", "Arista"],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "sys_cable",
+      "division_id": "system",
+      "label": "케이블",
+      "badge_label": "케이블",
+      "aliases": ["Cable"],
+      "keywords": ["케이블", "Cable"],
+      "visible": true,
+      "order": 3
+    }
+  ]
+}
