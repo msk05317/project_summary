@@ -237,6 +237,7 @@ app.mount("/custom_images", StaticFiles(directory=str(CUSTOM_IMAGES_DIR)), name=
 ADMIN_SESSION_COOKIE = "admin_auth"
 ADMIN_SESSION_TTL_SEC = 8 * 60 * 60
 ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "")
+ADMIN_COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "false").lower() == "true"
 if not ADMIN_SESSION_SECRET:
     ADMIN_SESSION_SECRET = hashlib.sha256(("session::" + UPLOAD_PASSWORD).encode()).hexdigest()
 
@@ -277,7 +278,7 @@ def _issue_session_cookie(response: Response):
         max_age=ADMIN_SESSION_TTL_SEC,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=ADMIN_COOKIE_SECURE,
         path="/",
     )
     return exp_ts
