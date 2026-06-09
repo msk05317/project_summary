@@ -999,7 +999,33 @@ _ADMIN_UPLOAD_HTML = """
     font-size: 12px;
     padding: 24px;
   }
-</style>
+
+  /* Dropzone */
+  .dropzone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background: #f8fafc;
+  }
+  .dropzone:hover { border-color: #1E3A5F; background: #f1f5f9; }
+  .dropzone.dragover { border-color: #1E3A5F; background: #e0e7ff; transform: scale(1.01); }
+  .dz-icon { font-size: 36px; margin-bottom: 8px; }
+  .dz-title { font-size: 14px; font-weight: 600; color: #1E3A5F; margin-bottom: 4px; }
+  .dz-sub { font-size: 12px; color: #64748b; }
+  .file-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; margin-top: 6px;
+    background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;
+  }
+  .file-row-name { font-size: 13px; color: #1f2937; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px; }
+  .file-row-size { font-size: 11px; color: #6b7280; margin-right: 8px; }
+  .file-row-remove { background: transparent; color: #b91c1c; border: none; cursor: pointer; font-size: 16px; padding: 0 4px; }
+  .file-row-remove:hover { color: #7f1d1d; }
+
+  </style>
 </head>
 <body>
 
@@ -1024,9 +1050,18 @@ _ADMIN_UPLOAD_HTML = """
         <label for="pptPassword">업로드 비밀번호</label>
         <input type="password" id="pptPassword" placeholder="관리자 비밀번호" required />
 
-        <label for="pptFiles">PPT 파일 (여러 개 선택 가능)</label>
-        <input type="file" id="pptFiles" accept=".pptx" multiple required />
-        <div id="pptFileList" style="margin-top: 8px; font-size: 13px; color: #555;"></div>
+        <label>PPT 파일 (여러 개 가능 · 드래그 & 드롭 지원)</label>
+        <div id="pptDropzone" class="dropzone">
+          <div class="dz-icon">📂</div>
+          <div class="dz-title">여기로 PPT 파일을 드래그하거나 클릭해서 선택</div>
+          <div class="dz-sub">.pptx / .ppt · 여러 번 추가 가능 · 중복 자동 제거</div>
+          <input type="file" id="pptFiles" accept=".pptx,.ppt" multiple hidden />
+        </div>
+        <div id="pptFileListHeader" style="display:none; margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div id="pptFileCount" style="font-size:13px; color:#374151; font-weight:600;"></div>
+          <button type="button" id="pptClearAll" style="background:#fee2e2; color:#b91c1c; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">전체 비우기</button>
+        </div>
+        <div id="pptFileList" style="margin-top: 8px; font-size: 13px;"></div>
 
         <label for="reportFamily">리포트 패밀리 (선택)</label>
         <input type="text" id="reportFamily" placeholder="default" value="default" />
@@ -1282,17 +1317,6 @@ _ADMIN_UPLOAD_HTML = """
   });
 
   // 파일 선택 시 목록 표시
-  document.getElementById('pptFiles').addEventListener('change', (e) => {
-    const files = Array.from(e.target.files);
-    const listDiv = document.getElementById('pptFileList');
-    if (files.length === 0) {
-      listDiv.innerHTML = '';
-      document.getElementById('pptUploadBtn').textContent = '업로드 시작';
-    } else {
-      listDiv.innerHTML = files.map(f => `<div>📄 ${f.name} <span style="color:#9ca3af;">(${(f.size/1024/1024).toFixed(1)}MB)</span></div>`).join('');
-      document.getElementById('pptUploadBtn').textContent = `${files.length}개 업로드`;
-    }
-  });
 
   // 한 파일 업로드 (Promise 반환)
   async function uploadSinglePpt(file, password, reportFamily, divisionId, projectId, itemEl) {
@@ -1324,10 +1348,119 @@ _ADMIN_UPLOAD_HTML = """
   }
 
   // 업로드 폼 submit
+
+  // ============================================================
+  // 5-2b-2: 누적 + 드래그&드롭 + 개별 삭제 + 전체 비우기
+  // ============================================================
+  let pptSelectedFiles = []; // 누적된 File 객체 배열
+
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+    return (b/1024/1024).toFixed(1) + ' MB';
+  }
+
+  function fileKey(f) { return f.name + '_' + f.size; }
+
+  function renderPptFileList() {
+    const listEl = document.getElementById('pptFileList');
+    const headerEl = document.getElementById('pptFileListHeader');
+    const countEl = document.getElementById('pptFileCount');
+    const btn = document.getElementById('pptUploadBtn');
+
+    listEl.innerHTML = '';
+    if (pptSelectedFiles.length === 0) {
+      headerEl.style.display = 'none';
+      btn.textContent = '업로드 시작';
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      return;
+    }
+
+    headerEl.style.display = 'flex';
+    countEl.textContent = pptSelectedFiles.length + '개 파일 선택됨';
+    btn.textContent = pptSelectedFiles.length + '개 업로드';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+
+    pptSelectedFiles.forEach((f, idx) => {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML =
+        '<div class="file-row-name">📄 ' + f.name + '</div>' +
+        '<div class="file-row-size">' + formatBytes(f.size) + '</div>' +
+        '<button type="button" class="file-row-remove" data-idx="' + idx + '" title="제거">✕</button>';
+      listEl.appendChild(row);
+    });
+
+    listEl.querySelectorAll('.file-row-remove').forEach(b => {
+      b.addEventListener('click', (e) => {
+        const i = parseInt(e.currentTarget.getAttribute('data-idx'));
+        pptSelectedFiles.splice(i, 1);
+        renderPptFileList();
+      });
+    });
+  }
+
+  function addPptFiles(fileList) {
+    const allowed = ['.pptx', '.ppt'];
+    const existing = new Set(pptSelectedFiles.map(fileKey));
+    let added = 0, skipped = 0;
+    Array.from(fileList).forEach(f => {
+      const lower = f.name.toLowerCase();
+      if (!allowed.some(ext => lower.endsWith(ext))) { skipped++; return; }
+      if (existing.has(fileKey(f))) { skipped++; return; }
+      pptSelectedFiles.push(f);
+      existing.add(fileKey(f));
+      added++;
+    });
+    renderPptFileList();
+    if (skipped > 0) console.log('skip(중복/비PPT):', skipped);
+  }
+
+  // 파일 선택 input change
+  document.getElementById('pptFiles').addEventListener('change', (e) => {
+    addPptFiles(e.target.files);
+    e.target.value = ''; // 같은 파일 재선택 가능하도록
+  });
+
+  // 드롭존 클릭 → input 열기
+  const dz = document.getElementById('pptDropzone');
+  dz.addEventListener('click', () => document.getElementById('pptFiles').click());
+
+  // 드래그 & 드롭
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.add('dragover');
+  }));
+  ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.remove('dragover');
+  }));
+  dz.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files) {
+      addPptFiles(e.dataTransfer.files);
+    }
+  });
+
+  // 페이지 전체 드래그 기본동작 방지
+  ['dragover','drop'].forEach(ev => {
+    window.addEventListener(ev, (e) => { e.preventDefault(); }, false);
+  });
+
+  // 전체 비우기
+  document.getElementById('pptClearAll').addEventListener('click', () => {
+    pptSelectedFiles = [];
+    renderPptFileList();
+  });
+
+  // 초기 렌더 (버튼 비활성화)
+  renderPptFileList();
+
   document.getElementById('pptUploadForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const files = Array.from(document.getElementById('pptFiles').files);
+    const files = pptSelectedFiles.slice();
     if (files.length === 0) {
       alert('PPT 파일을 1개 이상 선택해주세요.');
       return;
