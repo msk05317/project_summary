@@ -16,7 +16,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -190,6 +190,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 UPLOAD_DIR = DATA_DIR / "uploads"
+UPLOAD_HASHES_PATH = DATA_DIR / "upload_hashes.json"
 SLIDES_DIR = DATA_DIR / "slides"
 SLIDE_IMAGES_DIR = DATA_DIR / "slide_images"   # 기존 호환용
 CROPPED_DIR = DATA_DIR / "cropped"
@@ -415,6 +416,37 @@ def health():
 # =========================================================
 # 2. PPT 업로드
 # =========================================================
+
+
+def _load_upload_hash_index():
+    try:
+        if not UPLOAD_HASHES_PATH.exists():
+            return {}
+        return json.loads(UPLOAD_HASHES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_upload_hash_index(data):
+    try:
+        UPLOAD_HASHES_PATH.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+def _find_duplicate_upload_by_hash(file_hash: str):
+    idx = _load_upload_hash_index()
+    return idx.get(file_hash)
+
+def _record_upload_hash(file_hash: str, saved_name: str, doc_id: str):
+    idx = _load_upload_hash_index()
+    idx[file_hash] = {
+        "filename": saved_name,
+        "doc_id": doc_id,
+    }
+    _save_upload_hash_index(idx)
+
 @app.post("/upload")
 async def upload_ppt(
     file: UploadFile = File(...),
@@ -422,18 +454,36 @@ async def upload_ppt(
     report_family: str = Form("default"),
     division_id: Optional[str] = Form(None),  # 5-2b: 사업부 사전 매핑 (선택)
     project_id: Optional[str] = Form(None),   # 5-2b: 프로젝트 사전 매핑 (선택)
+    allow_duplicate: bool = Form(False),  # 중복 업로드 허용
 ):
     if password != UPLOAD_PASSWORD:
         raise HTTPException(status_code=401, detail="비밀번호가 틀립니다.")
-    if not file.filename.lower().endswith(".pptx"):
-        raise HTTPException(status_code=400, detail=".pptx 파일만 업로드 가능합니다.")
+    if not file.filename.lower().endswith((".pptx", ".ppt")):
+        raise HTTPException(status_code=400, detail=".pptx 또는 .ppt 파일만 업로드 가능합니다.")
+
+    # 파일 내용 읽기 + 해시 계산
+    file_bytes = await file.read()
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    # 중복 업로드 검사 (allow_duplicate 이 False 일 때만 차단)
+    duplicate_hit = _find_duplicate_upload_by_hash(file_hash)
+    if duplicate_hit and not allow_duplicate:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "ok": False,
+                "code": "duplicate_upload",
+                "detail": "이미 업로드된 파일입니다. 같은 파일을 다시 올리려면 '중복 업로드 허용'을 체크하세요.",
+                "duplicate_of": duplicate_hit.get("filename"),
+            },
+        )
 
     _cleanup_old_files()
 
     doc_id = _make_doc_id(file.filename)
     saved_pptx_path = UPLOAD_DIR / f"{doc_id}.pptx"
-    with open(saved_pptx_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    saved_pptx_path.write_bytes(file_bytes)
+    _record_upload_hash(file_hash, saved_pptx_path.name, doc_id)
 
     # slides/ 와 slide_images/ 둘 다 저장 (호환성)
     slides_out_dir = SLIDES_DIR / doc_id
@@ -1036,6 +1086,7 @@ _ADMIN_UPLOAD_HTML = """
   .pf-bar { background: linear-gradient(90deg, #1E3A5F, #3b82f6); height: 100%; width: 0%; transition: width 0.18s ease; }
   .pf-bar.done { background: linear-gradient(90deg, #10b981, #059669); }
   .pf-bar.fail { background: linear-gradient(90deg, #ef4444, #b91c1c); }
+  .pf-bar.warn { background: linear-gradient(90deg, #f59e0b, #d97706); }
   .pf-detail { margin-top: 6px; color: #6b7280; font-size: 12px; }
   .pf-total {
     display: flex; align-items: center; gap: 10px;
@@ -1086,6 +1137,12 @@ _ADMIN_UPLOAD_HTML = """
 
         <label for="reportFamily">리포트 패밀리 (선택)</label>
         <input type="text" id="reportFamily" placeholder="default" value="default" />
+
+        <label style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+          <input type="checkbox" id="allowDuplicateUpload" />
+          <span>중복 업로드 허용</span>
+        </label>
+        <div style="font-size:12px; color:#6b7280; margin-top:4px;">기본은 중복 차단. 같은 파일을 다시 올릴 때만 체크</div>
 
         <details style="margin-top: 20px;">
           <summary style="cursor: pointer; font-weight: 600; color: #1E3A5F; padding: 10px 0;">
@@ -1340,7 +1397,7 @@ _ADMIN_UPLOAD_HTML = """
   // 파일 선택 시 목록 표시
 
   // 한 파일 업로드 (XHR 기반 진행률 % 반환)
-  function uploadSinglePpt(file, password, reportFamily, divisionId, projectId, itemEl, onProgress) {
+  function uploadSinglePpt(file, password, reportFamily, divisionId, projectId, allowDuplicate, itemEl, onProgress) {
     return new Promise((resolve) => {
       const fd = new FormData();
       fd.append('file', file);
@@ -1348,6 +1405,7 @@ _ADMIN_UPLOAD_HTML = """
       fd.append('report_family', reportFamily || 'default');
       if (divisionId) fd.append('division_id', divisionId);
       if (projectId) fd.append('project_id', projectId);
+      if (allowDuplicate) fd.append('allow_duplicate', 'true');
 
       // 상태: 시작
       const statusEl = itemEl.querySelector('.pf-status');
@@ -1381,6 +1439,16 @@ _ADMIN_UPLOAD_HTML = """
       xhr.onload = () => {
         let data = {};
         try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+        if (xhr.status === 409 && data && data.code === 'duplicate_upload') {
+          barEl.style.width = '100%';
+          barEl.classList.add('warn');
+          pctEl.textContent = '중복';
+          statusEl.textContent = '⚠️';
+          detailEl.innerHTML = '<span style="color:#b45309;">' + (data.detail || '이미 업로드된 파일') + '</span>';
+          if (typeof onProgress === 'function') onProgress(100);
+          resolve({ ok: false, duplicate: true, file: file.name, file_key: fileKey(file), error: data.detail || 'duplicate upload' });
+          return;
+        }
         if (xhr.status >= 200 && xhr.status < 300 && data && data.ok !== false) {
           barEl.style.width = '100%';
           barEl.classList.add('done');
@@ -1388,14 +1456,14 @@ _ADMIN_UPLOAD_HTML = """
           statusEl.textContent = '✅';
           detailEl.textContent = '카드 ' + (data.product_count || 0) + '개 추출 (슬라이드 ' + (data.slide_count || 0) + '장)';
           if (typeof onProgress === 'function') onProgress(100);
-          resolve({ ok: true, file: file.name, data });
+          resolve({ ok: true, file: file.name, file_key: fileKey(file), data });
         } else {
           const msg = (data && (data.detail || data.message)) || ('HTTP ' + xhr.status);
           barEl.classList.add('fail');
           statusEl.textContent = '❌';
           detailEl.innerHTML = '<span style="color:#dc2626;">' + msg + '</span>';
           if (typeof onProgress === 'function') onProgress(100);
-          resolve({ ok: false, file: file.name, error: msg });
+          resolve({ ok: false, file: file.name, file_key: fileKey(file), error: msg });
         }
       };
 
@@ -1404,7 +1472,7 @@ _ADMIN_UPLOAD_HTML = """
         statusEl.textContent = '❌';
         detailEl.innerHTML = '<span style="color:#dc2626;">네트워크 오류</span>';
         if (typeof onProgress === 'function') onProgress(100);
-        resolve({ ok: false, file: file.name, error: 'network error' });
+        resolve({ ok: false, file: file.name, file_key: fileKey(file), error: 'network error' });
       };
 
       xhr.send(fd);
@@ -1534,6 +1602,7 @@ _ADMIN_UPLOAD_HTML = """
     const reportFamily = document.getElementById('reportFamily').value || 'default';
     const divisionId = document.getElementById('pptDivision').value;
     const projectId = document.getElementById('pptProject').value;
+    const allowDuplicate = document.getElementById('allowDuplicateUpload').checked;
 
     // 진행 영역 표시 + 초기화
     const progressCard = document.getElementById('pptProgressCard');
@@ -1592,7 +1661,7 @@ _ADMIN_UPLOAD_HTML = """
     const results = [];
     for (let i = 0; i < files.length; i++) {
       const result = await uploadSinglePpt(
-        files[i], password, reportFamily, divisionId, projectId, itemEls[i],
+        files[i], password, reportFamily, divisionId, projectId, allowDuplicate, itemEls[i],
         (pct) => { fileProgress[i] = pct; updateTotal(); }
       );
       fileProgress[i] = 100;
@@ -1610,6 +1679,11 @@ _ADMIN_UPLOAD_HTML = """
       (fail > 0 ? ', <span style="color:#dc2626;">' + fail + '개 실패</span>' : '') +
       ' · 총 카드 <strong>' + totalCards + '개</strong> 추출';
     progressSummary.appendChild(doneLine);
+
+    // 성공한 파일만 선택 목록에서 제거
+    const successKeys = new Set(results.filter(r => r.ok).map(r => r.file_key));
+    pptSelectedFiles = pptSelectedFiles.filter(f => !successKeys.has(fileKey(f)));
+    renderPptFileList();
 
     // 버튼 복구
     btn.disabled = false;
