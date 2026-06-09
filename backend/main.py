@@ -659,6 +659,136 @@ def delete_custom_image(image_id: str):
     _save_image_mappings(mappings)
     return {"ok": True}
 
+# ============================================================
+# Admin Config API (5단계: admin 페이지 동적 dropdown용)
+# - 운영 도구 페이지에서 사업부/프로젝트/섹션을 동적으로 로드하기 위한 API
+# - 모두 GET, 인증 불필요 (admin 페이지 내부에서만 호출됨)
+# ============================================================
+
+@app.get("/admin/config/divisions")
+def admin_config_divisions():
+    """
+    admin 페이지의 사업부 dropdown 용.
+    config_loader.get_divisions() 결과를 그대로 노출.
+    """
+    try:
+        items = _cl.get_divisions(visible_only=True)
+        return {
+            "divisions": [
+                {
+                    "id": d.get("id"),
+                    "label": d.get("label"),
+                    "mode": d.get("mode"),
+                    "order": d.get("order"),
+                    "badge_short_label": d.get("badge_short_label"),
+                }
+                for d in items
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"divisions load error: {e}")
+
+
+@app.get("/admin/config/projects")
+def admin_config_projects(division_id: str | None = None):
+    """
+    admin 페이지의 프로젝트 dropdown 용.
+    division_id 가 주어지면 해당 사업부의 프로젝트만 반환.
+    """
+    try:
+        items = _cl.get_projects(division_id=division_id, visible_only=True)
+        return {
+            "division_id": division_id,
+            "projects": [
+                {
+                    "id": p.get("id"),
+                    "label": p.get("label"),
+                    "badge_label": p.get("badge_label"),
+                    "group": p.get("group"),
+                    "order": p.get("order"),
+                }
+                for p in items
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"projects load error: {e}")
+
+
+@app.get("/admin/config/sections")
+def admin_config_sections(project_key: str):
+    """
+    admin 이미지 업로드 탭의 섹션 dropdown 용.
+    현재 분석된 PPT 결과에서 해당 프로젝트의 실제 GPT 섹션 제목들을 가져옴.
+    이것이 핵심 — 더 이상 자유 입력 안 함, GPT 가 만든 실제 섹션만 옵션으로 노출.
+    """
+    try:
+        latest = _read_json(LATEST_FILE, [])
+        grouped = aggregate_projects(latest)
+        detail = build_project_detail(project_key, grouped)
+        if not detail:
+            return {"project_key": project_key, "sections": []}
+
+        sections = detail.get("sections", [])
+        return {
+            "project_key": project_key,
+            "project_label": detail.get("label"),
+            "sections": [
+                {
+                    "title": s.get("title"),
+                    "image_count": len(s.get("image_urls", []) or []),
+                }
+                for s in sections
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"sections load error: {e}")
+
+
+@app.get("/admin/config/stats")
+def admin_config_stats():
+    """
+    매핑 관리 탭용 통계.
+    - 현재 사업부/프로젝트 수
+    - 자동 분류된 카드/실패 카드 수
+    - 실패 카드의 product/category 샘플
+    """
+    try:
+        divs = _cl.get_divisions(visible_only=True)
+        all_projects = _cl.get_projects(visible_only=True)
+
+        latest = _read_json(LATEST_FILE, [])
+        total_cards = 0
+        unclassified_cards = []
+        for report in latest:
+            for p in report.get("products", []):
+                total_cards += 1
+                name = p.get("name") or p.get("product", "")
+                category = p.get("category", "")
+                text = f"{name} {category}".strip()
+                pid = _cl.classify_project(text)
+                if not pid:
+                    unclassified_cards.append({
+                        "name": name,
+                        "category": category,
+                        "report_family": report.get("report_meta", {}).get("report_family", ""),
+                    })
+
+        return {
+            "divisions_count": len(divs),
+            "projects_count": len(all_projects),
+            "total_cards": total_cards,
+            "unclassified_count": len(unclassified_cards),
+            "unclassified_samples": unclassified_cards[:20],
+            "projects_by_division": {
+                d.get("id"): [
+                    {"id": p.get("id"), "label": p.get("label")}
+                    for p in _cl.get_projects(division_id=d.get("id"), visible_only=True)
+                ]
+                for d in divs
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"stats load error: {e}")
 
 # =========================================================
 # 6. 어드민 페이지 (브라우저용)

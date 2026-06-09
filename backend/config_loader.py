@@ -226,7 +226,7 @@ def classify_project(text: str, hint_division_id: str | None = None) -> str | No
     project_id = _apply_merge_rules(project_id, text)
 
     # 4) split 규칙 위반 시 후보 폐기
-    if project_id and _violates_split_rule(project_id, text):
+    if project_id and project_id != model_hit and _violates_split_rule(project_id, text):
         # 차선 후보 탐색
         for _, cid in candidates:
             if cid != project_id and not _violates_split_rule(cid, text):

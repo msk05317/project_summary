@@ -74,3 +74,6 @@ backend/project_templates_backup*.py
 backend/*_old.py
 backend/extractor.py
 backend/reports.json
+
+# Backup files in subdirectories
+backend/**/*.bak_*

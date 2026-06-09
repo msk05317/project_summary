@@ -5,22 +5,33 @@
     {
       "name": "AetherGDX",
       "project_id": "powerbox",
-      "aliases": ["Aether GDX", "AETHER GDX"]
+      "aliases": [
+        "Aether GDX",
+        "AETHER GDX"
+      ]
     },
     {
       "name": "양산14종",
       "project_id": "powerbox",
-      "aliases": ["양산 14종"]
+      "aliases": [
+        "양산 14종"
+      ]
     },
     {
       "name": "양산13종",
       "project_id": "powerbox",
-      "aliases": ["양산 13종"]
+      "aliases": [
+        "양산 13종"
+      ]
     },
     {
       "name": "MACH I",
       "project_id": "chamber",
-      "aliases": ["MACH 1", "마하 1", "MACHI"]
+      "aliases": [
+        "MACH 1",
+        "마하 1",
+        "MACHI"
+      ]
     },
     {
       "name": "MACH I 모델",
@@ -30,7 +41,29 @@
     {
       "name": "내재화 프레임",
       "project_id": "frame",
-      "aliases": ["내재화프레임"]
+      "aliases": [
+        "내재화프레임"
+      ]
+    },
+    {
+      "name": "자일란 코팅",
+      "project_id": "cup",
+      "aliases": [
+        "자일란코팅",
+        "자일란",
+        "Xylan Coating",
+        "xylan"
+      ]
+    },
+    {
+      "name": "EFEM & VTM",
+      "project_id": "major_module",
+      "aliases": [
+        "EFEM&VTM",
+        "EFEM VTM",
+        "EFEM",
+        "VTM"
+      ]
     }
   ]
 }
