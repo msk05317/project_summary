@@ -49,6 +49,175 @@ def _safe_text_for_card(card: dict) -> str:
     return " ".join([p for p in parts if p]).strip()
 
 
+
+
+# ============================================================
+# Dashboard cards 그룹핑 (모델 단위)
+# - 같은 project_id + 동일/포함 모델명 → 한 카드
+# - 그 안에 이슈(headline) 리스트
+# ============================================================
+def _normalize_model_name(name: str) -> str:
+    """모델명에서 앞 번호 prefix 제거 + 공백 정리"""
+    if not isinstance(name, str):
+        return ""
+    import re as _re
+    t = name.strip()
+    t = _re.sub(r"^\s*\d+(?:[-.]\d+)*[.)\]]?\s+", "", t)
+    t = _re.sub(r"\s+", " ", t)
+    return t.strip()
+
+def _model_match_key(name: str, project_id, existing) -> str:
+    """
+    하이브리드 매칭:
+    - 같은 project_id 안에서만 그룹핑
+    - 정규화된 이름이 기존 어떤 키의 prefix 거나 그 반대면 같은 모델로 합침
+    - existing 형식: {(project_id, key): ...}
+    """
+    base = _normalize_model_name(name).lower()
+    if not base:
+        return base
+    for (pid, k) in existing:
+        if pid != project_id:
+            continue
+        if not k:
+            continue
+        a, b = (base, k) if len(base) >= len(k) else (k, base)
+        if a == b:
+            return k
+        if a.startswith(b):
+            rest = a[len(b):]
+            if rest[:1] in (" ", "(", "[", "{", "-", "_", ".", ",", ":", "/"):
+                return k
+    return base
+
+_STATUS_SEVERITY = {"RED": 3, "BLUE": 2, "BLACK": 1}
+
+def _worst_status(statuses):
+    best = "BLACK"
+    best_sev = -1
+    for s in statuses:
+        sev = _STATUS_SEVERITY.get(s, 0)
+        if sev > best_sev:
+            best_sev = sev
+            best = s
+    return best
+
+
+
+def _normalize_issue_headline(text: str) -> str:
+    """
+    이슈 헤드라인 dedup 용 정규화 (중간 강도).
+    - 앞쪽 번호 prefix 제거
+    - 양 끝 공백/구두점 정리
+    - 다중 공백 1개로
+    - 끝쪽의 보조어 (중/진행/예정/완료/중임/중입니다 등) 제거
+    - 한글/영문 모델명 사이 공백 통일
+    - 비교용이므로 lowercase
+    """
+    if not isinstance(text, str):
+        return ""
+    import re as _re
+    t = text.strip()
+    # 앞 번호 prefix
+    t = _re.sub(r"^\s*\d+(?:[-.]\d+)*[.)\]]?\s+", "", t)
+    # 끝쪽 보조어 반복 제거
+    suffixes = [
+        "중입니다", "입니다", "중임", "되었음", "되었습니다",
+        "중", "진행 중", "진행중", "진행", "예정", "완료", "완료됨",
+        "진행 예정", "수행 중", "검토 중", "검토중",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for suf in suffixes:
+            if t.lower().endswith(suf.lower()):
+                t = t[: -len(suf)].rstrip(" ,.;:·-")
+                changed = True
+    # 다중 공백/구두점 정리
+    t = _re.sub(r"\s+", " ", t)
+    t = t.strip(" ,.·-;:")
+    return t.lower()
+
+def _group_dashboard_cards(cards: list) -> list:
+    """
+    cards 를 모델 단위로 그룹핑.
+    """
+    groups = {}            # key=(project_id, model_key) → group dict
+    order = []             # 그룹 등장 순서 보존
+    issue_seen = {}        # 그룹 내 (status, headline) 중복 제거용
+
+    for c in cards:
+        product = c.get("product") or ""
+        pid = c.get("project_id")  # None 가능 (미분류)
+        # 미분류는 project_id 대신 라벨 "__unclassified__" 로 강제
+        bucket_pid = pid if pid else "__unclassified__"
+
+        match_key = _model_match_key(product, bucket_pid, groups.keys())
+        gkey = (bucket_pid, match_key)
+
+        if gkey not in groups:
+            groups[gkey] = {
+                "model": _normalize_model_name(product) or product,
+                "status": c.get("status") or "BLACK",
+                "project_id": pid,
+                "project_label": c.get("project_label"),
+                "project_badge": c.get("project_badge"),
+                "division_id": c.get("division_id"),
+                "division_label": c.get("division_label"),
+                "report_date": c.get("report_date"),
+                "report_family": c.get("report_family"),
+                "issues": [],
+                "_statuses": [],
+            }
+            order.append(gkey)
+            issue_seen[gkey] = set()
+        else:
+            # 더 짧은(=상위) 모델명이 나중에 들어오면 그걸로 표시 보정 (예: "챔버 13종" 보다 "챔버" 우선)
+            existing_name = groups[gkey]["model"]
+            new_name = _normalize_model_name(product) or product
+            if len(new_name) < len(existing_name):
+                groups[gkey]["model"] = new_name
+
+        # 이슈 dedup (정규화 헤드라인 기반)
+        st = c.get("status") or "BLACK"
+        head = (c.get("headline") or "").strip()
+        if not head:
+            continue
+        norm = _normalize_issue_headline(head)
+        sig = (st, norm) if norm else (st, head.lower())
+        if sig in issue_seen[gkey]:
+            # 더 길고 풍부한 표현이 들어오면 표시용 headline 만 갱신
+            for it in groups[gkey]["issues"]:
+                if it.get("status") == st and _normalize_issue_headline(it.get("headline", "")) == norm:
+                    if len(head) > len(it.get("headline", "")):
+                        it["headline"] = head
+                    break
+            continue
+        issue_seen[gkey].add(sig)
+        groups[gkey]["issues"].append({
+            "status": st,
+            "headline": head,
+            "doc_id": c.get("doc_id", ""),
+        })
+        groups[gkey]["_statuses"].append(st)
+
+        # report_date 는 가장 최신으로 갱신
+        rd_new = c.get("report_date") or ""
+        rd_old = groups[gkey].get("report_date") or ""
+        if rd_new > rd_old:
+            groups[gkey]["report_date"] = rd_new
+
+    result = []
+    for gkey in order:
+        g = groups[gkey]
+        g["status"] = _worst_status(g.pop("_statuses") or [g["status"]])
+        result.append(g)
+
+    # 가장 심각한 그룹부터 정렬
+    result.sort(key=lambda g: -_STATUS_SEVERITY.get(g["status"], 0))
+    return result
+
+
 def enrich_card(card: dict) -> dict:
     """
     /dashboard 카드에 division/project 분류 정보를 '추가'한다.
@@ -748,7 +917,11 @@ def dashboard():
 
     severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
     cards.sort(key=lambda c: -severity.get(c["status"], 0))
-    return {"cards": cards}
+
+    # 🟢 모델 단위 그룹핑 (신규 필드, 옛 cards 는 호환을 위해 그대로 유지)
+    grouped_cards = _group_dashboard_cards(cards)
+
+    return {"cards": cards, "grouped_cards": grouped_cards}
 
 @app.get("/reports")
 def list_reports():
