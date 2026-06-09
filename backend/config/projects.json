@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-08",
+  "updated_at": "2026-06-09",
   "projects": [
     {
       "id": "chamber",
@@ -139,73 +139,6 @@
       ],
       "visible": true,
       "order": 8
-    },
-    {
-      "id": "pcb_dev",
-      "division_id": "pcb",
-      "label": "개발",
-      "badge_label": "PCB 개발",
-      "aliases": [
-        "PCB 개발",
-        "개발"
-      ],
-      "keywords": [
-        "개발",
-        "Development",
-        "R&D"
-      ],
-      "visible": true,
-      "order": 1
-    },
-    {
-      "id": "pcb_mass",
-      "division_id": "pcb",
-      "label": "양산",
-      "badge_label": "PCB 양산",
-      "aliases": [
-        "PCB 양산",
-        "양산"
-      ],
-      "keywords": [
-        "양산",
-        "Mass Production"
-      ],
-      "visible": true,
-      "order": 2
-    },
-    {
-      "id": "pcb_quality",
-      "division_id": "pcb",
-      "label": "품질",
-      "badge_label": "PCB 품질",
-      "aliases": [
-        "PCB 품질",
-        "품질"
-      ],
-      "keywords": [
-        "품질",
-        "Quality",
-        "QC",
-        "QA"
-      ],
-      "visible": true,
-      "order": 3
-    },
-    {
-      "id": "pcb_sales",
-      "division_id": "pcb",
-      "label": "영업",
-      "badge_label": "PCB 영업",
-      "aliases": [
-        "PCB 영업",
-        "영업"
-      ],
-      "keywords": [
-        "영업",
-        "Sales"
-      ],
-      "visible": true,
-      "order": 4
     },
     {
       "id": "net_samsung",
@@ -521,6 +454,80 @@
       ],
       "visible": true,
       "order": 13
+    },
+    {
+      "division_id": "pcb",
+      "badge_label": "PCB 개발",
+      "visible": true,
+      "order": 1,
+      "id": "pcb_arista",
+      "label": "아리스타",
+      "badge": "아리스타",
+      "aliases": [
+        "아리스타",
+        "ARISTA",
+        "Arista"
+      ],
+      "keywords": [
+        "아리스타",
+        "ARISTA",
+        "Arista"
+      ]
+    },
+    {
+      "division_id": "pcb",
+      "badge_label": "PCB 개발",
+      "visible": true,
+      "order": 1,
+      "id": "pcb_lam",
+      "label": "LAM",
+      "badge": "LAM",
+      "aliases": [
+        "LAM",
+        "Lam",
+        "램"
+      ],
+      "keywords": [
+        "LAM",
+        "Lam",
+        "램"
+      ]
+    },
+    {
+      "division_id": "pcb",
+      "badge_label": "PCB 개발",
+      "visible": true,
+      "order": 1,
+      "id": "pcb_ericsson",
+      "label": "에릭슨",
+      "badge": "에릭슨",
+      "aliases": [
+        "에릭슨",
+        "ERICSSON",
+        "Ericsson"
+      ],
+      "keywords": [
+        "에릭슨",
+        "ERICSSON",
+        "Ericsson"
+      ]
+    },
+    {
+      "division_id": "pcb",
+      "badge_label": "PCB 개발",
+      "visible": true,
+      "order": 1,
+      "id": "pcb_vvdn",
+      "label": "VVDN",
+      "badge": "VVDN",
+      "aliases": [
+        "VVDN",
+        "vvdn"
+      ],
+      "keywords": [
+        "VVDN",
+        "vvdn"
+      ]
     }
   ]
 }
