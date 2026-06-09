@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -65,7 +66,14 @@ def enrich_card(card: dict) -> dict:
         if not project_id:
             project_id = _cl.classify_project(text)
 
+        # 3순위: /upload 때 사장님이 지정한 폴백 (자동 분류가 다 실패한 경우)
+        if not project_id:
+            project_id = card.get("_fallback_project_id")
+
         division_id = _cl.derive_division_from_project(project_id)
+        # 폴백 division 도 받기 (project_id 가 없는 극단적 경우)
+        if not division_id:
+            division_id = card.get("_fallback_division_id")
 
         project = _cl.get_project(project_id) if project_id else None
         division = _cl.get_division(division_id) if division_id else None
@@ -412,6 +420,8 @@ async def upload_ppt(
     file: UploadFile = File(...),
     password: str = Form(...),
     report_family: str = Form("default"),
+    division_id: Optional[str] = Form(None),  # 5-2b: 사업부 사전 매핑 (선택)
+    project_id: Optional[str] = Form(None),   # 5-2b: 프로젝트 사전 매핑 (선택)
 ):
     if password != UPLOAD_PASSWORD:
         raise HTTPException(status_code=401, detail="비밀번호가 틀립니다.")
@@ -456,6 +466,33 @@ async def upload_ppt(
         str(i + 1): f"/slides/{doc_id}/slide_{i+1:02d}.png"
         for i in range(len(slide_texts))
     }
+
+
+    # ============================================================
+    # 5-2b: 사장님이 사전 지정한 division_id/project_id 폴백 적용
+    # - 자동 분류 성공 카드: 그대로 유지
+    # - 자동 분류 실패 카드만 사장님 의도로 폴백
+    # ============================================================
+    if division_id or project_id:
+        import config_loader as _cl
+        try:
+            _cl.reload()
+        except Exception:
+            pass
+        for p in products:
+            name = p.get("name") or p.get("product", "")
+            category = p.get("category", "")
+            text = f"{name} {category}".strip()
+            try:
+                auto_pid = _cl.classify_project(text)
+            except Exception:
+                auto_pid = None
+            if not auto_pid:
+                # 자동 분류 실패한 카드만 폴백
+                if project_id:
+                    p["_fallback_project_id"] = project_id
+                if division_id:
+                    p["_fallback_division_id"] = division_id
 
     summary = {
         "report_meta": {
