@@ -814,138 +814,350 @@ _ADMIN_UPLOAD_HTML = """
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>차트/사진 업로드 관리</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사업부 보고 관리자</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #f5f5f7; color: #1d1d1f; }
-  h1 { margin-bottom: 24px; }
-  h2 { margin-top: 0; font-size: 18px; }
-  .card { background: white; padding: 24px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+    background: #f5f7fa;
+    color: #1f2937;
+    line-height: 1.6;
+  }
+  header {
+    background: #1E3A5F;
+    color: white;
+    padding: 20px 32px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header .meta { font-size: 12px; color: #cbd5e1; margin-top: 4px; }
+
+  nav.tabs {
+    display: flex;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0 32px;
+    gap: 8px;
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    padding: 14px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 15px;
+    color: #6b7280;
+    border-bottom: 3px solid transparent;
+    transition: all 0.15s;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  nav.tabs button:hover { color: #1E3A5F; background: #f9fafb; }
+  nav.tabs button.active {
+    color: #1E3A5F;
+    border-bottom-color: #1E3A5F;
+    font-weight: 700;
+  }
+
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 32px 20px;
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card {
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+  .card h2 { margin: 0 0 16px; font-size: 18px; color: #1f2937; }
+
   label { display: block; margin: 14px 0 6px; font-weight: 600; font-size: 13px; color: #333; }
-  input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; background: white; }
-  button { background: #007aff; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 16px; }
-  button:hover { background: #0051d5; }
-  button.delete { background: #ff3b30; padding: 6px 12px; font-size: 13px; margin-top: 0; }
-  .image-item { display: flex; align-items: center; gap: 16px; padding: 12px; border-bottom: 1px solid #eee; }
+  input, select, textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+    font-family: inherit;
+  }
+  button {
+    background: #1E3A5F;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 16px;
+  }
+  button:hover { background: #2c4d75; }
+  button.delete {
+    background: #ff3b30;
+    padding: 6px 12px;
+    font-size: 13px;
+    margin-top: 0;
+  }
+  button.delete:hover { background: #d92e26; }
+
+  .image-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+  }
   .image-item:last-child { border-bottom: none; }
-  .image-item img { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
-  .image-info { flex: 1; }
-  .image-info b { display: block; margin: 4px 0; }
-  .image-info small { color: #888; }
-  .badge { display: inline-block; padding: 3px 10px; background: #e8f0fe; color: #1967d2; border-radius: 12px; font-size: 12px; margin-right: 6px; }
+  .image-item img {
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+  }
+  .image-item .info { flex: 1; font-size: 13px; color: #555; }
+  .image-item .info strong { color: #1f2937; }
+  .image-item .badges { margin-top: 4px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: #e5e7eb;
+    color: #374151;
+    margin-right: 4px;
+  }
   .badge.section { background: #fff3cd; color: #856404; }
-  .success { color: #34c759; margin-top: 12px; font-weight: 600; }
-  .error { color: #ff3b30; margin-top: 12px; font-weight: 600; }
-  .empty { color: #888; text-align: center; padding: 30px; }
+
+  #uploadMsg {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  #uploadMsg.success { background: #d4edda; color: #155724; }
+  #uploadMsg.error { background: #f8d7da; color: #721c24; }
+
+  .placeholder {
+    background: white;
+    border: 2px dashed #d1d5db;
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+    color: #6b7280;
+  }
+  .placeholder .icon { font-size: 48px; margin-bottom: 16px; }
+  .placeholder h3 { font-size: 18px; margin-bottom: 8px; color: #374151; }
+  .placeholder p { font-size: 14px; }
+
+  .footer-info {
+    text-align: center;
+    color: #9ca3af;
+    font-size: 12px;
+    padding: 24px;
+  }
 </style>
 </head>
 <body>
-<h1>📊 차트/사진 업로드 관리</h1>
 
-<div class="card">
-  <h2>📤 새 이미지 업로드</h2>
-  <form id="uploadForm">
-    <label>이미지 파일 (PNG, JPG, GIF, WebP)</label>
-    <input type="file" id="fileInput" accept="image/*" required>
+<header>
+  <h1>📊 사업부 보고 관리자</h1>
+  <div class="meta" id="header-meta">로딩 중...</div>
+</header>
 
-    <label>부서 (프로젝트)</label>
-    <select id="projectKey" required>
-      <option value="">선택하세요...</option>
-    </select>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="ppt">📤 PPT 업로드</button>
+  <button class="tab-btn" data-tab="image">🖼 이미지 업로드</button>
+  <button class="tab-btn" data-tab="mapping">⚙️ 매핑 관리</button>
+</nav>
 
-    <label>섹션</label>
-    <select id="sectionTitle" required>
-      <option value="양산">양산</option>
-      <option value="개발">개발</option>
-      <option value="EMA">EMA</option>
-      <option value="주차별 출하실적 및 계획">주차별 출하실적 및 계획</option>
-      <option value="다음 액션">다음 액션</option>
-    </select>
+<main>
 
-    <label>설명 (선택)</label>
-    <input type="text" id="caption" placeholder="예: 개발 모델 진행 현황">
+  <!-- ============================== 탭 1: PPT 업로드 ============================== -->
+  <section class="tab-content active" id="tab-ppt">
+    <div class="placeholder">
+      <div class="icon">📤</div>
+      <h3>PPT 업로드 (5-2b 단계에서 구현)</h3>
+      <p>현재는 Swagger UI 의 <code>/upload</code> 엔드포인트로 업로드해주세요.</p>
+      <p style="margin-top:8px;">
+        <a href="/docs" target="_blank" style="color: #1E3A5F; font-weight: 600;">→ Swagger UI 열기</a>
+      </p>
+    </div>
+  </section>
 
-    <button type="submit">📤 업로드</button>
-    <div id="uploadMsg"></div>
-  </form>
-</div>
+  <!-- ============================== 탭 2: 이미지 업로드 (기존 폼 그대로) ============================== -->
+  <section class="tab-content" id="tab-image">
+    <div class="card">
+      <h2>📤 새 이미지 업로드</h2>
+      <form id="uploadForm">
+        <label for="projectKey">사업부 (Project Key)</label>
+        <select id="projectKey" required>
+          <option value="">선택하세요...</option>
+        </select>
 
-<div class="card">
-  <h2>📋 등록된 이미지</h2>
-  <div id="imageList">로딩 중...</div>
+        <label for="sectionTitle">섹션</label>
+        <select id="sectionTitle" required>
+          <option value="">선택하세요...</option>
+          <option value="양산">양산</option>
+          <option value="개발">개발</option>
+          <option value="EMA">EMA</option>
+          <option value="주차별 출하실적 및 계획">주차별 출하실적 및 계획</option>
+          <option value="다음 액션">다음 액션</option>
+        </select>
+
+        <label for="fileInput">이미지 파일 (PNG, JPG)</label>
+        <input type="file" id="fileInput" accept="image/*" required />
+
+        <label for="caption">캡션 (선택)</label>
+        <input type="text" id="caption" placeholder="예: 주차별 실적 차트" />
+
+        <button type="submit">업로드</button>
+        <div id="uploadMsg"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>📋 등록된 이미지</h2>
+      <div id="imageList">로딩 중...</div>
+    </div>
+  </section>
+
+  <!-- ============================== 탭 3: 매핑 관리 ============================== -->
+  <section class="tab-content" id="tab-mapping">
+    <div class="placeholder">
+      <div class="icon">⚙️</div>
+      <h3>매핑 관리 (5-2d 단계에서 구현)</h3>
+      <p>미분류 카드 목록 + 사업부/프로젝트 시각화</p>
+    </div>
+  </section>
+
+</main>
+
+<div class="footer-info">
+  v2 — 5단계 진행 중 ·
+  <a href="/docs" target="_blank" style="color: #6b7280;">API Docs</a>
 </div>
 
 <script>
-  async function loadProjects() {
-    const res = await fetch('/projects');
-    const data = await res.json();
-    const sel = document.getElementById('projectKey');
-    sel.innerHTML = '<option value="">선택하세요...</option>';
-    data.projects.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.key;
-      const statusIcon = p.status === 'RED' ? '🔴' : (p.status === 'BLUE' ? '🔵' : '⚫');
-      opt.textContent = statusIcon + ' ' + p.label;
-      sel.appendChild(opt);
+  // 헤더 시간 표시
+  function updateHeaderTime() {
+    const now = new Date();
+    const wd = ['일','월','화','수','목','금','토'][now.getDay()];
+    const ampm = now.getHours() < 12 ? '오전' : '오후';
+    const h12 = now.getHours() % 12 || 12;
+    const m = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('header-meta').textContent =
+      `마지막 새로고침: ${now.getMonth()+1}/${now.getDate()} (${wd}) ${ampm} ${h12}:${m}`;
+  }
+  updateHeaderTime();
+
+  // 탭 전환
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + target).classList.add('active');
     });
-  }
+  });
 
-  async function loadImages() {
-    const res = await fetch('/custom_image/list');
-    const data = await res.json();
-    const list = document.getElementById('imageList');
-    if (!data.images.length) {
-      list.innerHTML = '<p class="empty">등록된 이미지가 없습니다.</p>';
-      return;
+  // ============================== 기존 이미지 업로드 로직 (그대로 유지) ==============================
+
+  // 사업부 목록 로드
+  async function loadProjects() {
+    try {
+      const res = await fetch('/projects');
+      const data = await res.json();
+      const sel = document.getElementById('projectKey');
+      data.projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.key;
+        opt.textContent = p.label || p.key;
+        sel.appendChild(opt);
+      });
+    } catch (e) {
+      console.error('사업부 목록 로드 실패:', e);
     }
-    list.innerHTML = data.images.map(img => `
-      <div class="image-item">
-        <img src="${img.url}" alt="">
-        <div class="image-info">
-          <span class="badge">${img.project_key}</span>
-          <span class="badge section">${img.section_title}</span>
-          <b>${img.caption || img.original_name}</b>
-          <small>${new Date(img.uploaded_at).toLocaleString('ko-KR')}</small>
+  }
+
+  // 등록된 이미지 목록 로드
+  async function loadImages() {
+    try {
+      const res = await fetch('/custom_image/list');
+      const data = await res.json();
+      const listEl = document.getElementById('imageList');
+      if (!data.images || data.images.length === 0) {
+        listEl.innerHTML = '<p style="color:#999; padding: 20px; text-align:center;">등록된 이미지가 없습니다.</p>';
+        return;
+      }
+      listEl.innerHTML = data.images.map(img => `
+        <div class="image-item">
+          <img src="${img.url}" alt="" onerror="this.style.opacity=0.3"/>
+          <div class="info">
+            <strong>${img.caption || img.original_name || ''}</strong>
+            <div class="badges">
+              <span class="badge">${img.project_key}</span>
+              <span class="badge section">${img.section_title || ''}</span>
+            </div>
+            <div style="font-size:11px; color:#888; margin-top:4px;">
+              ${new Date(img.uploaded_at).toLocaleString('ko-KR')}
+            </div>
+          </div>
+          <button class="delete" onclick="deleteImage('${img.id}')">삭제</button>
         </div>
-        <button class="delete" onclick="deleteImg('${img.id}')">삭제</button>
-      </div>
-    `).join('');
+      `).join('');
+    } catch (e) {
+      console.error('이미지 목록 로드 실패:', e);
+      document.getElementById('imageList').innerHTML = '<p style="color:#c00;">로드 실패</p>';
+    }
   }
 
-  async function deleteImg(id) {
-    if (!confirm('정말 삭제할까요?')) return;
-    await fetch('/custom_image/' + id, { method: 'DELETE' });
-    loadImages();
+  async function deleteImage(id) {
+    if (!confirm('정말 삭제하시겠어요?')) return;
+    try {
+      const res = await fetch('/custom_image/' + id, { method: 'DELETE' });
+      if (!res.ok) throw new Error('삭제 실패');
+      loadImages();
+    } catch (e) {
+      alert('삭제 실패: ' + e.message);
+    }
   }
 
+  // 업로드 폼
   document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const msg = document.getElementById('uploadMsg');
+    msg.textContent = '업로드 중...';
+    msg.className = '';
+
     const fd = new FormData();
-    fd.append('file', document.getElementById('fileInput').files[0]);
     fd.append('project_key', document.getElementById('projectKey').value);
     fd.append('section_title', document.getElementById('sectionTitle').value);
+    fd.append('file', document.getElementById('fileInput').files[0]);
     fd.append('caption', document.getElementById('caption').value);
-
-    const msg = document.getElementById('uploadMsg');
-    msg.textContent = '⏳ 업로드 중...';
-    msg.className = '';
 
     try {
       const res = await fetch('/custom_image/upload', { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.ok) {
-        msg.textContent = '✅ 업로드 완료!';
-        msg.className = 'success';
-        document.getElementById('uploadForm').reset();
-        loadImages();
-      } else {
-        throw new Error(data.detail || 'unknown');
-      }
-    } catch (err) {
-      msg.textContent = '❌ ' + err.message;
+      if (!res.ok) throw new Error(data.detail || '업로드 실패');
+      msg.textContent = '✅ 업로드 완료!';
+      msg.className = 'success';
+      document.getElementById('uploadForm').reset();
+      loadImages();
+    } catch (e) {
+      msg.textContent = '❌ ' + e.message;
       msg.className = 'error';
     }
   });
 
+  // 초기 로드
   loadProjects();
   loadImages();
 </script>
