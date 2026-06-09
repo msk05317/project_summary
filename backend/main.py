@@ -972,6 +972,42 @@ _ADMIN_UPLOAD_HTML = """
   }
   .badge.section { background: #fff3cd; color: #856404; }
 
+  /* ===== 부서별 아코디언 ===== */
+  .division-group { border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .division-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #f8fafc;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .division-header:hover { background: #f1f5f9; }
+  .division-header .arrow {
+    font-size: 12px;
+    color: #6b7280;
+    transition: transform 0.2s ease;
+    display: inline-block;
+  }
+  .division-group.open .division-header .arrow { transform: rotate(90deg); }
+  .division-header .dept-name { font-size: 15px; font-weight: 700; color: #1E3A5F; flex: 1; }
+  .division-header .count-badge {
+    background: #1E3A5F;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 999px;
+    min-width: 26px;
+    text-align: center;
+  }
+  .division-body { display: none; padding: 4px 12px 8px; }
+  .division-group.open .division-body { display: block; }
+  .division-body .image-item { padding: 12px 4px; }
+  .division-body .empty-dept { padding: 16px; text-align: center; color: #9ca3af; font-size: 13px; }
+
   #uploadMsg {
     margin-top: 12px;
     padding: 10px;
@@ -1177,6 +1213,17 @@ _ADMIN_UPLOAD_HTML = """
 
   // ============================== 기존 이미지 업로드 로직 (그대로 유지) ==============================
 
+  // project_key -> 라벨 매핑 (부서명 보기 좋게 표시용)
+  const PROJECT_LABELS = {};
+  // 펼쳐진 부서 상태 기억 (새로고침해도 열림 유지)
+  const openDivisions = new Set();
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   // 사업부 목록 로드
   async function loadProjects() {
     try {
@@ -1184,9 +1231,11 @@ _ADMIN_UPLOAD_HTML = """
       const data = await res.json();
       const sel = document.getElementById('projectKey');
       data.projects.forEach(p => {
+        const label = p.label || p.key;
+        PROJECT_LABELS[p.key] = label;
         const opt = document.createElement('option');
         opt.value = p.key;
-        opt.textContent = p.label || p.key;
+        opt.textContent = label;
         sel.appendChild(opt);
       });
     } catch (e) {
@@ -1194,36 +1243,81 @@ _ADMIN_UPLOAD_HTML = """
     }
   }
 
-  // 등록된 이미지 목록 로드
+  // 등록된 이미지 목록 로드 — 부서별 그룹핑 + 클릭하면 펼쳐지는 아코디언
   async function loadImages() {
     try {
       const res = await fetch('/custom_image/list');
       const data = await res.json();
       const listEl = document.getElementById('imageList');
-      if (!data.images || data.images.length === 0) {
+      const images = data.images || [];
+
+      if (images.length === 0) {
         listEl.innerHTML = '<p style="color:#999; padding: 20px; text-align:center;">등록된 이미지가 없습니다.</p>';
         return;
       }
-      listEl.innerHTML = data.images.map(img => `
-        <div class="image-item">
-          <img src="${img.url}" alt="" onerror="this.style.opacity=0.3"/>
-          <div class="info">
-            <strong>${img.caption || img.original_name || ''}</strong>
-            <div class="badges">
-              <span class="badge">${img.project_key}</span>
-              <span class="badge section">${img.section_title || ''}</span>
+
+      // 1) 부서(project_key)별로 그룹핑
+      const groups = {};
+      images.forEach(img => {
+        const key = img.project_key || '(미지정)';
+        (groups[key] = groups[key] || []).push(img);
+      });
+
+      // 2) 부서명 가나다순 정렬
+      const keys = Object.keys(groups).sort((a, b) =>
+        (PROJECT_LABELS[a] || a).localeCompare(PROJECT_LABELS[b] || b, 'ko')
+      );
+
+      // 3) 부서별 아코디언 렌더링
+      listEl.innerHTML = keys.map(key => {
+        const imgs = groups[key];
+        // 최신순 정렬
+        imgs.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
+        const deptLabel = PROJECT_LABELS[key] || key;
+        const isOpen = openDivisions.has(key);
+
+        const itemsHtml = imgs.map(img => `
+          <div class="image-item">
+            <img src="${escapeHtml(img.url)}" alt="" onerror="this.style.opacity=0.3"/>
+            <div class="info">
+              <strong>${escapeHtml(img.caption || img.original_name || '(제목 없음)')}</strong>
+              <div class="badges">
+                <span class="badge section">${escapeHtml(img.section_title || '')}</span>
+              </div>
+              <div style="font-size:11px; color:#888; margin-top:4px;">
+                ${img.uploaded_at ? new Date(img.uploaded_at).toLocaleString('ko-KR') : ''}
+              </div>
             </div>
-            <div style="font-size:11px; color:#888; margin-top:4px;">
-              ${new Date(img.uploaded_at).toLocaleString('ko-KR')}
+            <button class="delete" onclick="deleteImage('${escapeHtml(img.id)}')">삭제</button>
+          </div>
+        `).join('');
+
+        return `
+          <div class="division-group ${isOpen ? 'open' : ''}" data-key="${escapeHtml(key)}">
+            <div class="division-header" onclick="toggleDivision('${escapeHtml(key)}')">
+              <span class="arrow">▶</span>
+              <span class="dept-name">${escapeHtml(deptLabel)}</span>
+              <span class="count-badge">${imgs.length}</span>
+            </div>
+            <div class="division-body">
+              ${itemsHtml || '<div class="empty-dept">등록된 이미지가 없습니다.</div>'}
             </div>
           </div>
-          <button class="delete" onclick="deleteImage('${img.id}')">삭제</button>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     } catch (e) {
       console.error('이미지 목록 로드 실패:', e);
       document.getElementById('imageList').innerHTML = '<p style="color:#c00;">로드 실패</p>';
     }
+  }
+
+  // 부서 헤더 클릭 → 펼치기/접기
+  function toggleDivision(key) {
+    const groupEl = document.querySelector('.division-group[data-key="' + CSS.escape(key) + '"]');
+    if (!groupEl) return;
+    const nowOpen = groupEl.classList.toggle('open');
+    if (nowOpen) openDivisions.add(key);
+    else openDivisions.delete(key);
   }
 
   async function deleteImage(id) {
