@@ -295,8 +295,9 @@ _ADMIN_LOGIN_HTML = """<!doctype html>
 <title>관리자 인증</title>
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; background:#f1f5f9; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
-  .card { background:#fff; padding:32px; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,0.08); width:340px; }
+  html, body { height:100%; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; background:#f1f5f9; margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding: 16px; box-sizing: border-box; }
+  .card { background:#fff; padding:32px; border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,0.08); width:340px; margin: auto; }
   h2 { margin:0 0 8px; color:#1E3A5F; font-size:20px; }
   p { color:#64748b; font-size:13px; margin:0 0 18px; }
   input[type=password] { width:100%; padding:12px; font-size:14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box; }
@@ -304,16 +305,7 @@ _ADMIN_LOGIN_HTML = """<!doctype html>
   .err { color:#b91c1c; font-size:13px; margin-top:10px; min-height:18px; }
 </style></head>
 <body>
-<div id="adminSessionBar" style="position:sticky;top:0;z-index:50;background:#1E3A5F;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;font-size:13px;">
-  <div>
-    🔐 관리자 세션 유지 중 · <span id="adminSessionRemain">확인 중...</span>
-  </div>
-  <div style="display:flex;gap:8px;">
-    <button type="button" id="adminExtendBtn" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">8시간 연장</button>
-    <button type="button" id="adminLogoutBtn" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">로그아웃</button>
-  </div>
-</div>
-  <form class=\"card\" id=\"loginForm\">
+  <form class="card" id="loginForm">
     <h2>🔒 관리자 인증</h2>
     <p>업로드 비밀번호를 입력하세요. 8시간 유지됩니다.</p>
     <input type=\"password\" id=\"pw\" placeholder=\"비밀번호\" required autofocus />
@@ -1250,10 +1242,17 @@ _ADMIN_UPLOAD_HTML = """
   </style>
 </head>
 <body>
-
-<header>
-  <h1>📊 사업부 보고 관리자</h1>
-  <div class="meta" id="header-meta">로딩 중...</div>
+<header style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+  <div>
+    <h1 style="margin:0;">📊 사업부 보고 관리자</h1>
+    <div class="meta" id="header-meta">로딩 중...</div>
+  </div>
+  <div id="adminSessionBar" style="display:flex;align-items:center;gap:8px;background:#1E3A5F;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;white-space:nowrap;">
+    <span>🔐 관리자 세션 유지 중</span>
+    <span style="background:#0f2342;padding:3px 10px;border-radius:999px;">남은 시간 <strong id="adminSessionRemain">확인 중...</strong></span>
+    <button type="button" id="adminExtendBtn" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">8시간 연장</button>
+    <button type="button" id="adminLogoutBtn" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;">로그아웃</button>
+  </div>
 </header>
 
 <nav class="tabs">
@@ -1502,7 +1501,10 @@ _ADMIN_UPLOAD_HTML = """
     if (sec < 0) sec = 0;
     const h = Math.floor(sec / 3600);
     const m = Math.floor((sec % 3600) / 60);
-    return `${h}시간 ${m}분`;
+    const s = sec % 60;
+    if (h > 0) return `${h}시간 ${m}분`;
+    if (m > 0) return `${m}분 ${s}초`;
+    return `${s}초`;
   }
 
   async function refreshAdminSessionInfo() {
@@ -1556,7 +1558,7 @@ _ADMIN_UPLOAD_HTML = """
 
   refreshAdminSessionInfo().then(() => {
     tickAdminSessionRemain();
-    setInterval(tickAdminSessionRemain, 30000);
+    setInterval(tickAdminSessionRemain, 1000);
   });
 
 
