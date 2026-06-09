@@ -1025,6 +1025,27 @@ _ADMIN_UPLOAD_HTML = """
   .file-row-remove { background: transparent; color: #b91c1c; border: none; cursor: pointer; font-size: 16px; padding: 0 4px; }
   .file-row-remove:hover { color: #7f1d1d; }
 
+  
+  /* Progress bar */
+  .pf-row { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+  .pf-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .pf-status { width: 22px; text-align: center; font-size: 15px; }
+  .pf-name { font-weight: 600; color: #1f2937; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-pct { color: #1E3A5F; font-weight: 700; min-width: 44px; text-align: right; }
+  .pf-barwrap { background: #e5e7eb; border-radius: 999px; height: 8px; overflow: hidden; }
+  .pf-bar { background: linear-gradient(90deg, #1E3A5F, #3b82f6); height: 100%; width: 0%; transition: width 0.18s ease; }
+  .pf-bar.done { background: linear-gradient(90deg, #10b981, #059669); }
+  .pf-bar.fail { background: linear-gradient(90deg, #ef4444, #b91c1c); }
+  .pf-detail { margin-top: 6px; color: #6b7280; font-size: 12px; }
+  .pf-total {
+    display: flex; align-items: center; gap: 10px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+  }
+  .pf-total .pf-barwrap { flex: 1; height: 10px; }
+  .pf-total-label { font-weight: 700; color: #1E3A5F; }
+  .pf-total-pct { font-weight: 700; color: #1E3A5F; min-width: 44px; text-align: right; }
+
   </style>
 </head>
 <body>
@@ -1318,33 +1339,76 @@ _ADMIN_UPLOAD_HTML = """
 
   // 파일 선택 시 목록 표시
 
-  // 한 파일 업로드 (Promise 반환)
-  async function uploadSinglePpt(file, password, reportFamily, divisionId, projectId, itemEl) {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('password', password);
-    fd.append('report_family', reportFamily || 'default');
-    if (divisionId) fd.append('division_id', divisionId);
-    if (projectId) fd.append('project_id', projectId);
+  // 한 파일 업로드 (XHR 기반 진행률 % 반환)
+  function uploadSinglePpt(file, password, reportFamily, divisionId, projectId, itemEl, onProgress) {
+    return new Promise((resolve) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('password', password);
+      fd.append('report_family', reportFamily || 'default');
+      if (divisionId) fd.append('division_id', divisionId);
+      if (projectId) fd.append('project_id', projectId);
 
-    // 상태: 처리 중
-    itemEl.querySelector('.status').textContent = '🔄';
-    itemEl.querySelector('.detail').textContent = '처리 중...';
+      // 상태: 시작
+      const statusEl = itemEl.querySelector('.pf-status');
+      const pctEl = itemEl.querySelector('.pf-pct');
+      const barEl = itemEl.querySelector('.pf-bar');
+      const detailEl = itemEl.querySelector('.pf-detail');
+      statusEl.textContent = '⬆️';
+      detailEl.textContent = '업로드 중...';
 
-    try {
-      const res = await fetch('/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || '업로드 실패');
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/upload', true);
 
-      // 성공
-      itemEl.querySelector('.status').textContent = '✅';
-      itemEl.querySelector('.detail').textContent = `카드 ${data.product_count}개 추출 (슬라이드 ${data.slide_count}장)`;
-      return { ok: true, file: file.name, data };
-    } catch (e) {
-      itemEl.querySelector('.status').textContent = '❌';
-      itemEl.querySelector('.detail').innerHTML = `<span style="color:#dc2626;">${e.message}</span>`;
-      return { ok: false, file: file.name, error: e.message };
-    }
+      // 업로드 바이트 진행률 (0~90% 구간 사용, 서버 처리는 90~100% 마무리에서 채움)
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable) return;
+        const pct = Math.round((ev.loaded / ev.total) * 90);
+        barEl.style.width = pct + '%';
+        pctEl.textContent = pct + '%';
+        if (typeof onProgress === 'function') onProgress(pct);
+      };
+
+      // 업로드 완료 → 서버 처리 단계로 전환
+      xhr.upload.onload = () => {
+        statusEl.textContent = '⚙️';
+        detailEl.textContent = '서버 처리 중...';
+        barEl.style.width = '95%';
+        pctEl.textContent = '95%';
+        if (typeof onProgress === 'function') onProgress(95);
+      };
+
+      xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+        if (xhr.status >= 200 && xhr.status < 300 && data && data.ok !== false) {
+          barEl.style.width = '100%';
+          barEl.classList.add('done');
+          pctEl.textContent = '100%';
+          statusEl.textContent = '✅';
+          detailEl.textContent = '카드 ' + (data.product_count || 0) + '개 추출 (슬라이드 ' + (data.slide_count || 0) + '장)';
+          if (typeof onProgress === 'function') onProgress(100);
+          resolve({ ok: true, file: file.name, data });
+        } else {
+          const msg = (data && (data.detail || data.message)) || ('HTTP ' + xhr.status);
+          barEl.classList.add('fail');
+          statusEl.textContent = '❌';
+          detailEl.innerHTML = '<span style="color:#dc2626;">' + msg + '</span>';
+          if (typeof onProgress === 'function') onProgress(100);
+          resolve({ ok: false, file: file.name, error: msg });
+        }
+      };
+
+      xhr.onerror = () => {
+        barEl.classList.add('fail');
+        statusEl.textContent = '❌';
+        detailEl.innerHTML = '<span style="color:#dc2626;">네트워크 오류</span>';
+        if (typeof onProgress === 'function') onProgress(100);
+        resolve({ ok: false, file: file.name, error: 'network error' });
+      };
+
+      xhr.send(fd);
+    });
   }
 
   // 업로드 폼 submit
@@ -1479,41 +1543,73 @@ _ADMIN_UPLOAD_HTML = """
     progressList.innerHTML = '';
     progressSummary.textContent = `총 ${files.length}개 파일 처리 시작...`;
 
+    // 전체 진행률 영역
+    progressSummary.innerHTML = `
+      <div class="pf-total">
+        <span class="pf-total-label">전체 진행률</span>
+        <span id="pfTotalText">0 / ${files.length}</span>
+        <div class="pf-barwrap"><div class="pf-bar" id="pfTotalBar"></div></div>
+        <span class="pf-total-pct" id="pfTotalPct">0%</span>
+      </div>
+    `;
+    const totalBar = document.getElementById('pfTotalBar');
+    const totalPct = document.getElementById('pfTotalPct');
+    const totalText = document.getElementById('pfTotalText');
+
     // 각 파일별 진행 항목 생성
+    const fileProgress = new Array(files.length).fill(0);
     const itemEls = files.map((f, idx) => {
       const div = document.createElement('div');
-      div.style.cssText = 'display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #f1f5f9; gap: 12px; font-size: 14px;';
+      div.className = 'pf-row';
       div.innerHTML = `
-        <span class="status" style="width: 24px; text-align: center;">⏳</span>
-        <strong style="min-width: 200px;">${f.name}</strong>
-        <span class="detail" style="color: #6b7280; flex: 1;">대기 중</span>
+        <div class="pf-head">
+          <span class="pf-status">⏳</span>
+          <span class="pf-name">📄 ${f.name}</span>
+          <span class="pf-pct">0%</span>
+        </div>
+        <div class="pf-barwrap"><div class="pf-bar"></div></div>
+        <div class="pf-detail">대기 중</div>
       `;
       progressList.appendChild(div);
       return div;
     });
+
+    function updateTotal() {
+      const sum = fileProgress.reduce((a,b)=>a+b, 0);
+      const pct = Math.round(sum / files.length);
+      totalBar.style.width = pct + '%';
+      totalPct.textContent = pct + '%';
+      const doneCnt = fileProgress.filter(p => p >= 100).length;
+      totalText.textContent = doneCnt + ' / ' + files.length;
+    }
 
     // 업로드 버튼 비활성화
     const btn = document.getElementById('pptUploadBtn');
     btn.disabled = true;
     btn.textContent = '업로드 중...';
 
-    // 순차 업로드
+    // 순차 업로드 (파일별 % → 전체 진행률 합산)
     const results = [];
     for (let i = 0; i < files.length; i++) {
-      progressSummary.textContent = `${i+1}/${files.length} 처리 중...`;
-      const result = await uploadSinglePpt(files[i], password, reportFamily, divisionId, projectId, itemEls[i]);
+      const result = await uploadSinglePpt(
+        files[i], password, reportFamily, divisionId, projectId, itemEls[i],
+        (pct) => { fileProgress[i] = pct; updateTotal(); }
+      );
+      fileProgress[i] = 100;
+      updateTotal();
       results.push(result);
     }
 
-    // 완료 후 통계
+    // 완료 후 통계 (전체 진행률 바 아래에 결과 줄 추가)
     const ok = results.filter(r => r.ok).length;
     const fail = results.length - ok;
     const totalCards = results.filter(r => r.ok).reduce((s, r) => s + (r.data.product_count || 0), 0);
-    progressSummary.innerHTML = `
-      <strong>완료:</strong> ${ok}/${files.length}개 성공
-      ${fail > 0 ? `, <span style="color:#dc2626;">${fail}개 실패</span>` : ''}
-      · 총 카드 <strong>${totalCards}개</strong> 추출
-    `;
+    const doneLine = document.createElement('div');
+    doneLine.style.cssText = 'margin-top:4px; font-size:13px;';
+    doneLine.innerHTML = '<strong>완료:</strong> ' + ok + '/' + files.length + '개 성공' +
+      (fail > 0 ? ', <span style="color:#dc2626;">' + fail + '개 실패</span>' : '') +
+      ' · 총 카드 <strong>' + totalCards + '개</strong> 추출';
+    progressSummary.appendChild(doneLine);
 
     // 버튼 복구
     btn.disabled = false;
