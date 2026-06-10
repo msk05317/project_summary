@@ -1001,6 +1001,7 @@ async def upload_custom_image(
     project_key: str = Form(...),
     section_title: str = Form(...),
     caption: str = Form(""),
+    _admin: int = Depends(get_admin_session),
 ):
     """차트/사진 직접 업로드 후 부서+섹션에 매핑"""
     ext = Path(file.filename).suffix.lower()
@@ -1031,7 +1032,10 @@ async def upload_custom_image(
 
 
 @app.get("/custom_image/list")
-def list_custom_images(project_key: str = None):
+def list_custom_images(
+    project_key: str = None,
+    _admin: int = Depends(get_admin_session),
+):
     """등록된 이미지 목록"""
     mappings = _load_image_mappings()
     images = mappings.get("images", [])
@@ -1041,7 +1045,10 @@ def list_custom_images(project_key: str = None):
 
 
 @app.delete("/custom_image/{image_id}")
-def delete_custom_image(image_id: str):
+def delete_custom_image(
+    image_id: str,
+    _admin: int = Depends(get_admin_session),
+):
     """이미지 삭제"""
     mappings = _load_image_mappings()
     images = mappings.get("images", [])
