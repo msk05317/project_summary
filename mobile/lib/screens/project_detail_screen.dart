@@ -79,13 +79,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         backgroundColor: detail != null ? _statusColor(detail!['status'] ?? 'BLACK') : null,
         foregroundColor: Colors.white,
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : error != null
-              ? Center(child: Text('오류: $error'))
-              : detail == null
-                  ? const Center(child: Text('데이터 없음'))
-                  : _buildContent(),
+      body: SafeArea(
+        bottom: true,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : error != null
+                ? Center(child: Text('오류: $error'))
+                : detail == null
+                    ? const Center(child: Text('데이터 없음'))
+                    : _buildContent(),
+      ),
     );
   }
 
@@ -224,11 +227,15 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 fullUrl,
                 fit: BoxFit.fitWidth,
                 width: double.infinity,
-                errorBuilder: (_, e, __) => Container(
-                  padding: const EdgeInsets.all(12),
-                  color: Colors.red.shade50,
-                  child: Text('이미지 로드 실패: $e',
-                      style: TextStyle(color: Colors.red.shade800, fontSize: 12)),
+                errorBuilder: (_, __, ___) => Container(
+                  height: 120,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F3F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.broken_image_outlined,
+                      size: 32, color: Color(0xFFADB5BD)),
                 ),
               ),
             ),

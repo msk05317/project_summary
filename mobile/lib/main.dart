@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'config/app_settings.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/division_select_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,9 +35,24 @@ class BriefingApp extends StatelessWidget {
               child: child!,
             );
           },
-          home: const DashboardScreen(),
+          home: _resolveHome(),
         );
       },
+    );
+  }
+
+  Widget _resolveHome() {
+    final key = AppSettings.instance.lastDivisionKey;
+    if (key == null || key.isEmpty) {
+      return const DivisionSelectScreen();
+    }
+    final found = kDivisions.where((d) => d.id == key).toList();
+    if (found.isEmpty) {
+      return const DivisionSelectScreen();
+    }
+    return DashboardScreen(
+      divisionKey: found.first.id,
+      divisionLabel: found.first.label,
     );
   }
 }

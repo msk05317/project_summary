@@ -6,8 +6,14 @@ import '../models/product_card.dart';
 // Android 에뮬레이터에서 macOS localhost 접근용
 
 class ApiClient {
-  /// 대시보드 카드 목록
+  /// 대시보드 카드 목록 (호환: flat 카드만 반환)
   Future<List<ProductCard>> fetchDashboard() async {
+    final data = await fetchDashboardData();
+    return data.cards;
+  }
+
+  /// 대시보드 통합 응답 (flat + grouped 둘 다)
+  Future<DashboardData> fetchDashboardData() async {
     final res = await http.get(Uri.parse('$kApiBaseUrl/dashboard'));
     print('🟡 /dashboard 응답: ${res.statusCode}');
 
@@ -17,11 +23,16 @@ class ApiClient {
 
     final decoded = jsonDecode(utf8.decode(res.bodyBytes));
     final List rawCards = decoded['cards'] ?? [];
-    print('🟢 받은 카드 수: ${rawCards.length}');
+    final List rawGrouped = decoded['grouped_cards'] ?? [];
+    print('🟢 flat: ${rawCards.length} / grouped: ${rawGrouped.length}');
 
-    return rawCards
+    final cards = rawCards
         .map((j) => ProductCard.fromJson(j as Map<String, dynamic>))
         .toList();
+    final grouped = rawGrouped
+        .map((j) => GroupedCard.fromJson(j as Map<String, dynamic>))
+        .toList();
+    return DashboardData(cards: cards, groupedCards: grouped);
   }
 
   /// 프로젝트 버튼 목록
@@ -72,4 +83,13 @@ class ApiClient {
     final decoded = jsonDecode(utf8.decode(res.bodyBytes));
     return ProductDetail.fromJson(decoded as Map<String, dynamic>);
   }
+}
+
+// ============================================================
+// 대시보드 응답 컨테이너 (flat + grouped)
+// ============================================================
+class DashboardData {
+  final List<ProductCard> cards;
+  final List<GroupedCard> groupedCards;
+  DashboardData({required this.cards, required this.groupedCards});
 }

@@ -79,3 +79,7 @@ backend/reports.json
 backend/**/*.bak_*
 
 backend/upload_hashes.json
+
+# Patch backup files (자동 생성)
+*.bak_*
+*.bak

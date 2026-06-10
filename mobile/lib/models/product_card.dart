@@ -10,6 +10,7 @@ class ProductCard {
   final String reportDate;
   final String reportFamily;
   final String? projectKey;  // 부서 매핑 키 (chamber/powerbox/...)
+  final String? divisionId;  // 사업부 ID (semiconductor/pcb/network/system)
 
   // 호환성 유지용 (기존 위젯이 참조)
   final String category;
@@ -23,6 +24,7 @@ class ProductCard {
     required this.reportDate,
     required this.reportFamily,
     this.projectKey,
+    this.divisionId,
     this.category = '',
     this.issueCount = 0,
   });
@@ -36,6 +38,7 @@ class ProductCard {
       reportDate: json['report_date']?.toString() ?? '',
       reportFamily: json['report_family']?.toString() ?? '',
       projectKey: json['project_key']?.toString(),
+      divisionId: json['division_id']?.toString(),
       category: json['category']?.toString() ?? '',
       issueCount: (json['issue_count'] as int?) ?? 0,
     );
@@ -132,5 +135,74 @@ class ProductDetail {
     if (url.startsWith('http')) return url;
     if (url.startsWith('/')) return '$base$url';
     return '$base/$url';
+  }
+}
+
+
+// ============================================================
+// 모델 단위 그룹 카드 (백엔드의 /dashboard 응답 grouped_cards 필드)
+// ============================================================
+class GroupedIssue {
+  final String status;     // RED / BLUE / BLACK
+  final String headline;
+  final String docId;
+
+  GroupedIssue({
+    required this.status,
+    required this.headline,
+    required this.docId,
+  });
+
+  factory GroupedIssue.fromJson(Map<String, dynamic> json) {
+    return GroupedIssue(
+      status: json['status']?.toString() ?? 'BLACK',
+      headline: json['headline']?.toString() ?? '',
+      docId: json['doc_id']?.toString() ?? '',
+    );
+  }
+}
+
+class GroupedCard {
+  final String model;          // 모델명 (정규화된 표기)
+  final String status;         // 카드 종합 상태 (가장 심각한 색)
+  final String? projectId;
+  final String? projectLabel;
+  final String? projectBadge;
+  final String? divisionId;
+  final String? divisionLabel;
+  final String reportDate;
+  final String reportFamily;
+  final List<GroupedIssue> issues;
+
+  GroupedCard({
+    required this.model,
+    required this.status,
+    this.projectId,
+    this.projectLabel,
+    this.projectBadge,
+    this.divisionId,
+    this.divisionLabel,
+    this.reportDate = '',
+    this.reportFamily = '',
+    this.issues = const [],
+  });
+
+  factory GroupedCard.fromJson(Map<String, dynamic> json) {
+    final issuesRaw = (json['issues'] as List?) ?? [];
+    return GroupedCard(
+      model: json['model']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'BLACK',
+      projectId: json['project_id']?.toString(),
+      projectLabel: json['project_label']?.toString(),
+      projectBadge: json['project_badge']?.toString(),
+      divisionId: json['division_id']?.toString(),
+      divisionLabel: json['division_label']?.toString(),
+      reportDate: json['report_date']?.toString() ?? '',
+      reportFamily: json['report_family']?.toString() ?? '',
+      issues: issuesRaw
+          .whereType<Map<String, dynamic>>()
+          .map((e) => GroupedIssue.fromJson(e))
+          .toList(),
+    );
   }
 }

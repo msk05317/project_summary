@@ -5,9 +5,13 @@ import '../models/product_card.dart';
 import '../services/api_client.dart';
 import 'project_detail_screen.dart';
 import 'product_detail_screen.dart';
+import 'division_select_screen.dart';
+import '../widgets/grouped_card_tile.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final String? divisionKey;
+  final String? divisionLabel;
+  const DashboardScreen({super.key, this.divisionKey, this.divisionLabel});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -16,6 +20,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final ApiClient _api = ApiClient();
   List<ProductCard> cards = [];
+  List<GroupedCard> groupedCards = [];
   List<Map<String, dynamic>> projects = [];
   bool loading = true;
   String? error;
@@ -106,10 +111,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     try {
       final results = await Future.wait([
-        _api.fetchDashboard(),
+        _api.fetchDashboardData(),
         _api.fetchProjects(),
       ]);
-      final fetchedCards = results[0] as List<ProductCard>;
+      final fetchedData = results[0] as DashboardData;
+      final fetchedCards = fetchedData.cards;
+      final fetchedGrouped = fetchedData.groupedCards;
       final fetchedProjects = results[1] as List<Map<String, dynamic>>;
 
       print('🟢 카드 받음: ${fetchedCards.length}개');
@@ -127,6 +134,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       setState(() {
         cards = fetchedCards;
+        groupedCards = fetchedGrouped;
         projects = fetchedProjects;
         loading = false;
         error = null;
@@ -242,19 +250,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final latestReport = _latestReportDate();
 
-    return Scaffold(
+    return PopScope(
+      canPop: widget.divisionKey == null,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (widget.divisionKey != null) {
+          await AppSettings.instance.setLastDivisionKey(null);
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => const DivisionSelectScreen(),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         toolbarHeight: 88,
         backgroundColor: const Color(0xFF1E3A5F),
         foregroundColor: Colors.white,
         elevation: 2,
+        leading: widget.divisionKey != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                tooltip: '사업부 선택',
+                onPressed: () async {
+                  await AppSettings.instance.setLastDivisionKey(null);
+                  if (!mounted) return;
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(
+                      builder: (_) => const DivisionSelectScreen(),
+                    ),
+                  );
+                },
+              )
+            : null,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              '사업부 진행현황',
-              style: TextStyle(
+            Text(
+              widget.divisionLabel ?? '사업부 진행현황',
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
@@ -299,32 +336,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         actions: [
-          // ✨ 글자 크기 버튼 추가
-          PopupMenuButton<double>(
-            tooltip: '글자 크기',
-            icon: const Icon(Icons.text_fields, color: Colors.white),
-            initialValue: AppSettings.instance.fontScale,
-            onSelected: (value) async {
-              await AppSettings.instance.setFontScale(value);
-              if (!mounted) return;
+          // ✨ 글자 크기 버튼 (AppSettings 변경 시 자동 rebuild)
+          AnimatedBuilder(
+            animation: AppSettings.instance,
+            builder: (context, _) {
+              return PopupMenuButton<double>(
+                tooltip: '글자 크기',
+                icon: const Icon(Icons.text_fields, color: Colors.white),
+                initialValue: AppSettings.instance.fontScale,
+                onSelected: (value) async {
+                  await AppSettings.instance.setFontScale(value);
+                  if (!mounted) return;
 
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        '글자 크기: ${AppSettings.instance.labelFor(value)}'),
-                    duration: const Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            '글자 크기: ${AppSettings.instance.labelFor(value)}'),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 0.9, child: Text('작게')),
+                  PopupMenuItem(value: 1.0, child: Text('기본')),
+                  PopupMenuItem(value: 1.15, child: Text('크게')),
+                  PopupMenuItem(value: 1.3, child: Text('아주 크게')),
+                ],
+              );
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 0.9, child: Text('작게')),
-              PopupMenuItem(value: 1.0, child: Text('기본')),
-              PopupMenuItem(value: 1.15, child: Text('크게')),
-              PopupMenuItem(value: 1.3, child: Text('아주 크게')),
-            ],
           ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
@@ -333,13 +375,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : error != null
-              ? _buildError()
-              : (cards.isEmpty && projects.isEmpty)
-                  ? _buildEmpty()
-                  : _buildContent(),
+      body: SafeArea(
+        bottom: true,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : error != null
+                ? _buildError()
+                : (cards.isEmpty && projects.isEmpty)
+                    ? _buildEmpty()
+                    : _buildContent(),
+      ),
+      ),
     );
   }
 
@@ -389,16 +435,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildContent() {
-    final redCards = cards.where((c) => c.status == 'RED').toList();
-    final blueCards = cards.where((c) => c.status == 'BLUE').toList();
-    final blackCards = cards.where((c) => c.status == 'BLACK').toList();
+    // 사업부 필터: widget.divisionKey 가 있으면 해당 사업부 카드만
+    final divKey = widget.divisionKey;
+
+    final filteredGrouped = (divKey == null || divKey.isEmpty)
+        ? groupedCards
+        : groupedCards.where((g) => g.divisionId == divKey).toList();
+    final filteredCards = (divKey == null || divKey.isEmpty)
+        ? cards
+        : cards.where((c) => c.divisionId == divKey).toList();
+    final filteredProjects = (divKey == null || divKey.isEmpty)
+        ? projects
+        : projects.where((p) => (p['division_id']?.toString() ?? '') == divKey).toList();
+
+    // GroupedCard 기준으로 분류 (백엔드가 grouped 응답을 주면 우선 사용)
+    final useGrouped = groupedCards.isNotEmpty;
+    final redGroups = filteredGrouped.where((g) => g.status == 'RED').toList();
+    final blueGroups = filteredGrouped.where((g) => g.status == 'BLUE').toList();
+    final blackGroups = filteredGrouped.where((g) => g.status == 'BLACK').toList();
+
+    // flat 폴백용
+    final redCards = filteredCards.where((c) => c.status == 'RED').toList();
+    final blueCards = filteredCards.where((c) => c.status == 'BLUE').toList();
+    final blackCards = filteredCards.where((c) => c.status == 'BLACK').toList();
 
     return RefreshIndicator(
       onRefresh: () => _load(),
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.fromLTRB(
+          12, 12, 12,
+          12,
+        ),
         children: [
-          if (projects.isNotEmpty) ...[
+          if (filteredProjects.isNotEmpty) ...[
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               child: Text('🏢 부서별 보기',
@@ -408,10 +477,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               height: 44,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: projects.length,
+                itemCount: filteredProjects.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, idx) {
-                  final p = projects[idx];
+                  final p = filteredProjects[idx];
                   final status = p['status']?.toString() ?? 'BLACK';
                   final color = _statusColor(status);
                   return InkWell(
@@ -447,15 +516,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 16),
           ],
-          if (redCards.isNotEmpty)
-            _buildStatusGroup('🔴 즉시 확인', redCards, 'RED'),
-          if (blueCards.isNotEmpty)
-            _buildStatusGroup('🔵 진행 중', blueCards, 'BLUE'),
-          if (blackCards.isNotEmpty)
-            _buildStatusGroup('⚫ 정상', blackCards, 'BLACK'),
+          if (useGrouped) ...[
+            if (redGroups.isEmpty && blueGroups.isEmpty && blackGroups.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 24),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.inbox_outlined,
+                          size: 56, color: Colors.grey.shade400),
+                      const SizedBox(height: 16),
+                      Text(
+                        '${widget.divisionLabel ?? '해당 사업부'}에\n등록된 보고가 없습니다',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: Colors.grey.shade600,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (redGroups.isNotEmpty)
+              _buildGroupedStatusSection('🔴 즉시 확인', redGroups),
+            if (blueGroups.isNotEmpty)
+              _buildGroupedStatusSection('🔵 진행 중', blueGroups),
+            if (blackGroups.isNotEmpty)
+              _buildGroupedStatusSection('⚫ 정상', blackGroups),
+          ] else ...[
+            if (redCards.isNotEmpty)
+              _buildStatusGroup('🔴 즉시 확인', redCards, 'RED'),
+            if (blueCards.isNotEmpty)
+              _buildStatusGroup('🔵 진행 중', blueCards, 'BLUE'),
+            if (blackCards.isNotEmpty)
+              _buildStatusGroup('⚫ 정상', blackCards, 'BLACK'),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildGroupedStatusSection(String title, List<GroupedCard> list) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Text('$title (${list.length}건)',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+        ),
+        ...list.map((g) => GroupedCardTile(
+              group: g,
+              onGroupTap: _onGroupTap,
+              onIssueTap: _onIssueTap,
+            )),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  void _onGroupTap(GroupedCard g) {
+    if (g.projectId != null && g.projectId!.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProjectDetailScreen(
+            projectKey: g.projectId!,
+            projectLabel: g.projectLabel ?? g.model,
+          ),
+        ),
+      );
+    } else if (g.issues.isNotEmpty) {
+      _onIssueTap(g, g.issues.first);
+    }
+  }
+
+  void _onIssueTap(GroupedCard g, GroupedIssue it) {
+    final card = ProductCard(
+      docId: it.docId,
+      product: g.model,
+      status: it.status,
+      headline: it.headline,
+      reportDate: g.reportDate,
+      reportFamily: g.reportFamily,
+      projectKey: g.projectId,
+    );
+    _navigateToDetail(card);
   }
 
   Widget _buildStatusGroup(String title, List<ProductCard> list, String status) {

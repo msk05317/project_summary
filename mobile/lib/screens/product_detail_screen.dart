@@ -24,7 +24,9 @@ class ProductDetailScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 1,
       ),
-      body: FutureBuilder<ProductDetail>(
+      body: SafeArea(
+        bottom: true,
+        child: FutureBuilder<ProductDetail>(
         future: ApiClient().fetchProductDetail(docId, productName),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -135,6 +137,7 @@ class ProductDetailScreen extends StatelessWidget {
             ],
           );
         },
+      )
       ),
     );
   }

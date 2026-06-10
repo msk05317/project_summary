@@ -6,21 +6,36 @@ class AppSettings extends ChangeNotifier {
   static final AppSettings instance = AppSettings._();
 
   static const String _fontScaleKey = 'font_scale';
+  static const String _lastDivisionKeyKey = 'last_division_key';
 
   double _fontScale = 1.0;
   double get fontScale => _fontScale;
 
+  String? _lastDivisionKey;
+  String? get lastDivisionKey => _lastDivisionKey;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _fontScale = prefs.getDouble(_fontScaleKey) ?? 1.0;
+    _lastDivisionKey = prefs.getString(_lastDivisionKeyKey);
   }
 
   Future<void> setFontScale(double value) async {
     _fontScale = value;
     notifyListeners();
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_fontScaleKey, value);
+  }
+
+  Future<void> setLastDivisionKey(String? key) async {
+    _lastDivisionKey = key;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (key == null) {
+      await prefs.remove(_lastDivisionKeyKey);
+    } else {
+      await prefs.setString(_lastDivisionKeyKey, key);
+    }
   }
 
   String labelFor(double value) {
