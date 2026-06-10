@@ -1319,6 +1319,37 @@ def admin_delete_doc(doc_id: str, _admin: int = Depends(get_admin_session)):
     return {"ok": True, "doc_id": doc_id, "removed": removed, "remaining": after}
 
 
+@app.post("/admin/docs/delete-batch")
+def admin_delete_docs_batch(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """PPT doc_id 여러 개 일괄 삭제"""
+    doc_ids = payload.get("doc_ids", []) if isinstance(payload, dict) else []
+    if not isinstance(doc_ids, list):
+        raise HTTPException(status_code=400, detail="doc_ids must be a list")
+
+    removed = []
+    failed = []
+    for did in doc_ids:
+        if not isinstance(did, str):
+            continue
+        try:
+            admin_delete_doc(did, _admin=_admin)
+            removed.append(did)
+        except HTTPException as e:
+            failed.append({"doc_id": did, "status": e.status_code, "detail": e.detail})
+        except Exception as e:
+            failed.append({"doc_id": did, "detail": str(e)})
+
+    return {
+        "ok": True,
+        "removed_count": len(removed),
+        "removed": removed,
+        "failed": failed,
+    }
+
+
 @app.delete("/admin/card")
 def admin_delete_card(
     doc_id: str,
@@ -1634,22 +1665,21 @@ _ADMIN_UPLOAD_HTML = """
           </div>
         </details>
 
-        <div style="display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap:wrap;">
-          <button type="submit" id="pptUploadBtn">업로드 시작</button>
-          <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding:6px 10px; background:#f3f4f6; border-radius:6px; cursor:pointer;">
-            <input type="checkbox" id="allowDuplicateUpload" />
-            <span>중복 허용</span>
-          </label>
-          <span style="font-size:11px; color:#9ca3af;">기본 차단 · 같은 파일 다시 올릴 때만 체크</span>
+        <div style="margin-top:16px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <button type="submit" id="pptUploadBtn">업로드 시작</button>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; padding:6px 10px; background:#f3f4f6; border-radius:6px; cursor:pointer; white-space:nowrap;">
+              <input type="checkbox" id="allowDuplicateUpload" />
+              <span>중복 허용</span>
+            </label>
+          </div>
+          <div style="font-size:11px; color:#9ca3af; margin-top:6px;">
+            기본 차단 · 같은 파일 다시 올릴 때만 체크
+          </div>
         </div>
       </form>
     </div>
 
-    <div class="card" id="pptProgressCard" style="display: none;">
-      <h2>📊 업로드 진행</h2>
-      <div id="pptProgressSummary" style="font-size: 14px; color: #374151; margin-bottom: 12px;"></div>
-      <div id="pptProgressList"></div>
-    </div>
   </section>
 
   <!-- ============================== 탭 2: 이미지 업로드 (기존 폼 그대로) ============================== -->
@@ -1688,12 +1718,23 @@ _ADMIN_UPLOAD_HTML = """
       <div id="imageList">로딩 중...</div>
     </div>
 
-    <div class="card">
-      <h2>🗂️ 업로드 내역</h2>
+    <div class="card" id="uploadHistoryCard">
+      <h2 style="display:flex; align-items:center; justify-content:space-between;">
+        <span>🗂️ 업로드 내역</span>
+        <span style="font-size:12px; font-weight:normal;">
+          <label style="margin-right:8px;"><input type="checkbox" id="historySelectAll" /> 전체 선택</label>
+          <button type="button" id="historyDeleteBtn" style="background:#fee2e2; color:#b91c1c; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">선택 삭제</button>
+        </span>
+      </h2>
       <p style="color:#6b7280;font-size:13px;margin-top:-4px;">PPT 파일 단위로 삭제하면 관련 카드가 모두 제거됩니다.</p>
       <div id="uploadHistoryArea" style="overflow-x:auto;">
         <div style="color:#999;padding:16px;">불러오는 중...</div>
       </div>
+    </div>
+    <div class="card" id="pptProgressCard" style="display: none;">
+      <h2>📊 업로드 진행</h2>
+      <div id="pptProgressSummary" style="font-size: 14px; color: #374151; margin-bottom: 12px;"></div>
+      <div id="pptProgressList"></div>
     </div>
   </section>
 
@@ -1788,6 +1829,9 @@ _ADMIN_UPLOAD_HTML = """
       const uploaded = (img.uploaded_at || '').replace('T', ' ').slice(0, 16);
       return `
         <div style="border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff;">
+          <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+            <input type="checkbox" class="image-row-check" data-image-id="${img.id}" />
+          </div>
           <img src="${img.url}" style="width:100%; height:120px; object-fit:cover; border-radius:4px; background:#f3f4f6;" onerror="this.style.opacity='0.3'" />
           <div style="margin-top:6px; font-size:11px; color:#6b7280;">
             <span style="background:#dbeafe; color:#1e40af; padding:1px 6px; border-radius:4px; margin-right:4px;">${proj}</span>
@@ -1800,7 +1844,14 @@ _ADMIN_UPLOAD_HTML = """
       `;
     }
 
-    let html = '';
+    let html = `
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;">
+        <label style="font-size:12px;color:#374151;">
+          <input type="checkbox" id="imageSelectAll" /> 전체 선택
+        </label>
+        <button type="button" id="imageDeleteBtn" style="background:#fee2e2;color:#b91c1c;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">선택 삭제</button>
+      </div>
+    `;
     DIVISIONS.forEach(div => {
       const list = grouped[div.id] || [];
       html += `<div style="margin-bottom:20px; border:1px solid #e5e7eb; border-radius:8px; padding:14px; background:#fafafa;">`;
@@ -1858,6 +1909,7 @@ _ADMIN_UPLOAD_HTML = """
       }
       let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:600px;">';
       html += '<thead><tr style="background:#f3f4f6;text-align:left;">';
+      html += '<th style="padding:10px 8px;width:32px;text-align:center;"></th>';
       html += '<th style="padding:10px 8px;">업로드 일시</th>';
       html += '<th style="padding:10px 8px;">파일명 / doc_id</th>';
       html += '<th style="padding:10px 8px;text-align:center;">카드</th>';
@@ -1876,6 +1928,7 @@ _ADMIN_UPLOAD_HTML = """
         }
         const safeFname = (it.file_name || '(이름 없음)').replace(/</g, '&lt;');
         html += '<tr style="border-bottom:1px solid #e5e7eb;">';
+        html += `<td style="padding:10px 8px;text-align:center;"><input type="checkbox" class="history-row-check" data-doc-id="${it.doc_id}"></td>`;
         html += `<td style="padding:10px 8px;white-space:nowrap;">${tsLabel}</td>`;
         html += `<td style="padding:10px 8px;">${safeFname}<br><small style="color:#999;">${it.doc_id}</small></td>`;
         html += `<td style="padding:10px 8px;text-align:center;">${it.product_count}</td>`;
@@ -2287,6 +2340,11 @@ _ADMIN_UPLOAD_HTML = """
     const progressCard = document.getElementById('pptProgressCard');
     const progressList = document.getElementById('pptProgressList');
     const progressSummary = document.getElementById('pptProgressSummary');
+    // 진행카드를 업로드내역 위로 이동 (업로드 중에만 보임)
+    const historyCard = document.getElementById('uploadHistoryCard');
+    if (historyCard && progressCard && historyCard.parentNode) {
+      historyCard.parentNode.insertBefore(progressCard, historyCard);
+    }
     progressCard.style.display = 'block';
     progressList.innerHTML = '';
     progressSummary.textContent = `총 ${files.length}개 파일 처리 시작...`;
@@ -2370,6 +2428,87 @@ _ADMIN_UPLOAD_HTML = """
 
     // 이미지 탭의 사업부 목록 갱신 (새로 업로드된 PPT 의 프로젝트가 잡힐 수 있게)
     try { loadProjects(); } catch (e) {}
+
+    // 업로드 내역 즉시 갱신
+    try { loadUploadHistory(); } catch (e) {}
+
+    // 5초 뒤 진행카드 숨김
+    setTimeout(() => {
+      const pc = document.getElementById('pptProgressCard');
+      if (pc) pc.style.display = 'none';
+    }, 5000);
+  });
+
+  // 업로드 내역 다중 선택 핸들러 (전체 선택 / 선택 삭제)
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'historySelectAll') {
+      const checked = e.target.checked;
+      document.querySelectorAll('.history-row-check').forEach(cb => { cb.checked = checked; });
+    }
+  });
+  document.addEventListener('click', async (e) => {
+    if (e.target && e.target.id === 'historyDeleteBtn') {
+      const ids = Array.from(document.querySelectorAll('.history-row-check:checked'))
+        .map(cb => cb.dataset.docId).filter(Boolean);
+      if (ids.length === 0) { alert('삭제할 항목을 선택하세요.'); return; }
+      if (!confirm(ids.length + '개의 업로드를 삭제할까요? PPT 파일과 관련 카드가 모두 제거됩니다.')) return;
+      e.target.disabled = true;
+      try {
+        const r = await fetch('/admin/docs/delete-batch', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({doc_ids: ids})
+        });
+        if (r.status === 401) { location.href = '/admin/login'; return; }
+        const d = await r.json();
+        alert((d.removed_count || 0) + '개 삭제 완료');
+        try { loadUploadHistory(); } catch(_){}
+      } catch (err) {
+        alert('삭제 실패: ' + err);
+      } finally {
+        e.target.disabled = false;
+      }
+    }
+  });
+
+  // 등록된 이미지 다중 선택 핸들러
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'imageSelectAll') {
+      const checked = e.target.checked;
+      document.querySelectorAll('.image-row-check').forEach(cb => { cb.checked = checked; });
+    }
+  });
+
+  document.addEventListener('click', async (e) => {
+    if (e.target && e.target.id === 'imageDeleteBtn') {
+      const ids = Array.from(document.querySelectorAll('.image-row-check:checked'))
+        .map(cb => cb.dataset.imageId).filter(Boolean);
+
+      if (ids.length === 0) {
+        alert('삭제할 이미지를 선택하세요.');
+        return;
+      }
+      if (!confirm(ids.length + '개의 이미지를 삭제할까요?')) return;
+
+      e.target.disabled = true;
+      try {
+        const r = await fetch('/admin/custom_images/delete-batch', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ image_ids: ids })
+        });
+        if (r.status === 401) { location.href = '/admin/login'; return; }
+        const d = await r.json();
+        alert((d.removed_count || 0) + '개 삭제 완료');
+        try { loadImages(); } catch (_) {}
+      } catch (err) {
+        alert('삭제 실패: ' + err);
+      } finally {
+        e.target.disabled = false;
+      }
+    }
   });
 
   // PPT 탭 진입 시 dropdown 초기 채우기
