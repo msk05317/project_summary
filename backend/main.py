@@ -1381,6 +1381,181 @@ def admin_delete_card(
     }
 
 
+@app.get("/admin/doc/{doc_id}/cards")
+def admin_get_doc_cards(
+    doc_id: str,
+    _admin: int = Depends(get_admin_session),
+):
+    """특정 PPT(doc_id)의 카드 목록 + 사업부 정보"""
+    items = _read_json(LATEST_FILE, [])
+    target = next((it for it in items if it.get("doc_id") == doc_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="해당 doc_id를 찾을 수 없습니다.")
+
+    products = target.get("products") or []
+    enriched = []
+    for idx_p, p in enumerate(products):
+        pkey = p.get("project_key") or ""
+        div_id = None
+        div_label = None
+        proj_label = None
+        try:
+            if pkey:
+                div_id = _cl.derive_division_from_project(pkey)
+                if div_id:
+                    div = _cl.get_division(div_id)
+                    if div:
+                        div_label = div.get("label") if isinstance(div, dict) else getattr(div, "label", None)
+                proj = _cl.get_project(pkey)
+                if proj:
+                    proj_label = proj.get("label") if isinstance(proj, dict) else getattr(proj, "label", None)
+        except Exception:
+            pass
+
+        enriched.append({
+            "product_idx": idx_p,
+            "name": p.get("name", ""),
+            "category": p.get("category", ""),
+            "status": p.get("status", ""),
+            "headline": p.get("headline", ""),
+            "project_key": pkey,
+            "project_label": proj_label,
+            "division_id": div_id,
+            "division_label": div_label,
+            "summary_bullets": p.get("summary_bullets", []),
+        })
+
+    return {"ok": True, "doc_id": doc_id, "cards": enriched}
+
+
+@app.get("/admin/card/full")
+def admin_get_card_full(
+    doc_id: str,
+    product_idx: int,
+    _admin: int = Depends(get_admin_session),
+):
+    """카드 1장의 전체 데이터 조회 (편집용)"""
+    items = _read_json(LATEST_FILE, [])
+    target = next((it for it in items if it.get("doc_id") == doc_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="해당 doc_id를 찾을 수 없습니다.")
+    products = target.get("products") or []
+    if product_idx < 0 or product_idx >= len(products):
+        raise HTTPException(status_code=404, detail="해당 product_idx를 찾을 수 없습니다.")
+    product = products[product_idx]
+
+    # division/project 정보 derive
+    pkey = product.get("project_key") or ""
+    div_id = None
+    div_label = None
+    try:
+        if pkey:
+            div_id = _cl.derive_division_from_project(pkey)
+            if div_id:
+                div = _cl.get_division(div_id)
+                if div:
+                    div_label = div.get("label") if isinstance(div, dict) else getattr(div, "label", None)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "product_idx": product_idx,
+        "product": product,
+        "division_id": div_id,
+        "division_label": div_label,
+    }
+
+
+@app.patch("/admin/card/full")
+def admin_patch_card_full(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """카드 1장의 필드 수정 (단순 편집)
+    payload: {
+      doc_id, product_idx,
+      name?, category?, status?, headline?,
+      project_key?,
+      summary_bullets?  (list[str])
+    }
+    """
+    doc_id = payload.get("doc_id")
+    product_idx = payload.get("product_idx")
+    if not doc_id or product_idx is None:
+        raise HTTPException(status_code=400, detail="doc_id, product_idx 필수")
+
+    items = _read_json(LATEST_FILE, [])
+    target_idx = next((i for i, it in enumerate(items) if it.get("doc_id") == doc_id), None)
+    if target_idx is None:
+        raise HTTPException(status_code=404, detail="해당 doc_id를 찾을 수 없습니다.")
+    products = items[target_idx].get("products") or []
+    if product_idx < 0 or product_idx >= len(products):
+        raise HTTPException(status_code=404, detail="해당 product_idx를 찾을 수 없습니다.")
+
+    # 수정 가능한 필드만 반영
+    editable = ["name", "category", "status", "headline", "project_key", "summary_bullets"]
+    product = products[product_idx]
+    changed = []
+    for k in editable:
+        if k in payload:
+            product[k] = payload[k]
+            changed.append(k)
+
+    # status 검증
+    if "status" in changed and product.get("status") not in ("RED", "BLUE", "BLACK", None):
+        raise HTTPException(status_code=400, detail="status는 RED/BLUE/BLACK 중 하나")
+
+    products[product_idx] = product
+    items[target_idx]["products"] = products
+    _write_json(LATEST_FILE, items)
+
+    return {"ok": True, "doc_id": doc_id, "product_idx": product_idx, "changed": changed}
+
+
+@app.post("/admin/cards/delete-batch")
+def admin_delete_cards_batch(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """카드 여러 개 일괄 삭제
+    payload: { targets: [{doc_id, product_idx}, ...] }
+    """
+    targets = payload.get("targets", []) if isinstance(payload, dict) else []
+    if not isinstance(targets, list):
+        raise HTTPException(status_code=400, detail="targets must be a list")
+
+    items = _read_json(LATEST_FILE, [])
+    # doc_id 별로 삭제할 product_idx 들 모으기
+    by_doc = {}
+    for t in targets:
+        if not isinstance(t, dict):
+            continue
+        did = t.get("doc_id")
+        pidx = t.get("product_idx")
+        if not did or pidx is None:
+            continue
+        by_doc.setdefault(did, []).append(pidx)
+
+    removed_count = 0
+    for did, idxs in by_doc.items():
+        # 내림차순 정렬 (뒤에서부터 삭제해야 인덱스 안 꼬임)
+        idxs = sorted(set(idxs), reverse=True)
+        target_idx = next((i for i, it in enumerate(items) if it.get("doc_id") == did), None)
+        if target_idx is None:
+            continue
+        products = items[target_idx].get("products") or []
+        for pidx in idxs:
+            if 0 <= pidx < len(products):
+                products.pop(pidx)
+                removed_count += 1
+        items[target_idx]["products"] = products
+
+    _write_json(LATEST_FILE, items)
+    return {"ok": True, "removed_count": removed_count}
+
+
 @app.post("/admin/reset")
 def admin_reset(password: str = Form(...)):
     _has_session = bool(_verify_session(admin_auth))
@@ -1749,6 +1924,77 @@ _ADMIN_UPLOAD_HTML = """
 
 </main>
 
+
+<!-- 카드 수정 모달 -->
+<div id="cardEditorOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:560px;max-height:90vh;overflow-y:auto;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;font-size:18px;color:#1E3A5F;">📝 카드 수정</h3>
+      <button type="button" onclick="closeCardEditor()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">×</button>
+    </div>
+
+    <div id="cardEditorBody">
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">제품명</label>
+        <input type="text" id="ce_name" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;" />
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">사업부</label>
+          <select id="ce_division" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;">
+            <option value="">— 미분류 —</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">프로젝트</label>
+          <select id="ce_project" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;">
+            <option value="">— 미선택 —</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">카테고리</label>
+          <select id="ce_category" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;">
+            <option value="">— 선택 —</option>
+            <option value="양산">양산</option>
+            <option value="개발">개발</option>
+            <option value="EMA">EMA</option>
+            <option value="주차별 출하실적 및 계획">주차별 출하실적 및 계획</option>
+            <option value="다음 액션">다음 액션</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">상태</label>
+          <div style="display:flex;gap:6px;align-items:center;padding-top:6px;">
+            <label style="font-size:13px;cursor:pointer;"><input type="radio" name="ce_status" value="RED" /> 🟥 긴급</label>
+            <label style="font-size:13px;cursor:pointer;"><input type="radio" name="ce_status" value="BLUE" /> 🟦 진행</label>
+            <label style="font-size:13px;cursor:pointer;"><input type="radio" name="ce_status" value="BLACK" /> ⬛ 완료</label>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">헤드라인 (이슈 한 줄)</label>
+        <input type="text" id="ce_headline" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;box-sizing:border-box;" />
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:12px;color:#374151;margin-bottom:4px;">요약 불릿 (줄바꿈으로 구분)</label>
+        <textarea id="ce_bullets" rows="5" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>
+        <div style="font-size:11px;color:#9ca3af;margin-top:4px;">한 줄에 한 불릿. 빈 줄은 자동 제거됩니다.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;border-top:1px solid #e5e7eb;padding-top:12px;">
+      <button type="button" onclick="closeCardEditor()" style="background:#f3f4f6;color:#374151;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">취소</button>
+      <button type="button" id="ce_saveBtn" onclick="saveCardEdit()" style="background:#1E3A5F;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="footer-info">
   v2 — 5단계 진행 중 ·
   <a href="/docs" target="_blank" style="color: #6b7280;">API Docs</a>
@@ -1914,6 +2160,7 @@ _ADMIN_UPLOAD_HTML = """
       html += '<th style="padding:10px 8px;">파일명 / doc_id</th>';
       html += '<th style="padding:10px 8px;text-align:center;">카드</th>';
       html += '<th style="padding:10px 8px;text-align:center;">슬라이드</th>';
+      html += '<th style="padding:10px 8px;text-align:center;">카드 보기</th>';
       html += '<th style="padding:10px 8px;text-align:center;">삭제</th>';
       html += '</tr></thead><tbody>';
       items.forEach(it => {
@@ -1933,8 +2180,10 @@ _ADMIN_UPLOAD_HTML = """
         html += `<td style="padding:10px 8px;">${safeFname}<br><small style="color:#999;">${it.doc_id}</small></td>`;
         html += `<td style="padding:10px 8px;text-align:center;">${it.product_count}</td>`;
         html += `<td style="padding:10px 8px;text-align:center;">${it.slide_count}</td>`;
+        html += `<td style="padding:10px 8px;text-align:center;"><button onclick="toggleCardsView('${it.doc_id}')" id="toggleBtn-${it.doc_id}" style="background:#e0e7ff;color:#1e3a5f;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">▼ ${it.product_count}장</button></td>`;
         html += `<td style="padding:10px 8px;text-align:center;"><button onclick="deleteDoc('${it.doc_id}', ${it.product_count})" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">삭제</button></td>`;
         html += '</tr>';
+        html += `<tr id="expand-${it.doc_id}" style="display:none;"><td colspan="7" style="padding:0; background:#f9fafb;"><div id="expandContent-${it.doc_id}" style="padding:16px 24px;">로딩 중...</div></td></tr>`;
       });
       html += '</tbody></table>';
       area.innerHTML = html;
@@ -1964,6 +2213,356 @@ _ADMIN_UPLOAD_HTML = """
       alert('삭제 오류: ' + e.message);
     }
   }
+
+  async function toggleCardsView(docId) {
+    const row = document.getElementById('expand-' + docId);
+    const btn = document.getElementById('toggleBtn-' + docId);
+    if (!row || !btn) return;
+    const isOpen = row.style.display !== 'none';
+    if (isOpen) {
+      row.style.display = 'none';
+      btn.innerHTML = btn.innerHTML.replace('▲', '▼');
+    } else {
+      row.style.display = '';
+      btn.innerHTML = btn.innerHTML.replace('▼', '▲');
+      await loadCardsForDoc(docId);
+    }
+  }
+
+  async function loadCardsForDoc(docId) {
+    const content = document.getElementById('expandContent-' + docId);
+    if (!content) return;
+    content.innerHTML = '<div style="color:#999;padding:8px;">불러오는 중...</div>';
+    try {
+      const r = await fetch('/admin/doc/' + encodeURIComponent(docId) + '/cards', { credentials: 'same-origin' });
+      if (r.status === 401) { location.href = '/admin/login'; return; }
+      if (!r.ok) {
+        content.innerHTML = '<div style="color:#c00;padding:8px;">카드 목록 불러오기 실패</div>';
+        return;
+      }
+      const d = await r.json();
+      renderCardList(docId, d.cards || []);
+    } catch (e) {
+      content.innerHTML = '<div style="color:#c00;padding:8px;">오류: ' + e.message + '</div>';
+    }
+  }
+
+  function statusColor(s) {
+    if (s === 'RED') return '#ef4444';
+    if (s === 'BLUE') return '#3b82f6';
+    if (s === 'BLACK') return '#374151';
+    return '#9ca3af';
+  }
+  function statusLabel(s) {
+    if (s === 'RED') return '🟥';
+    if (s === 'BLUE') return '🟦';
+    if (s === 'BLACK') return '⬛';
+    return '⚪';
+  }
+
+  function renderCardList(docId, cards) {
+    const content = document.getElementById('expandContent-' + docId);
+    if (!content) return;
+    if (!cards || cards.length === 0) {
+      content.innerHTML = '<div style="color:#999;padding:8px;">카드가 없습니다.</div>';
+      return;
+    }
+
+    // 사업부별 그룹핑
+    const DIVISIONS = [
+      { id: 'semiconductor', label: '반도체사업부', icon: '🔬' },
+      { id: 'pcb',           label: 'PCB사업부',    icon: '🔌' },
+      { id: 'network',       label: '네트워크사업부', icon: '🌐' },
+      { id: 'system',        label: '시스템사업부',   icon: '💻' },
+    ];
+    const grouped = {};
+    const unmapped = [];
+    cards.forEach(c => {
+      const k = c.division_id;
+      if (k && DIVISIONS.find(x => x.id === k)) {
+        (grouped[k] = grouped[k] || []).push(c);
+      } else {
+        unmapped.push(c);
+      }
+    });
+
+    let html = '';
+    html += '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:12px;">';
+    html += `<button type="button" onclick="deleteSelectedCards('${docId}')" style="background:#fee2e2;color:#b91c1c;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">선택 삭제</button>`;
+    html += '</div>';
+
+    function renderCardRow(c) {
+      const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${statusColor(c.status)};margin-right:6px;vertical-align:middle;"></span>`;
+      const projBadge = c.project_label ? `<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:4px;font-size:11px;margin-left:6px;">${c.project_label}</span>` : '';
+      const headline = c.headline ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;margin-left:22px;">${c.headline}</div>` : '';
+      return `
+        <div style="display:flex;align-items:flex-start;padding:8px;border-bottom:1px solid #e5e7eb;background:#fff;">
+          <input type="checkbox" class="card-check" data-doc-id="${docId}" data-product-idx="${c.product_idx}" style="margin-top:4px;margin-right:8px;" />
+          <div style="flex:1;">
+            <div>${dot}<strong style="font-size:13px;">${c.name || '(이름 없음)'}</strong>${projBadge}</div>
+            ${headline}
+          </div>
+          <div style="display:flex;gap:4px;">
+            <button type="button" onclick="openCardEditor('${docId}', ${c.product_idx})" style="background:#e0e7ff;color:#1e3a5f;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;">수정</button>
+            <button type="button" onclick="deleteSingleCard('${docId}', ${c.product_idx})" style="background:#fee2e2;color:#b91c1c;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;">삭제</button>
+          </div>
+        </div>
+      `;
+    }
+
+    DIVISIONS.forEach(div => {
+      const list = grouped[div.id] || [];
+      if (list.length === 0) return; // 빈 사업부는 표시 안 함
+      html += `<div style="margin-bottom:12px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;">`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid #e5e7eb;border-radius:8px 8px 0 0;">`;
+      html += `<div style="font-size:13px;font-weight:600;color:#1E3A5F;">${div.icon} ${div.label} <span style="color:#9ca3af;font-weight:normal;">(${list.length}장)</span></div>`;
+      html += `<div style="display:flex;gap:6px;align-items:center;">`;
+      html += `<label style="font-size:11px;color:#374151;"><input type="checkbox" onchange="toggleDivisionCheck('${docId}', '${div.id}', this.checked)" /> 전체 선택</label>`;
+      html += `<button type="button" onclick="deleteCardsByDivision('${docId}', '${div.id}', '${div.label}')" style="background:#fee2e2;color:#b91c1c;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;">사업부 일괄 삭제</button>`;
+      html += `</div>`;
+      html += `</div>`;
+      list.forEach(c => { html += renderCardRow(c); });
+      html += `</div>`;
+    });
+
+    if (unmapped.length > 0) {
+      html += `<div style="margin-bottom:12px;border:1px dashed #f59e0b;border-radius:8px;background:#fffbeb;">`;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#fef3c7;border-radius:8px 8px 0 0;">`;
+      html += `<div style="font-size:13px;font-weight:600;color:#92400e;">⚠️ 미분류 <span style="color:#9ca3af;font-weight:normal;">(${unmapped.length}장)</span></div>`;
+      html += `<button type="button" onclick="deleteCardsByDivision('${docId}', '__unmapped__', '미분류')" style="background:#fee2e2;color:#b91c1c;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;">일괄 삭제</button>`;
+      html += `</div>`;
+      unmapped.forEach(c => { html += renderCardRow(c); });
+      html += `</div>`;
+    }
+
+    content.innerHTML = html;
+  }
+
+  function toggleDivisionCheck(docId, divisionId, checked) {
+    document.querySelectorAll(`.card-check[data-doc-id="${docId}"]`).forEach(cb => {
+      // division 매칭은 DOM에서 알 수 없으므로, 같은 영역 안의 카드만 토글되도록 부모 요소 기준
+      // 간단하게: 클릭된 체크박스의 부모 div 내부 카드 모두 토글
+    });
+    // 부모 그룹 안의 카드 체크박스 모두 토글
+    const ev = event;
+    if (!ev || !ev.target) return;
+    const group = ev.target.closest('div[style*="border:1px"]') || ev.target.closest('div');
+    if (group) {
+      group.querySelectorAll('.card-check').forEach(cb => { cb.checked = checked; });
+    }
+  }
+
+  async function deleteSingleCard(docId, productIdx) {
+    if (!confirm('이 카드 1장을 삭제할까요?')) return;
+    try {
+      const r = await fetch('/admin/cards/delete-batch', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ targets: [{ doc_id: docId, product_idx: productIdx }] })
+      });
+      if (r.status === 401) { location.href = '/admin/login'; return; }
+      const d = await r.json();
+      alert((d.removed_count || 0) + '장 삭제 완료');
+      await loadCardsForDoc(docId);
+      try { loadUploadHistory(); } catch(_){}
+    } catch (e) {
+      alert('삭제 실패: ' + e.message);
+    }
+  }
+
+  async function deleteSelectedCards(docId) {
+    const checks = document.querySelectorAll(`.card-check[data-doc-id="${docId}"]:checked`);
+    const targets = Array.from(checks).map(cb => ({
+      doc_id: docId,
+      product_idx: parseInt(cb.dataset.productIdx, 10)
+    }));
+    if (targets.length === 0) { alert('삭제할 카드를 선택하세요.'); return; }
+    if (!confirm(targets.length + '장의 카드를 삭제할까요?')) return;
+    try {
+      const r = await fetch('/admin/cards/delete-batch', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ targets })
+      });
+      if (r.status === 401) { location.href = '/admin/login'; return; }
+      const d = await r.json();
+      alert((d.removed_count || 0) + '장 삭제 완료');
+      await loadCardsForDoc(docId);
+      try { loadUploadHistory(); } catch(_){}
+    } catch (e) {
+      alert('삭제 실패: ' + e.message);
+    }
+  }
+
+  async function deleteCardsByDivision(docId, divisionId, divisionLabel) {
+    // 현재 펼쳐진 카드 목록에서 해당 사업부 카드만 골라 삭제
+    try {
+      const r = await fetch('/admin/doc/' + encodeURIComponent(docId) + '/cards', { credentials: 'same-origin' });
+      const d = await r.json();
+      const cards = d.cards || [];
+      const targets = cards
+        .filter(c => (divisionId === '__unmapped__') ? !c.division_id : c.division_id === divisionId)
+        .map(c => ({ doc_id: docId, product_idx: c.product_idx }));
+      if (targets.length === 0) { alert('해당 사업부에 카드가 없습니다.'); return; }
+      if (!confirm(divisionLabel + ' 사업부의 카드 ' + targets.length + '장을 모두 삭제할까요?')) return;
+      const r2 = await fetch('/admin/cards/delete-batch', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ targets })
+      });
+      const d2 = await r2.json();
+      alert((d2.removed_count || 0) + '장 삭제 완료');
+      await loadCardsForDoc(docId);
+      try { loadUploadHistory(); } catch(_){}
+    } catch (e) {
+      alert('삭제 실패: ' + e.message);
+    }
+  }
+
+  let _editorState = { docId: null, productIdx: null };
+
+  async function openCardEditor(docId, productIdx) {
+    _editorState.docId = docId;
+    _editorState.productIdx = productIdx;
+
+    // 1) 사업부 dropdown 채우기
+    await fillDivisionSelect('ce_division');
+
+    // 2) 카드 데이터 로드
+    try {
+      const r = await fetch('/admin/card/full?doc_id=' + encodeURIComponent(docId) + '&product_idx=' + productIdx, { credentials: 'same-origin' });
+      if (r.status === 401) { location.href = '/admin/login'; return; }
+      if (!r.ok) {
+        alert('카드 정보를 불러올 수 없습니다.');
+        return;
+      }
+      const d = await r.json();
+      const p = d.product || {};
+
+      document.getElementById('ce_name').value = p.name || '';
+      document.getElementById('ce_category').value = p.category || '';
+      document.getElementById('ce_headline').value = p.headline || '';
+
+      // 상태 라디오
+      const statusRadios = document.querySelectorAll('input[name="ce_status"]');
+      statusRadios.forEach(r => { r.checked = (r.value === (p.status || '')); });
+
+      // 요약 불릿 → textarea
+      const bullets = Array.isArray(p.summary_bullets) ? p.summary_bullets : [];
+      document.getElementById('ce_bullets').value = bullets.join('\n');
+
+      // 사업부 선택 + 프로젝트 로드
+      const divSelect = document.getElementById('ce_division');
+      divSelect.value = d.division_id || '';
+      await fillProjectSelect('ce_project', d.division_id || '', p.project_key || '');
+
+      // 사업부 변경 핸들러
+      divSelect.onchange = async () => {
+        await fillProjectSelect('ce_project', divSelect.value, '');
+      };
+
+      document.getElementById('cardEditorOverlay').style.display = 'flex';
+    } catch (e) {
+      alert('오류: ' + e.message);
+    }
+  }
+
+  function closeCardEditor() {
+    document.getElementById('cardEditorOverlay').style.display = 'none';
+    _editorState = { docId: null, productIdx: null };
+  }
+
+  async function fillDivisionSelect(elemId) {
+    try {
+      const r = await fetch('/admin/config/divisions', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const divs = d.divisions || [];
+      const sel = document.getElementById(elemId);
+      sel.innerHTML = '<option value="">— 미분류 —</option>';
+      divs.forEach(div => {
+        const opt = document.createElement('option');
+        opt.value = div.id;
+        opt.textContent = div.label;
+        sel.appendChild(opt);
+      });
+    } catch (e) {}
+  }
+
+  async function fillProjectSelect(elemId, divisionId, selectedProjectKey) {
+    const sel = document.getElementById(elemId);
+    sel.innerHTML = '<option value="">— 미선택 —</option>';
+    if (!divisionId) { return; }
+    try {
+      const r = await fetch('/admin/config/projects?division_id=' + encodeURIComponent(divisionId), { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const projs = d.projects || [];
+      projs.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.label;
+        if (p.id === selectedProjectKey) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    } catch (e) {}
+  }
+
+  async function saveCardEdit() {
+    const { docId, productIdx } = _editorState;
+    if (!docId || productIdx === null) return;
+
+    const name = document.getElementById('ce_name').value.trim();
+    const category = document.getElementById('ce_category').value;
+    const headline = document.getElementById('ce_headline').value.trim();
+    const projectKey = document.getElementById('ce_project').value;
+    const statusEl = document.querySelector('input[name="ce_status"]:checked');
+    const status = statusEl ? statusEl.value : '';
+    const bulletsRaw = document.getElementById('ce_bullets').value;
+    const bullets = bulletsRaw.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+
+    const payload = {
+      doc_id: docId,
+      product_idx: productIdx,
+      name,
+      category,
+      status,
+      headline,
+      project_key: projectKey,
+      summary_bullets: bullets,
+    };
+
+    const btn = document.getElementById('ce_saveBtn');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/admin/card/full', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      if (r.status === 401) { location.href = '/admin/login'; return; }
+      if (!r.ok) {
+        let detail = r.status;
+        try { const err = await r.json(); detail = err.detail || detail; } catch(_){}
+        alert('저장 실패: ' + detail);
+        return;
+      }
+      const d = await r.json();
+      alert('저장 완료 (' + (d.changed || []).length + '개 필드 변경)');
+      closeCardEditor();
+      await loadCardsForDoc(docId);
+      try { loadUploadHistory(); } catch(_){}
+    } catch (e) {
+      alert('저장 오류: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
 
   // 업로드 폼
   document.getElementById('uploadForm').addEventListener('submit', async (e) => {
