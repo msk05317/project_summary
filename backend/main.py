@@ -1069,12 +1069,34 @@ def list_custom_images(
     project_key: str = None,
     _admin: int = Depends(get_admin_session),
 ):
-    """등록된 이미지 목록"""
+    """등록된 이미지 목록 (사업부 정보 포함)"""
     mappings = _load_image_mappings()
     images = mappings.get("images", [])
     if project_key:
         images = [img for img in images if img.get("project_key") == project_key]
-    return {"images": images}
+
+    # 각 이미지에 division_id / division_label 주입
+    enriched = []
+    for img in images:
+        item = dict(img)
+        pkey = item.get("project_key")
+        div_id = None
+        div_label = None
+        try:
+            if pkey:
+                div_id = _cl.derive_division_from_project(pkey)
+                if div_id:
+                    div = _cl.get_division(div_id)
+                    if div:
+                        div_label = div.get("label") if isinstance(div, dict) else getattr(div, "label", None)
+        except Exception:
+            div_id = None
+            div_label = None
+        item["division_id"] = div_id
+        item["division_label"] = div_label
+        enriched.append(item)
+
+    return {"images": enriched}
 
 
 @app.delete("/custom_image/{image_id}")
@@ -1237,6 +1259,95 @@ def admin_upload_page(admin_auth: Optional[str] = Cookie(default=None)):
     if not _verify_session(admin_auth):
         return RedirectResponse(url="/admin/login?next=/admin/upload", status_code=302)
     return HTMLResponse(content=_ADMIN_UPLOAD_HTML)
+
+
+@app.get("/admin/uploads/history")
+def admin_uploads_history(_admin: int = Depends(get_admin_session)):
+    """업로드된 PPT 목록 (삭제 UI용)"""
+    items = _read_json(LATEST_FILE, [])
+    history = []
+    for item in items:
+        doc_id = item.get("doc_id", "")
+        history.append({
+            "doc_id": doc_id,
+            "file_name": item.get("file_name") or item.get("filename") or "",
+            "upload_timestamp": item.get("upload_timestamp") or item.get("uploaded_at") or "",
+            "product_count": len(item.get("products", [])),
+            "slide_count": len(item.get("slide_images", {})),
+        })
+    # 최신 업로드 먼저
+    history.sort(key=lambda x: x.get("upload_timestamp", ""), reverse=True)
+    return {"items": history}
+
+
+@app.delete("/admin/doc/{doc_id}")
+def admin_delete_doc(doc_id: str, _admin: int = Depends(get_admin_session)):
+    """PPT 파일 단위 삭제: reports_latest.json + 관련 폴더/파일 전부 정리"""
+    import shutil
+    # 1) reports_latest.json 에서 제거
+    items = _read_json(LATEST_FILE, [])
+    before = len(items)
+    items = [it for it in items if it.get("doc_id") != doc_id]
+    after = len(items)
+    if before == after:
+        raise HTTPException(status_code=404, detail="해당 doc_id를 찾을 수 없습니다.")
+    _write_json(LATEST_FILE, items)
+
+    # 2) 파일 시스템 정리
+    removed = []
+    pptx_path = UPLOAD_DIR / f"{doc_id}.pptx"
+    if pptx_path.exists():
+        pptx_path.unlink()
+        removed.append(str(pptx_path.name))
+
+    for folder_dir in [SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR]:
+        target = folder_dir / doc_id
+        if target.exists() and target.is_dir():
+            shutil.rmtree(target)
+            removed.append(f"{folder_dir.name}/{doc_id}/")
+
+    # 3) upload_hashes.json 에서 제거
+    try:
+        idx = _load_upload_hash_index()
+        new_idx = {k: v for k, v in idx.items() if v.get("doc_id") != doc_id}
+        if len(new_idx) != len(idx):
+            _save_upload_hash_index(new_idx)
+            removed.append("upload_hash entry")
+    except Exception:
+        pass
+
+    return {"ok": True, "doc_id": doc_id, "removed": removed, "remaining": after}
+
+
+@app.delete("/admin/card")
+def admin_delete_card(
+    doc_id: str,
+    product_idx: int,
+    _admin: int = Depends(get_admin_session),
+):
+    """카드(product) 1장 단위 삭제"""
+    items = _read_json(LATEST_FILE, [])
+    target = None
+    for it in items:
+        if it.get("doc_id") == doc_id:
+            target = it
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="해당 doc_id를 찾을 수 없습니다.")
+
+    products = target.get("products", [])
+    if product_idx < 0 or product_idx >= len(products):
+        raise HTTPException(status_code=404, detail=f"product_idx 범위 초과 (0~{len(products)-1})")
+
+    removed_product = products.pop(product_idx)
+    target["products"] = products
+    _write_json(LATEST_FILE, items)
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "removed_product_name": removed_product.get("name") or removed_product.get("product"),
+        "remaining_products": len(products),
+    }
 
 
 @app.post("/admin/reset")
@@ -1500,11 +1611,7 @@ _ADMIN_UPLOAD_HTML = """
         <label for="reportFamily">리포트 패밀리 (선택)</label>
         <input type="text" id="reportFamily" placeholder="default" value="default" />
 
-        <label style="display:flex; align-items:center; gap:8px; margin-top:12px;">
-          <input type="checkbox" id="allowDuplicateUpload" />
-          <span>중복 업로드 허용</span>
-        </label>
-        <div style="font-size:12px; color:#6b7280; margin-top:4px;">기본은 중복 차단. 같은 파일을 다시 올릴 때만 체크</div>
+        <!-- 중복 허용은 업로드 시작 버튼 옆으로 이동 -->
 
         <details style="margin-top: 20px;">
           <summary style="cursor: pointer; font-weight: 600; color: #1E3A5F; padding: 10px 0;">
@@ -1527,7 +1634,14 @@ _ADMIN_UPLOAD_HTML = """
           </div>
         </details>
 
-        <button type="submit" id="pptUploadBtn">업로드 시작</button>
+        <div style="display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap:wrap;">
+          <button type="submit" id="pptUploadBtn">업로드 시작</button>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding:6px 10px; background:#f3f4f6; border-radius:6px; cursor:pointer;">
+            <input type="checkbox" id="allowDuplicateUpload" />
+            <span>중복 허용</span>
+          </label>
+          <span style="font-size:11px; color:#9ca3af;">기본 차단 · 같은 파일 다시 올릴 때만 체크</span>
+        </div>
       </form>
     </div>
 
@@ -1572,6 +1686,14 @@ _ADMIN_UPLOAD_HTML = """
     <div class="card">
       <h2>📋 등록된 이미지</h2>
       <div id="imageList">로딩 중...</div>
+    </div>
+
+    <div class="card">
+      <h2>🗂️ 업로드 내역</h2>
+      <p style="color:#6b7280;font-size:13px;margin-top:-4px;">PPT 파일 단위로 삭제하면 관련 카드가 모두 제거됩니다.</p>
+      <div id="uploadHistoryArea" style="overflow-x:auto;">
+        <div style="color:#999;padding:16px;">불러오는 중...</div>
+      </div>
     </div>
   </section>
 
@@ -1636,35 +1758,74 @@ _ADMIN_UPLOAD_HTML = """
 
   // 등록된 이미지 목록 로드
   async function loadImages() {
-    try {
-      const res = await fetch('/custom_image/list');
-      const data = await res.json();
-      const listEl = document.getElementById('imageList');
-      if (!data.images || data.images.length === 0) {
-        listEl.innerHTML = '<p style="color:#999; padding: 20px; text-align:center;">등록된 이미지가 없습니다.</p>';
-        return;
+    const r = await fetch('/custom_image/list', { credentials: 'include' });
+    if (r.status === 401) { location.href = '/admin/login'; return; }
+    const d = await r.json();
+    const images = d.images || [];
+
+    const DIVISIONS = [
+      { id: 'semiconductor', label: '반도체사업부', icon: '🔬' },
+      { id: 'pcb',           label: 'PCB사업부',    icon: '🔌' },
+      { id: 'network',       label: '네트워크사업부', icon: '🌐' },
+      { id: 'system',        label: '시스템사업부',   icon: '💻' },
+    ];
+
+    const grouped = {};
+    const unmapped = [];
+    images.forEach(img => {
+      const k = img.division_id;
+      if (k && DIVISIONS.find(x => x.id === k)) {
+        (grouped[k] = grouped[k] || []).push(img);
+      } else {
+        unmapped.push(img);
       }
-      listEl.innerHTML = data.images.map(img => `
-        <div class="image-item">
-          <img src="${img.url}" alt="" onerror="this.style.opacity=0.3"/>
-          <div class="info">
-            <strong>${img.caption || img.original_name || ''}</strong>
-            <div class="badges">
-              <span class="badge">${img.project_key}</span>
-              <span class="badge section">${img.section_title || ''}</span>
-            </div>
-            <div style="font-size:11px; color:#888; margin-top:4px;">
-              ${new Date(img.uploaded_at).toLocaleString('ko-KR')}
-            </div>
+    });
+
+    function renderCard(img) {
+      const proj = img.project_key || '-';
+      const sect = img.section_title || '-';
+      const cap = img.caption || '';
+      const uploaded = (img.uploaded_at || '').replace('T', ' ').slice(0, 16);
+      return `
+        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff;">
+          <img src="${img.url}" style="width:100%; height:120px; object-fit:cover; border-radius:4px; background:#f3f4f6;" onerror="this.style.opacity='0.3'" />
+          <div style="margin-top:6px; font-size:11px; color:#6b7280;">
+            <span style="background:#dbeafe; color:#1e40af; padding:1px 6px; border-radius:4px; margin-right:4px;">${proj}</span>
+            <span style="background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:4px;">${sect}</span>
           </div>
-          <button class="delete" onclick="deleteImage('${img.id}')">삭제</button>
+          ${cap ? `<div style="font-size:12px; margin-top:4px;">${cap}</div>` : ''}
+          <div style="font-size:10px; color:#9ca3af; margin-top:4px;">${uploaded}</div>
+          <button onclick="deleteImage('${img.id}')" style="margin-top:6px; width:100%; background:#fee2e2; color:#b91c1c; border:none; padding:4px; border-radius:4px; cursor:pointer; font-size:11px;">삭제</button>
         </div>
-      `).join('');
-    } catch (e) {
-      console.error('이미지 목록 로드 실패:', e);
-      document.getElementById('imageList').innerHTML = '<p style="color:#c00;">로드 실패</p>';
+      `;
     }
+
+    let html = '';
+    DIVISIONS.forEach(div => {
+      const list = grouped[div.id] || [];
+      html += `<div style="margin-bottom:20px; border:1px solid #e5e7eb; border-radius:8px; padding:14px; background:#fafafa;">`;
+      html += `<h3 style="margin:0 0 12px 0; font-size:15px; color:#1E3A5F;">${div.icon} ${div.label} <span style="color:#9ca3af; font-size:12px; font-weight:normal;">(${list.length})</span></h3>`;
+      if (list.length === 0) {
+        html += `<div style="color:#9ca3af; font-size:13px; padding:8px 4px;">등록된 이미지가 없습니다</div>`;
+      } else {
+        html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">`;
+        list.forEach(img => { html += renderCard(img); });
+        html += `</div>`;
+      }
+      html += `</div>`;
+    });
+
+    if (unmapped.length > 0) {
+      html += `<div style="margin-bottom:20px; border:1px dashed #f59e0b; border-radius:8px; padding:14px; background:#fffbeb;">`;
+      html += `<h3 style="margin:0 0 12px 0; font-size:15px; color:#92400e;">⚠️ 미분류 <span style="color:#9ca3af; font-size:12px; font-weight:normal;">(${unmapped.length})</span></h3>`;
+      html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">`;
+      unmapped.forEach(img => { html += renderCard(img); });
+      html += `</div></div>`;
+    }
+
+    document.getElementById('imageList').innerHTML = html || '<div style="color:#9ca3af; padding:20px;">등록된 이미지가 없습니다.</div>';
   }
+
 
   async function deleteImage(id) {
     if (!confirm('정말 삭제하시겠어요?')) return;
@@ -1674,6 +1835,80 @@ _ADMIN_UPLOAD_HTML = """
       loadImages();
     } catch (e) {
       alert('삭제 실패: ' + e.message);
+    }
+  }
+
+  // ============================================================
+  // 업로드 내역 (PPT doc_id 단위 삭제)
+  // ============================================================
+  async function loadUploadHistory() {
+    const area = document.getElementById('uploadHistoryArea');
+    if (!area) return;
+    try {
+      const r = await fetch('/admin/uploads/history', { credentials: 'same-origin' });
+      if (!r.ok) {
+        area.innerHTML = '<div style="color:#c00;padding:16px;">권한이 없습니다. 다시 로그인하세요.</div>';
+        return;
+      }
+      const j = await r.json();
+      const items = j.items || [];
+      if (items.length === 0) {
+        area.innerHTML = '<div style="color:#999;padding:16px;">업로드된 PPT가 없습니다.</div>';
+        return;
+      }
+      let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:600px;">';
+      html += '<thead><tr style="background:#f3f4f6;text-align:left;">';
+      html += '<th style="padding:10px 8px;">업로드 일시</th>';
+      html += '<th style="padding:10px 8px;">파일명 / doc_id</th>';
+      html += '<th style="padding:10px 8px;text-align:center;">카드</th>';
+      html += '<th style="padding:10px 8px;text-align:center;">슬라이드</th>';
+      html += '<th style="padding:10px 8px;text-align:center;">삭제</th>';
+      html += '</tr></thead><tbody>';
+      items.forEach(it => {
+        let tsLabel = '-';
+        if (it.upload_timestamp) {
+          try {
+            tsLabel = new Date(it.upload_timestamp).toLocaleString('ko-KR', {
+              year: '2-digit', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit'
+            });
+          } catch (_) { tsLabel = it.upload_timestamp; }
+        }
+        const safeFname = (it.file_name || '(이름 없음)').replace(/</g, '&lt;');
+        html += '<tr style="border-bottom:1px solid #e5e7eb;">';
+        html += `<td style="padding:10px 8px;white-space:nowrap;">${tsLabel}</td>`;
+        html += `<td style="padding:10px 8px;">${safeFname}<br><small style="color:#999;">${it.doc_id}</small></td>`;
+        html += `<td style="padding:10px 8px;text-align:center;">${it.product_count}</td>`;
+        html += `<td style="padding:10px 8px;text-align:center;">${it.slide_count}</td>`;
+        html += `<td style="padding:10px 8px;text-align:center;"><button onclick="deleteDoc('${it.doc_id}', ${it.product_count})" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">삭제</button></td>`;
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      area.innerHTML = html;
+    } catch (e) {
+      area.innerHTML = `<div style="color:#c00;padding:16px;">불러오기 실패: ${e.message}</div>`;
+    }
+  }
+
+  async function deleteDoc(docId, productCount) {
+    if (!confirm(`정말 삭제하시겠습니까?\n\n관련 카드 ${productCount}개가 모두 제거되고\nPPT 파일과 슬라이드 이미지도 삭제됩니다.`)) return;
+    try {
+      const r = await fetch(`/admin/doc/${docId}`, {
+        method: 'DELETE',
+        credentials: 'same-origin'
+      });
+      if (!r.ok) {
+        let detail = r.status;
+        try { const err = await r.json(); detail = err.detail || detail; } catch (_) {}
+        alert('삭제 실패: ' + detail);
+        return;
+      }
+      const result = await r.json();
+      alert(`✅ 삭제 완료\n남은 PPT: ${result.remaining}개`);
+      loadUploadHistory();
+      if (typeof loadImages === 'function') loadImages();
+    } catch (e) {
+      alert('삭제 오류: ' + e.message);
     }
   }
 
@@ -1788,6 +2023,7 @@ _ADMIN_UPLOAD_HTML = """
   // 초기 로드
   loadProjects();
   loadImages();
+  loadUploadHistory();
 
   // ============================================================
   // 5-2b-2: PPT 업로드 폼 (다중 파일 + 사전 매핑 + 진행 표시)
