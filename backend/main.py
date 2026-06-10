@@ -404,6 +404,7 @@ app.mount("/custom_images", StaticFiles(directory=str(CUSTOM_IMAGES_DIR)), name=
 # 관리자 세션 (8시간)
 # ============================================================
 ADMIN_SESSION_COOKIE = "admin_auth"
+ADMIN_SESSION_MAX_LIFETIME_SEC = int(os.getenv("ADMIN_SESSION_MAX_LIFETIME_SEC", str(24 * 3600)))  # 발급 후 최대 24시간
 ADMIN_SESSION_TTL_SEC = 8 * 60 * 60
 ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", "")
 ADMIN_COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "false").lower() == "true"
@@ -417,34 +418,50 @@ def _b64u_decode(s: str) -> bytes:
     pad = "=" * (-len(s) % 4)
     return base64.urlsafe_b64decode(s + pad)
 
-def _sign_session(exp_ts: int) -> str:
-    msg = str(exp_ts).encode()
+def _sign_session(exp_ts: int, issued_at: int) -> str:
+    msg = f"{issued_at}.{exp_ts}".encode()
     sig = hmac.new(ADMIN_SESSION_SECRET.encode(), msg, hashlib.sha256).digest()
-    return f"{exp_ts}.{_b64u(sig)}"
+    return f"{issued_at}.{exp_ts}.{_b64u(sig)}"
 
 def _verify_session(token: Optional[str]) -> Optional[int]:
-    if not token or "." not in token:
+    if not token:
         return None
     try:
-        exp_str, sig_b64 = token.split(".", 1)
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        issued_str, exp_str, sig_b64 = parts
+        issued_at = int(issued_str)
         exp_ts = int(exp_str)
-        expected = hmac.new(ADMIN_SESSION_SECRET.encode(), exp_str.encode(), hashlib.sha256).digest()
+        msg = f"{issued_at}.{exp_ts}".encode()
+        expected = hmac.new(ADMIN_SESSION_SECRET.encode(), msg, hashlib.sha256).digest()
         provided = _b64u_decode(sig_b64)
         if not hmac.compare_digest(expected, provided):
             return None
-        if exp_ts < int(time.time()):
+        now = int(time.time())
+        if exp_ts < now:
+            return None
+        # 발급 후 최대 수명 초과 검사
+        if now - issued_at > ADMIN_SESSION_MAX_LIFETIME_SEC:
             return None
         return exp_ts
     except Exception:
         return None
 
-def _issue_session_cookie(response: Response):
-    exp_ts = int(time.time()) + ADMIN_SESSION_TTL_SEC
-    token = _sign_session(exp_ts)
+def _issue_session_cookie(response: Response, issued_at: Optional[int] = None):
+    now = int(time.time())
+    if issued_at is None:
+        issued_at = now  # 새 발급
+    exp_ts = now + ADMIN_SESSION_TTL_SEC
+    # 발급 후 최대 수명 초과 방지: exp_ts를 issued_at + max_lifetime 으로 제한
+    hard_limit = issued_at + ADMIN_SESSION_MAX_LIFETIME_SEC
+    if exp_ts > hard_limit:
+        exp_ts = hard_limit
+    token = _sign_session(exp_ts, issued_at)
     response.set_cookie(
         key=ADMIN_SESSION_COOKIE,
         value=token,
-        max_age=ADMIN_SESSION_TTL_SEC,
+        max_age=max(0, exp_ts - now),
         httponly=True,
         samesite="lax",
         secure=ADMIN_COOKIE_SECURE,
@@ -524,9 +541,25 @@ def admin_logout(response: Response):
     return {"ok": True}
 
 @app.post("/admin/extend")
-def admin_extend(response: Response, _exp: int = Depends(get_admin_session)):
-    exp = _issue_session_cookie(response)
-    return {"ok": True, "expires_at": exp}
+def admin_extend(
+    response: Response,
+    admin_auth: Optional[str] = Cookie(default=None),
+    _exp: int = Depends(get_admin_session),
+):
+    # 기존 토큰의 issued_at 보존 → 최대 수명 24시간 강제
+    issued_at = None
+    if admin_auth:
+        try:
+            parts = admin_auth.split(".")
+            if len(parts) == 3:
+                issued_at = int(parts[0])
+        except Exception:
+            pass
+    now = int(time.time())
+    if issued_at is not None and now - issued_at >= ADMIN_SESSION_MAX_LIFETIME_SEC:
+        raise HTTPException(status_code=401, detail="세션 최대 수명을 초과했습니다. 다시 로그인해 주세요.")
+    exp = _issue_session_cookie(response, issued_at=issued_at)
+    return {"ok": True, "expires_at": exp, "max_lifetime_remaining": (issued_at + ADMIN_SESSION_MAX_LIFETIME_SEC - now) if issued_at else ADMIN_SESSION_MAX_LIFETIME_SEC}
 
 @app.get("/admin/session")
 def admin_session_info(_exp: int = Depends(get_admin_session)):
@@ -1739,7 +1772,17 @@ _ADMIN_UPLOAD_HTML = """
   refreshAdminSessionInfo().then(() => {
     tickAdminSessionRemain();
     setInterval(tickAdminSessionRemain, 1000);
+    // 5초마다 백엔드 핑(서버측 만료 즉시 감지)
+    setInterval(refreshAdminSessionInfo, 5000);
   });
+
+  // 탭/창 복귀 시 즉시 재검증
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      refreshAdminSessionInfo();
+    }
+  });
+  window.addEventListener('focus', refreshAdminSessionInfo);
 
 
   // 초기 로드
