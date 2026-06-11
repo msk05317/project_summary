@@ -2070,37 +2070,11 @@ _ADMIN_UPLOAD_HTML = """
       const result = await r.json();
       alert(`✅ 삭제 완료\n남은 PPT: ${result.remaining}개`);
       loadUploadHistory();
-      if (typeof loadImages === 'function') loadImages();
     } catch (e) {
       alert('삭제 오류: ' + e.message);
     }
   }
 
-  // 업로드 폼
-  document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('uploadMsg');
-    msg.textContent = '업로드 중...';
-    msg.className = '';
-
-    const fd = new FormData();
-    fd.append('project_key', document.getElementById('projectKey').value);
-    fd.append('section_title', document.getElementById('sectionTitle').value);
-    fd.append('file', document.getElementById('fileInput').files[0]);
-    fd.append('caption', document.getElementById('caption').value);
-
-    try {
-      const res = await fetch('/custom_image/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || '업로드 실패');
-      msg.textContent = '✅ 업로드 완료!';
-      msg.className = 'success';
-      document.getElementById('uploadForm').reset();
-    } catch (e) {
-      msg.textContent = '❌ ' + e.message;
-      msg.className = 'error';
-    }
-  });
 
 
   // ============================================================
@@ -2583,36 +2557,6 @@ _ADMIN_UPLOAD_HTML = """
 
 
 
-  document.addEventListener('click', async (e) => {
-    if (e.target && e.target.id === 'imageDeleteBtn') {
-      const ids = Array.from(document.querySelectorAll('.image-row-check:checked'))
-        .map(cb => cb.dataset.imageId).filter(Boolean);
-
-      if (ids.length === 0) {
-        alert('삭제할 이미지를 선택하세요.');
-        return;
-      }
-      if (!confirm(ids.length + '개의 이미지를 삭제할까요?')) return;
-
-      e.target.disabled = true;
-      try {
-        const r = await fetch('/admin/custom_images/delete-batch', {
-          method: 'POST',
-          credentials: 'include',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ image_ids: ids })
-        });
-        if (r.status === 401) { location.href = '/admin/login'; return; }
-        const d = await r.json();
-        alert((d.removed_count || 0) + '개 삭제 완료');
-        try { loadImages(); } catch (_) {}
-      } catch (err) {
-        alert('삭제 실패: ' + err);
-      } finally {
-        e.target.disabled = false;
-      }
-    }
-  });
 
   // PPT 탭 진입 시 dropdown 초기 채우기
   loadDivisionsForPpt();
