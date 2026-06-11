@@ -367,16 +367,11 @@ UPLOAD_HASHES_PATH = DATA_DIR / "upload_hashes.json"
 SLIDES_DIR = DATA_DIR / "slides"
 SLIDE_IMAGES_DIR = DATA_DIR / "slide_images"   # 기존 호환용
 CROPPED_DIR = DATA_DIR / "cropped"
-CUSTOM_IMAGES_DIR = DATA_DIR / "custom_images"
 LATEST_FILE = DATA_DIR / "reports_latest.json"
 HISTORY_FILE = DATA_DIR / "reports_history.json"
-IMAGE_MAPPINGS_FILE = DATA_DIR / "image_mappings.json"
 
-for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR, CUSTOM_IMAGES_DIR]:
+for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR]:
     d.mkdir(exist_ok=True)
-
-if not IMAGE_MAPPINGS_FILE.exists():
-    IMAGE_MAPPINGS_FILE.write_text('{"images": []}', encoding="utf-8")
 
 RETENTION_DAYS = 180
 
@@ -398,7 +393,6 @@ app.add_middleware(
 app.mount("/slides", StaticFiles(directory=str(SLIDES_DIR)), name="slides")
 app.mount("/slide_images", StaticFiles(directory=str(SLIDE_IMAGES_DIR)), name="slide_images")
 app.mount("/cropped", StaticFiles(directory=str(CROPPED_DIR)), name="cropped")
-app.mount("/custom_images", StaticFiles(directory=str(CUSTOM_IMAGES_DIR)), name="custom_images")
 
 # ============================================================
 # 관리자 세션 (8시간)
@@ -736,14 +730,6 @@ def _update_latest(summary):
 
     _write_json(LATEST_FILE, latest)
 
-def _load_image_mappings():
-    return _read_json(IMAGE_MAPPINGS_FILE, {"images": []})
-
-
-def _save_image_mappings(data):
-    _write_json(IMAGE_MAPPINGS_FILE, data)
-
-
 # =========================================================
 # 1. 헬스체크
 # =========================================================
@@ -1077,10 +1063,24 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
 
 @app.post("/admin/notes/ai_parse")
 def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)):
-    """자유 형식 텍스트를 AI로 구조화 JSON으로 변환 (미리보기용)."""
+    """자유 형식 텍스트를 AI로 구조화 JSON으로 변환 (증분 병합 지원)."""
     text = (payload or {}).get("text", "").strip()
+    division_id = (payload or {}).get("division_id", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text가 비어있습니다")
+
+    existing_cards = []
+    if division_id:
+        data = _load_notes()
+        existing = data.get("notes", {}).get(division_id, {})
+        existing_cards = existing.get("cards", []) or []
+
+    existing_json = json.dumps({"cards": existing_cards}, ensure_ascii=False)
+    user_message = (
+        f"[기존 노트 JSON]\n{existing_json}\n\n"
+        f"[이번 주 변경/추가 텍스트]\n{text}\n\n"
+        "위 기존 노트에 이번 주 변경을 병합한 최종 JSON을 출력해 주세요."
+    )
 
     try:
         from openai import OpenAI
@@ -1090,7 +1090,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": _NOTE_AI_SYSTEM_PROMPT},
-                {"role": "user", "content": text},
+                {"role": "user", "content": user_message},
             ],
             response_format={"type": "json_object"},
             temperature=0.1,
@@ -1319,125 +1319,6 @@ def get_project_detail(project_key: str):
 # =========================================================
 # 5. 사용자 직접 차트/사진 업로드
 # =========================================================
-@app.post("/custom_image/upload")
-async def upload_custom_image(
-    file: UploadFile = File(...),
-    project_key: str = Form(...),
-    section_title: str = Form(...),
-    caption: str = Form(""),
-    _admin: int = Depends(get_admin_session),
-):
-    """차트/사진 직접 업로드 후 부서+섹션에 매핑"""
-    ext = Path(file.filename).suffix.lower()
-    if ext not in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
-        raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    safe_name = f"{ts}{ext}"
-    save_path = CUSTOM_IMAGES_DIR / safe_name
-    with open(save_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    mappings = _load_image_mappings()
-    new_entry = {
-        "id": ts,
-        "filename": safe_name,
-        "url": f"/custom_images/{safe_name}",
-        "project_key": project_key,
-        "section_title": section_title,
-        "caption": caption,
-        "uploaded_at": datetime.now().isoformat(),
-        "original_name": file.filename,
-    }
-    mappings.setdefault("images", []).append(new_entry)
-    _save_image_mappings(mappings)
-
-    return {"ok": True, "image": new_entry}
-
-
-@app.get("/custom_image/list")
-def list_custom_images(
-    project_key: str = None,
-    _admin: int = Depends(get_admin_session),
-):
-    """등록된 이미지 목록 (사업부 정보 포함)"""
-    mappings = _load_image_mappings()
-    images = mappings.get("images", [])
-    if project_key:
-        images = [img for img in images if img.get("project_key") == project_key]
-
-    # 각 이미지에 division_id / division_label 주입
-    enriched = []
-    for img in images:
-        item = dict(img)
-        pkey = item.get("project_key")
-        div_id = None
-        div_label = None
-        try:
-            if pkey:
-                div_id = _cl.derive_division_from_project(pkey)
-                if div_id:
-                    div = _cl.get_division(div_id)
-                    if div:
-                        div_label = div.get("label") if isinstance(div, dict) else getattr(div, "label", None)
-        except Exception:
-            div_id = None
-            div_label = None
-        item["division_id"] = div_id
-        item["division_label"] = div_label
-        enriched.append(item)
-
-    return {"images": enriched}
-
-
-@app.patch("/custom_image/{image_id}")
-def patch_custom_image(
-    image_id: str,
-    payload: dict,
-    _admin: int = Depends(get_admin_session),
-):
-    """등록된 이미지의 매핑(사업부/프로젝트/섹션/캡션) 수정"""
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="payload must be an object")
-
-    mappings = _load_image_mappings()
-    images = mappings.get("images", [])
-    target = next((img for img in images if img.get("id") == image_id), None)
-    if not target:
-        raise HTTPException(status_code=404, detail="해당 이미지를 찾을 수 없습니다.")
-
-    editable = ["project_key", "section_title", "caption"]
-    changed = []
-    for k in editable:
-        if k in payload:
-            target[k] = payload[k]
-            changed.append(k)
-
-    _save_image_mappings(mappings)
-    return {"ok": True, "image_id": image_id, "changed": changed}
-
-
-@app.delete("/custom_image/{image_id}")
-def delete_custom_image(
-    image_id: str,
-    _admin: int = Depends(get_admin_session),
-):
-    """이미지 삭제"""
-    mappings = _load_image_mappings()
-    images = mappings.get("images", [])
-    target = next((img for img in images if img.get("id") == image_id), None)
-    if not target:
-        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
-
-    try:
-        (CUSTOM_IMAGES_DIR / target["filename"]).unlink()
-    except Exception:
-        pass
-
-    mappings["images"] = [img for img in images if img.get("id") != image_id]
-    _save_image_mappings(mappings)
-    return {"ok": True}
-
 # ============================================================
 # Admin Config API (5단계: admin 페이지 동적 dropdown용)
 # - 운영 도구 페이지에서 사업부/프로젝트/섹션을 동적으로 로드하기 위한 API
@@ -1917,7 +1798,7 @@ _ADMIN_UPLOAD_HTML = """
 <body>
 <header style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
   <div>
-    <h1 style="margin:0;">📊 사업부 보고 관리자</h1>
+    <h1 style="margin:0;">📝 주간 보고 업로드자</h1>
     <div class="meta" id="header-meta">로딩 중...</div>
   </div>
   <div id="adminSessionBar" style="display:flex;align-items:center;gap:8px;background:#1E3A5F;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;white-space:nowrap;">
@@ -1930,8 +1811,7 @@ _ADMIN_UPLOAD_HTML = """
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="ppt">📤 PPT 업로드</button>
-  <button class="tab-btn" data-tab="image">🖼 이미지 업로드</button>
-  <button class="tab-btn" data-tab="notes">📊 사업부 보고 관리</button>
+  <button class="tab-btn" data-tab="notes">📝 주간 보고 업로드</button>
   <button class="tab-btn" data-tab="mapping">⚙️ 매핑 관리</button>
 </nav>
 
@@ -2021,47 +1901,11 @@ _ADMIN_UPLOAD_HTML = """
   </section>
 
   <!-- ============================== 탭 2: 이미지 업로드 (기존 폼 그대로) ============================== -->
-  <section class="tab-content" id="tab-image">
-    <div class="card">
-      <h2>📤 새 이미지 업로드</h2>
-      <form id="uploadForm">
-        <label for="projectKey">사업부 (Project Key)</label>
-        <select id="projectKey" required>
-          <option value="">선택하세요...</option>
-        </select>
-
-        <label for="sectionTitle">섹션</label>
-        <select id="sectionTitle" required>
-          <option value="">선택하세요...</option>
-          <option value="양산">양산</option>
-          <option value="개발">개발</option>
-          <option value="EMA">EMA</option>
-          <option value="주차별 출하실적 및 계획">주차별 출하실적 및 계획</option>
-          <option value="다음 액션">다음 액션</option>
-        </select>
-
-        <label for="fileInput">이미지 파일 (PNG, JPG)</label>
-        <input type="file" id="fileInput" accept="image/*" required />
-
-        <label for="caption">캡션 (선택)</label>
-        <input type="text" id="caption" placeholder="예: 주차별 실적 차트" />
-
-        <button type="submit">업로드</button>
-        <div id="uploadMsg"></div>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>📋 등록된 이미지</h2>
-      <div id="imageList">로딩 중...</div>
-    </div>
-
-  </section>
 
   <!-- ============================== 탭 3: 매핑 관리 ============================== -->
   <section class="tab-content" id="tab-notes">
     <div class="card">
-      <h2>📊 사업부 보고 관리</h2>
+      <h2>📝 주간 보고 업로드</h2>
       <p style="color:#6b7280;font-size:13px;margin-top:-4px;">담당자가 받은 주간 보고 텍스트를 그대로 붙여넣고, AI 정리 후 저장하면 사장님 앱에 표시됩니다.</p>
 
       <div style="display:flex;gap:12px;align-items:flex-end;margin:16px 0;flex-wrap:wrap;">
@@ -2153,97 +1997,9 @@ _ADMIN_UPLOAD_HTML = """
   }
 
   // 등록된 이미지 목록 로드
-  async function loadImages() {
-    const r = await fetch('/custom_image/list', { credentials: 'include' });
-    if (r.status === 401) { location.href = '/admin/login'; return; }
-    const d = await r.json();
-    const images = d.images || [];
+  
 
-    const DIVISIONS = [
-      { id: 'semiconductor', label: '반도체사업부', icon: '🔬' },
-      { id: 'pcb',           label: 'PCB사업부',    icon: '🔌' },
-      { id: 'network',       label: '네트워크사업부', icon: '🌐' },
-      { id: 'system',        label: '시스템사업부',   icon: '💻' },
-    ];
-
-    const grouped = {};
-    const unmapped = [];
-    images.forEach(img => {
-      const k = img.division_id;
-      if (k && DIVISIONS.find(x => x.id === k)) {
-        (grouped[k] = grouped[k] || []).push(img);
-      } else {
-        unmapped.push(img);
-      }
-    });
-
-    function renderCard(img) {
-      const proj = img.project_key || '-';
-      const sect = img.section_title || '-';
-      const cap = img.caption || '';
-      const uploaded = (img.uploaded_at || '').replace('T', ' ').slice(0, 16);
-      return `
-        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff;">
-          <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
-            <input type="checkbox" class="image-row-check" data-image-id="${img.id}" />
-          </div>
-          <img src="${img.url}" style="width:100%; height:120px; object-fit:cover; border-radius:4px; background:#f3f4f6;" onerror="this.style.opacity='0.3'" />
-          <div style="margin-top:6px; font-size:11px; color:#6b7280;">
-            <span style="background:#dbeafe; color:#1e40af; padding:1px 6px; border-radius:4px; margin-right:4px;">${proj}</span>
-            <span style="background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:4px;">${sect}</span>
-          </div>
-          ${cap ? `<div style="font-size:12px; margin-top:4px;">${cap}</div>` : ''}
-          <div style="font-size:10px; color:#9ca3af; margin-top:4px;">${uploaded}</div>
-          <button onclick="deleteImage('${img.id}')" style="margin-top:6px; width:100%; background:#fee2e2; color:#b91c1c; border:none; padding:4px; border-radius:4px; cursor:pointer; font-size:11px;">삭제</button>
-        </div>
-      `;
-    }
-
-    let html = `
-      <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px;">
-        <label style="font-size:12px;color:#374151;">
-          <input type="checkbox" id="imageSelectAll" /> 전체 선택
-        </label>
-        <button type="button" id="imageDeleteBtn" style="background:#fee2e2;color:#b91c1c;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">선택 삭제</button>
-      </div>
-    `;
-    DIVISIONS.forEach(div => {
-      const list = grouped[div.id] || [];
-      html += `<div style="margin-bottom:20px; border:1px solid #e5e7eb; border-radius:8px; padding:14px; background:#fafafa;">`;
-      html += `<h3 style="margin:0 0 12px 0; font-size:15px; color:#1E3A5F;">${div.icon} ${div.label} <span style="color:#9ca3af; font-size:12px; font-weight:normal;">(${list.length})</span></h3>`;
-      if (list.length === 0) {
-        html += `<div style="color:#9ca3af; font-size:13px; padding:8px 4px;">등록된 이미지가 없습니다</div>`;
-      } else {
-        html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">`;
-        list.forEach(img => { html += renderCard(img); });
-        html += `</div>`;
-      }
-      html += `</div>`;
-    });
-
-    if (unmapped.length > 0) {
-      html += `<div style="margin-bottom:20px; border:1px dashed #f59e0b; border-radius:8px; padding:14px; background:#fffbeb;">`;
-      html += `<h3 style="margin:0 0 12px 0; font-size:15px; color:#92400e;">⚠️ 미분류 <span style="color:#9ca3af; font-size:12px; font-weight:normal;">(${unmapped.length})</span></h3>`;
-      html += `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">`;
-      unmapped.forEach(img => { html += renderCard(img); });
-      html += `</div></div>`;
-    }
-
-    document.getElementById('imageList').innerHTML = html || '<div style="color:#9ca3af; padding:20px;">등록된 이미지가 없습니다.</div>';
-  }
-
-
-  async function deleteImage(id) {
-    if (!confirm('정말 삭제하시겠어요?')) return;
-    try {
-      const res = await fetch('/custom_image/' + id, { method: 'DELETE' });
-      if (!res.ok) throw new Error('삭제 실패');
-      loadImages();
-    } catch (e) {
-      alert('삭제 실패: ' + e.message);
-    }
-  }
-
+  
   // ============================================================
   // 업로드 내역 (PPT doc_id 단위 삭제)
   // ============================================================
@@ -2340,7 +2096,6 @@ _ADMIN_UPLOAD_HTML = """
       msg.textContent = '✅ 업로드 완료!';
       msg.className = 'success';
       document.getElementById('uploadForm').reset();
-      loadImages();
     } catch (e) {
       msg.textContent = '❌ ' + e.message;
       msg.className = 'error';
@@ -2430,7 +2185,6 @@ _ADMIN_UPLOAD_HTML = """
 
   // 초기 로드
   loadProjects();
-  loadImages();
   loadUploadHistory();
 
   // ============================================================
@@ -2827,13 +2581,7 @@ _ADMIN_UPLOAD_HTML = """
     }
   });
 
-  // 등록된 이미지 다중 선택 핸들러
-  document.addEventListener('change', (e) => {
-    if (e.target && e.target.id === 'imageSelectAll') {
-      const checked = e.target.checked;
-      document.querySelectorAll('.image-row-check').forEach(cb => { cb.checked = checked; });
-    }
-  });
+
 
   document.addEventListener('click', async (e) => {
     if (e.target && e.target.id === 'imageDeleteBtn') {
@@ -2958,12 +2706,13 @@ _ADMIN_UPLOAD_HTML = """
     status.style.color = '#6b7280';
     saveBtn.disabled = true;
     saveBtn.style.opacity = '0.5';
+    const _divId = document.getElementById('noteDivision').value;
     try {
       const r = await fetch('/admin/notes/ai_parse', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, division_id: _divId }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
