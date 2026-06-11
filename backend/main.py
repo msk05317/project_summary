@@ -1707,6 +1707,25 @@ _ADMIN_UPLOAD_HTML = """
       </form>
     </div>
 
+    <div class="card" id="uploadHistoryCard">
+      <h2 style="display:flex; align-items:center; justify-content:space-between;">
+        <span>🗂️ 업로드 내역</span>
+        <span style="font-size:12px; font-weight:normal;">
+          <label style="margin-right:8px;"><input type="checkbox" id="historySelectAll" /> 전체 선택</label>
+          <button type="button" id="historyDeleteBtn" style="background:#fee2e2; color:#b91c1c; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">선택 삭제</button>
+        </span>
+      </h2>
+      <p style="color:#6b7280;font-size:13px;margin-top:-4px;">PPT 파일 단위로 삭제하면 관련 카드가 모두 제거됩니다.</p>
+      <div id="uploadHistoryArea" style="overflow-x:auto;">
+        <div style="color:#999;padding:16px;">불러오는 중...</div>
+      </div>
+    </div>
+    <div class="card" id="pptProgressCard" style="display: none;">
+      <h2>📊 업로드 진행</h2>
+      <div id="pptProgressSummary" style="font-size: 14px; color: #374151; margin-bottom: 12px;"></div>
+      <div id="pptProgressList"></div>
+    </div>
+
   </section>
 
   <!-- ============================== 탭 2: 이미지 업로드 (기존 폼 그대로) ============================== -->
@@ -1745,24 +1764,6 @@ _ADMIN_UPLOAD_HTML = """
       <div id="imageList">로딩 중...</div>
     </div>
 
-    <div class="card" id="uploadHistoryCard">
-      <h2 style="display:flex; align-items:center; justify-content:space-between;">
-        <span>🗂️ 업로드 내역</span>
-        <span style="font-size:12px; font-weight:normal;">
-          <label style="margin-right:8px;"><input type="checkbox" id="historySelectAll" /> 전체 선택</label>
-          <button type="button" id="historyDeleteBtn" style="background:#fee2e2; color:#b91c1c; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px;">선택 삭제</button>
-        </span>
-      </h2>
-      <p style="color:#6b7280;font-size:13px;margin-top:-4px;">PPT 파일 단위로 삭제하면 관련 카드가 모두 제거됩니다.</p>
-      <div id="uploadHistoryArea" style="overflow-x:auto;">
-        <div style="color:#999;padding:16px;">불러오는 중...</div>
-      </div>
-    </div>
-    <div class="card" id="pptProgressCard" style="display: none;">
-      <h2>📊 업로드 진행</h2>
-      <div id="pptProgressSummary" style="font-size: 14px; color: #374151; margin-bottom: 12px;"></div>
-      <div id="pptProgressList"></div>
-    </div>
   </section>
 
   <!-- ============================== 탭 3: 매핑 관리 ============================== -->
