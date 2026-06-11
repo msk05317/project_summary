@@ -1099,6 +1099,33 @@ def list_custom_images(
     return {"images": enriched}
 
 
+@app.patch("/custom_image/{image_id}")
+def patch_custom_image(
+    image_id: str,
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """등록된 이미지의 매핑(사업부/프로젝트/섹션/캡션) 수정"""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="payload must be an object")
+
+    mappings = _load_image_mappings()
+    images = mappings.get("images", [])
+    target = next((img for img in images if img.get("id") == image_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="해당 이미지를 찾을 수 없습니다.")
+
+    editable = ["project_key", "section_title", "caption"]
+    changed = []
+    for k in editable:
+        if k in payload:
+            target[k] = payload[k]
+            changed.append(k)
+
+    _save_image_mappings(mappings)
+    return {"ok": True, "image_id": image_id, "changed": changed}
+
+
 @app.delete("/custom_image/{image_id}")
 def delete_custom_image(
     image_id: str,
