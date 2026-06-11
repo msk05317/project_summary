@@ -1798,7 +1798,7 @@ _ADMIN_UPLOAD_HTML = """
 <body>
 <header style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
   <div>
-    <h1 style="margin:0;">📝 주간 보고 업로드자</h1>
+    <h1 style="margin:0;">📊 사업부 보고 관리자</h1>
     <div class="meta" id="header-meta">로딩 중...</div>
   </div>
   <div id="adminSessionBar" style="display:flex;align-items:center;gap:8px;background:#1E3A5F;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;white-space:nowrap;">
