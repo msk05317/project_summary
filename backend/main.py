@@ -369,8 +369,12 @@ SLIDE_IMAGES_DIR = DATA_DIR / "slide_images"   # 기존 호환용
 CROPPED_DIR = DATA_DIR / "cropped"
 LATEST_FILE = DATA_DIR / "reports_latest.json"
 HISTORY_FILE = DATA_DIR / "reports_history.json"
+# 주간 보고 첨부 자료 (표 JSON / 사진)
+NOTE_ASSETS_DIR = DATA_DIR / "note_assets"
+NOTE_TABLES_DIR = NOTE_ASSETS_DIR / "tables"
+NOTE_PHOTOS_DIR = NOTE_ASSETS_DIR / "photos"
 
-for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR]:
+for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR, NOTE_ASSETS_DIR, NOTE_TABLES_DIR, NOTE_PHOTOS_DIR]:
     d.mkdir(exist_ok=True)
 
 RETENTION_DAYS = 180
@@ -393,6 +397,7 @@ app.add_middleware(
 app.mount("/slides", StaticFiles(directory=str(SLIDES_DIR)), name="slides")
 app.mount("/slide_images", StaticFiles(directory=str(SLIDE_IMAGES_DIR)), name="slide_images")
 app.mount("/cropped", StaticFiles(directory=str(CROPPED_DIR)), name="cropped")
+app.mount("/note_photos", StaticFiles(directory=str(NOTE_PHOTOS_DIR)), name="note_photos")
 
 # ============================================================
 # 관리자 세션 (8시간)
@@ -514,6 +519,39 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   }
 });
 </script>
+
+<!-- 표 편집 모달 -->
+<div class="modal-overlay" id="tableModal">
+  <div class="modal-box">
+    <h3>📊 표 편집</h3>
+    <input type="text" id="tableModalTitle" class="modal-input" placeholder="표 제목 (선택)" />
+    <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">
+      💡 Excel에서 복사한 표를 아래에 붙여넣으면 자동 인식됩니다 (Tab/쉼표 구분).
+    </div>
+    <textarea id="tablePasteArea" class="modal-input" placeholder="여기에 붙여넣기 → 자동 파싱"></textarea>
+    <div id="tableEditorArea"></div>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">
+      <button onclick="addTableRow()" style="background:#e5e7eb;color:#374151;margin:0;padding:6px 12px;font-size:12px;">＋ 행 추가</button>
+      <button onclick="addTableCol()" style="background:#e5e7eb;color:#374151;margin:0;padding:6px 12px;font-size:12px;">＋ 열 추가</button>
+      <button onclick="removeTableRow()" style="background:#fee2e2;color:#991b1b;margin:0;padding:6px 12px;font-size:12px;">－ 마지막 행 삭제</button>
+      <button onclick="removeTableCol()" style="background:#fee2e2;color:#991b1b;margin:0;padding:6px 12px;font-size:12px;">－ 마지막 열 삭제</button>
+    </div>
+    <div class="modal-actions">
+      <button class="danger" id="tableModalDeleteBtn" onclick="deleteTableFromModal()">🗑️ 삭제</button>
+      <button class="cancel" onclick="closeTableModal()">취소</button>
+      <button onclick="saveTableFromModal()">💾 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 사진 확대 모달 -->
+<div class="photo-overlay" id="photoOverlay" onclick="this.classList.remove('show')">
+  <img id="photoOverlayImg" src="" alt="확대 사진" />
+</div>
+
+<!-- 숨김 사진 업로드 input -->
+<input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
+
 </body></html>"""
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -1026,6 +1064,67 @@ def _save_notes(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# ─── 노트 첨부 자료 (표 JSON / 사진) 헬퍼 ───
+import uuid as _uuid_mod
+from datetime import datetime as _dt_mod
+
+def _new_asset_id(division_id: str) -> str:
+    """사업부별 자산 ID 생성: YYYY-MM-DD_<uuid8>"""
+    date_str = _dt_mod.now().strftime("%Y-%m-%d")
+    uid = _uuid_mod.uuid4().hex[:8]
+    return f"{date_str}_{uid}"
+
+def _table_path(division_id: str, asset_id: str) -> Path:
+    div_dir = NOTE_TABLES_DIR / division_id
+    div_dir.mkdir(parents=True, exist_ok=True)
+    return div_dir / f"{asset_id}.json"
+
+def _photo_path(division_id: str, asset_id: str, ext: str = "jpg") -> Path:
+    div_dir = NOTE_PHOTOS_DIR / division_id
+    div_dir.mkdir(parents=True, exist_ok=True)
+    return div_dir / f"{asset_id}.{ext}"
+
+def _save_note_table(division_id: str, table_data: dict) -> str:
+    """표 JSON 저장 → asset_id 반환 (예: 'semiconductor/2026-06-11_a1b2c3d4')"""
+    asset_id = _new_asset_id(division_id)
+    p = _table_path(division_id, asset_id)
+    p.write_text(json.dumps(table_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return f"{division_id}/{asset_id}"
+
+def _load_note_table(table_ref: str):
+    """table_ref = 'semiconductor/2026-06-11_a1b2c3d4' → 표 JSON 반환"""
+    if not table_ref or "/" not in table_ref:
+        return None
+    division_id, asset_id = table_ref.split("/", 1)
+    p = _table_path(division_id, asset_id)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+def _delete_note_table(table_ref: str) -> bool:
+    if not table_ref or "/" not in table_ref:
+        return False
+    division_id, asset_id = table_ref.split("/", 1)
+    p = _table_path(division_id, asset_id)
+    if p.exists():
+        p.unlink()
+        return True
+    return False
+
+def _delete_note_photo(photo_ref: str) -> bool:
+    """photo_ref = 'semiconductor/2026-06-11_a1b2c3d4.jpg'"""
+    if not photo_ref or "/" not in photo_ref:
+        return False
+    p = NOTE_PHOTOS_DIR / photo_ref
+    if p.exists():
+        p.unlink()
+        return True
+    return False
+
+
 _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 보고서를 구조화하는 도우미입니다.
 
 입력으로 들어오는 자유 형식 텍스트를 다음 JSON 스키마로 변환하세요:
@@ -1148,19 +1247,117 @@ def admin_delete_note(division_id: str, _admin: int = Depends(get_admin_session)
     raise HTTPException(status_code=404, detail="해당 사업부 노트 없음")
 
 
+
+# ─── 노트 표/사진 첨부 API ───
+
+# ─── 노트 표/사진 첨부 API ───
+@app.post("/admin/notes/table")
+def admin_save_note_table(payload: dict, _admin: int = Depends(get_admin_session)):
+    """표 생성/수정. payload = {division_id, table_ref?, table: {title, headers, rows}}"""
+    division_id = (payload or {}).get("division_id", "").strip()
+    table = (payload or {}).get("table")
+    existing_ref = (payload or {}).get("table_ref", "").strip()
+
+    if not division_id:
+        raise HTTPException(status_code=400, detail="division_id 필수")
+    if not isinstance(table, dict):
+        raise HTTPException(status_code=400, detail="table 필수")
+
+    # 기존 표 수정인 경우 같은 파일에 덮어쓰기
+    if existing_ref and "/" in existing_ref:
+        div_id, asset_id = existing_ref.split("/", 1)
+        p = _table_path(div_id, asset_id)
+        p.write_text(json.dumps(table, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"table_ref": existing_ref, "updated": True}
+
+    # 신규 생성
+    table_ref = _save_note_table(division_id, table)
+    return {"table_ref": table_ref, "updated": False}
+
+
+@app.get("/notes/table/{division_id}/{asset_id}")
+def get_note_table(division_id: str, asset_id: str):
+    """표 JSON 조회 (모바일/관리자 공용)"""
+    table_ref = f"{division_id}/{asset_id}"
+    data = _load_note_table(table_ref)
+    if data is None:
+        raise HTTPException(status_code=404, detail="표를 찾을 수 없음")
+    return {"table_ref": table_ref, "table": data}
+
+
+@app.delete("/admin/notes/table/{division_id}/{asset_id}")
+def admin_delete_note_table(division_id: str, asset_id: str, _admin: int = Depends(get_admin_session)):
+    table_ref = f"{division_id}/{asset_id}"
+    ok = _delete_note_table(table_ref)
+    if not ok:
+        raise HTTPException(status_code=404, detail="표가 없음")
+    return {"deleted": True, "table_ref": table_ref}
+
+
+@app.post("/admin/notes/photo")
+async def admin_upload_note_photo(
+    division_id: str = Form(...),
+    file: UploadFile = File(...),
+    _admin: int = Depends(get_admin_session),
+):
+    """사진 업로드 → photo_ref(예: 'semiconductor/2026-06-11_abcd1234.jpg') 반환"""
+    division_id = division_id.strip()
+    if not division_id:
+        raise HTTPException(status_code=400, detail="division_id 필수")
+
+    # 확장자 결정
+    orig_name = (file.filename or "").lower()
+    ext = "jpg"
+    for cand in ["jpg", "jpeg", "png", "gif", "webp"]:
+        if orig_name.endswith("." + cand):
+            ext = cand if cand != "jpeg" else "jpg"
+            break
+
+    asset_id = _new_asset_id(division_id)
+    p = _photo_path(division_id, asset_id, ext)
+    content = await file.read()
+    p.write_bytes(content)
+    photo_ref = f"{division_id}/{asset_id}.{ext}"
+    return {"photo_ref": photo_ref, "url": f"/note_photos/{photo_ref}"}
+
+
+@app.delete("/admin/notes/photo/{division_id}/{filename}")
+def admin_delete_note_photo(division_id: str, filename: str, _admin: int = Depends(get_admin_session)):
+    photo_ref = f"{division_id}/{filename}"
+    ok = _delete_note_photo(photo_ref)
+    if not ok:
+        raise HTTPException(status_code=404, detail="사진이 없음")
+    return {"deleted": True, "photo_ref": photo_ref}
+
+
 @app.get("/divisions")
 def list_divisions():
-    """공개 사업부 목록 (앱이 시작 시 호출)."""
+    """공개 사업부 목록 + 각 사업부의 visible 프로젝트 리스트.
+    매핑 관리 대시보드 / 모바일 사업부 화면에서 사용."""
     divs = _cl.get_divisions(visible_only=True)
-    result = [
-        {
-            "id": d.get("id"),
+    result = []
+    for d in divs:
+        div_id = d.get("id")
+        # 해당 사업부의 visible 프로젝트만 (order 순)
+        try:
+            ps = _cl.get_projects(div_id, visible_only=True)
+        except Exception:
+            ps = []
+        ps_sorted = sorted(ps, key=lambda x: x.get("order", 999))
+        result.append({
+            "id": div_id,
             "label": d.get("label"),
             "order": d.get("order", 999),
             "badge_short_label": d.get("badge_short_label"),
-        }
-        for d in divs
-    ]
+            "projects": [
+                {
+                    "id": p.get("id"),
+                    "label": p.get("label"),
+                    "order": p.get("order", 999),
+                }
+                for p in ps_sorted
+            ],
+        })
     result.sort(key=lambda x: x.get("order", 999))
     return {"divisions": result}
 
@@ -1218,65 +1415,6 @@ def get_divisions_updates():
         })
 
     return {"divisions": result}
-
-
-def get_divisions_updates():
-    """각 사업부의 최신 업데이트 타임스탬프 반환.
-    앱은 이 값과 로컬 저장된 'last_seen_at'을 비교해 빨간 점을 표시한다.
-    카드의 project_key 가 없을 수 있으므로 텍스트 기반 분류기를 사용한다.
-    """
-    try:
-        with open(LATEST_FILE, "r", encoding="utf-8") as f:
-            reports = json.load(f)
-    except Exception:
-        reports = []
-
-    div_latest: dict[str, str] = {}
-
-    for item in reports:
-        ts = item.get("upload_timestamp") or ""
-        products = item.get("products") or []
-        for p in products:
-            # 1) 카드에 명시된 project_key 우선 (편집된 카드)
-            project_id = p.get("project_key") or p.get("project") or None
-
-            # 2) 없으면 텍스트 기반 분류
-            if not project_id:
-                parts = [
-                    p.get("name") or "",
-                    p.get("headline") or "",
-                    " ".join(p.get("summary_bullets") or []),
-                ]
-                text = " ".join(s for s in parts if s)
-                if text.strip():
-                    try:
-                        project_id = _cl.classify_project(text)
-                    except Exception:
-                        project_id = None
-
-            div_id = _cl.derive_division_from_project(project_id) if project_id else None
-            if not div_id:
-                div_id = "unclassified"
-
-            card_ts = p.get("updated_at") or ts
-            if not card_ts:
-                continue
-            cur = div_latest.get(div_id, "")
-            if card_ts > cur:
-                div_latest[div_id] = card_ts
-
-    all_divs = _cl.get_divisions(visible_only=True)
-    result = []
-    for d in all_divs:
-        did = d.get("id")
-        result.append({
-            "division_id": did,
-            "label": d.get("label"),
-            "latest_updated_at": div_latest.get(did, ""),
-        })
-
-    return {"divisions": result}
-
 
 @app.get("/projects")
 def list_projects():
@@ -1726,6 +1864,75 @@ _ADMIN_UPLOAD_HTML = """
   }
   #uploadMsg.success { background: #d4edda; color: #155724; }
   #uploadMsg.error { background: #f8d7da; color: #721c24; }
+
+  /* 노트 첨부 (표/사진) 버튼 */
+  .note-item-row { display: flex; align-items: flex-start; gap: 6px; }
+  .note-item-text { flex: 1; }
+  .note-attach-btn {
+    background: transparent; border: 1px solid #d1d5db; color: #6b7280;
+    padding: 2px 8px; font-size: 11px; border-radius: 4px; cursor: pointer;
+    margin: 0; line-height: 1.4; white-space: nowrap;
+  }
+  .note-attach-btn:hover { background: #f3f4f6; color: #1E3A5F; border-color: #1E3A5F; }
+  .note-attach-btn.has-attachment { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+  .note-mini-table {
+    margin: 6px 0 6px 28px; border-collapse: collapse; font-size: 12px;
+    background: white; border: 1px solid #e5e7eb; border-radius: 4px;
+  }
+  .note-mini-table th, .note-mini-table td {
+    border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left;
+  }
+  .note-mini-table th { background: #f9fafb; font-weight: 600; color: #374151; }
+  .note-mini-photo {
+    margin: 6px 0 6px 28px; max-width: 200px; max-height: 120px;
+    border-radius: 6px; border: 1px solid #e5e7eb; cursor: pointer; display: block;
+  }
+  .note-attach-controls { display: flex; gap: 4px; margin: 4px 0 0 28px; }
+  .note-attach-controls button {
+    font-size: 11px; padding: 2px 6px; margin: 0;
+    background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; border-radius: 4px;
+  }
+  .note-attach-controls button.danger { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+  /* 표 편집 모달 */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 1000; justify-content: center; align-items: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: white; border-radius: 12px; padding: 24px;
+    max-width: 90vw; max-height: 90vh; overflow: auto; min-width: 520px;
+  }
+  .modal-box h3 { margin: 0 0 12px; color: #1E3A5F; font-size: 18px; }
+  .modal-box .modal-input {
+    width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+    font-size: 13px; margin-bottom: 10px; box-sizing: border-box;
+  }
+  .modal-box textarea.modal-input { min-height: 80px; font-family: monospace; }
+  .modal-box .modal-table {
+    border-collapse: collapse; width: 100%; margin-bottom: 12px; font-size: 13px;
+  }
+  .modal-box .modal-table th, .modal-box .modal-table td {
+    border: 1px solid #d1d5db; padding: 4px;
+  }
+  .modal-box .modal-table input {
+    border: none; width: 100%; padding: 4px; font-size: 13px; box-sizing: border-box;
+  }
+  .modal-box .modal-table input:focus { outline: 2px solid #1E3A5F; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .modal-actions button { margin: 0; padding: 8px 16px; font-size: 13px; }
+  .modal-actions button.cancel { background: #6b7280; }
+  .modal-actions button.danger { background: #dc2626; }
+
+  /* 사진 확대 모달 */
+  .photo-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+    z-index: 1100; justify-content: center; align-items: center; cursor: pointer;
+  }
+  .photo-overlay.show { display: flex; }
+  .photo-overlay img { max-width: 95vw; max-height: 95vh; }
+
 
   .placeholder {
     background: white;
@@ -2606,7 +2813,7 @@ _ADMIN_UPLOAD_HTML = """
       return;
     }
 
-    cards.forEach(c => {
+    cards.forEach((c, ci) => {
       const wrap = document.createElement('div');
       wrap.style.cssText = 'background:white;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);';
 
@@ -2615,26 +2822,115 @@ _ADMIN_UPLOAD_HTML = """
       title.textContent = c.title || '';
       wrap.appendChild(title);
 
-      (c.sections || []).forEach(sec => {
+      (c.sections || []).forEach((sec, si) => {
         const secTitle = document.createElement('div');
         secTitle.style.cssText = 'font-size:15px;font-weight:600;color:#374151;margin:10px 0 6px;padding:6px 10px;background:#f3f4f6;border-radius:6px;';
         secTitle.textContent = sec.title || '';
         wrap.appendChild(secTitle);
 
-        (sec.items || []).forEach(it => {
-          const row = document.createElement('div');
+        (sec.items || []).forEach((it, ii) => {
           const isHighlight = it.type === 'highlight';
           const isSub = it.type === 'sub';
           const padLeft = isSub ? 28 : 12;
+          const hasTable = !!it.table_ref;
+          const hasPhoto = !!it.photo_ref;
+
+          const row = document.createElement('div');
+          row.className = 'note-item-row';
           row.style.cssText = `font-size:13px;line-height:1.6;padding:3px 0 3px ${padLeft}px;color:${isHighlight ? '#dc2626' : '#1f2937'};${isHighlight ? 'font-weight:600;' : ''}`;
+
+          const textSpan = document.createElement('span');
+          textSpan.className = 'note-item-text';
           const dot = isSub ? '↳' : '•';
-          row.textContent = `${dot} ${it.text || ''}`;
+          textSpan.textContent = `${dot} ${it.text || ''}`;
+          row.appendChild(textSpan);
+
+          const tblBtn = document.createElement('button');
+          tblBtn.className = 'note-attach-btn' + (hasTable ? ' has-attachment' : '');
+          tblBtn.textContent = hasTable ? '📊 표' : '📊';
+          tblBtn.title = '표 첨부/편집';
+          tblBtn.onclick = () => openTableModal(ci, si, ii);
+          row.appendChild(tblBtn);
+
+          const photoBtn = document.createElement('button');
+          photoBtn.className = 'note-attach-btn' + (hasPhoto ? ' has-attachment' : '');
+          photoBtn.textContent = hasPhoto ? '📷 사진' : '📷';
+          photoBtn.title = '사진 첨부';
+          photoBtn.onclick = () => openPhotoUpload(ci, si, ii);
+          row.appendChild(photoBtn);
+
           wrap.appendChild(row);
+
+          // 표 미니 프리뷰
+          if (hasTable && it._table_data) {
+            const t = it._table_data;
+            const tbl = document.createElement('table');
+            tbl.className = 'note-mini-table';
+            if (t.title) {
+              const cap = document.createElement('caption');
+              cap.textContent = t.title;
+              cap.style.cssText = 'caption-side:top;text-align:left;font-size:11px;color:#6b7280;padding:2px 0;';
+              tbl.appendChild(cap);
+            }
+            if ((t.headers || []).length) {
+              const thead = document.createElement('thead');
+              const trh = document.createElement('tr');
+              t.headers.forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+              thead.appendChild(trh); tbl.appendChild(thead);
+            }
+            const tbody = document.createElement('tbody');
+            (t.rows || []).forEach(r => {
+              const tr = document.createElement('tr');
+              r.forEach(cell => { const td = document.createElement('td'); td.textContent = cell; tr.appendChild(td); });
+              tbody.appendChild(tr);
+            });
+            tbl.appendChild(tbody);
+            wrap.appendChild(tbl);
+          } else if (hasTable && !it._table_data) {
+            // 표는 있지만 데이터 미로드 → 비동기 로드
+            loadTableDataForItem(it, () => renderNotePreview(_noteParsedCards));
+          }
+
+          // 사진 미니 프리뷰
+          if (hasPhoto) {
+            const img = document.createElement('img');
+            img.className = 'note-mini-photo';
+            img.src = '/note_photos/' + it.photo_ref;
+            img.onclick = () => showPhotoOverlay(img.src);
+            wrap.appendChild(img);
+            const ctrl = document.createElement('div');
+            ctrl.className = 'note-attach-controls';
+            const delBtn = document.createElement('button');
+            delBtn.className = 'danger';
+            delBtn.textContent = '사진 삭제';
+            delBtn.onclick = () => removeNotePhoto(ci, si, ii);
+            ctrl.appendChild(delBtn);
+            wrap.appendChild(ctrl);
+          }
         });
       });
 
       area.appendChild(wrap);
     });
+  }
+
+  async function loadTableDataForItem(it, cb) {
+    if (!it.table_ref || it._table_loading) return;
+    it._table_loading = true;
+    try {
+      const r = await fetch('/notes/table/' + it.table_ref);
+      if (r.ok) {
+        const d = await r.json();
+        it._table_data = d.table;
+      }
+    } catch (e) {}
+    it._table_loading = false;
+    if (cb) cb();
+  }
+
+  function showPhotoOverlay(url) {
+    document.getElementById('photoOverlayImg').src = url;
+    document.getElementById('photoOverlay').classList.add('show');
   }
 
   async function noteAiParse() {
@@ -2738,6 +3034,260 @@ _ADMIN_UPLOAD_HTML = """
       status.textContent = '❌ 불러오기 실패: ' + e.message;
       status.style.color = '#dc2626';
     }
+  }
+
+  // ─── 표/사진 첨부 ───
+  let _editingTable = null; // {cardIdx, secIdx, itemIdx, headers, rows, title}
+
+  function _getItem(ci, si, ii) {
+    if (!_noteParsedCards) return null;
+    const c = _noteParsedCards[ci]; if (!c) return null;
+    const s = (c.sections || [])[si]; if (!s) return null;
+    return (s.items || [])[ii] || null;
+  }
+
+  async function openTableModal(ci, si, ii) {
+    const it = _getItem(ci, si, ii); if (!it) return;
+    let tableData = { title: '', headers: ['구분', '값'], rows: [['', '']] };
+    let isExisting = false;
+    if (it.table_ref) {
+      try {
+        const r = await fetch('/notes/table/' + it.table_ref);
+        if (r.ok) {
+          const d = await r.json();
+          tableData = d.table || tableData;
+          isExisting = true;
+        }
+      } catch (e) {}
+    }
+    _editingTable = {
+      ci, si, ii,
+      title: tableData.title || '',
+      headers: (tableData.headers && tableData.headers.length) ? [...tableData.headers] : ['구분', '값'],
+      rows: (tableData.rows && tableData.rows.length) ? tableData.rows.map(r => [...r]) : [['', '']],
+    };
+    document.getElementById('tableModalTitle').value = _editingTable.title;
+    document.getElementById('tablePasteArea').value = '';
+    document.getElementById('tableModalDeleteBtn').style.display = isExisting ? 'inline-block' : 'none';
+    renderTableEditor();
+    document.getElementById('tableModal').classList.add('show');
+  }
+
+  function closeTableModal() {
+    document.getElementById('tableModal').classList.remove('show');
+    _editingTable = null;
+  }
+
+  function renderTableEditor() {
+    if (!_editingTable) return;
+    const area = document.getElementById('tableEditorArea');
+    area.innerHTML = '';
+    const tbl = document.createElement('table');
+    tbl.className = 'modal-table';
+
+    // 헤더 행
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    _editingTable.headers.forEach((h, ci) => {
+      const th = document.createElement('th');
+      const inp = document.createElement('input');
+      inp.value = h;
+      inp.style.fontWeight = '600';
+      inp.style.background = '#f9fafb';
+      inp.oninput = (e) => { _editingTable.headers[ci] = e.target.value; };
+      th.appendChild(inp);
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    tbl.appendChild(thead);
+
+    // 데이터 행
+    const tbody = document.createElement('tbody');
+    _editingTable.rows.forEach((row, ri) => {
+      const tr = document.createElement('tr');
+      _editingTable.headers.forEach((_, ci) => {
+        const td = document.createElement('td');
+        const inp = document.createElement('input');
+        inp.value = row[ci] !== undefined ? row[ci] : '';
+        inp.oninput = (e) => {
+          while (row.length < _editingTable.headers.length) row.push('');
+          row[ci] = e.target.value;
+        };
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    area.appendChild(tbl);
+  }
+
+  function addTableRow() {
+    if (!_editingTable) return;
+    _editingTable.rows.push(_editingTable.headers.map(() => ''));
+    renderTableEditor();
+  }
+
+  function removeTableRow() {
+    if (!_editingTable) return;
+    if (_editingTable.rows.length <= 1) { alert('최소 1행은 있어야 합니다'); return; }
+    _editingTable.rows.pop();
+    renderTableEditor();
+  }
+
+  function addTableCol() {
+    if (!_editingTable) return;
+    _editingTable.headers.push('항목' + (_editingTable.headers.length + 1));
+    _editingTable.rows.forEach(r => r.push(''));
+    renderTableEditor();
+  }
+
+  function removeTableCol() {
+    if (!_editingTable) return;
+    if (_editingTable.headers.length <= 1) { alert('최소 1열은 있어야 합니다'); return; }
+    _editingTable.headers.pop();
+    _editingTable.rows.forEach(r => r.pop());
+    renderTableEditor();
+  }
+
+  // 클립보드 붙여넣기 자동 파싱 (Tab/쉼표)
+  document.addEventListener('DOMContentLoaded', () => {
+    const pa = document.getElementById('tablePasteArea');
+    if (pa) {
+      pa.addEventListener('paste', (e) => {
+        setTimeout(() => {
+          const text = pa.value;
+          if (!text.trim() || !_editingTable) return;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length === 0) return;
+          const sep = lines[0].includes('\t') ? '\t' : ',';
+          const parsed = lines.map(l => l.split(sep).map(c => c.trim()));
+          if (parsed.length >= 1) {
+            _editingTable.headers = parsed[0];
+            _editingTable.rows = parsed.slice(1).length ? parsed.slice(1) : [parsed[0].map(() => '')];
+            renderTableEditor();
+            pa.value = '';
+          }
+        }, 50);
+      });
+    }
+  });
+
+  async function saveTableFromModal() {
+    if (!_editingTable) return;
+    const divisionId = document.getElementById('noteDivision').value;
+    if (!divisionId) { alert('사업부를 선택하세요'); return; }
+    const it = _getItem(_editingTable.ci, _editingTable.si, _editingTable.ii); if (!it) return;
+
+    const tableData = {
+      title: document.getElementById('tableModalTitle').value.trim(),
+      headers: _editingTable.headers,
+      rows: _editingTable.rows,
+    };
+
+    try {
+      const body = { division_id: divisionId, table: tableData };
+      if (it.table_ref) body.table_ref = it.table_ref;
+      const r = await fetch('/admin/notes/table', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      it.table_ref = d.table_ref;
+      it._table_data = tableData;
+      closeTableModal();
+      renderNotePreview(_noteParsedCards);
+      // 카드 변경 자동 반영을 위해 노트 저장 권장 메시지
+      const st = document.getElementById('noteStatus');
+      st.textContent = '✅ 표 저장됨 — 노트 변경사항이 있다면 "💾 저장" 버튼을 눌러주세요';
+      st.style.color = '#10b981';
+    } catch (e) {
+      alert('표 저장 실패: ' + e.message);
+    }
+  }
+
+  async function deleteTableFromModal() {
+    if (!_editingTable) return;
+    const it = _getItem(_editingTable.ci, _editingTable.si, _editingTable.ii); if (!it) return;
+    if (!it.table_ref) { closeTableModal(); return; }
+    if (!confirm('이 표를 삭제하시겠습니까?')) return;
+    try {
+      const r = await fetch('/admin/notes/table/' + it.table_ref, {
+        method: 'DELETE', credentials: 'same-origin',
+      });
+      // 404여도 클라이언트는 정리
+      delete it._table_data;
+      delete it.table_ref;
+      closeTableModal();
+      renderNotePreview(_noteParsedCards);
+      const st = document.getElementById('noteStatus');
+      st.textContent = '🗑️ 표 삭제됨 — "💾 저장" 버튼을 눌러주세요';
+      st.style.color = '#f59e0b';
+    } catch (e) {
+      alert('표 삭제 실패: ' + e.message);
+    }
+  }
+
+  // 사진 업로드
+  let _pendingPhotoTarget = null; // {ci, si, ii}
+  function openPhotoUpload(ci, si, ii) {
+    const it = _getItem(ci, si, ii); if (!it) return;
+    const divisionId = document.getElementById('noteDivision').value;
+    if (!divisionId) { alert('사업부를 선택하세요'); return; }
+    _pendingPhotoTarget = { ci, si, ii };
+    document.getElementById('notePhotoFileInput').click();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('notePhotoFileInput');
+    if (inp) {
+      inp.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file || !_pendingPhotoTarget) return;
+        const { ci, si, ii } = _pendingPhotoTarget;
+        const it = _getItem(ci, si, ii);
+        const divisionId = document.getElementById('noteDivision').value;
+        if (!it || !divisionId) { inp.value = ''; return; }
+        const fd = new FormData();
+        fd.append('division_id', divisionId);
+        fd.append('file', file);
+        try {
+          const r = await fetch('/admin/notes/photo', {
+            method: 'POST', credentials: 'same-origin', body: fd,
+          });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const d = await r.json();
+          it.photo_ref = d.photo_ref;
+          renderNotePreview(_noteParsedCards);
+          const st = document.getElementById('noteStatus');
+          st.textContent = '✅ 사진 업로드됨 — "💾 저장" 버튼을 눌러주세요';
+          st.style.color = '#10b981';
+        } catch (err) {
+          alert('사진 업로드 실패: ' + err.message);
+        } finally {
+          inp.value = '';
+          _pendingPhotoTarget = null;
+        }
+      });
+    }
+  });
+
+  async function removeNotePhoto(ci, si, ii) {
+    const it = _getItem(ci, si, ii); if (!it || !it.photo_ref) return;
+    if (!confirm('이 사진을 삭제하시겠습니까?')) return;
+    try {
+      await fetch('/admin/notes/photo/' + it.photo_ref, {
+        method: 'DELETE', credentials: 'same-origin',
+      });
+    } catch (e) {}
+    delete it.photo_ref;
+    renderNotePreview(_noteParsedCards);
+    const st = document.getElementById('noteStatus');
+    st.textContent = '🗑️ 사진 삭제됨 — "💾 저장" 버튼을 눌러주세요';
+    st.style.color = '#f59e0b';
   }
 
   // 노트 탭 초기화

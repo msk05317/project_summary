@@ -69,7 +69,7 @@
         "캐스팅 엔클로저",
         "캐스팅 인클로저"
       ],
-      "visible": true,
+      "visible": false,
       "order": 4
     },
     {
@@ -419,7 +419,7 @@
         "SpaceX",
         "스페이스X"
       ],
-      "visible": true,
+      "visible": false,
       "order": 11
     },
     {
@@ -434,7 +434,7 @@
       "keywords": [
         "KLA"
       ],
-      "visible": true,
+      "visible": false,
       "order": 12
     },
     {
@@ -452,7 +452,7 @@
         "세정공정",
         "Cleaning"
       ],
-      "visible": true,
+      "visible": false,
       "order": 13
     },
     {
@@ -528,6 +528,141 @@
         "VVDN",
         "vvdn"
       ]
+    },
+    {
+      "id": "eos_chamber",
+      "division_id": "semiconductor",
+      "label": "EOS챔버",
+      "badge_label": "EOS챔버",
+      "aliases": [
+        "EOS Chamber",
+        "EOS챔버",
+        "eos_chamber"
+      ],
+      "keywords": [
+        "EOS챔버",
+        "EOS Chamber",
+        "EOS"
+      ],
+      "visible": true,
+      "order": 14
+    },
+    {
+      "id": "faraday_4t",
+      "division_id": "semiconductor",
+      "label": "페러데이 4T",
+      "badge_label": "페러데이 4T",
+      "aliases": [
+        "Faraday 4T",
+        "페러데이",
+        "페러데이4T",
+        "페러데이 4T"
+      ],
+      "keywords": [
+        "페러데이",
+        "Faraday",
+        "4T"
+      ],
+      "visible": true,
+      "order": 15
+    },
+    {
+      "id": "auto_stellantis",
+      "division_id": "automotive",
+      "label": "스텔란티스",
+      "badge_label": "스텔란티스",
+      "aliases": [
+        "Stellantis",
+        "스텔란티스"
+      ],
+      "keywords": [
+        "스텔란티스",
+        "Stellantis"
+      ],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "auto_kefico",
+      "division_id": "automotive",
+      "label": "케피코",
+      "badge_label": "케피코",
+      "aliases": [
+        "Kefico",
+        "케피코"
+      ],
+      "keywords": [
+        "케피코",
+        "Kefico"
+      ],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "auto_schaeffler",
+      "division_id": "automotive",
+      "label": "셰플러",
+      "badge_label": "셰플러",
+      "aliases": [
+        "Schaeffler",
+        "셰플러"
+      ],
+      "keywords": [
+        "셰플러",
+        "Schaeffler"
+      ],
+      "visible": true,
+      "order": 3
+    },
+    {
+      "id": "auto_high_pressure_casting",
+      "division_id": "automotive",
+      "label": "고압주조",
+      "badge_label": "고압주조",
+      "aliases": [
+        "High Pressure Casting",
+        "고압주조",
+        "HPDC"
+      ],
+      "keywords": [
+        "고압주조",
+        "HPDC"
+      ],
+      "visible": true,
+      "order": 4
+    },
+    {
+      "id": "auto_low_pressure_casting",
+      "division_id": "automotive",
+      "label": "저압주조",
+      "badge_label": "저압주조",
+      "aliases": [
+        "Low Pressure Casting",
+        "저압주조",
+        "LPDC"
+      ],
+      "keywords": [
+        "저압주조",
+        "LPDC"
+      ],
+      "visible": true,
+      "order": 5
+    },
+    {
+      "id": "auto_etc",
+      "division_id": "automotive",
+      "label": "기타",
+      "badge_label": "기타",
+      "aliases": [
+        "기타",
+        "etc",
+        "etc."
+      ],
+      "keywords": [
+        "기타"
+      ],
+      "visible": true,
+      "order": 6
     }
   ]
 }
