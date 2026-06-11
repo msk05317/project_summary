@@ -987,6 +987,119 @@ def get_product_detail(doc_id: str, product_name: str):
 # =========================================================
 # 4. 프로젝트별 보기
 # =========================================================
+@app.get("/divisions/updates")
+def get_divisions_updates():
+    """각 사업부의 최신 업데이트 타임스탬프 반환.
+    카드의 project_key 가 없을 수 있으므로 텍스트 기반 분류기를 사용한다.
+    """
+    try:
+        with open(LATEST_FILE, "r", encoding="utf-8") as f:
+            reports = json.load(f)
+    except Exception:
+        reports = []
+
+    div_latest: dict[str, str] = {}
+
+    for item in reports:
+        ts = item.get("upload_timestamp") or ""
+        products = item.get("products") or []
+        for p in products:
+            project_id = p.get("project_key") or p.get("project") or None
+            if not project_id:
+                parts = [
+                    p.get("name") or "",
+                    p.get("headline") or "",
+                    " ".join(p.get("summary_bullets") or []),
+                ]
+                text = " ".join(s for s in parts if s)
+                if text.strip():
+                    try:
+                        project_id = _cl.classify_project(text)
+                    except Exception:
+                        project_id = None
+
+            div_id = _cl.derive_division_from_project(project_id) if project_id else None
+            if not div_id:
+                div_id = "unclassified"
+
+            card_ts = p.get("updated_at") or ts
+            if not card_ts:
+                continue
+            cur = div_latest.get(div_id, "")
+            if card_ts > cur:
+                div_latest[div_id] = card_ts
+
+    all_divs = _cl.get_divisions(visible_only=True)
+    result = []
+    for d in all_divs:
+        did = d.get("id")
+        result.append({
+            "division_id": did,
+            "label": d.get("label"),
+            "latest_updated_at": div_latest.get(did, ""),
+        })
+
+    return {"divisions": result}
+
+
+def get_divisions_updates():
+    """각 사업부의 최신 업데이트 타임스탬프 반환.
+    앱은 이 값과 로컬 저장된 'last_seen_at'을 비교해 빨간 점을 표시한다.
+    카드의 project_key 가 없을 수 있으므로 텍스트 기반 분류기를 사용한다.
+    """
+    try:
+        with open(LATEST_FILE, "r", encoding="utf-8") as f:
+            reports = json.load(f)
+    except Exception:
+        reports = []
+
+    div_latest: dict[str, str] = {}
+
+    for item in reports:
+        ts = item.get("upload_timestamp") or ""
+        products = item.get("products") or []
+        for p in products:
+            # 1) 카드에 명시된 project_key 우선 (편집된 카드)
+            project_id = p.get("project_key") or p.get("project") or None
+
+            # 2) 없으면 텍스트 기반 분류
+            if not project_id:
+                parts = [
+                    p.get("name") or "",
+                    p.get("headline") or "",
+                    " ".join(p.get("summary_bullets") or []),
+                ]
+                text = " ".join(s for s in parts if s)
+                if text.strip():
+                    try:
+                        project_id = _cl.classify_project(text)
+                    except Exception:
+                        project_id = None
+
+            div_id = _cl.derive_division_from_project(project_id) if project_id else None
+            if not div_id:
+                div_id = "unclassified"
+
+            card_ts = p.get("updated_at") or ts
+            if not card_ts:
+                continue
+            cur = div_latest.get(div_id, "")
+            if card_ts > cur:
+                div_latest[div_id] = card_ts
+
+    all_divs = _cl.get_divisions(visible_only=True)
+    result = []
+    for d in all_divs:
+        did = d.get("id")
+        result.append({
+            "division_id": did,
+            "label": d.get("label"),
+            "latest_updated_at": div_latest.get(did, ""),
+        })
+
+    return {"divisions": result}
+
+
 @app.get("/projects")
 def list_projects():
     """프로젝트 버튼 목록"""

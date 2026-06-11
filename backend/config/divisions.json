@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated_at": "2026-06-08",
+  "version": 2,
+  "updated_at": "2026-06-11",
   "divisions": [
     {
       "id": "semiconductor",
@@ -41,6 +41,46 @@
       "badge_color": "#6B7280",
       "badge_short_label": "시스템",
       "description": "블룸, 아리스타, 케이블"
+    },
+    {
+      "id": "ess",
+      "label": "ESS사업부",
+      "mode": "project",
+      "order": 5,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "ESS",
+      "description": "에너지 저장 시스템 관련 프로젝트"
+    },
+    {
+      "id": "heavy",
+      "label": "중공업사업부",
+      "mode": "project",
+      "order": 6,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "중공업",
+      "description": "중공업 관련 프로젝트"
+    },
+    {
+      "id": "automation",
+      "label": "자동화사업부",
+      "mode": "project",
+      "order": 7,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "자동화",
+      "description": "자동화 시스템 관련 프로젝트"
+    },
+    {
+      "id": "automotive",
+      "label": "자동차사업부",
+      "mode": "project",
+      "order": 8,
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "자동차",
+      "description": "자동차 관련 프로젝트"
     }
   ]
 }
