@@ -1022,6 +1022,132 @@ def download_app_apk():
     )
 
 
+NOTES_FILE = Path("notes.json")
+
+
+def _load_notes() -> dict:
+    try:
+        with open(NOTES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"version": 1, "updated_at": None, "notes": {}}
+
+
+def _save_notes(data: dict) -> None:
+    from datetime import datetime
+    data["updated_at"] = datetime.now().isoformat()
+    with open(NOTES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+_NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 보고서를 구조화하는 도우미입니다.
+
+입력으로 들어오는 자유 형식 텍스트를 다음 JSON 스키마로 변환하세요:
+
+{
+  "cards": [
+    {
+      "title": "프로젝트 이름",
+      "sections": [
+        {
+          "title": "섹션 이름",
+          "items": [
+            {"type": "bullet | highlight | sub", "text": "항목 내용"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+규칙:
+1. <텍스트>로 감싼 것은 새 카드(프로젝트 그룹)
+2. 1. 2. 같은 번호는 카드 내부의 섹션
+3. 1) 2) 같은 들여쓰기 된 번호는 일반 항목(bullet)으로 처리. 별도 섹션으로 분리 금지
+4. *로 시작하는 줄, 빨간색 강조하면 좋은 핵심 정보는 type: highlight
+5. -, ▸ 일반 항목은 type: bullet
+6. →, =>, 또는 들여쓰기 된 내용은 type: sub
+7. 카드 제목·섹션 제목에서 번호 제거
+8. 항목 텍스트에서 선행 기호 제거 (-, *, ▸). 단, 본문 안의 → 같은 화살표는 유지
+9. 의미는 절대 바꾸지 말 것
+10. 빈 항목·중복 항목은 만들지 말 것
+
+응답은 반드시 위 JSON 형식 한 객체만 출력. 마크다운, 코드블록, 설명 없이 JSON만 출력하세요."""
+
+
+@app.post("/admin/notes/ai_parse")
+def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)):
+    """자유 형식 텍스트를 AI로 구조화 JSON으로 변환 (미리보기용)."""
+    text = (payload or {}).get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text가 비어있습니다")
+
+    try:
+        from openai import OpenAI
+        import os
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _NOTE_AI_SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        content = response.choices[0].message.content
+        return json.loads(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 파싱 실패: {str(e)}")
+
+
+@app.post("/admin/notes")
+def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
+    """사업부별 노트 저장."""
+    division_id = (payload or {}).get("division_id", "").strip()
+    report_date = (payload or {}).get("report_date", "").strip()
+    cards = (payload or {}).get("cards", [])
+
+    if not division_id:
+        raise HTTPException(status_code=400, detail="division_id 필수")
+    if not isinstance(cards, list):
+        raise HTTPException(status_code=400, detail="cards는 배열이어야 합니다")
+
+    from datetime import datetime
+    data = _load_notes()
+    data.setdefault("notes", {})[division_id] = {
+        "report_date": report_date,
+        "updated_at": datetime.now().isoformat(),
+        "cards": cards,
+    }
+    _save_notes(data)
+    return {"ok": True, "division_id": division_id, "card_count": len(cards)}
+
+
+@app.get("/notes")
+def get_notes(division_id: str = ""):
+    """앱이 호출하는 공개 API. division_id 지정 시 해당 사업부만 반환."""
+    data = _load_notes()
+    notes = data.get("notes", {})
+    if division_id:
+        item = notes.get(division_id)
+        if not item:
+            return {"division_id": division_id, "report_date": "", "cards": [], "updated_at": None}
+        return {"division_id": division_id, **item}
+    return {"notes": notes}
+
+
+@app.delete("/admin/notes/{division_id}")
+def admin_delete_note(division_id: str, _admin: int = Depends(get_admin_session)):
+    """노트 삭제."""
+    data = _load_notes()
+    if division_id in data.get("notes", {}):
+        del data["notes"][division_id]
+        _save_notes(data)
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="해당 사업부 노트 없음")
+
+
 @app.get("/divisions")
 def list_divisions():
     """공개 사업부 목록 (앱이 시작 시 호출)."""
@@ -1805,6 +1931,7 @@ _ADMIN_UPLOAD_HTML = """
 <nav class="tabs">
   <button class="tab-btn active" data-tab="ppt">📤 PPT 업로드</button>
   <button class="tab-btn" data-tab="image">🖼 이미지 업로드</button>
+  <button class="tab-btn" data-tab="notes">📊 사업부 보고 관리</button>
   <button class="tab-btn" data-tab="mapping">⚙️ 매핑 관리</button>
 </nav>
 
@@ -1932,6 +2059,41 @@ _ADMIN_UPLOAD_HTML = """
   </section>
 
   <!-- ============================== 탭 3: 매핑 관리 ============================== -->
+  <section class="tab-content" id="tab-notes">
+    <div class="card">
+      <h2>📊 사업부 보고 관리</h2>
+      <p style="color:#6b7280;font-size:13px;margin-top:-4px;">담당자가 받은 주간 보고 텍스트를 그대로 붙여넣고, AI 정리 후 저장하면 사장님 앱에 표시됩니다.</p>
+
+      <div style="display:flex;gap:12px;align-items:flex-end;margin:16px 0;flex-wrap:wrap;">
+        <div>
+          <label style="display:block;font-size:13px;color:#374151;margin-bottom:4px;">사업부</label>
+          <select id="noteDivision" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;min-width:180px;">
+            <option value="">로딩 중...</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;color:#374151;margin-bottom:4px;">보고일자</label>
+          <input type="date" id="noteReportDate" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;" />
+        </div>
+        <button type="button" id="noteLoadBtn" style="padding:8px 14px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;cursor:pointer;font-size:13px;">📥 기존 노트 불러오기</button>
+      </div>
+
+      <label style="display:block;font-size:13px;color:#374151;margin-bottom:4px;">원본 텍스트</label>
+      <textarea id="noteRawText" placeholder="<페러데이 4T>&#10;1. LPM&#10; - 5호기, 6호기-테스트완료(4/3)&#10;..." style="width:100%;height:280px;padding:12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:'Menlo','Monaco',monospace;line-height:1.5;"></textarea>
+
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button type="button" id="noteAiParseBtn" style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;">🤖 AI로 정리하기</button>
+        <button type="button" id="noteSaveBtn" disabled style="padding:10px 18px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;opacity:0.5;">💾 저장</button>
+        <span id="noteStatus" style="align-self:center;font-size:13px;color:#6b7280;"></span>
+      </div>
+    </div>
+
+    <div class="card" id="notePreviewCard" style="display:none;">
+      <h2>✨ 미리보기 (앱에서 이렇게 보입니다)</h2>
+      <div id="notePreviewArea" style="background:#f5f7fb;padding:16px;border-radius:8px;"></div>
+    </div>
+  </section>
+
   <section class="tab-content" id="tab-mapping">
     <div class="placeholder">
       <div class="icon">⚙️</div>
@@ -2706,6 +2868,197 @@ _ADMIN_UPLOAD_HTML = """
 
   // PPT 탭 진입 시 dropdown 초기 채우기
   loadDivisionsForPpt();
+
+  // ============================== 노트 관리 (사업부 보고) ==============================
+  let _noteParsedCards = null;
+
+  async function loadNoteDivisions() {
+    try {
+      const r = await fetch('/admin/config/divisions', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error('fetch failed');
+      const data = await r.json();
+      const sel = document.getElementById('noteDivision');
+      if (!sel) return;
+      sel.innerHTML = '';
+      (data.divisions || []).forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.label;
+        sel.appendChild(opt);
+      });
+    } catch (e) {
+      console.error('사업부 로드 실패', e);
+    }
+  }
+
+  // 보고일자 기본값 = 오늘
+  function initNoteDate() {
+    const el = document.getElementById('noteReportDate');
+    if (!el) return;
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    el.value = `${y}-${m}-${d}`;
+  }
+
+  function renderNotePreview(cards) {
+    const area = document.getElementById('notePreviewArea');
+    const card = document.getElementById('notePreviewCard');
+    if (!area || !card) return;
+    card.style.display = 'block';
+    area.innerHTML = '';
+
+    if (!cards || cards.length === 0) {
+      area.innerHTML = '<div style="color:#9ca3af;padding:24px;text-align:center;">표시할 내용이 없습니다</div>';
+      return;
+    }
+
+    cards.forEach(c => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'background:white;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+
+      const title = document.createElement('div');
+      title.style.cssText = 'font-size:18px;font-weight:700;color:#1E3A5F;margin-bottom:12px;';
+      title.textContent = c.title || '';
+      wrap.appendChild(title);
+
+      (c.sections || []).forEach(sec => {
+        const secTitle = document.createElement('div');
+        secTitle.style.cssText = 'font-size:15px;font-weight:600;color:#374151;margin:10px 0 6px;padding:6px 10px;background:#f3f4f6;border-radius:6px;';
+        secTitle.textContent = sec.title || '';
+        wrap.appendChild(secTitle);
+
+        (sec.items || []).forEach(it => {
+          const row = document.createElement('div');
+          const isHighlight = it.type === 'highlight';
+          const isSub = it.type === 'sub';
+          const padLeft = isSub ? 28 : 12;
+          row.style.cssText = `font-size:13px;line-height:1.6;padding:3px 0 3px ${padLeft}px;color:${isHighlight ? '#dc2626' : '#1f2937'};${isHighlight ? 'font-weight:600;' : ''}`;
+          const dot = isSub ? '↳' : '•';
+          row.textContent = `${dot} ${it.text || ''}`;
+          wrap.appendChild(row);
+        });
+      });
+
+      area.appendChild(wrap);
+    });
+  }
+
+  async function noteAiParse() {
+    const text = document.getElementById('noteRawText').value.trim();
+    const status = document.getElementById('noteStatus');
+    const saveBtn = document.getElementById('noteSaveBtn');
+    if (!text) {
+      status.textContent = '⚠️ 텍스트를 입력하세요';
+      status.style.color = '#dc2626';
+      return;
+    }
+    status.textContent = '🤖 AI 정리 중...';
+    status.style.color = '#6b7280';
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+    try {
+      const r = await fetch('/admin/notes/ai_parse', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      _noteParsedCards = data.cards || [];
+      renderNotePreview(_noteParsedCards);
+      status.textContent = `✅ ${_noteParsedCards.length}개 카드 정리 완료`;
+      status.style.color = '#10b981';
+      saveBtn.disabled = false;
+      saveBtn.style.opacity = '1';
+    } catch (e) {
+      status.textContent = '❌ AI 정리 실패: ' + e.message;
+      status.style.color = '#dc2626';
+      _noteParsedCards = null;
+    }
+  }
+
+  async function noteSave() {
+    if (!_noteParsedCards) {
+      alert('먼저 AI로 정리해주세요');
+      return;
+    }
+    const divisionId = document.getElementById('noteDivision').value;
+    const reportDate = document.getElementById('noteReportDate').value;
+    if (!divisionId) { alert('사업부를 선택하세요'); return; }
+    if (!reportDate) { alert('보고일자를 선택하세요'); return; }
+
+    const status = document.getElementById('noteStatus');
+    status.textContent = '💾 저장 중...';
+    status.style.color = '#6b7280';
+    try {
+      const r = await fetch('/admin/notes', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          division_id: divisionId,
+          report_date: reportDate,
+          cards: _noteParsedCards,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        throw new Error(err || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
+      status.textContent = `✅ 저장 완료 (${data.card_count}개 카드)`;
+      status.style.color = '#10b981';
+    } catch (e) {
+      status.textContent = '❌ 저장 실패: ' + e.message;
+      status.style.color = '#dc2626';
+    }
+  }
+
+  async function noteLoadExisting() {
+    const divisionId = document.getElementById('noteDivision').value;
+    if (!divisionId) { alert('사업부를 먼저 선택하세요'); return; }
+    const status = document.getElementById('noteStatus');
+    status.textContent = '📥 불러오는 중...';
+    status.style.color = '#6b7280';
+    try {
+      const r = await fetch(`/notes?division_id=${encodeURIComponent(divisionId)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      _noteParsedCards = data.cards || [];
+      if (data.report_date) {
+        document.getElementById('noteReportDate').value = data.report_date;
+      }
+      if (_noteParsedCards.length > 0) {
+        renderNotePreview(_noteParsedCards);
+        document.getElementById('noteSaveBtn').disabled = false;
+        document.getElementById('noteSaveBtn').style.opacity = '1';
+        status.textContent = `✅ 기존 노트 ${_noteParsedCards.length}개 카드 불러옴`;
+        status.style.color = '#10b981';
+      } else {
+        status.textContent = '저장된 노트가 없습니다';
+        status.style.color = '#6b7280';
+      }
+    } catch (e) {
+      status.textContent = '❌ 불러오기 실패: ' + e.message;
+      status.style.color = '#dc2626';
+    }
+  }
+
+  // 노트 탭 초기화
+  document.addEventListener('DOMContentLoaded', () => {
+    initNoteDate();
+    loadNoteDivisions();
+    const aiBtn = document.getElementById('noteAiParseBtn');
+    if (aiBtn) aiBtn.addEventListener('click', noteAiParse);
+    const saveBtn = document.getElementById('noteSaveBtn');
+    if (saveBtn) saveBtn.addEventListener('click', noteSave);
+    const loadBtn = document.getElementById('noteLoadBtn');
+    if (loadBtn) loadBtn.addEventListener('click', noteLoadExisting);
+  });
+
 </script>
 </body>
 </html>
