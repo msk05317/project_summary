@@ -83,6 +83,42 @@ class ApiClient {
     final decoded = jsonDecode(utf8.decode(res.bodyBytes));
     return ProductDetail.fromJson(decoded as Map<String, dynamic>);
   }
+
+  /// 공개 사업부 목록 (id, label) 반환
+  Future<List<Map<String, String>>> fetchDivisions() async {
+    try {
+      final res = await http.get(Uri.parse('$kApiBaseUrl/divisions'));
+      if (res.statusCode != 200) return const [];
+      final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final list = (body['divisions'] as List?) ?? const [];
+      return [
+        for (final d in list)
+          {
+            'id': (d['id'] as String?) ?? '',
+            'label': (d['label'] as String?) ?? '',
+          }
+      ].where((m) => m['id']!.isNotEmpty).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// 사업부별 최신 업데이트 시각 맵 반환 (division_id -> ISO8601 문자열)
+  Future<Map<String, String>> fetchDivisionUpdates() async {
+    try {
+      final res = await http.get(Uri.parse('$kApiBaseUrl/divisions/updates'));
+      if (res.statusCode != 200) return {};
+      final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final list = (body['divisions'] as List?) ?? const [];
+      return {
+        for (final d in list)
+          (d['division_id'] as String):
+              (d['latest_updated_at'] as String? ?? ''),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
 }
 
 // ============================================================

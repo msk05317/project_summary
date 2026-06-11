@@ -987,6 +987,58 @@ def get_product_detail(doc_id: str, product_name: str):
 # =========================================================
 # 4. 프로젝트별 보기
 # =========================================================
+APP_VERSION_FILE = BASE_DIR / "app_version.json" if "BASE_DIR" in globals() else Path("app_version.json")
+APP_APK_FILE = Path("app_release.apk")
+
+
+@app.get("/app/version")
+def get_app_version():
+    """앱 시작 시 호출. 최신 버전 정보 반환."""
+    try:
+        with open("app_version.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {
+            "latest_version": "1.0.0",
+            "latest_version_code": 1,
+            "download_url": "/app/download",
+            "release_notes": "",
+            "force_update": False,
+        }
+    return data
+
+
+@app.get("/app/download")
+def download_app_apk():
+    """최신 APK 다운로드."""
+    from fastapi.responses import FileResponse
+    apk_path = Path("app_release.apk")
+    if not apk_path.exists():
+        raise HTTPException(status_code=404, detail="APK not uploaded yet")
+    return FileResponse(
+        path=str(apk_path),
+        media_type="application/vnd.android.package-archive",
+        filename="app_release.apk",
+    )
+
+
+@app.get("/divisions")
+def list_divisions():
+    """공개 사업부 목록 (앱이 시작 시 호출)."""
+    divs = _cl.get_divisions(visible_only=True)
+    result = [
+        {
+            "id": d.get("id"),
+            "label": d.get("label"),
+            "order": d.get("order", 999),
+            "badge_short_label": d.get("badge_short_label"),
+        }
+        for d in divs
+    ]
+    result.sort(key=lambda x: x.get("order", 999))
+    return {"divisions": result}
+
+
 @app.get("/divisions/updates")
 def get_divisions_updates():
     """각 사업부의 최신 업데이트 타임스탬프 반환.
