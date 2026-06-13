@@ -934,6 +934,44 @@ async def upload_ppt(
 # =========================================================
 # 3. 대시보드 / 리포트
 # =========================================================
+def _due_status_one(due_raw: str) -> str:
+    """단일 due_date 문자열 → 상태색."""
+    from datetime import date
+    due_raw = (due_raw or "").strip()
+    if not due_raw:
+        return "BLACK"  # 일정 없음 (내용은 있는데 일정 추출 안 됨)
+    try:
+        y, m, d = due_raw[:10].split("-")
+        due = date(int(y), int(m), int(d))
+    except Exception:
+        return "BLACK"
+    diff = (due - date.today()).days
+    if diff < 0:
+        return "RED"
+    if diff <= 3:
+        return "ORANGE"
+    return "BLUE"
+
+
+def _calc_card_status(card: dict) -> str:
+    """카드 안 items 들의 due_date 들을 보고 가장 위험한 색으로 집계.
+    빨강 > 주황 > 파랑 > 검정 순.
+    items가 비어있거나 모두 due_date 없음 → BLACK."""
+    priority = {"RED": 5, "ORANGE": 4, "BLUE": 3, "BLACK": 1}
+    best = "BLACK"
+    sections = card.get("sections") or []
+    for sec in sections:
+        for it in (sec.get("items") or []):
+            if not isinstance(it, dict):
+                continue
+            s = _due_status_one(it.get("due_date") or "")
+            if priority.get(s, 0) > priority.get(best, 0):
+                best = s
+                if best == "RED":
+                    return best
+    return best
+
+
 @app.get("/dashboard")
 def dashboard():
     """신호등 카드 - 각 카드에 project_key 포함 → Flutter에서 상세 이동에 사용"""
@@ -972,7 +1010,74 @@ def dashboard():
     # 🟢 카드별로 division/project 분류 정보 enrichment (기존 필드 변경 없음)
     cards = [enrich_card(c) for c in cards]
 
-    severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
+    # 🟢 주간 보고 노트 카드도 대시보드에 포함
+    # 같은 project_key 가 PPT/노트 양쪽에 있으면 노트 카드를 우선
+    try:
+        notes_data = _load_notes()
+        notes_map = notes_data.get("notes", {}) or {}
+        note_cards = []
+        for div_id, div_notes in notes_map.items():
+            report_date = (div_notes or {}).get("report_date", "") or ""
+            for nc in (div_notes or {}).get("cards", []) or []:
+                if not isinstance(nc, dict):
+                    continue
+                title = (nc.get("title") or "").strip()
+                if not title:
+                    continue
+                # 카드 제목 → project_key 매칭
+                pkey = (nc.get("project_key") or "").strip()
+                if not pkey:
+                    try:
+                        pkey = _cl.classify_project(title) or ""
+                    except Exception:
+                        pkey = ""
+
+                # headline / summary_bullets 추출
+                headline = ""
+                bullets = []
+                for sec in (nc.get("sections") or []):
+                    for it in (sec.get("items") or []):
+                        if not isinstance(it, dict):
+                            if isinstance(it, str) and not headline:
+                                headline = it
+                            continue
+                        t = (it.get("type") or "bullet").lower()
+                        txt = (it.get("text") or "").strip()
+                        if not txt:
+                            continue
+                        if t == "highlight" and not headline:
+                            headline = txt
+                        elif t == "bullet" and len(bullets) < 3:
+                            bullets.append(txt)
+                    if headline and len(bullets) >= 3:
+                        break
+                if not headline and bullets:
+                    headline = bullets[0]
+
+                computed_status = _calc_card_status(nc)
+                note_cards.append({
+                    "doc_id": f"note:{div_id}",
+                    "product": title,
+                    "status": computed_status,
+                    "headline": headline or title,
+                    "summary_bullets": bullets,
+                    "report_date": report_date,
+                    "report_family": "weekly_note",
+                    "project_key": pkey or None,
+                    "division_id": div_id,
+                    "from_note": True,
+                })
+
+        # enrich (project_key 가 있으면 division/label 등 자동 채움)
+        note_cards = [enrich_card(c) for c in note_cards]
+
+        # 대시보드는 노트 카드만 표시 (PPT 카드는 관리자용 텍스트 추출 도구로만)
+        cards = note_cards
+    except Exception as _e:
+        print(f"노트 대시보드 머지 실패: {_e}")
+        cards = []
+
+    severity = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GRAY": 2, "BLACK": 1}
     cards.sort(key=lambda c: -severity.get(c["status"], 0))
 
     # 🟢 모델 단위 그룹핑 (신규 필드, 옛 cards 는 호환을 위해 그대로 유지)
@@ -1125,43 +1230,45 @@ def _delete_note_photo(photo_ref: str) -> bool:
     return False
 
 
-_NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 보고서를 구조화하는 도우미입니다.
+_NOTE_AI_SYSTEM_PROMPT = """주간 보고 텍스트를 JSON 구조로 변환합니다.
 
-입력으로 들어오는 자유 형식 텍스트를 다음 JSON 스키마로 변환하세요:
-
-{
-  "cards": [
-    {
-      "title": "프로젝트 이름",
-      "sections": [
-        {
-          "title": "섹션 이름",
-          "items": [
-            {"type": "bullet | highlight | sub | group_note", "text": "항목 내용", "group_id": "g1 (선택)"}
-          ]
-        }
-      ]
-    }
-  ]
-}
+스키마:
+{"cards":[{"title":"프로젝트","sections":[{"title":"섹션","items":[{"type":"bullet|highlight|sub|group_note","text":"...","group_id":"g1(선택)","due_date":"YYYY-MM-DD(선택)"}]}]}]}
 
 규칙:
-1. <텍스트>로 감싼 것은 새 카드(프로젝트 그룹)
-2. 1. 2. 같은 번호는 카드 내부의 섹션
-3. 1) 2) 같은 들여쓰기 된 번호는 일반 항목(bullet)으로 처리. 별도 섹션으로 분리 금지
-4. *로 시작하는 줄, 빨간색 강조하면 좋은 핵심 정보는 type: highlight
-5. -, ▸ 일반 항목은 type: bullet
-6. →, =>, 또는 들여쓰기 된 내용은 type: sub
-6-1. } 또는 ←, ⟵ 기호 뒤에 있는 메모는 바로 위 여러 항목에 공통 적용되는 메모입니다. 다음과 같이 처리하세요:
-    - 묶음 대상 항목들에 동일한 "group_id": "g1", "g2"... 부여
-    - 공통 메모 자체는 {"type": "group_note", "text": "...", "group_id": "g1"} 로 추가
-    - group_id는 카드(프로젝트) 단위로 g1부터 시작
-7. 카드 제목·섹션 제목에서 번호 제거
-8. 항목 텍스트에서 선행 기호 제거 (-, *, ▸). 단, 본문 안의 → 같은 화살표는 유지
-9. 의미는 절대 바꾸지 말 것
-10. 빈 항목·중복 항목은 만들지 말 것
+1. <텍스트>는 새 카드 제목
+2. 1. 2. 같은 번호는 섹션, 1) 2) 들여쓰기 번호는 bullet
+3. *로 시작 = highlight (빨강 강조)
+4. -, ▸ = bullet
+5. →, =>, 들여쓰기 내용 = sub
+6. 카드/섹션 제목 번호 제거, 항목 선행 기호 제거
+7. 의미 변경 금지, 빈/중복 제거
 
-응답은 반드시 위 JSON 형식 한 객체만 출력. 마크다운, 코드블록, 설명 없이 JSON만 출력하세요."""
+} 묶음 메모 (★ 중요):
+- 줄 끝 } 또는 } ← 또는 } <— 뒤 텍스트는 위쪽 bullet들의 공통 메모
+- 같은 group_id (g1, g2...) 부여
+- 공통 메모는 {"type":"group_note","text":"본문만","group_id":"g1"}
+- "포괄적으로 적용", "공통" 같은 메타 설명은 group_note 본문에서 제거
+
+마감일 자동 추출 (★ 중요):
+- "6월말"=YYYY-06-30, "6월초"=YYYY-06-05, "6월중"=YYYY-06-15
+- "6/16","6월 16일"=YYYY-06-16
+- "다음주"=다음주 금요일, "차주"=다음주 금요일
+- "Q2말","상반기말"=YYYY-06-30, "연말"=YYYY-12-31
+- 연도 없으면 가까운 미래 기준
+- group_note에 날짜 있고 group_id 항목들이 그 기한에 함께 해야 하면, group의 bullet/group_note 모두에 같은 due_date
+- highlight (현황 설명)는 due_date 부여 안 함
+- 날짜 모호하면 due_date 생략
+
+예시:
+입력: <하바플레이트>
+*현황: 총141개 모델 양산 14종
+- 신규 장비 40대
+- 플라스틱 장비 6대 } 6월말 고객사 승인 예정
+
+출력: {"cards":[{"title":"하바플레이트","sections":[{"title":"현황","items":[{"type":"highlight","text":"총141개 모델 양산 14종"},{"type":"bullet","text":"신규 장비 40대","group_id":"g1","due_date":"2026-06-30"},{"type":"bullet","text":"플라스틱 장비 6대","group_id":"g1","due_date":"2026-06-30"},{"type":"group_note","text":"고객사 승인 예정","group_id":"g1","due_date":"2026-06-30"}]}]}]}
+
+JSON 한 객체만 출력. 마크다운/설명 금지."""
 
 
 @app.post("/admin/notes/from_pptx")
@@ -1243,6 +1350,92 @@ def admin_notes_from_pptx(payload: dict, _admin: int = Depends(get_admin_session
                 print(f"표 저장 실패 slide={slide_idx+1} t={t_idx}: {e}")
 
     return {"cards": cards, "saved_tables": saved_tables}
+
+
+@app.get("/notes/by_project")
+def notes_by_project(project_key: str = ""):
+    """프로젝트 키로 가장 최근 노트 카드를 찾아 반환.
+    매칭 우선순위:
+      1) card.get("project_key") == project_key
+      2) card.get("title") 가 projects.json 의 label/aliases 와 매칭
+    표는 _load_note_table 으로 inline 포함.
+    """
+    project_key = (project_key or "").strip()
+    if not project_key:
+        raise HTTPException(status_code=400, detail="project_key 필요")
+
+    try:
+        proj = _cl.get_project(project_key)
+    except Exception:
+        proj = None
+    project_label = (proj or {}).get("label", "")
+    project_aliases = set((proj or {}).get("aliases", []) or [])
+    project_division = (proj or {}).get("division_id", "")
+    if project_label:
+        project_aliases.add(project_label)
+    project_aliases.add(project_key)
+
+    data = _load_notes()
+    notes_map = data.get("notes", {}) or {}
+
+    # 사업부 우선 검색, 없으면 전체 사업부 스캔
+    div_ids = [project_division] if project_division else list(notes_map.keys())
+    if project_division and project_division not in notes_map:
+        div_ids = list(notes_map.keys())
+
+    best = None
+    best_date = ""
+    best_division = ""
+    for did in div_ids:
+        ndata = notes_map.get(did) or {}
+        cards = ndata.get("cards", []) or []
+        report_date = ndata.get("report_date", "") or ""
+        for c in cards:
+            ck = (c.get("project_key") or "").strip()
+            ctitle = (c.get("title") or "").strip()
+            matched = False
+            if ck and ck == project_key:
+                matched = True
+            elif ctitle and (ctitle == project_label or ctitle in project_aliases):
+                matched = True
+            if not matched:
+                continue
+            # 가장 최근 날짜 선택
+            if report_date > best_date:
+                best = c
+                best_date = report_date
+                best_division = did
+
+    if not best:
+        return {"card": None}
+
+    # table_ref inline 로드
+    sections = best.get("sections", []) or []
+    for sec in sections:
+        # 섹션 레벨 table_ref (기존 호환)
+        sec_ref = sec.get("table_ref")
+        if sec_ref:
+            try:
+                sec["table_data"] = _load_note_table(sec_ref)
+            except Exception:
+                sec["table_data"] = None
+        # 아이템 흐름 안의 table/photo
+        items = sec.get("items", []) or []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            t_ref = it.get("table_ref")
+            if t_ref:
+                try:
+                    it["table_data"] = _load_note_table(t_ref)
+                except Exception:
+                    it["table_data"] = None
+
+    return {
+        "card": best,
+        "report_date": best_date,
+        "division_id": best_division,
+    }
 
 
 @app.post("/admin/notes/ai_parse")
@@ -2244,7 +2437,7 @@ _ADMIN_UPLOAD_HTML = """
 
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
         <button type="button" id="noteAiParseBtn" style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;">🤖 AI로 정리하기</button>
-        <button type="button" id="noteSaveBtn" disabled style="padding:10px 18px;background:#10b981;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;opacity:0.5;">💾 저장</button>
+
         <span id="noteStatus" style="align-self:center;font-size:13px;color:#6b7280;"></span>
       </div>
     </div>
@@ -2405,6 +2598,7 @@ _ADMIN_UPLOAD_HTML = """
       const res = await fetch('/projects');
       const data = await res.json();
       const sel = document.getElementById('projectKey');
+      if (!sel) return;
       data.projects.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.key;
@@ -3023,118 +3217,277 @@ _ADMIN_UPLOAD_HTML = """
     el.value = `${y}-${m}-${d}`;
   }
 
-  function renderNotePreview(cards) {
-    const area = document.getElementById('notePreviewArea');
-    const card = document.getElementById('notePreviewCard');
-    if (!area || !card) return;
-    card.style.display = 'block';
-    area.innerHTML = '';
+  
 
-    if (!cards || cards.length === 0) {
-      area.innerHTML = '<div style="color:#9ca3af;padding:24px;text-align:center;">표시할 내용이 없습니다</div>';
-      return;
+function renderNotePreview(cards) {
+  const area = document.getElementById('notePreviewArea');
+  const card = document.getElementById('notePreviewCard');
+  if (!area || !card) return;
+
+  if (!cards || cards.length === 0) {
+    card.style.display = 'none';
+    area.innerHTML = '';
+    return;
+  }
+
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const renderAttachBtns = (ci, si, ii) => {
+    return `
+      <span style="display:inline-flex;gap:4px;flex-shrink:0;">
+        <button type="button" onclick="openTableModal(${ci}, ${si}, ${ii})"
+          style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer;">📊</button>
+        <button type="button" onclick="openPhotoUpload(${ci}, ${si}, ${ii})"
+          style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer;">📷</button>
+      </span>
+    `;
+  };
+
+  const renderMiniTable = (table) => {
+    if (!table) return '';
+    const headers = Array.isArray(table.headers) ? table.headers : [];
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    const previewRows = rows.slice(0, 3);
+    let html = `
+      <div style="margin-top:8px;padding:10px;border:1px solid #d1d5db;border-radius:8px;background:#fafafa;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <strong style="font-size:13px;">📊 ${esc(table.title || '표')}</strong>
+          <span style="font-size:11px;color:#6b7280;">탭/클릭으로 확대·수정</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="border-collapse:collapse;width:100%;font-size:12px;background:#fff;">
+    `;
+    if (headers.length) {
+      html += '<thead><tr>';
+      headers.forEach(h => {
+        html += `<th style="border:1px solid #e5e7eb;padding:6px 8px;background:#f3f4f6;text-align:left;">${esc(h)}</th>`;
+      });
+      html += '</tr></thead>';
+    }
+    html += '<tbody>';
+    previewRows.forEach(r => {
+      html += '<tr>';
+      (Array.isArray(r) ? r : []).forEach(c => {
+        html += `<td style="border:1px solid #e5e7eb;padding:6px 8px;">${esc(c)}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    if (rows.length > 3) {
+      html += `<div style="margin-top:4px;font-size:11px;color:#6b7280;">… 외 ${rows.length - 3}행</div>`;
+    }
+    html += '</div>';
+    return html;
+  };
+
+  const renderDueChip = (dueRaw) => {
+    if (!dueRaw) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);
+    if (!m) return '';
+    const due = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const diff = Math.round((due - today) / (1000*60*60*24));
+    let bg = '#dbeafe', fg = '#1e40af', label;
+    if (diff < 0) { bg = '#fee2e2'; fg = '#b91c1c'; label = `D+${-diff} 지남`; }
+    else if (diff === 0) { bg = '#fef3c7'; fg = '#92400e'; label = 'D-0 오늘'; }
+    else if (diff <= 3) { bg = '#fed7aa'; fg = '#9a3412'; label = `D-${diff}`; }
+    else { label = `D-${diff}`; }
+    const dateLabel = `${m[2]}/${m[3]}`;
+    return `<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${bg};color:${fg};font-size:11px;font-weight:600;">${label} (${dateLabel})</span>`;
+  };
+
+  const renderPhoto = (photoRef) => {
+    if (!photoRef) return '';
+    const url = '/note_photos/' + photoRef;
+    return `
+      <div style="margin-top:8px;">
+        <img src="${esc(url)}"
+             onclick="showPhotoOverlay('${esc(url)}')"
+             style="max-width:240px;max-height:150px;border-radius:8px;border:1px solid #d1d5db;cursor:pointer;object-fit:cover;" />
+      </div>
+    `;
+  };
+
+  // 일반 항목 한 줄 렌더 (group 묶음 안/밖 공용)
+  const renderOneItem = (it, ci, si, ii) => {
+    if (typeof it === 'string') {
+      it = { type: 'bullet', text: it };
+    }
+    if (!it || typeof it !== 'object') return '';
+    const type = it.type || 'bullet';
+    const text = esc(it.text || '');
+    const hasTable = !!it.table_ref;
+    const hasPhoto = !!it.photo_ref;
+    const tableData = it.table_data || null;
+    const photoRef = it.photo_ref || '';
+
+    if (type === 'table') {
+      return `<div style="margin:8px 0;">${renderMiniTable(tableData)}</div>`;
+    }
+    if (type === 'photo') {
+      return `<div style="margin:8px 0;">${renderPhoto(photoRef)}</div>`;
     }
 
-    cards.forEach((c, ci) => {
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'background:white;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+    let prefix = '•';
+    let textStyle = 'font-size:14px;color:#111827;';
+    let leftPad = '';
 
-      const title = document.createElement('div');
-      title.style.cssText = 'font-size:18px;font-weight:700;color:#1E3A5F;margin-bottom:12px;';
-      title.textContent = c.title || '';
-      wrap.appendChild(title);
+    if (type === 'highlight') {
+      textStyle = 'font-size:14px;color:#dc2626;font-weight:700;';
+    } else if (type === 'sub') {
+      prefix = '→';
+      textStyle = 'font-size:13px;color:#374151;';
+      leftPad = 'padding-left:18px;';
+    }
 
-      (c.sections || []).forEach((sec, si) => {
-        const secTitle = document.createElement('div');
-        secTitle.style.cssText = 'font-size:15px;font-weight:600;color:#374151;margin:10px 0 6px;padding:6px 10px;background:#f3f4f6;border-radius:6px;';
-        secTitle.textContent = sec.title || '';
-        wrap.appendChild(secTitle);
+    if (hasTable && !tableData && typeof loadTableDataForItem === 'function') {
+      setTimeout(() => {
+        try { loadTableDataForItem(it, () => renderNotePreview(_noteParsedCards)); } catch (_) {}
+      }, 0);
+    }
 
-        (sec.items || []).forEach((it, ii) => {
-          const isHighlight = it.type === 'highlight';
-          const isSub = it.type === 'sub';
-          const padLeft = isSub ? 28 : 12;
-          const hasTable = !!it.table_ref;
-          const hasPhoto = !!it.photo_ref;
+    const dueChip = renderDueChip(it.due_date || '');
+    return `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:6px 0;${leftPad}">
+        <div style="flex:1;min-width:0;">
+          <div style="${textStyle}">${prefix} ${text} ${dueChip}</div>
+          ${hasTable ? renderMiniTable(tableData) : ''}
+          ${hasPhoto ? renderPhoto(photoRef) : ''}
+        </div>
+        ${renderAttachBtns(ci, si, ii)}
+      </div>
+    `;
+  };
 
-          const row = document.createElement('div');
-          row.className = 'note-item-row';
-          row.style.cssText = `font-size:13px;line-height:1.6;padding:3px 0 3px ${padLeft}px;color:${isHighlight ? '#dc2626' : '#1f2937'};${isHighlight ? 'font-weight:600;' : ''}`;
+  // group_id 같은 항목들을 연속 구간으로 묶어 노란 박스로 렌더
+  const renderItemsWithGroups = (items, ci, si) => {
+    let html = '';
+    let i = 0;
+    while (i < items.length) {
+      const raw = items[i];
+      const it = (typeof raw === 'string') ? { type: 'bullet', text: raw } : (raw || {});
+      const gid = it.group_id || '';
 
-          const textSpan = document.createElement('span');
-          textSpan.className = 'note-item-text';
-          const dot = isSub ? '↳' : '•';
-          textSpan.textContent = `${dot} ${it.text || ''}`;
-          row.appendChild(textSpan);
+      if (gid) {
+        // 같은 group_id 가진 연속 구간 모으기
+        const groupItems = [];
+        let j = i;
+        while (j < items.length) {
+          const r = items[j];
+          const x = (typeof r === 'string') ? { type: 'bullet', text: r } : (r || {});
+          if (x.group_id !== gid) break;
+          groupItems.push({ raw: r, idx: j });
+          j++;
+        }
 
-          const tblBtn = document.createElement('button');
-          tblBtn.className = 'note-attach-btn' + (hasTable ? ' has-attachment' : '');
-          tblBtn.textContent = hasTable ? '📊 표' : '📊';
-          tblBtn.title = '표 첨부/편집';
-          tblBtn.onclick = () => openTableModal(ci, si, ii);
-          row.appendChild(tblBtn);
+        // 노란 박스 시작
+        html += `
+          <div style="margin:8px 0;padding:10px 12px;border-left:4px solid #d97706;background:#fffbeb;border-radius:6px;">
+        `;
 
-          const photoBtn = document.createElement('button');
-          photoBtn.className = 'note-attach-btn' + (hasPhoto ? ' has-attachment' : '');
-          photoBtn.textContent = hasPhoto ? '📷 사진' : '📷';
-          photoBtn.title = '사진 첨부';
-          photoBtn.onclick = () => openPhotoUpload(ci, si, ii);
-          row.appendChild(photoBtn);
-
-          wrap.appendChild(row);
-
-          // 표 미니 프리뷰
-          if (hasTable && it._table_data) {
-            const t = it._table_data;
-            const tbl = document.createElement('table');
-            tbl.className = 'note-mini-table';
-            if (t.title) {
-              const cap = document.createElement('caption');
-              cap.textContent = t.title;
-              cap.style.cssText = 'caption-side:top;text-align:left;font-size:11px;color:#6b7280;padding:2px 0;';
-              tbl.appendChild(cap);
-            }
-            if ((t.headers || []).length) {
-              const thead = document.createElement('thead');
-              const trh = document.createElement('tr');
-              t.headers.forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
-              thead.appendChild(trh); tbl.appendChild(thead);
-            }
-            const tbody = document.createElement('tbody');
-            (t.rows || []).forEach(r => {
-              const tr = document.createElement('tr');
-              r.forEach(cell => { const td = document.createElement('td'); td.textContent = cell; tr.appendChild(td); });
-              tbody.appendChild(tr);
-            });
-            tbl.appendChild(tbody);
-            wrap.appendChild(tbl);
-          } else if (hasTable && !it._table_data) {
-            // 표는 있지만 데이터 미로드 → 비동기 로드
-            loadTableDataForItem(it, () => renderNotePreview(_noteParsedCards));
-          }
-
-          // 사진 미니 프리뷰
-          if (hasPhoto) {
-            const img = document.createElement('img');
-            img.className = 'note-mini-photo';
-            img.src = '/note_photos/' + it.photo_ref;
-            img.onclick = () => showPhotoOverlay(img.src);
-            wrap.appendChild(img);
-            const ctrl = document.createElement('div');
-            ctrl.className = 'note-attach-controls';
-            const delBtn = document.createElement('button');
-            delBtn.className = 'danger';
-            delBtn.textContent = '사진 삭제';
-            delBtn.onclick = () => removeNotePhoto(ci, si, ii);
-            ctrl.appendChild(delBtn);
-            wrap.appendChild(ctrl);
-          }
+        // group_note 와 일반 항목 분리
+        const normals = groupItems.filter(g => {
+          const o = (typeof g.raw === 'string') ? { type: 'bullet' } : (g.raw || {});
+          return o.type !== 'group_note';
         });
-      });
+        const notes = groupItems.filter(g => {
+          const o = (typeof g.raw === 'string') ? { type: 'bullet' } : (g.raw || {});
+          return o.type === 'group_note';
+        });
 
-      area.appendChild(wrap);
+        // 일반 항목 먼저
+        normals.forEach(g => {
+          html += renderOneItem(g.raw, ci, si, g.idx);
+        });
+
+        // group_note (있으면 박스 안 아래에)
+        notes.forEach(g => {
+          const o = (typeof g.raw === 'string') ? { type: 'group_note', text: g.raw } : g.raw;
+          const text = esc(o.text || '');
+          html += `
+            <div style="margin:6px 0 0 4px;padding-top:6px;border-top:1px dashed #fcd34d;">
+              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '')}</div>
+            </div>
+          `;
+        });
+
+        html += `</div>`;
+        i = j;
+      } else {
+        // group 아닌 일반 항목
+        if (it.type === 'group_note') {
+          // group_id 없는 group_note 도 노란 박스로 단독 표시
+          const text = esc(it.text || '');
+          html += `
+            <div style="margin:8px 0 8px 18px;padding:8px 10px;border-left:4px solid #d97706;background:#fffbeb;border-radius:6px;">
+              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text}</div>
+            </div>
+          `;
+        } else {
+          html += renderOneItem(raw, ci, si, i);
+        }
+        i++;
+      }
+    }
+    return html;
+  };
+
+  let html = '';
+  cards.forEach((c, ci) => {
+    const title = esc(c.title || '');
+    const sections = Array.isArray(c.sections) ? c.sections : [];
+    html += `
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px;">
+        <div style="font-weight:800;font-size:18px;margin-bottom:12px;">${title}</div>
+    `;
+
+    sections.forEach((s, si) => {
+      const stitle = esc(s.title || '');
+      const items = Array.isArray(s.items) ? s.items : [];
+      html += `
+        <div style="margin-bottom:12px;">
+          <div style="background:#f5f7fb;border-radius:8px;padding:8px 10px;font-weight:700;margin-bottom:8px;">${stitle}</div>
+      `;
+
+      html += renderItemsWithGroups(items, ci, si);
+
+      // 섹션 레벨 표 (구버전 호환)
+      if (s.table_ref && s.table_data) {
+        html += renderMiniTable(s.table_data);
+      } else if (s.table_ref && typeof loadTableDataForItem === 'function') {
+        setTimeout(() => {
+          try { loadTableDataForItem(s, () => renderNotePreview(_noteParsedCards)); } catch (_) {}
+        }, 0);
+      }
+
+      html += `</div>`;
     });
-  }
+
+    html += `</div>`;
+  });
+
+  // 미리보기 맨 아래 저장 버튼
+  html += `
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+      <button type="button" id="noteSaveBtn"
+        style="padding:12px 24px;background:#10b981;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;">
+        💾 저장
+      </button>
+    </div>
+  `;
+  area.innerHTML = html;
+  // 새로 생긴 저장 버튼에 이벤트 바인딩
+  const newSaveBtn = area.querySelector('#noteSaveBtn');
+  if (newSaveBtn) newSaveBtn.addEventListener('click', noteSave);
+  card.style.display = 'block';
+}
+
+
 
   async function loadTableDataForItem(it, cb) {
     if (!it.table_ref || it._table_loading) return;
@@ -3166,8 +3519,10 @@ _ADMIN_UPLOAD_HTML = """
     }
     status.textContent = '🤖 AI 정리 중...';
     status.style.color = '#6b7280';
-    saveBtn.disabled = true;
-    saveBtn.style.opacity = '0.5';
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = '0.5';
+    }
     const _divId = document.getElementById('noteDivision').value;
     try {
       const r = await fetch('/admin/notes/ai_parse', {
@@ -3182,8 +3537,10 @@ _ADMIN_UPLOAD_HTML = """
       renderNotePreview(_noteParsedCards);
       status.textContent = `✅ ${_noteParsedCards.length}개 카드 정리 완료`;
       status.style.color = '#10b981';
-      saveBtn.disabled = false;
-      saveBtn.style.opacity = '1';
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+      }
     } catch (e) {
       status.textContent = '❌ AI 정리 실패: ' + e.message;
       status.style.color = '#dc2626';
@@ -3228,34 +3585,170 @@ _ADMIN_UPLOAD_HTML = """
     }
   }
 
+  // cards JSON → 텍스트 변환 (편집 가능 포맷)
+  function _cardsToText(cards) {
+    if (!cards || cards.length === 0) return '';
+    const out = [];
+    cards.forEach((c, ci) => {
+      out.push(`<${c.title || '프로젝트'}>`);
+      const sections = Array.isArray(c.sections) ? c.sections : [];
+      sections.forEach((s, si) => {
+        if (s.title) out.push(`[${s.title}]`);
+        const items = Array.isArray(s.items) ? s.items : [];
+        // group_id 모아서 } 표기 만들기
+        let i = 0;
+        while (i < items.length) {
+          const it = items[i] || {};
+          const gid = it.group_id || '';
+          if (gid) {
+            // 같은 group_id 연속 묶기
+            const group = [];
+            let j = i;
+            while (j < items.length && (items[j] || {}).group_id === gid) {
+              group.push(items[j]);
+              j++;
+            }
+            const normals = group.filter(g => (g.type || '') !== 'group_note');
+            const notes = group.filter(g => (g.type || '') === 'group_note');
+            normals.forEach((g, idx) => {
+              const isLast = idx === normals.length - 1;
+              const t = (g.type || 'bullet');
+              let prefix = '- ';
+              if (t === 'highlight') prefix = '*';
+              else if (t === 'sub') prefix = '  → ';
+              const tail = (isLast && notes.length > 0) ? ' } ' + notes.map(n => n.text || '').join(', ') : '';
+              out.push(prefix + (g.text || '') + tail);
+            });
+            // 단일 group_note 만 있고 normal 없으면 그냥 출력
+            if (normals.length === 0 && notes.length > 0) {
+              notes.forEach(n => out.push('} ' + (n.text || '')));
+            }
+            i = j;
+          } else {
+            const t = (it.type || 'bullet');
+            if (t === 'highlight') out.push('*' + (it.text || ''));
+            else if (t === 'sub') out.push('  → ' + (it.text || ''));
+            else if (t === 'group_note') out.push('} ' + (it.text || ''));
+            else if (t === 'table') out.push('[표]');
+            else if (t === 'photo') out.push('[사진]');
+            else out.push('- ' + (it.text || ''));
+            i++;
+          }
+        }
+      });
+      if (ci < cards.length - 1) out.push('');
+    });
+    return out.join(String.fromCharCode(10));
+  }
+
+  // 사업부 + 프로젝트 단일 선택 → 텍스트 영역에 채우기
   async function noteLoadExisting() {
     const divisionId = document.getElementById('noteDivision').value;
     if (!divisionId) { alert('사업부를 먼저 선택하세요'); return; }
     const status = document.getElementById('noteStatus');
-    status.textContent = '📥 불러오는 중...';
+    status.textContent = '📥 프로젝트 목록 불러오는 중...';
     status.style.color = '#6b7280';
     try {
-      const r = await fetch(`/notes?division_id=${encodeURIComponent(divisionId)}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      _noteParsedCards = data.cards || [];
-      if (data.report_date) {
-        document.getElementById('noteReportDate').value = data.report_date;
-      }
-      if (_noteParsedCards.length > 0) {
-        renderNotePreview(_noteParsedCards);
-        document.getElementById('noteSaveBtn').disabled = false;
-        document.getElementById('noteSaveBtn').style.opacity = '1';
-        status.textContent = `✅ 기존 노트 ${_noteParsedCards.length}개 카드 불러옴`;
-        status.style.color = '#10b981';
-      } else {
-        status.textContent = '저장된 노트가 없습니다';
-        status.style.color = '#6b7280';
-      }
+      // 1) 사업부의 프로젝트 목록 + 저장된 노트
+      const [divRes, noteRes] = await Promise.all([
+        fetch('/divisions', { credentials: 'same-origin' }).then(r => r.json()),
+        fetch(`/notes?division_id=${encodeURIComponent(divisionId)}`).then(r => r.json()),
+      ]);
+      const divs = (divRes.divisions || []);
+      const div = divs.find(d => d.id === divisionId) || {};
+      const projects = div.projects || [];
+      const savedCards = noteRes.cards || [];
+      const reportDate = noteRes.report_date || '';
+
+      // 2) 어떤 프로젝트에 저장된 카드가 있는지 매칭
+      const savedByLabel = {};
+      savedCards.forEach(c => {
+        const t = (c.title || '').trim();
+        if (t) savedByLabel[t] = c;
+      });
+
+      // 3) 모달 열기
+      _openProjectPickModal(divisionId, projects, savedByLabel, reportDate);
+      status.textContent = '';
     } catch (e) {
       status.textContent = '❌ 불러오기 실패: ' + e.message;
       status.style.color = '#dc2626';
     }
+  }
+
+  function _openProjectPickModal(divisionId, projects, savedByLabel, reportDate) {
+    const overlay = document.getElementById('projectPickModal');
+    const listEl = document.getElementById('projectPickList');
+    listEl.innerHTML = '';
+    if (projects.length === 0) {
+      listEl.innerHTML = '<div style="color:#6b7280;padding:20px;text-align:center;">이 사업부에 등록된 프로젝트가 없습니다.</div>';
+    } else {
+      projects.forEach(p => {
+        const label = p.label || p.id;
+        const saved = savedByLabel[label];
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;cursor:pointer;background:#fff;';
+        row.innerHTML = `
+          <input type="radio" name="projectPick" value="${label}" data-saved="${saved ? '1' : '0'}" style="flex-shrink:0;margin:0;width:18px;height:18px;cursor:pointer;" />
+          <div style="flex:1;min-width:0;overflow:hidden;">
+            <div style="font-weight:600;font-size:14px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+            <div style="font-size:12px;color:${saved ? '#10b981' : '#9ca3af'};margin-top:2px;">
+              ${saved ? '✅ 저장된 노트 있음' : '⚪ 새로 시작'}
+            </div>
+          </div>
+        `;
+        listEl.appendChild(row);
+      });
+    }
+
+    // 데이터 임시 저장
+    overlay._divisionId = divisionId;
+    overlay._savedByLabel = savedByLabel;
+    overlay._reportDate = reportDate;
+    overlay.classList.add('show');
+  }
+
+  function _closeProjectPickModal() {
+    document.getElementById('projectPickModal').classList.remove('show');
+  }
+
+  function _confirmProjectPick() {
+    const overlay = document.getElementById('projectPickModal');
+    const picked = document.querySelector('input[name="projectPick"]:checked');
+    if (!picked) { alert('프로젝트를 선택하세요'); return; }
+    const value = picked.value;
+    const savedByLabel = overlay._savedByLabel || {};
+    const reportDate = overlay._reportDate || '';
+
+    let txt = '';
+    const saved = savedByLabel[value];
+    if (saved) {
+      txt = _cardsToText([saved]);
+    } else {
+      // 새 시작: 제목만
+      txt = `<${value}>\n`;
+    }
+
+    const ta = document.getElementById('noteRawText');
+    if (ta) ta.value = txt;
+    if (reportDate) {
+      const dateEl = document.getElementById('noteReportDate');
+      if (dateEl) dateEl.value = reportDate;
+    }
+    _noteParsedCards = null;
+    const card = document.getElementById('notePreviewCard');
+    if (card) card.style.display = 'none';
+
+    const status = document.getElementById('noteStatus');
+    if (status) {
+      const label = value;
+      const isNew = !savedByLabel[value];
+      status.textContent = isNew
+        ? `🆕 [${label}] 새 프로젝트로 시작 — 내용 입력 후 "🤖 AI 정리"`
+        : `✅ [${label}] 불러옴 — 수정 후 "🤖 AI 정리"`;
+      status.style.color = '#10b981';
+    }
+    _closeProjectPickModal();
   }
 
   // ─── 표/사진 첨부 ───
@@ -3848,6 +4341,22 @@ _ADMIN_UPLOAD_HTML = """
     <p style="color:#6b7280;font-size:13px;margin:0 0 14px;">이 PPT를 어느 사업부 주간 보고로 변환할까요?</p>
     <div id="draftDivChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
     <div id="draftModalStatus" style="font-size:13px;color:#6b7280;margin-top:8px;min-height:18px;"></div>
+  </div>
+</div>
+
+<!-- 프로젝트 선택 모달 (기존 노트 불러오기) -->
+<div class="modal-overlay" id="projectPickModal">
+  <div class="modal-box" style="max-width:520px;width:90%;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="margin:0;">📥 프로젝트 선택</h3>
+      <button onclick="_closeProjectPickModal()" style="background:transparent;color:#6b7280;font-size:24px;padding:0;margin:0;border:none;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 12px;">어느 프로젝트를 불러올까요?</p>
+    <div id="projectPickList" style="max-height:400px;overflow-y:auto;margin-bottom:14px;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button onclick="_closeProjectPickModal()" style="padding:8px 14px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;cursor:pointer;">취소</button>
+      <button onclick="_confirmProjectPick()" style="padding:8px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">불러오기</button>
+    </div>
   </div>
 </div>
 
