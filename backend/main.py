@@ -166,6 +166,8 @@ def _group_dashboard_cards(cards: list) -> list:
                 "division_label": c.get("division_label"),
                 "report_date": c.get("report_date"),
                 "report_family": c.get("report_family"),
+                "due_date_min": c.get("due_date_min"),
+                "summary_bullets": list(c.get("summary_bullets") or []),
                 "issues": [],
                 "_statuses": [],
             }
@@ -206,6 +208,17 @@ def _group_dashboard_cards(cards: list) -> list:
         rd_old = groups[gkey].get("report_date") or ""
         if rd_new > rd_old:
             groups[gkey]["report_date"] = rd_new
+
+        # due_date_min: 가장 가까운 마감일 채택
+        ddn = c.get("due_date_min")
+        if ddn:
+            cur = groups[gkey].get("due_date_min")
+            if not cur or ddn < cur:
+                groups[gkey]["due_date_min"] = ddn
+
+        # summary_bullets: 기존이 비어있고 새 카드에 있으면 채움
+        if not groups[gkey].get("summary_bullets") and c.get("summary_bullets"):
+            groups[gkey]["summary_bullets"] = list(c.get("summary_bullets") or [])
 
     result = []
     for gkey in order:
@@ -1032,27 +1045,64 @@ def dashboard():
                     except Exception:
                         pkey = ""
 
-                # headline / summary_bullets 추출
+                # headline / summary_bullets / 마감일 추출
+                # 우선순위: 마감일 있는 항목 > group_note > highlight > bullet
+                from datetime import datetime as _dt
+                today_str = _dt.now().strftime("%Y-%m-%d")
+
                 headline = ""
-                bullets = []
+                bullets = []        # 진행 중 항목 (마감일 있는 것 우선)
+                group_notes = []    # 그룹 메모 (↪)
+                dated_items = []    # (due_date, text, type)
+                undated_bullets = []
+                highlight_txt = ""
+
                 for sec in (nc.get("sections") or []):
                     for it in (sec.get("items") or []):
                         if not isinstance(it, dict):
-                            if isinstance(it, str) and not headline:
-                                headline = it
                             continue
                         t = (it.get("type") or "bullet").lower()
                         txt = (it.get("text") or "").strip()
+                        due = (it.get("due_date") or "").strip()
                         if not txt:
                             continue
-                        if t == "highlight" and not headline:
-                            headline = txt
-                        elif t == "bullet" and len(bullets) < 3:
-                            bullets.append(txt)
-                    if headline and len(bullets) >= 3:
-                        break
-                if not headline and bullets:
-                    headline = bullets[0]
+                        if t == "highlight" and not highlight_txt:
+                            highlight_txt = txt
+                        elif t == "group_note":
+                            group_notes.append((due, txt))
+                        elif t == "bullet" or t == "sub":
+                            if due:
+                                dated_items.append((due, txt))
+                            else:
+                                undated_bullets.append(txt)
+
+                # headline: highlight 우선, 없으면 첫 bullet
+                headline = highlight_txt or (
+                    dated_items[0][1] if dated_items else
+                    (undated_bullets[0] if undated_bullets else title)
+                )
+
+                # bullets: 마감일 있는 항목 먼저 (최대 3개)
+                dated_sorted = sorted(dated_items, key=lambda x: x[0])
+                for due, txt in dated_sorted:
+                    if len(bullets) < 3:
+                        bullets.append(txt)
+                for txt in undated_bullets:
+                    if len(bullets) < 3:
+                        bullets.append(txt)
+
+                # 그룹 메모 (앞 1개만, ↪ 마커 붙임)
+                if group_notes:
+                    gn_due, gn_txt = group_notes[0]
+                    marker = f"↪ {gn_txt}"
+                    if len(bullets) < 4:
+                        bullets.append(marker)
+
+                # 가장 가까운 마감일 (D-day 계산용)
+                due_date_min = None
+                all_dues = [d for d, _ in dated_items] + [d for d, _ in group_notes if d]
+                if all_dues:
+                    due_date_min = min(all_dues)
 
                 computed_status = _calc_card_status(nc)
                 note_cards.append({
@@ -1066,6 +1116,7 @@ def dashboard():
                     "project_key": pkey or None,
                     "division_id": div_id,
                     "from_note": True,
+                    "due_date_min": due_date_min,
                 })
 
         # enrich (project_key 가 있으면 division/label 등 자동 채움)
@@ -1611,31 +1662,120 @@ def admin_delete_note_photo(division_id: str, filename: str, _admin: int = Depen
 @app.get("/divisions")
 def list_divisions():
     """공개 사업부 목록 + 각 사업부의 visible 프로젝트 리스트.
+    각 프로젝트에 노트 기반 상태(status, has_content, due_date) 포함.
     매핑 관리 대시보드 / 모바일 사업부 화면에서 사용."""
+
+    # 상태 우선순위 (낮을수록 긴급)
+    STATUS_PRIORITY = {"RED": 0, "ORANGE": 1, "BLUE": 2, "BLACK": 3, "GRAY": 4}
+
+    # 전체 노트 데이터 로드
+    try:
+        notes_data = _load_notes().get("notes", {})
+    except Exception:
+        notes_data = {}
+
+    def _norm(s):
+        return (s or "").strip().lower().replace(" ", "")
+
+    def _find_card_for_project(div_id, project):
+        """해당 프로젝트의 노트 카드 찾기 (title/aliases 매칭)"""
+        div_notes = notes_data.get(div_id, {})
+        cards = div_notes.get("cards", [])
+        if not cards:
+            return None
+        p_label = _norm(project.get("label"))
+        p_id = _norm(project.get("id"))
+        p_aliases = [_norm(a) for a in (project.get("aliases") or [])]
+        candidates = {p_label, p_id} | set(p_aliases)
+        candidates.discard("")
+        for card in cards:
+            ct = _norm(card.get("title"))
+            if not ct:
+                continue
+            if ct in candidates:
+                return card
+            # 부분 매칭
+            for c in candidates:
+                if c and (c in ct or ct in c):
+                    return card
+        return None
+
+    def _card_status(card):
+        """카드의 가장 긴급한 상태 + 가장 가까운 마감일 반환"""
+        if not card:
+            return ("GRAY", None)
+        # 직접 items 순회 (_calc_card_status가 튜플을 안 줄 수 있어서 안전하게 직접 계산)
+        best_status = None
+        best_due = None
+        for sec in (card.get("sections") or []):
+            for it in (sec.get("items") or []):
+                due = it.get("due_date")
+                if not due:
+                    continue
+                try:
+                    st = _due_status_one(due)
+                except Exception:
+                    st = "BLUE"
+                if best_status is None or STATUS_PRIORITY.get(st, 9) < STATUS_PRIORITY.get(best_status, 9):
+                    best_status = st
+                if best_due is None or due < best_due:
+                    best_due = due
+        # 마감일이 하나도 없으면 BLACK (내용은 있지만 일정 없음)
+        if best_status is None:
+            best_status = "BLACK"
+        return (best_status, best_due)
+
     divs = _cl.get_divisions(visible_only=True)
     result = []
     for d in divs:
         div_id = d.get("id")
-        # 해당 사업부의 visible 프로젝트만 (order 순)
         try:
             ps = _cl.get_projects(div_id, visible_only=True)
         except Exception:
             ps = []
         ps_sorted = sorted(ps, key=lambda x: x.get("order", 999))
+
+        projects_out = []
+        div_best_status = "GRAY"
+        div_has_updates = False
+
+        for p in ps_sorted:
+            card = _find_card_for_project(div_id, p)
+            has_content = card is not None
+            if has_content:
+                status, due = _card_status(card)
+                div_has_updates = True
+                if STATUS_PRIORITY.get(status, 9) < STATUS_PRIORITY.get(div_best_status, 9):
+                    div_best_status = status
+            else:
+                status, due = "GRAY", None
+
+            projects_out.append({
+                "id": p.get("id"),
+                "label": p.get("label"),
+                "order": p.get("order", 999),
+                "status": status,
+                "has_content": has_content,
+                "due_date": due,
+            })
+
+        # 상태 우선순위 -> 마감일 -> order 순 정렬
+        projects_out.sort(key=lambda x: (
+            STATUS_PRIORITY.get(x["status"], 9),
+            x["due_date"] or "9999-12-31",
+            x["order"],
+        ))
+
         result.append({
             "id": div_id,
             "label": d.get("label"),
             "order": d.get("order", 999),
             "badge_short_label": d.get("badge_short_label"),
-            "projects": [
-                {
-                    "id": p.get("id"),
-                    "label": p.get("label"),
-                    "order": p.get("order", 999),
-                }
-                for p in ps_sorted
-            ],
+            "summary_status": div_best_status,
+            "has_updates": div_has_updates,
+            "projects": projects_out,
         })
+
     result.sort(key=lambda x: x.get("order", 999))
     return {"divisions": result}
 

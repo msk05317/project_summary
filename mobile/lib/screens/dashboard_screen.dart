@@ -110,9 +110,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     try {
+      final divKey = widget.divisionKey;
       final results = await Future.wait([
         _api.fetchDashboardData(),
-        _api.fetchProjects(),
+        (divKey != null && divKey.isNotEmpty)
+            ? _api.fetchDivisionProjects(divKey)
+            : _api.fetchProjects(),
       ]);
       final fetchedData = results[0] as DashboardData;
       final fetchedCards = fetchedData.cards;
@@ -178,10 +181,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     switch (status) {
       case 'RED':
         return Colors.red;
+      case 'ORANGE':
+        return Colors.orange.shade700;
       case 'BLUE':
         return Colors.blue;
       case 'BLACK':
         return Colors.grey.shade800;
+      case 'GRAY':
+        return Colors.grey.shade400;
       default:
         return Colors.grey;
     }
@@ -191,10 +198,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     switch (status) {
       case 'RED':
         return '즉시 확인';
+      case 'ORANGE':
+        return '임박';
       case 'BLUE':
         return '진행 중';
       case 'BLACK':
         return '정상';
+      case 'GRAY':
+        return '내용 없음';
       default:
         return '';
     }
@@ -451,13 +462,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // GroupedCard 기준으로 분류 (백엔드가 grouped 응답을 주면 우선 사용)
     final useGrouped = groupedCards.isNotEmpty;
     final redGroups = filteredGrouped.where((g) => g.status == 'RED').toList();
+    final orangeGroups = filteredGrouped.where((g) => g.status == 'ORANGE').toList();
     final blueGroups = filteredGrouped.where((g) => g.status == 'BLUE').toList();
     final blackGroups = filteredGrouped.where((g) => g.status == 'BLACK').toList();
 
     // flat 폴백용
     final redCards = filteredCards.where((c) => c.status == 'RED').toList();
+    final orangeCards = filteredCards.where((c) => c.status == 'ORANGE').toList();
     final blueCards = filteredCards.where((c) => c.status == 'BLUE').toList();
     final blackCards = filteredCards.where((c) => c.status == 'BLACK').toList();
+
+    // 내용 없는 프로젝트 (회색 칩에서 추출)
+    final grayProjects = filteredProjects.where((p) =>
+        (p['has_content'] == false) || (p['status']?.toString() == 'GRAY')).toList();
 
     return RefreshIndicator(
       onRefresh: () => _load(),
@@ -541,6 +558,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             if (redGroups.isNotEmpty)
               _buildGroupedStatusSection('🔴 즉시 확인', redGroups),
+            if (orangeGroups.isNotEmpty)
+              _buildGroupedStatusSection('🟠 임박', orangeGroups),
             if (blueGroups.isNotEmpty)
               _buildGroupedStatusSection('🔵 진행 중', blueGroups),
             if (blackGroups.isNotEmpty)
@@ -548,10 +567,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ] else ...[
             if (redCards.isNotEmpty)
               _buildStatusGroup('🔴 즉시 확인', redCards, 'RED'),
+            if (orangeCards.isNotEmpty)
+              _buildStatusGroup('🟠 임박', orangeCards, 'ORANGE'),
             if (blueCards.isNotEmpty)
               _buildStatusGroup('🔵 진행 중', blueCards, 'BLUE'),
             if (blackCards.isNotEmpty)
               _buildStatusGroup('⚫ 정상', blackCards, 'BLACK'),
+          ],
+          // ⚪ 내용 없음 — 부서 진입 시에만 표시
+          if (grayProjects.isNotEmpty && (widget.divisionKey != null && widget.divisionKey!.isNotEmpty)) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Text('⚪ 내용 없음 (${grayProjects.length}건)',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            ),
+            ...grayProjects.map((p) => Card(
+              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+              color: Colors.grey.shade50,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade300, width: 1),
+              ),
+              child: ListTile(
+                leading: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                title: Text(
+                  p['label']?.toString() ?? '',
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 15),
+                ),
+                subtitle: Text(
+                  '아직 입력된 내용이 없습니다',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                ),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${p['label']}: 아직 입력된 내용이 없습니다'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            )),
           ],
         ],
       ),

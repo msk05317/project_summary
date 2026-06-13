@@ -172,6 +172,8 @@ class GroupedCard {
   final String? divisionLabel;
   final String reportDate;
   final String reportFamily;
+  final String? dueDate;          // YYYY-MM-DD (가장 가까운 마감일)
+  final List<String> bullets;     // 진행 중 항목 (마감일 있는 것 우선)
   final List<GroupedIssue> issues;
 
   GroupedCard({
@@ -184,6 +186,8 @@ class GroupedCard {
     this.divisionLabel,
     this.reportDate = '',
     this.reportFamily = '',
+    this.dueDate,
+    this.bullets = const [],
     this.issues = const [],
   });
 
@@ -199,6 +203,10 @@ class GroupedCard {
       divisionLabel: json['division_label']?.toString(),
       reportDate: json['report_date']?.toString() ?? '',
       reportFamily: json['report_family']?.toString() ?? '',
+      dueDate: (json['due_date_min'] ?? json['due_date'])?.toString(),
+      bullets: ((json['summary_bullets'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
       issues: issuesRaw
           .whereType<Map<String, dynamic>>()
           .map((e) => GroupedIssue.fromJson(e))

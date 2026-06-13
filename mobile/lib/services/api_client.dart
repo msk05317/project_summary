@@ -103,6 +103,31 @@ class ApiClient {
     }
   }
 
+  /// 특정 사업부의 모든 프로젝트(빈 것 포함) 반환.
+  /// 백엔드 /divisions 응답에서 해당 사업부의 projects 배열을 추출.
+  Future<List<Map<String, dynamic>>> fetchDivisionProjects(String divisionId) async {
+    try {
+      final res = await http.get(Uri.parse('$kApiBaseUrl/divisions'));
+      if (res.statusCode != 200) return const [];
+      final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final divs = (body['divisions'] as List?) ?? const [];
+      for (final d in divs) {
+        if (d is! Map) continue;
+        if ((d['id'] as String?) != divisionId) continue;
+        final ps = (d['projects'] as List?) ?? const [];
+        return ps.map<Map<String, dynamic>>((p) {
+          final m = Map<String, dynamic>.from(p as Map);
+          m['division_id'] = divisionId;
+          m['key'] = m['id']; // dashboard_screen에서 'key' 사용 호환
+          return m;
+        }).toList();
+      }
+      return const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// 사업부별 최신 업데이트 시각 맵 반환 (division_id -> ISO8601 문자열)
   Future<Map<String, String>> fetchDivisionUpdates() async {
     try {
