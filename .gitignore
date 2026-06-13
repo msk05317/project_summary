@@ -83,3 +83,21 @@ backend/upload_hashes.json
 # Patch backup files (자동 생성)
 *.bak_*
 *.bak
+
+backend/_backup_*/
+backend/_backup_wipe_*/
+backend/main.py.bak*
+backend/config/*.bak*
+backend/uploads/
+backend/slides/
+backend/slide_images/
+backend/cropped/
+backend/note_assets/
+backend/reports_latest.json
+backend/reports_history.json
+backend/reports.json
+backend/notes.json
+backend/upload_hashes.json
+.DS_Store
+__pycache__/
+*.pyc

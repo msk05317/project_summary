@@ -520,37 +520,6 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 });
 </script>
 
-<!-- 표 편집 모달 -->
-<div class="modal-overlay" id="tableModal">
-  <div class="modal-box">
-    <h3>📊 표 편집</h3>
-    <input type="text" id="tableModalTitle" class="modal-input" placeholder="표 제목 (선택)" />
-    <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">
-      💡 Excel에서 복사한 표를 아래에 붙여넣으면 자동 인식됩니다 (Tab/쉼표 구분).
-    </div>
-    <textarea id="tablePasteArea" class="modal-input" placeholder="여기에 붙여넣기 → 자동 파싱"></textarea>
-    <div id="tableEditorArea"></div>
-    <div style="display:flex; gap:6px; margin-bottom:12px;">
-      <button onclick="addTableRow()" style="background:#e5e7eb;color:#374151;margin:0;padding:6px 12px;font-size:12px;">＋ 행 추가</button>
-      <button onclick="addTableCol()" style="background:#e5e7eb;color:#374151;margin:0;padding:6px 12px;font-size:12px;">＋ 열 추가</button>
-      <button onclick="removeTableRow()" style="background:#fee2e2;color:#991b1b;margin:0;padding:6px 12px;font-size:12px;">－ 마지막 행 삭제</button>
-      <button onclick="removeTableCol()" style="background:#fee2e2;color:#991b1b;margin:0;padding:6px 12px;font-size:12px;">－ 마지막 열 삭제</button>
-    </div>
-    <div class="modal-actions">
-      <button class="danger" id="tableModalDeleteBtn" onclick="deleteTableFromModal()">🗑️ 삭제</button>
-      <button class="cancel" onclick="closeTableModal()">취소</button>
-      <button onclick="saveTableFromModal()">💾 저장</button>
-    </div>
-  </div>
-</div>
-
-<!-- 사진 확대 모달 -->
-<div class="photo-overlay" id="photoOverlay" onclick="this.classList.remove('show')">
-  <img id="photoOverlayImg" src="" alt="확대 사진" />
-</div>
-
-<!-- 숨김 사진 업로드 input -->
-<input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
 
 </body></html>"""
 
@@ -3158,9 +3127,13 @@ _ADMIN_UPLOAD_HTML = """
         setTimeout(() => {
           const text = pa.value;
           if (!text.trim() || !_editingTable) return;
-          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          const _LF = String.fromCharCode(10);
+          const _CR = String.fromCharCode(13);
+          const _TAB = String.fromCharCode(9);
+          const _norm = String(text).split(_CR + _LF).join(_LF).split(_CR).join(_LF);
+          const lines = _norm.split(_LF).filter(function(l){ return l.trim(); });
           if (lines.length === 0) return;
-          const sep = lines[0].includes('\t') ? '\t' : ',';
+          const sep = lines[0].indexOf(_TAB) >= 0 ? _TAB : ',';
           const parsed = lines.map(l => l.split(sep).map(c => c.trim()));
           if (parsed.length >= 1) {
             _editingTable.headers = parsed[0];
@@ -3303,6 +3276,40 @@ _ADMIN_UPLOAD_HTML = """
   });
 
 </script>
+
+<!-- 표 편집 모달 -->
+<div class="modal-overlay" id="tableModal">
+  <div class="modal-box">
+    <h3>📊 표 편집</h3>
+    <input type="text" id="tableModalTitle" class="modal-input" placeholder="표 제목 (선택)" />
+    <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">
+      💡 Excel에서 복사한 표를 아래에 붙여넣으면 자동 인식됩니다 (Tab/쉼표 구분).
+    </div>
+    <textarea id="tablePasteArea" class="modal-input" placeholder="여기에 붙여넣기 → 자동 파싱"></textarea>
+    <div id="tableEditorArea"></div>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">
+      <button onclick="addTableRow()" style="background:#e5e7eb;color:#374151;margin:0;padding:6px 12px;font-size:12px;">＋ 행 추가</button>
+      <button onclick="addTableCol()" style="background:#e5e7eb;color:#374151;margin:0;padding:6px 12px;font-size:12px;">＋ 열 추가</button>
+      <button onclick="removeTableRow()" style="background:#fee2e2;color:#991b1b;margin:0;padding:6px 12px;font-size:12px;">－ 마지막 행 삭제</button>
+      <button onclick="removeTableCol()" style="background:#fee2e2;color:#991b1b;margin:0;padding:6px 12px;font-size:12px;">－ 마지막 열 삭제</button>
+    </div>
+    <div class="modal-actions">
+      <button class="danger" id="tableModalDeleteBtn" onclick="deleteTableFromModal()">🗑️ 삭제</button>
+      <button class="cancel" onclick="closeTableModal()">취소</button>
+      <button onclick="saveTableFromModal()">💾 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 사진 확대 모달 -->
+<div class="photo-overlay" id="photoOverlay" onclick="this.classList.remove('show')">
+  <img id="photoOverlayImg" src="" alt="확대 사진" />
+</div>
+
+<!-- 숨김 사진 업로드 input -->
+<input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
+
 </body>
+
 </html>
 """
