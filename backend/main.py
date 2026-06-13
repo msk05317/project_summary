@@ -1903,6 +1903,31 @@ _ADMIN_UPLOAD_HTML = """
   .photo-overlay img { max-width: 95vw; max-height: 95vh; }
 
 
+  /* 매핑 관리 대시보드 */
+  .map-chip {
+    padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 16px;
+    background: white; color: #4b5563; font-size: 13px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .map-chip:hover { background: #f3f4f6; border-color: #1E3A5F; color: #1E3A5F; }
+  .map-chip.active { background: #1E3A5F; color: white; border-color: #1E3A5F; font-weight: 600; }
+  .map-chip .count {
+    display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px;
+    font-size: 11px; background: #e5e7eb; color: #374151;
+  }
+  .map-chip.active .count { background: rgba(255,255,255,0.25); color: white; }
+
+  .map-pcard {
+    background: white; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 12px 14px; transition: all 0.15s; cursor: default;
+  }
+  .map-pcard:hover { border-color: #1E3A5F; box-shadow: 0 2px 8px rgba(30,58,95,0.08); }
+  .map-pcard .ptitle { font-size: 14px; font-weight: 600; color: #1f2937; margin-bottom: 8px; }
+  .map-pcard .pmeta { display: flex; gap: 10px; font-size: 12px; color: #6b7280; }
+  .map-pcard .pmeta .badge-ppt { color: #1E3A5F; }
+  .map-pcard .pmeta .badge-note { color: #10b981; }
+  .map-pcard .pmeta .badge-empty { color: #d1d5db; }
+
   .placeholder {
     background: white;
     border: 2px dashed #d1d5db;
@@ -2115,10 +2140,13 @@ _ADMIN_UPLOAD_HTML = """
   </section>
 
   <section class="tab-content" id="tab-mapping">
-    <div class="placeholder">
-      <div class="icon">⚙️</div>
-      <h3>매핑 관리 (5-2d 단계에서 구현)</h3>
-      <p>미분류 카드 목록 + 사업부/프로젝트 시각화</p>
+    <div class="card">
+      <h2>📊 사업부 ↔ 프로젝트 통합 대시보드</h2>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">사업부 칩을 클릭하면 해당 사업부의 프로젝트 리스트가 표시됩니다.</p>
+      <div id="mappingDivisionChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
+      <div id="mappingDivisionMeta" style="font-size:13px;color:#6b7280;margin-bottom:10px;"></div>
+      <div id="mappingProjectGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;"></div>
+      <div id="mappingEmpty" style="color:#9ca3af;padding:24px;text-align:center;display:none;">프로젝트가 등록되지 않은 사업부입니다.</div>
     </div>
   </section>
 
@@ -3262,6 +3290,153 @@ _ADMIN_UPLOAD_HTML = """
     st.textContent = '🗑️ 사진 삭제됨 — "💾 저장" 버튼을 눌러주세요';
     st.style.color = '#f59e0b';
   }
+
+  // ─── 매핑 관리 대시보드 ───
+  let _mapDivisions = [];
+  let _mapActiveDivId = null;
+  let _mapReports = [];
+  let _mapNotes = {};
+
+  async function initMappingTab() {
+    try {
+      const divResp = await fetch('/divisions');
+      if (!divResp.ok) throw new Error('divisions HTTP ' + divResp.status);
+      const divData = await divResp.json();
+      _mapDivisions = divData.divisions || [];
+
+      try {
+        const r = await fetch('/admin/uploads/history', { credentials: 'same-origin' });
+        if (r.ok) {
+          const d = await r.json();
+          _mapReports = d.items || d.reports || [];
+        }
+      } catch (e) { _mapReports = []; }
+
+      _mapNotes = {};
+      for (const d of _mapDivisions) {
+        try {
+          const r = await fetch('/notes?division_id=' + encodeURIComponent(d.id));
+          if (r.ok) {
+            const data = await r.json();
+            _mapNotes[d.id] = data;
+          }
+        } catch (e) {}
+      }
+
+      renderMappingChips();
+      if (_mapDivisions.length > 0) {
+        selectMappingDivision(_mapDivisions[0].id);
+      }
+    } catch (e) {
+      const grid = document.getElementById('mappingProjectGrid');
+      if (grid) grid.innerHTML = '<div style="color:#dc2626;padding:16px;">로드 실패: ' + e.message + '</div>';
+    }
+  }
+
+  function renderMappingChips() {
+    const wrap = document.getElementById('mappingDivisionChips');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    _mapDivisions.forEach(d => {
+      const chip = document.createElement('button');
+      chip.className = 'map-chip' + (d.id === _mapActiveDivId ? ' active' : '');
+      chip.dataset.divId = d.id;
+      chip.innerHTML = d.label + '<span class="count">' + (d.projects || []).length + '</span>';
+      chip.onclick = () => selectMappingDivision(d.id);
+      wrap.appendChild(chip);
+    });
+  }
+
+  function _countProjectMatches(divisionId, project) {
+    let pptCardCount = 0;
+    const aliases = (project.aliases || []).map(s => s.toLowerCase());
+    const labelLc = (project.label || '').toLowerCase();
+    const projectId = project.id;
+
+    for (const rep of _mapReports) {
+      const products = rep.products || [];
+      for (const p of products) {
+        const pkey = p.project_key || p.project || '';
+        if (pkey === projectId) { pptCardCount += 1; continue; }
+        const text = ((p.name || '') + ' ' + (p.headline || '')).toLowerCase();
+        if (labelLc && text.includes(labelLc)) { pptCardCount += 1; continue; }
+        for (const al of aliases) {
+          if (al && text.includes(al)) { pptCardCount += 1; break; }
+        }
+      }
+    }
+    return pptCardCount;
+  }
+
+  function selectMappingDivision(divId) {
+    _mapActiveDivId = divId;
+    renderMappingChips();
+
+    const div = _mapDivisions.find(d => d.id === divId);
+    if (!div) return;
+
+    const meta = document.getElementById('mappingDivisionMeta');
+    const grid = document.getElementById('mappingProjectGrid');
+    const empty = document.getElementById('mappingEmpty');
+
+    const projects = div.projects || [];
+    const noteData = _mapNotes[divId] || {};
+    const noteCards = noteData.cards || [];
+
+    if (meta) {
+      meta.textContent = '▼ ' + div.label + ' — 프로젝트 ' + projects.length + '개 / 주간 보고 카드 ' + noteCards.length + '개';
+    }
+
+    if (projects.length === 0) {
+      if (grid) grid.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    if (grid) {
+      grid.innerHTML = '';
+      projects.forEach(prj => {
+        const card = document.createElement('div');
+        card.className = 'map-pcard';
+
+        const labelLc = (prj.label || '').toLowerCase();
+        const noteMatch = noteCards.some(nc => {
+          const t = (nc.title || '').toLowerCase();
+          return t && (t.includes(labelLc) || labelLc.includes(t));
+        });
+
+        const pptCount = _countProjectMatches(divId, prj);
+
+        const pptCls = pptCount > 0 ? 'badge-ppt' : 'badge-empty';
+        const noteCls = noteMatch ? 'badge-note' : 'badge-empty';
+        const noteText = noteMatch ? '✅' : '—';
+
+        card.innerHTML =
+          '<div class="ptitle">' + (prj.label || '?') + '</div>' +
+          '<div class="pmeta">' +
+            '<span class="' + pptCls + '">📊 PPT ' + pptCount + '</span>' +
+            '<span class="' + noteCls + '">📝 노트 ' + noteText + '</span>' +
+          '</div>';
+
+        grid.appendChild(card);
+      });
+    }
+  }
+
+  let _mapInitialized = false;
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      if (btn.dataset.tab === 'mapping') {
+        btn.addEventListener('click', () => {
+          if (!_mapInitialized) {
+            _mapInitialized = true;
+            initMappingTab();
+          }
+        });
+      }
+    });
+  });
 
   // 노트 탭 초기화
   document.addEventListener('DOMContentLoaded', () => {
