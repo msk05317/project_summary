@@ -638,6 +638,37 @@ def _extract_text_per_slide(pptx_path: Path):
     return texts
 
 
+def _extract_pptx_text_and_tables(pptx_path: Path):
+    """슬라이드별 텍스트(표 제외)와 표를 분리 추출.
+    반환: (slide_texts: list[str], slide_tables: list[list[dict]])
+    각 표: {"headers": [...], "rows": [[...], ...]}
+    """
+    from pptx import Presentation
+    prs = Presentation(str(pptx_path))
+    slide_texts = []
+    slide_tables = []
+    for slide in prs.slides:
+        text_buf = []
+        tables_in_slide = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                t = shape.text_frame.text
+                if t and t.strip():
+                    text_buf.append(t)
+            if shape.has_table:
+                tbl = shape.table
+                rows_data = []
+                for row in tbl.rows:
+                    rows_data.append([cell.text.strip() for cell in row.cells])
+                if rows_data:
+                    headers = rows_data[0]
+                    body = rows_data[1:] if len(rows_data) > 1 else []
+                    tables_in_slide.append({"headers": headers, "rows": body})
+        slide_texts.append("\n".join(text_buf))
+        slide_tables.append(tables_in_slide)
+    return slide_texts, slide_tables
+
+
 def _classify_status_with_gpt(slide_texts: list[str]) -> dict:
     if not client:
         return {"products": []}
@@ -1106,7 +1137,7 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
         {
           "title": "섹션 이름",
           "items": [
-            {"type": "bullet | highlight | sub", "text": "항목 내용"}
+            {"type": "bullet | highlight | sub | group_note", "text": "항목 내용", "group_id": "g1 (선택)"}
           ]
         }
       ]
@@ -1121,12 +1152,97 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
 4. *로 시작하는 줄, 빨간색 강조하면 좋은 핵심 정보는 type: highlight
 5. -, ▸ 일반 항목은 type: bullet
 6. →, =>, 또는 들여쓰기 된 내용은 type: sub
+6-1. } 또는 ←, ⟵ 기호 뒤에 있는 메모는 바로 위 여러 항목에 공통 적용되는 메모입니다. 다음과 같이 처리하세요:
+    - 묶음 대상 항목들에 동일한 "group_id": "g1", "g2"... 부여
+    - 공통 메모 자체는 {"type": "group_note", "text": "...", "group_id": "g1"} 로 추가
+    - group_id는 카드(프로젝트) 단위로 g1부터 시작
 7. 카드 제목·섹션 제목에서 번호 제거
 8. 항목 텍스트에서 선행 기호 제거 (-, *, ▸). 단, 본문 안의 → 같은 화살표는 유지
 9. 의미는 절대 바꾸지 말 것
 10. 빈 항목·중복 항목은 만들지 말 것
 
 응답은 반드시 위 JSON 형식 한 객체만 출력. 마크다운, 코드블록, 설명 없이 JSON만 출력하세요."""
+
+
+@app.post("/admin/notes/from_pptx")
+def admin_notes_from_pptx(payload: dict, _admin: int = Depends(get_admin_session)):
+    """업로드된 PPT를 주간 보고 카드 구조로 자동 변환.
+    - 슬라이드 텍스트는 AI로 카드 구조화
+    - 표는 자동으로 note_assets/tables/ 에 저장 + table_ref 연결
+    """
+    doc_id = (payload or {}).get("doc_id", "").strip()
+    division_id = (payload or {}).get("division_id", "").strip()
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="doc_id가 필요합니다")
+    if not division_id:
+        raise HTTPException(status_code=400, detail="division_id가 필요합니다")
+
+    pptx_path = UPLOAD_DIR / f"{doc_id}.pptx"
+    if not pptx_path.exists():
+        raise HTTPException(status_code=404, detail=f"PPT 파일을 찾을 수 없음: {doc_id}")
+
+    # 1) 텍스트 + 표 분리 추출
+    try:
+        slide_texts, slide_tables = _extract_pptx_text_and_tables(pptx_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PPT 추출 실패: {e}")
+
+    # 2) AI로 카드 구조 변환 (표 데이터는 텍스트로 함께 전달, AI가 표 참조 자리에 마커 삽입)
+    joined_text = "\n\n".join([f"=== Slide {i+1} ===\n{t}" for i, t in enumerate(slide_texts) if t.strip()])
+    if not joined_text.strip():
+        return {"cards": []}
+
+    user_message = (
+        f"[PPT 텍스트 - 슬라이드별]\n{joined_text}\n\n"
+        "위 PPT 텍스트를 주간 보고 카드 구조 JSON으로 변환해 주세요. "
+        "한 슬라이드는 보통 한 프로젝트입니다. 슬라이드 제목이 프로젝트명입니다."
+    )
+
+    try:
+        from openai import OpenAI
+        import os
+        oai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        resp = oai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _NOTE_AI_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        result = json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 변환 실패: {e}")
+
+    # 3) 표가 있는 슬라이드 → 자동 저장 + 첫 번째 섹션에 table_ref 부착
+    cards = result.get("cards", []) or []
+    saved_tables = []
+    for slide_idx, tables in enumerate(slide_tables):
+        if not tables:
+            continue
+        if slide_idx >= len(cards):
+            continue
+        card = cards[slide_idx]
+        sections = card.get("sections", []) or []
+        if not sections:
+            continue
+        # 첫 번째 표만 첫 섹션에 자동 첨부 (나머지는 별도 섹션으로)
+        for t_idx, tbl in enumerate(tables):
+            table_obj = {
+                "title": card.get("title", "") + (f" 표{t_idx+1}" if t_idx > 0 else ""),
+                "headers": tbl["headers"],
+                "rows": tbl["rows"],
+            }
+            try:
+                table_ref = _save_note_table(division_id, None, table_obj)
+                saved_tables.append(table_ref)
+                target_section = sections[0] if t_idx == 0 else sections[min(t_idx, len(sections)-1)]
+                target_section["table_ref"] = table_ref
+            except Exception as e:
+                print(f"표 저장 실패 slide={slide_idx+1} t={t_idx}: {e}")
+
+    return {"cards": cards, "saved_tables": saved_tables}
 
 
 @app.post("/admin/notes/ai_parse")
@@ -2171,6 +2287,106 @@ _ADMIN_UPLOAD_HTML = """
   updateHeaderTime();
 
   // 탭 전환
+  // ─── PPT → 주간 보고 초안 생성 ───
+  let _draftDocId = null;
+
+  function openDraftModal(docId, fileName) {
+    _draftDocId = docId;
+    document.getElementById('draftModalFile').textContent = fileName || docId;
+    document.getElementById('draftModalStatus').textContent = '';
+    const wrap = document.getElementById('draftDivChips');
+    wrap.innerHTML = '<span style="color:#999;">사업부 로딩 중...</span>';
+    document.getElementById('draftDivModal').classList.add('show');
+
+    fetch('/divisions', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => {
+        const divs = data.divisions || [];
+        wrap.innerHTML = '';
+        divs.forEach(d => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.textContent = (d.badge_short_label || d.label) + ' (' + (d.projects ? d.projects.length : 0) + ')';
+          chip.className = 'map-chip';
+          chip.style.cursor = 'pointer';
+          chip.onclick = () => runPptxDraft(d.id, d.label);
+          wrap.appendChild(chip);
+        });
+      })
+      .catch(e => {
+        wrap.innerHTML = '<span style="color:#c00;">사업부 로드 실패: ' + e.message + '</span>';
+      });
+  }
+
+  function closeDraftModal() {
+    document.getElementById('draftDivModal').classList.remove('show');
+    _draftDocId = null;
+  }
+
+  async function runPptxDraft(divisionId, divisionLabel) {
+    const status = document.getElementById('draftModalStatus');
+    status.textContent = '⏳ PPT 분석 중... (10-30초)';
+    status.style.color = '#6b7280';
+    try {
+      const r = await fetch('/admin/notes/from_pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ doc_id: _draftDocId, division_id: divisionId }),
+      });
+      if (!r.ok) {
+        let detail = r.status;
+        try { const err = await r.json(); detail = err.detail || detail; } catch(_){}
+        status.textContent = '❌ 실패: ' + detail;
+        status.style.color = '#c00';
+        return;
+      }
+      const data = await r.json();
+      const cards = data.cards || [];
+      if (cards.length === 0) {
+        status.textContent = '⚠️ 추출된 카드가 없습니다';
+        status.style.color = '#c00';
+        return;
+      }
+      // 1) 주간 보고 탭으로 전환
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const noteBtn = document.querySelector('.tab-btn[data-tab="notes"]');
+      if (noteBtn) noteBtn.classList.add('active');
+      document.getElementById('tab-notes').classList.add('active');
+
+      // 2) 사업부 셀렉트 + 날짜 자동 설정
+      const sel = document.getElementById('noteDivision');
+      if (sel) sel.value = divisionId;
+      const dateEl = document.getElementById('noteReportDate');
+      if (dateEl && !dateEl.value) {
+        const today = new Date();
+        dateEl.value = today.toISOString().slice(0, 10);
+      }
+
+      // 3) 미리보기 자동 주입
+      _noteParsedCards = cards;
+      renderNotePreview(_noteParsedCards);
+      const noteStatus = document.getElementById('noteStatus');
+      if (noteStatus) {
+        noteStatus.textContent = '✅ PPT에서 ' + cards.length + '개 카드 자동 생성 — 확인 후 저장하세요';
+        noteStatus.style.color = '#16a34a';
+      }
+      closeDraftModal();
+    } catch (e) {
+      status.textContent = '❌ 오류: ' + e.message;
+      status.style.color = '#c00';
+    }
+  }
+
+  // ESC로 초안 모달 닫기
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const m = document.getElementById('draftDivModal');
+      if (m && m.classList.contains('show')) closeDraftModal();
+    }
+  });
+
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.dataset.tab;
@@ -2248,11 +2464,20 @@ _ADMIN_UPLOAD_HTML = """
         html += `<td style="padding:10px 8px;">${safeFname}<br><small style="color:#999;">${it.doc_id}</small></td>`;
         html += `<td style="padding:10px 8px;text-align:center;">${it.product_count}</td>`;
         html += `<td style="padding:10px 8px;text-align:center;">${it.slide_count}</td>`;
-        html += `<td style="padding:10px 8px;text-align:center;"><button onclick="deleteDoc('${it.doc_id}', ${it.product_count})" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">삭제</button></td>`;
+        html += `<td style="padding:10px 8px;text-align:center;white-space:nowrap;">`
+              + `<button data-doc-id="${it.doc_id}" data-file-name="${(it.file_name || '').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" class="draft-btn" style="background:#3b82f6;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;margin-right:6px;">📝 초안</button>`
+              + `<button onclick="deleteDoc('${it.doc_id}', ${it.product_count})" style="background:#ef4444;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">삭제</button>`
+              + `</td>`;
         html += '</tr>';
       });
       html += '</tbody></table>';
       area.innerHTML = html;
+      // 초안 버튼 이벤트 바인딩
+      area.querySelectorAll('.draft-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openDraftModal(btn.dataset.docId, btn.dataset.fileName);
+        });
+      });
     } catch (e) {
       area.innerHTML = `<div style="color:#c00;padding:16px;">불러오기 실패: ${e.message}</div>`;
     }
@@ -3399,6 +3624,8 @@ _ADMIN_UPLOAD_HTML = """
       projects.forEach(prj => {
         const card = document.createElement('div');
         card.className = 'map-pcard';
+        card.style.cursor = 'pointer';
+        card.onclick = () => openMappingDetail(divId, prj.id);
 
         const labelLc = (prj.label || '').toLowerCase();
         const noteMatch = noteCards.some(nc => {
@@ -3424,6 +3651,115 @@ _ADMIN_UPLOAD_HTML = """
     }
   }
 
+  function openMappingDetail(divisionId, projectId) {
+    const div = _mapDivisions.find(d => d.id === divisionId);
+    if (!div) return;
+    const prj = (div.projects || []).find(x => x.id === projectId);
+    if (!prj) return;
+
+    document.getElementById('mappingDetailTitle').textContent = prj.label + ' (' + div.label + ')';
+
+    // PPT 카드 매칭
+    const aliases = (prj.aliases || []).map(s => s.toLowerCase());
+    const labelLc = (prj.label || '').toLowerCase();
+    const pptMatches = [];
+
+    for (const rep of _mapReports) {
+      const fname = rep.file_name || '';
+      const ts = rep.upload_timestamp || '';
+      const products = rep.products || [];
+      for (const pd of products) {
+        const pkey = pd.project_key || pd.project || '';
+        const text = ((pd.name || '') + ' ' + (pd.headline || '')).toLowerCase();
+        let matched = false;
+        if (pkey === projectId) matched = true;
+        else if (labelLc && text.includes(labelLc)) matched = true;
+        else {
+          for (const al of aliases) {
+            if (al && text.includes(al)) { matched = true; break; }
+          }
+        }
+        if (matched) {
+          pptMatches.push({ rep_file: fname, rep_ts: ts, product: pd });
+        }
+      }
+    }
+
+    // 노트 카드 매칭 (해당 사업부의 노트 중 카드 title이 프로젝트명 포함)
+    const noteData = _mapNotes[divisionId] || {};
+    const noteCards = noteData.cards || [];
+    const noteMatches = noteCards.filter(nc => {
+      const t = (nc.title || '').toLowerCase();
+      return t && (t.includes(labelLc) || labelLc.includes(t));
+    });
+
+    // Subtitle
+    const sub = document.getElementById('mappingDetailSubtitle');
+    sub.textContent = 'PPT 카드 ' + pptMatches.length + '개 / 노트 카드 ' + noteMatches.length + '개';
+
+    // PPT 영역
+    const pptArea = document.getElementById('mappingDetailPpt');
+    if (pptMatches.length === 0) {
+      pptArea.innerHTML = '<div style="color:#9ca3af;padding:10px 0;">매핑된 PPT 카드가 없습니다.</div>';
+    } else {
+      pptArea.innerHTML = '';
+      pptMatches.forEach(m => {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;';
+        const fname = m.rep_file || '(파일명 없음)';
+        const ts = m.rep_ts ? new Date(m.rep_ts).toLocaleString('ko-KR') : '';
+        const name = m.product.name || '';
+        const headline = m.product.headline || '';
+        const bullets = m.product.summary_bullets || [];
+
+        let html = '<div style="font-size:11px;color:#9ca3af;margin-bottom:4px;">📄 ' + fname + (ts ? ' · ' + ts : '') + '</div>';
+        html += '<div style="font-weight:600;color:#1f2937;margin-bottom:2px;">' + (name || '(이름 없음)') + '</div>';
+        if (headline) html += '<div style="color:#4b5563;margin-bottom:6px;">' + headline + '</div>';
+        if (bullets.length) {
+          html += '<ul style="margin:4px 0 0 18px;padding:0;color:#374151;">';
+          bullets.forEach(b => { html += '<li style="margin-bottom:2px;">' + b + '</li>'; });
+          html += '</ul>';
+        }
+        wrap.innerHTML = html;
+        pptArea.appendChild(wrap);
+      });
+    }
+
+    // 노트 영역
+    const noteArea = document.getElementById('mappingDetailNotes');
+    if (noteMatches.length === 0) {
+      noteArea.innerHTML = '<div style="color:#9ca3af;padding:10px 0;">매핑된 주간 보고 노트가 없습니다.</div>';
+    } else {
+      noteArea.innerHTML = '';
+      const reportDate = noteData.report_date || '';
+      noteMatches.forEach(nc => {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;margin-bottom:8px;';
+        let html = '<div style="font-weight:600;color:#1E3A5F;margin-bottom:4px;">' + (nc.title || '(제목 없음)') + (reportDate ? ' · ' + reportDate : '') + '</div>';
+        (nc.sections || []).forEach(sec => {
+          html += '<div style="font-size:12px;font-weight:600;color:#374151;margin:6px 0 2px;padding:3px 8px;background:#dcfce7;border-radius:4px;">' + (sec.title || '') + '</div>';
+          (sec.items || []).forEach(it => {
+            const isHl = it.type === 'highlight';
+            const isSub = it.type === 'sub';
+            const dot = isSub ? '↳' : '•';
+            const color = isHl ? '#dc2626' : '#1f2937';
+            const fw = isHl ? '600' : '400';
+            const ml = isSub ? '20px' : '6px';
+            html += '<div style="font-size:12px;color:' + color + ';font-weight:' + fw + ';margin-left:' + ml + ';line-height:1.6;">' + dot + ' ' + (it.text || '') + '</div>';
+          });
+        });
+        wrap.innerHTML = html;
+        noteArea.appendChild(wrap);
+      });
+    }
+
+    document.getElementById('mappingDetailModal').classList.add('show');
+  }
+
+  function closeMappingDetail() {
+    document.getElementById('mappingDetailModal').classList.remove('show');
+  }
+
   let _mapInitialized = false;
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -3434,6 +3770,13 @@ _ADMIN_UPLOAD_HTML = """
             initMappingTab();
           }
         });
+      }
+    });
+    // ESC로 모달 닫기
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const m = document.getElementById('mappingDetailModal');
+        if (m && m.classList.contains('show')) m.classList.remove('show');
       }
     });
   });
@@ -3473,6 +3816,38 @@ _ADMIN_UPLOAD_HTML = """
       <button class="cancel" onclick="closeTableModal()">취소</button>
       <button onclick="saveTableFromModal()">💾 저장</button>
     </div>
+  </div>
+</div>
+
+<!-- 매핑 관리: 프로젝트 상세 모달 -->
+<div class="modal-overlay" id="mappingDetailModal">
+  <div class="modal-box" style="min-width:600px;max-width:800px;">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">
+      <h3 id="mappingDetailTitle" style="margin:0;color:#1E3A5F;">프로젝트 상세</h3>
+      <button onclick="closeMappingDetail()" style="background:transparent;color:#6b7280;font-size:24px;padding:0;margin:0;border:none;cursor:pointer;line-height:1;">✕</button>
+    </div>
+
+    <div style="font-size:13px;color:#6b7280;margin-bottom:14px;" id="mappingDetailSubtitle"></div>
+
+    <h4 style="margin:14px 0 8px;color:#1E3A5F;font-size:15px;">📊 PPT 카드</h4>
+    <div id="mappingDetailPpt" style="font-size:13px;"></div>
+
+    <h4 style="margin:18px 0 8px;color:#1E3A5F;font-size:15px;">📝 주간 보고 노트</h4>
+    <div id="mappingDetailNotes" style="font-size:13px;"></div>
+  </div>
+</div>
+
+<!-- PPT 초안 생성 사업부 선택 모달 -->
+<div class="modal-overlay" id="draftDivModal">
+  <div class="modal-box" style="max-width:520px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="margin:0;">📝 주간 보고 초안 생성</h3>
+      <button onclick="closeDraftModal()" style="background:transparent;color:#6b7280;font-size:24px;padding:0;margin:0;border:none;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 10px;"><span id="draftModalFile" style="color:#374151;font-weight:600;"></span></p>
+    <p style="color:#6b7280;font-size:13px;margin:0 0 14px;">이 PPT를 어느 사업부 주간 보고로 변환할까요?</p>
+    <div id="draftDivChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
+    <div id="draftModalStatus" style="font-size:13px;color:#6b7280;margin-top:8px;min-height:18px;"></div>
   </div>
 </div>
 

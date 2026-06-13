@@ -1,1 +1,34 @@
-{"version": 1, "updated_at": null, "notes": {}}
+{
+  "version": 1,
+  "updated_at": "2026-06-13T11:04:50.242304",
+  "notes": {
+    "semiconductor": {
+      "report_date": "2026-06-13",
+      "updated_at": "2026-06-13T11:04:50.241357",
+      "cards": [
+        {
+          "title": "하바플레이트",
+          "sections": [
+            {
+              "title": "현황",
+              "items": [
+                {
+                  "type": "highlight",
+                  "text": "총141개 모델중 양산진행 14종, 개발(양산전환)16종, RPM 111종"
+                },
+                {
+                  "type": "bullet",
+                  "text": "신규 장비 40대"
+                },
+                {
+                  "type": "bullet",
+                  "text": "플라스틱 전용 장비 6대 (텍슨 --> B1 이동) } 6월말 고객사 승인 예정"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

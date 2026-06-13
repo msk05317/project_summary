@@ -19,18 +19,24 @@
       "order": 1
     },
     {
-      "id": "hava_plate",
+      "id": "hrva_plate",
       "division_id": "semiconductor",
-      "label": "Hava Plate",
-      "badge_label": "Hava Plate",
+      "label": "하바플레이트",
+      "badge_label": "하바플레이트",
       "aliases": [
+        "Hava Plate",
+        "hava plate",
+        "HAVA Plate",
         "하바플레이트",
-        "Hava",
-        "Hava plate"
+        "하바 플레이트",
+        "HRVA Plate",
+        "hrva plate"
       ],
       "keywords": [
-        "Hava",
-        "하바"
+        "하바플레이트",
+        "Hava Plate",
+        "하바",
+        "HRVA Plate"
       ],
       "visible": true,
       "order": 2
@@ -38,17 +44,16 @@
     {
       "id": "enclosure",
       "division_id": "semiconductor",
-      "label": "Enclosure",
-      "badge_label": "Enclosure",
+      "label": "엔클로저",
+      "badge_label": "엔클로저",
       "aliases": [
-        "인클로저",
-        "엔클로저",
-        "enclosure"
+        "Enclosure",
+        "enclosure",
+        "엔클로저"
       ],
       "keywords": [
-        "Enclosure",
-        "인클로저",
-        "엔클로저"
+        "엔클로저",
+        "Enclosure"
       ],
       "visible": true,
       "order": 3
