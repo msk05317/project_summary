@@ -182,6 +182,15 @@ def _group_dashboard_cards(cards: list) -> list:
         # 이슈 dedup (정규화 헤드라인 기반)
         st = c.get("status") or "BLACK"
         head = (c.get("headline") or "").strip()
+        # summary_bullets / due_date_min 은 headline 없어도 통과
+        sb = c.get("summary_bullets") or []
+        if sb and not groups[gkey].get("summary_bullets"):
+            groups[gkey]["summary_bullets"] = sb
+        ddm = c.get("due_date_min")
+        if ddm and not groups[gkey].get("due_date_min"):
+            groups[gkey]["due_date_min"] = ddm
+        if st and st not in groups[gkey].get("_statuses", []):
+            groups[gkey]["_statuses"].append(st)
         if not head:
             continue
         norm = _normalize_issue_headline(head)
@@ -200,6 +209,13 @@ def _group_dashboard_cards(cards: list) -> list:
             "headline": head,
             "doc_id": c.get("doc_id", ""),
         })
+        # summary_bullets / due_date_min 통과
+        sb = c.get("summary_bullets") or []
+        if sb and not groups[gkey].get("summary_bullets"):
+            groups[gkey]["summary_bullets"] = sb
+        ddm = c.get("due_date_min")
+        if ddm and not groups[gkey].get("due_date_min"):
+            groups[gkey]["due_date_min"] = ddm
         groups[gkey]["_statuses"].append(st)
 
         # report_date 는 가장 최신으로 갱신
@@ -1065,10 +1081,11 @@ def dashboard():
                 # headline / summary_bullets 추출
                 headline = ""
                 bullets = []
-                # 1순위: due_date 있는 항목 중 가장 가까운 것을 headline 로 (D-day 텍스트와 함께)
                 from datetime import date as _date
-                due_items = []
+                due_items = []        # (date, text, raw_str)
+                dated_bullets = []    # 날짜 있는 항목만 (앱 카드 본문용)
                 highlight_text = ""
+                due_date_min = None
                 for sec in (nc.get("sections") or []):
                     for it in (sec.get("items") or []):
                         if not isinstance(it, dict):
@@ -1081,41 +1098,38 @@ def dashboard():
                             continue
                         if t == "highlight" and not highlight_text:
                             highlight_text = txt
-                        if t in ("bullet", "group_note", "sub"):
-                            if len(bullets) < 3:
-                                bullets.append(txt)
                         d = (it.get("due_date") or "").strip()
                         if d:
                             try:
                                 y, m, dd = d[:10].split("-")
                                 due_d = _date(int(y), int(m), int(dd))
                                 due_items.append((due_d, txt, d[:10]))
+                                dated_bullets.append(f"{txt} ({d[5:10]})")
+                                if due_date_min is None or due_d < due_date_min:
+                                    due_date_min = due_d
                             except Exception:
                                 pass
+                        if t in ("bullet", "group_note", "sub") and len(bullets) < 5:
+                            bullets.append(txt)
 
-                if due_items:
-                    due_items.sort(key=lambda x: x[0])
-                    near_due, near_text, near_raw = due_items[0]
-                    diff = (near_due - _date.today()).days
-                    if diff < 0:
-                        dday = f"D+{abs(diff)}"
-                    elif diff == 0:
-                        dday = "D-DAY"
-                    else:
-                        dday = f"D-{diff}"
-                    headline = f"[{dday} {near_raw[5:]}] {near_text}"
+                # 카드 본문: 날짜 있는 항목 리스트 우선, 없으면 highlight, 없으면 일반 bullets
+                if dated_bullets:
+                    bullets = dated_bullets[:5]
                 elif highlight_text:
-                    headline = highlight_text
-                elif bullets:
-                    headline = bullets[0]
+                    bullets = [highlight_text]
+
+                # headline: 빈 문자열 (앱에서 D-day 칩으로 따로 표시)
+                headline = ""
+                due_date_min_str = due_date_min.isoformat() if due_date_min else None
 
                 computed_status = _calc_card_status(nc)
                 note_cards.append({
                     "doc_id": f"note:{div_id}",
                     "product": title,
                     "status": computed_status,
-                    "headline": headline or title,
+                    "headline": "",
                     "summary_bullets": bullets,
+                    "due_date_min": due_date_min_str,
                     "report_date": report_date,
                     "report_family": "weekly_note",
                     "project_key": pkey or None,
