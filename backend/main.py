@@ -1563,6 +1563,106 @@ def notes_by_project(project_key: str = ""):
 
 
 
+
+
+# ─── 노트 엑셀(표) 마커 전/후처리 (ai_parse 용) ───
+_EXCEL_MARKER_RE = re.compile(
+    "\U0001F4CA\s*([^\n\r]+?)\s*@@table_ref=([^\s\n\r]+)",
+    re.IGNORECASE,
+)
+
+def _extract_excel_markers(text: str):
+    """텍스트에서 엑셀 마커 추출.
+    반환: (clean_text, [{filename, table_ref, anchor}])
+    """
+    lines = text.split("\n")
+    out_lines = []
+    tables = []
+    last_nonempty = ""
+    for ln in lines:
+        m = _EXCEL_MARKER_RE.search(ln)
+        if m:
+            fname = (m.group(1) or "").strip()
+            ref = (m.group(2) or "").strip()
+            if fname and ref:
+                tables.append({
+                    "filename": fname,
+                    "table_ref": ref,
+                    "anchor": last_nonempty,
+                })
+            continue
+        out_lines.append(ln)
+        if ln.strip():
+            last_nonempty = ln.strip()
+    return ("\n".join(out_lines), tables)
+
+
+def _inject_tables_into_cards(cards, tables):
+    """정리된 카드 구조에 type:'table' item 을 앵커 기준으로 주입."""
+    if not tables or not isinstance(cards, list):
+        return cards
+
+    def _norm(s):
+        return re.sub(r"\s+", " ", str(s or "").strip().lower())
+
+    used = set()
+
+    for tb in tables:
+        anchor_n = _norm(tb.get("anchor"))
+        ref = tb.get("table_ref")
+        fname = tb.get("filename") or ""
+        if not ref or ref in used:
+            continue
+
+        # table_data 도 함께 로드해서 inline 포함
+        table_data = _load_note_table(ref) if ref else None
+
+        injected = False
+        if anchor_n:
+            for card in cards:
+                if injected:
+                    break
+                for sec in (card.get("sections") or []):
+                    if injected:
+                        break
+                    items = sec.get("items") or []
+                    for idx, it in enumerate(items):
+                        it_text = _norm(it.get("text") if isinstance(it, dict) else it)
+                        if not it_text:
+                            continue
+                        if anchor_n == it_text or anchor_n in it_text or it_text in anchor_n:
+                            new_item = {
+                                "type": "table",
+                                "text": fname,
+                                "table_ref": ref,
+                            }
+                            if table_data:
+                                new_item["table_data"] = table_data
+                            items.insert(idx + 1, new_item)
+                            sec["items"] = items
+                            injected = True
+                            used.add(ref)
+                            break
+
+        if not injected and cards:
+            card0 = cards[0]
+            secs = card0.setdefault("sections", [])
+            if not secs:
+                secs.append({"title": "첨부", "items": []})
+            last_sec = secs[-1]
+            new_item = {
+                "type": "table",
+                "text": fname,
+                "table_ref": ref,
+            }
+            if table_data:
+                new_item["table_data"] = table_data
+            last_sec.setdefault("items", []).append(new_item)
+            used.add(ref)
+
+    return cards
+
+
 # ─── 노트 사진 마커 전/후처리 (ai_parse 용) ───
 import re as _re_photo
 _PHOTO_MARKER_RE = _re_photo.compile(
@@ -1667,6 +1767,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
 
     # 사진 마커 추출 (AI 가 보지 않도록 제거 후, 응답에 주입)
     text, _extracted_photos = _extract_photo_markers(text)
+    text, _extracted_tables = _extract_excel_markers(text)
 
     existing_cards = []
     if division_id:
@@ -1698,6 +1799,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
         parsed = json.loads(content)
         if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list):
             parsed["cards"] = _inject_photos_into_cards(parsed["cards"], _extracted_photos)
+            # parsed["cards"] = _inject_tables_into_cards(parsed["cards"], _extracted_tables)  # 엑셀은 photo로 처리
         return parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 파싱 실패: {str(e)}")
@@ -1827,13 +1929,202 @@ async def admin_upload_note_photo(
 
 
 # ─── 엑셀 업로드 (드래그&드롭) ───
+
+
+
+
+
+
+
+
+
+def _excel_sheet_to_preview_data_url(ws):
+    from io import BytesIO
+    import base64
+    from PIL import Image, ImageDraw, ImageFont
+
+    NL = chr(10)
+    max_row, max_col = ws.max_row, ws.max_column
+
+    anchor_map = {}
+    skip = set()
+    for rng in ws.merged_cells.ranges:
+        min_col, min_row, max_col2, max_row2 = rng.bounds
+        anchor_map[(min_row, min_col)] = (max_row2, max_col2)
+        for rr in range(min_row, max_row2 + 1):
+            for cc in range(min_col, max_col2 + 1):
+                if (rr, cc) != (min_row, min_col):
+                    skip.add((rr, cc))
+
+    font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+    try:
+        font = ImageFont.truetype(font_path, 22)
+    except Exception:
+        font = ImageFont.load_default()
+    font_bold = font
+
+    def text_size(txt, f):
+        try:
+            bbox = f.getbbox(txt)
+            return bbox[2] - bbox[0], bbox[3] - bbox[1]
+        except Exception:
+            return (len(txt) * 11, 22)
+
+    def format_value(cell):
+        v = cell.value
+        if v is None:
+            return ""
+        nf = (cell.number_format or "").lower()
+        if isinstance(v, (int, float)) and ("#,##0" in nf or "0" in nf):
+            try:
+                iv = int(v)
+                if iv == 0:
+                    return "-"
+                return f"{iv:,}" if iv >= 0 else f"-{abs(iv):,}"
+            except Exception:
+                return str(v)
+        if isinstance(v, str):
+            try:
+                if v.strip() and v.strip().lstrip("-").isdigit():
+                    iv = int(v)
+                    if iv == 0:
+                        return "-"
+                    return f"{iv:,}" if iv >= 0 else f"-{abs(iv):,}"
+            except Exception:
+                pass
+        return str(v)
+
+    cell_text = {}
+    for r in range(1, max_row + 1):
+        for c in range(1, max_col + 1):
+            cell_text[(r, c)] = format_value(ws.cell(r, c))
+
+    col_widths = [0] * (max_col + 2)
+    for c in range(1, max_col + 1):
+        widest = 60
+        for r in range(1, max_row + 1):
+            if (r, c) in skip:
+                continue
+            if (r, c) in anchor_map:
+                rr, cc = anchor_map[(r, c)]
+                if cc > c:
+                    continue
+            t = cell_text.get((r, c), "")
+            if not t:
+                continue
+            for line in t.split(NL):
+                w, _ = text_size(line, font)
+                if w + 24 > widest:
+                    widest = min(w + 24, 280)
+        col_widths[c] = widest
+
+    row_heights = [0] * (max_row + 2)
+    for r in range(1, max_row + 1):
+        lines_max = 1
+        for c in range(1, max_col + 1):
+            t = cell_text.get((r, c), "")
+            lines = max(1, t.count(NL) + 1)
+            if lines > lines_max:
+                lines_max = lines
+        row_heights[r] = max(40, 14 + 26 * lines_max)
+
+    W = sum(col_widths[1:max_col + 1])
+    H = sum(row_heights[1:max_row + 1])
+
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+
+    xs = [0]
+    for c in range(1, max_col + 1):
+        xs.append(xs[-1] + col_widths[c])
+    ys = [0]
+    for r in range(1, max_row + 1):
+        ys.append(ys[-1] + row_heights[r])
+
+    def argb_to_hex(argb):
+        if not argb:
+            return None
+        v = str(argb)
+        if v in ("00000000", "None"):
+            return None
+        if len(v) == 8:
+            v = v[2:]
+        if len(v) == 6:
+            try:
+                int(v, 16)
+                return "#" + v.lower()
+            except Exception:
+                return None
+        return None
+
+    def get_fill(cell):
+        try:
+            fg = cell.fill.fgColor
+            if fg is not None and getattr(fg, "type", None) == "rgb":
+                return argb_to_hex(fg.rgb)
+        except Exception:
+            pass
+        return None
+
+    def get_font_color(cell):
+        try:
+            c = cell.font.color
+            if c is not None and getattr(c, "type", None) == "rgb":
+                return argb_to_hex(c.rgb)
+        except Exception:
+            pass
+        return None
+
+    def is_dark(hex_color):
+        try:
+            v = hex_color.lstrip("#")
+            r = int(v[0:2], 16)
+            g = int(v[2:4], 16)
+            b = int(v[4:6], 16)
+            return (0.299 * r + 0.587 * g + 0.114 * b) < 160
+        except Exception:
+            return False
+
+    for r in range(1, max_row + 1):
+        for c in range(1, max_col + 1):
+            if (r, c) in skip:
+                continue
+            x1, y1 = xs[c - 1], ys[r - 1]
+            rr, cc = anchor_map.get((r, c), (r, c))
+            x2, y2 = xs[cc], ys[rr]
+            cell = ws.cell(r, c)
+            bg = get_fill(cell) or "#ffffff"
+            fc = get_font_color(cell)
+            if not fc:
+                fc = "#ffffff" if is_dark(bg) else "#111111"
+            draw.rectangle([x1, y1, x2 - 1, y2 - 1], fill=bg, outline="#cbd5e1", width=1)
+            val = cell_text.get((r, c), "")
+            if val:
+                lines = val.split(NL)
+                line_h = 26
+                total_h = line_h * len(lines)
+                ty = y1 + max(4, ((y2 - y1) - total_h) // 2)
+                use_font = font_bold if (cell.font and cell.font.b) else font
+                cell_w = x2 - x1
+                for li, line in enumerate(lines):
+                    w, _ = text_size(line, use_font)
+                    tx = x1 + max(4, (cell_w - w) // 2)
+                    draw.text((tx, ty + li * line_h), line, fill=fc, font=use_font)
+
+    bio = BytesIO()
+    img.save(bio, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
+
+
+
+
 @app.post("/admin/notes/excel")
 async def admin_upload_note_excel(
     division_id: str = Form(...),
     file: UploadFile = File(...),
     _admin: int = Depends(get_admin_session),
 ):
-    """엑셀(.xlsx/.xlsm) 업로드 → 첫 시트를 표로 변환 후 저장 → table_ref 반환."""
+    """엑셀(.xlsx/.xlsm) 업로드 → 첫 시트를 PNG 이미지로 변환 → 사진처럼 저장 → photo_ref 반환."""
     division_id = (division_id or "").strip()
     if not division_id:
         raise HTTPException(status_code=400, detail="division_id 필수")
@@ -1847,57 +2138,36 @@ async def admin_upload_note_excel(
     if not raw:
         raise HTTPException(status_code=400, detail="빈 파일")
 
-    # openpyxl 로 첫 시트 읽기
     try:
-        import openpyxl  # noqa
+        import openpyxl
         from io import BytesIO
-        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True, read_only=True)
+        import base64
+        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
         ws = wb.worksheets[0]
-        sheet_name = ws.title
-
-        all_rows = []
-        for row in ws.iter_rows(values_only=True):
-            cells = ["" if v is None else str(v).strip() for v in row]
-            if any(c != "" for c in cells):
-                all_rows.append(cells)
-
-        if not all_rows:
-            raise HTTPException(status_code=400, detail="엑셀에 데이터가 없음")
-
-        # 첫 행을 헤더로
-        max_cols = max(len(r) for r in all_rows)
-        norm_rows = [r + [""] * (max_cols - len(r)) for r in all_rows]
-        headers = norm_rows[0]
-        body_rows = norm_rows[1:]
-
+        data_url = _excel_sheet_to_preview_data_url(ws)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"엑셀 파싱 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"엑셀 변환 실패: {e}")
 
-    # 제목 = 확장자 제거한 파일명
-    title = orig_name.rsplit(".", 1)[0]
-    table_obj = {
-        "title": title,
-        "headers": headers,
-        "rows": body_rows,
-    }
-
+    # data:image/png;base64,... → 바이트 디코드
     try:
-        table_ref = _save_note_table(division_id, table_obj)
+        b64 = data_url.split(",", 1)[1]
+        png_bytes = base64.b64decode(b64)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"표 저장 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"PNG 디코딩 실패: {e}")
+
+    asset_id = "xls_" + _new_asset_id(division_id)
+    out_path = _photo_path(division_id, asset_id, "png")
+    out_path.write_bytes(png_bytes)
+    photo_ref = f"{division_id}/{asset_id}.png"
 
     return {
         "ok": True,
         "filename": orig_name,
-        "table_ref": table_ref,
-        "table": table_obj,
-        "sheet_name": sheet_name,
-        "rows": len(body_rows),
-        "cols": max_cols,
+        "photo_ref": photo_ref,
+        "url": f"/note_photos/{photo_ref}",
     }
-
 
 @app.delete("/admin/notes/photo/{division_id}/{filename}")
 def admin_delete_note_photo(division_id: str, filename: str, _admin: int = Depends(get_admin_session)):
@@ -3519,6 +3789,35 @@ _ADMIN_UPLOAD_HTML = """
 
   
 
+function showUploadDonePopup(cardCount, onClose) {
+  // 기존 팝업 있으면 제거
+  const oldBg = document.getElementById('uploadDoneBg');
+  if (oldBg) oldBg.remove();
+
+  const bg = document.createElement('div');
+  bg.id = 'uploadDoneBg';
+  bg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:14px;padding:28px 32px;min-width:300px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.2);text-align:center;font-family:inherit;';
+
+  box.innerHTML = '<div style="font-size:42px;margin-bottom:10px;">✅</div>'
+    + '<div style="font-size:18px;font-weight:600;color:#111;margin-bottom:6px;">업로드 완료되었습니다</div>'
+    + '<div style="font-size:14px;color:#6b7280;margin-bottom:20px;">' + cardCount + '개 카드가 저장되었습니다</div>'
+    + '<button id="uploadDoneOk" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:15px;font-weight:600;cursor:pointer;">확인</button>';
+
+  bg.appendChild(box);
+  document.body.appendChild(bg);
+
+  const ok = document.getElementById('uploadDoneOk');
+  function close() {
+    bg.remove();
+    if (typeof onClose === 'function') onClose();
+  }
+  ok.addEventListener('click', close);
+  bg.addEventListener('click', function(e){ if (e.target === bg) close(); });
+}
+
 function renderNotePreview(cards) {
   const area = document.getElementById('notePreviewArea');
   const card = document.getElementById('notePreviewCard');
@@ -3598,6 +3897,18 @@ function renderNotePreview(cards) {
   const renderPhoto = (photoRef) => {
     if (!photoRef) return '';
     const url = '/note_photos/' + photoRef;
+    const isExcel = /\/xls_/.test(photoRef);
+    if (isExcel) {
+      return `
+        <div style="margin:8px 0 14px 0;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;overflow:auto;">
+            <img src="${esc(url)}"
+                 onclick="showPhotoOverlay('${esc(url)}')"
+                 style="display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;" />
+          </div>
+        </div>
+      `;
+    }
     return `
       <div style="margin-top:8px;">
         <img src="${esc(url)}"
@@ -3621,7 +3932,20 @@ function renderNotePreview(cards) {
     const photoRef = it.photo_ref || '';
 
     if (type === 'table') {
-      return `<div style="margin:8px 0;">${renderMiniTable(tableData)}</div>`;
+      if (tableData && tableData.preview_image_data) {
+        const _safeTitle = String(it.text || tableData.title || '엑셀').replace(/[&<>"']/g, function(ch){
+          return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+        });
+        return `
+          <div style="margin:8px 0 14px 0;">
+            <div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:6px;">📊 ${_safeTitle}</div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;overflow:auto;">
+              <img src="${tableData.preview_image_data}" style="display:block;max-width:100%;height:auto;border-radius:6px;" />
+            </div>
+          </div>
+        `;
+      }
+      return ``;
     }
     if (type === 'photo') {
       return `<div style="margin:8px 0;">${renderPhoto(photoRef)}</div>`;
@@ -3870,8 +4194,18 @@ function renderNotePreview(cards) {
         throw new Error(err || `HTTP ${r.status}`);
       }
       const data = await r.json();
-      status.textContent = `✅ 저장 완료 (${data.card_count}개 카드)`;
+      status.textContent = `✅ 업로드 완료 (${data.card_count}개 카드)`;
       status.style.color = '#10b981';
+
+      // 미리보기 숨기고 원본 텍스트만 남기기
+      _noteParsedCards = null;
+      const previewCard = document.getElementById('notePreviewCard');
+      const previewArea = document.getElementById('notePreviewArea');
+      if (previewArea) previewArea.innerHTML = '';
+      if (previewCard) previewCard.style.display = 'none';
+
+      const saveBtn = document.getElementById('noteSaveBtn');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
     } catch (e) {
       status.textContent = '❌ 저장 실패: ' + e.message;
       status.style.color = '#dc2626';
