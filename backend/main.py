@@ -378,6 +378,32 @@ NOTE_PHOTOS_DIR = NOTE_ASSETS_DIR / "photos"
 for d in [UPLOAD_DIR, SLIDES_DIR, SLIDE_IMAGES_DIR, CROPPED_DIR, NOTE_ASSETS_DIR, NOTE_TABLES_DIR, NOTE_PHOTOS_DIR]:
     d.mkdir(exist_ok=True)
 
+# DATA_DIR이 git 경로와 다르면(Railway), git에 포함된 시드 자산을 영구 볼륨에 복사
+try:
+    import shutil
+    seed_assets = BASE_DIR / "note_assets"
+    if DATA_DIR != BASE_DIR and seed_assets.exists():
+        for src in seed_assets.rglob("*"):
+            if src.is_file():
+                rel = src.relative_to(seed_assets)
+                dst = NOTE_ASSETS_DIR / rel
+                if not dst.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+        print(f"[seed] note_assets seeded to {NOTE_ASSETS_DIR}")
+except Exception as _e:
+    print(f"[seed] note_assets seed failed: {_e}")
+
+# notes.json 도 동일하게 시드
+try:
+    import shutil
+    seed_notes = BASE_DIR / "notes.json"
+    if DATA_DIR != BASE_DIR and seed_notes.exists() and not (DATA_DIR / "notes.json").exists():
+        shutil.copy2(seed_notes, DATA_DIR / "notes.json")
+        print(f"[seed] notes.json seeded to {DATA_DIR}")
+except Exception as _e:
+    print(f"[seed] notes.json seed failed: {_e}")
+
 RETENTION_DAYS = 180
 
 
