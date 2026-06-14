@@ -1039,23 +1039,48 @@ def dashboard():
                 # headline / summary_bullets 추출
                 headline = ""
                 bullets = []
+                # 1순위: due_date 있는 항목 중 가장 가까운 것을 headline 로 (D-day 텍스트와 함께)
+                from datetime import date as _date
+                due_items = []
+                highlight_text = ""
                 for sec in (nc.get("sections") or []):
                     for it in (sec.get("items") or []):
                         if not isinstance(it, dict):
-                            if isinstance(it, str) and not headline:
-                                headline = it
+                            if isinstance(it, str) and len(bullets) < 3:
+                                bullets.append(it)
                             continue
                         t = (it.get("type") or "bullet").lower()
                         txt = (it.get("text") or "").strip()
                         if not txt:
                             continue
-                        if t == "highlight" and not headline:
-                            headline = txt
-                        elif t == "bullet" and len(bullets) < 3:
-                            bullets.append(txt)
-                    if headline and len(bullets) >= 3:
-                        break
-                if not headline and bullets:
+                        if t == "highlight" and not highlight_text:
+                            highlight_text = txt
+                        if t in ("bullet", "group_note", "sub"):
+                            if len(bullets) < 3:
+                                bullets.append(txt)
+                        d = (it.get("due_date") or "").strip()
+                        if d:
+                            try:
+                                y, m, dd = d[:10].split("-")
+                                due_d = _date(int(y), int(m), int(dd))
+                                due_items.append((due_d, txt, d[:10]))
+                            except Exception:
+                                pass
+
+                if due_items:
+                    due_items.sort(key=lambda x: x[0])
+                    near_due, near_text, near_raw = due_items[0]
+                    diff = (near_due - _date.today()).days
+                    if diff < 0:
+                        dday = f"D+{abs(diff)}"
+                    elif diff == 0:
+                        dday = "D-DAY"
+                    else:
+                        dday = f"D-{diff}"
+                    headline = f"[{dday} {near_raw[5:]}] {near_text}"
+                elif highlight_text:
+                    headline = highlight_text
+                elif bullets:
                     headline = bullets[0]
 
                 computed_status = _calc_card_status(nc)

@@ -92,7 +92,6 @@ backend/uploads/
 backend/slides/
 backend/slide_images/
 backend/cropped/
-backend/note_assets/
 backend/reports_latest.json
 backend/reports_history.json
 backend/reports.json
