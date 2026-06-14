@@ -10,6 +10,7 @@ import time
 import secrets
 import hmac
 import json
+import re
 import shutil
 import hashlib
 import subprocess
@@ -166,8 +167,6 @@ def _group_dashboard_cards(cards: list) -> list:
                 "division_label": c.get("division_label"),
                 "report_date": c.get("report_date"),
                 "report_family": c.get("report_family"),
-                "due_date_min": c.get("due_date_min"),
-                "summary_bullets": list(c.get("summary_bullets") or []),
                 "issues": [],
                 "_statuses": [],
             }
@@ -208,17 +207,6 @@ def _group_dashboard_cards(cards: list) -> list:
         rd_old = groups[gkey].get("report_date") or ""
         if rd_new > rd_old:
             groups[gkey]["report_date"] = rd_new
-
-        # due_date_min: 가장 가까운 마감일 채택
-        ddn = c.get("due_date_min")
-        if ddn:
-            cur = groups[gkey].get("due_date_min")
-            if not cur or ddn < cur:
-                groups[gkey]["due_date_min"] = ddn
-
-        # summary_bullets: 기존이 비어있고 새 카드에 있으면 채움
-        if not groups[gkey].get("summary_bullets") and c.get("summary_bullets"):
-            groups[gkey]["summary_bullets"] = list(c.get("summary_bullets") or [])
 
     result = []
     for gkey in order:
@@ -411,6 +399,9 @@ app.mount("/slides", StaticFiles(directory=str(SLIDES_DIR)), name="slides")
 app.mount("/slide_images", StaticFiles(directory=str(SLIDE_IMAGES_DIR)), name="slide_images")
 app.mount("/cropped", StaticFiles(directory=str(CROPPED_DIR)), name="cropped")
 app.mount("/note_photos", StaticFiles(directory=str(NOTE_PHOTOS_DIR)), name="note_photos")
+_STATIC_DIR = BASE_DIR / "static"
+_STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 # ============================================================
 # 관리자 세션 (8시간)
@@ -1045,64 +1036,27 @@ def dashboard():
                     except Exception:
                         pkey = ""
 
-                # headline / summary_bullets / 마감일 추출
-                # 우선순위: 마감일 있는 항목 > group_note > highlight > bullet
-                from datetime import datetime as _dt
-                today_str = _dt.now().strftime("%Y-%m-%d")
-
+                # headline / summary_bullets 추출
                 headline = ""
-                bullets = []        # 진행 중 항목 (마감일 있는 것 우선)
-                group_notes = []    # 그룹 메모 (↪)
-                dated_items = []    # (due_date, text, type)
-                undated_bullets = []
-                highlight_txt = ""
-
+                bullets = []
                 for sec in (nc.get("sections") or []):
                     for it in (sec.get("items") or []):
                         if not isinstance(it, dict):
+                            if isinstance(it, str) and not headline:
+                                headline = it
                             continue
                         t = (it.get("type") or "bullet").lower()
                         txt = (it.get("text") or "").strip()
-                        due = (it.get("due_date") or "").strip()
                         if not txt:
                             continue
-                        if t == "highlight" and not highlight_txt:
-                            highlight_txt = txt
-                        elif t == "group_note":
-                            group_notes.append((due, txt))
-                        elif t == "bullet" or t == "sub":
-                            if due:
-                                dated_items.append((due, txt))
-                            else:
-                                undated_bullets.append(txt)
-
-                # headline: highlight 우선, 없으면 첫 bullet
-                headline = highlight_txt or (
-                    dated_items[0][1] if dated_items else
-                    (undated_bullets[0] if undated_bullets else title)
-                )
-
-                # bullets: 마감일 있는 항목 먼저 (최대 3개)
-                dated_sorted = sorted(dated_items, key=lambda x: x[0])
-                for due, txt in dated_sorted:
-                    if len(bullets) < 3:
-                        bullets.append(txt)
-                for txt in undated_bullets:
-                    if len(bullets) < 3:
-                        bullets.append(txt)
-
-                # 그룹 메모 (앞 1개만, ↪ 마커 붙임)
-                if group_notes:
-                    gn_due, gn_txt = group_notes[0]
-                    marker = f"↪ {gn_txt}"
-                    if len(bullets) < 4:
-                        bullets.append(marker)
-
-                # 가장 가까운 마감일 (D-day 계산용)
-                due_date_min = None
-                all_dues = [d for d, _ in dated_items] + [d for d, _ in group_notes if d]
-                if all_dues:
-                    due_date_min = min(all_dues)
+                        if t == "highlight" and not headline:
+                            headline = txt
+                        elif t == "bullet" and len(bullets) < 3:
+                            bullets.append(txt)
+                    if headline and len(bullets) >= 3:
+                        break
+                if not headline and bullets:
+                    headline = bullets[0]
 
                 computed_status = _calc_card_status(nc)
                 note_cards.append({
@@ -1116,7 +1070,6 @@ def dashboard():
                     "project_key": pkey or None,
                     "division_id": div_id,
                     "from_note": True,
-                    "due_date_min": due_date_min,
                 })
 
         # enrich (project_key 가 있으면 division/label 등 자동 채움)
@@ -1281,45 +1234,164 @@ def _delete_note_photo(photo_ref: str) -> bool:
     return False
 
 
-_NOTE_AI_SYSTEM_PROMPT = """주간 보고 텍스트를 JSON 구조로 변환합니다.
+_NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 보고서를 구조화하는 도우미입니다.
 
-스키마:
-{"cards":[{"title":"프로젝트","sections":[{"title":"섹션","items":[{"type":"bullet|highlight|sub|group_note","text":"...","group_id":"g1(선택)","due_date":"YYYY-MM-DD(선택)"}]}]}]}
+입력으로 들어오는 자유 형식 텍스트를 다음 JSON 스키마로 변환하세요:
+
+{
+  "cards": [
+    {
+      "title": "프로젝트 이름",
+      "sections": [
+        {
+          "title": "섹션 이름",
+          "items": [
+            {"type": "bullet | highlight | sub | group_note", "text": "항목 내용", "group_id": "g1 (선택)"}
+          ]
+        }
+      ]
+    }
+  ]
+}
 
 규칙:
-1. <텍스트>는 새 카드 제목
-2. 1. 2. 같은 번호는 섹션, 1) 2) 들여쓰기 번호는 bullet
-3. *로 시작 = highlight (빨강 강조)
-4. -, ▸ = bullet
-5. →, =>, 들여쓰기 내용 = sub
-6. 카드/섹션 제목 번호 제거, 항목 선행 기호 제거
-7. 의미 변경 금지, 빈/중복 제거
+1. <텍스트>로 감싼 것은 새 카드(프로젝트 그룹)
+2. 1. 2. 같은 번호는 카드 내부의 섹션
+3. 1) 2) 같은 들여쓰기 된 번호는 일반 항목(bullet)으로 처리. 별도 섹션으로 분리 금지
+4. *로 시작하는 줄, 빨간색 강조하면 좋은 핵심 정보는 type: highlight
+5. -, ▸ 일반 항목은 type: bullet
+6. →, =>, 또는 들여쓰기 된 내용은 type: sub
+7. 카드 제목·섹션 제목에서 번호 제거
+8. 항목 텍스트에서 선행 기호 제거 (-, *, ▸). 단, 본문 안의 → 같은 화살표는 유지
+9. 의미는 절대 바꾸지 말 것
+10. 빈 항목·중복 항목은 만들지 말 것
 
-} 묶음 메모 (★ 중요):
-- 줄 끝 } 또는 } ← 또는 } <— 뒤 텍스트는 위쪽 bullet들의 공통 메모
-- 같은 group_id (g1, g2...) 부여
-- 공통 메모는 {"type":"group_note","text":"본문만","group_id":"g1"}
-- "포괄적으로 적용", "공통" 같은 메타 설명은 group_note 본문에서 제거
+★ 매우 중요 — 공통 메모(group_note) 처리:
 
-마감일 자동 추출 (★ 중요):
-- "6월말"=YYYY-06-30, "6월초"=YYYY-06-05, "6월중"=YYYY-06-15
-- "6/16","6월 16일"=YYYY-06-16
-- "다음주"=다음주 금요일, "차주"=다음주 금요일
-- "Q2말","상반기말"=YYYY-06-30, "연말"=YYYY-12-31
-- 연도 없으면 가까운 미래 기준
-- group_note에 날짜 있고 group_id 항목들이 그 기한에 함께 해야 하면, group의 bullet/group_note 모두에 같은 due_date
-- highlight (현황 설명)는 due_date 부여 안 함
-- 날짜 모호하면 due_date 생략
+다음 신호 중 하나라도 발견하면 반드시 group_note로 처리하세요:
+  (a) 줄 끝에 } 기호가 있고 그 뒤(같은 줄 또는 다음 줄)에 텍스트가 있는 경우
+      예: "- 항목B } 6월말 승인 예정"
+      예: "- 항목B }"
+            "← 6월말 승인 예정"
+  (b) } ← 또는 } <— 또는 } <- 같은 화살표 마커가 있는 경우
+  (c) 텍스트에 "포괄적으로 들어가야", "공통으로 적용", "모두 해당" 같은 표현이 있는 경우
+  (d) 한 메모가 위쪽 여러 항목 전체에 적용된다는 의미가 명백한 경우
 
-예시:
-입력: <하바플레이트>
-*현황: 총141개 모델 양산 14종
+처리 방법:
+  1) } 기호 또는 공통 메모 신호가 나타난 줄 바로 위쪽의 연관된 bullet 항목들에 동일한 group_id를 부여한다 ("g1", "g2", ... 카드별로 g1부터 시작).
+  2) 공통 메모 자체는 별도 항목으로 추가: {"type":"group_note","text":"<메모 본문>","group_id":"g1"}
+  3) group_note의 text 에는 } 기호, ←, <—, "신규 장비 내용도 포괄적으로 들어가야돼" 같은 메타 설명을 제거하고 실제 메모 본문만 남긴다.
+  4) } 기호가 어느 줄에 있어도, 그 } 위쪽의 직전 bullet 항목 2-3개에 group_id 를 적용한다.
+
+[예시 1 — } 마커]
+입력:
+<하바플레이트>
+*현황: 총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종
 - 신규 장비 40대
-- 플라스틱 장비 6대 } 6월말 고객사 승인 예정
+- 플라스틱 전용 장비 6대 (텍슨 → B1 이동) } 6월말 고객사 승인 예정
 
-출력: {"cards":[{"title":"하바플레이트","sections":[{"title":"현황","items":[{"type":"highlight","text":"총141개 모델 양산 14종"},{"type":"bullet","text":"신규 장비 40대","group_id":"g1","due_date":"2026-06-30"},{"type":"bullet","text":"플라스틱 장비 6대","group_id":"g1","due_date":"2026-06-30"},{"type":"group_note","text":"고객사 승인 예정","group_id":"g1","due_date":"2026-06-30"}]}]}]}
+출력:
+{
+  "cards": [
+    {
+      "title": "하바플레이트",
+      "sections": [
+        {
+          "title": "현황",
+          "items": [
+            {"type":"highlight","text":"총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종"},
+            {"type":"bullet","text":"신규 장비 40대","group_id":"g1"},
+            {"type":"bullet","text":"플라스틱 전용 장비 6대 (텍슨 → B1 이동)","group_id":"g1"},
+            {"type":"group_note","text":"6월말 고객사 승인 예정","group_id":"g1"}
+          ]
+        }
+      ]
+    }
+  ]
+}
 
-JSON 한 객체만 출력. 마크다운/설명 금지."""
+[예시 2 — } + 화살표 + 메타 설명]
+입력:
+<하바플레이트>
+- 신규 장비 40대
+- 플라스틱 전용 장비 6대 (텍슨 → B1 이동) } <— 신규 장비 내용도 포괄적으로 들어가야돼 6월말 고객사 승인 예정
+
+출력:
+{
+  "cards": [
+    {
+      "title": "하바플레이트",
+      "sections": [
+        {
+          "items": [
+            {"type":"bullet","text":"신규 장비 40대","group_id":"g1"},
+            {"type":"bullet","text":"플라스틱 전용 장비 6대 (텍슨 → B1 이동)","group_id":"g1"},
+            {"type":"group_note","text":"6월말 고객사 승인 예정","group_id":"g1"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+(메타 설명 "신규 장비 내용도 포괄적으로 들어가야돼" 는 group_note 본문이 아니라 단지 묶음 적용 지시이므로 출력에서 제거한다.)
+
+★ 매우 중요 — 항목별 due_date(마감일) 자동 추출:
+
+본문에 날짜/기한 표현이 있으면 해당 항목 객체에 "due_date" 필드를 ISO 형식("YYYY-MM-DD")으로 추가하세요.
+
+날짜 표현 해석 규칙:
+  - "6월말", "6월 말" → 그 달의 마지막 날 (예: 6월말 → 06-30)
+  - "6월초", "6월 초" → 그 달 5일
+  - "6월중", "6월 중순" → 그 달 15일
+  - "6/16", "6.16", "6월 16일" → 06-16
+  - "다음주", "차주" → 다음 주 금요일
+  - "이번주" → 이번 주 금요일
+  - "Q2말", "2분기말" → 06-30
+  - "연말" → 12-31
+  - "상반기말" → 06-30
+  - 연도가 없으면 현재 연도(혹은 가까운 미래) 기준
+  - 모호하면 due_date 필드 생략
+
+★ 매우 중요 — 그룹 메모(group_note)의 마감일 전파:
+
+group_note에 날짜가 있고 같은 group_id 항목들이 그 기한 안에 함께 해야 하는 경우:
+  - group_note 자체에 due_date 부여
+  - 같은 group_id를 가진 bullet/highlight 항목들에도 같은 due_date 부여
+  (단, 이미 자기 due_date가 있는 항목은 자기 것 유지)
+
+[예시 — } 묶음 + 6월말 → 06-30 전파]
+입력:
+<하바플레이트>
+*현황: 총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종
+- 신규 장비 40대
+- 플라스틱 전용 장비 6대 (텍슨 → B1 이동) } 6월말 고객사 승인 예정
+
+출력:
+{
+  "cards": [
+    {
+      "title": "하바플레이트",
+      "sections": [
+        {
+          "title": "현황",
+          "items": [
+            {"type":"highlight","text":"총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종"},
+            {"type":"bullet","text":"신규 장비 40대","group_id":"g1","due_date":"2026-06-30"},
+            {"type":"bullet","text":"플라스틱 전용 장비 6대 (텍슨 → B1 이동)","group_id":"g1","due_date":"2026-06-30"},
+            {"type":"group_note","text":"고객사 승인 예정","group_id":"g1","due_date":"2026-06-30"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+(주의: highlight 항목은 단순 현황 설명이므로 due_date 부여 안 함.)
+
+
+
+응답은 반드시 위 JSON 형식 한 객체만 출력. 마크다운, 코드블록, 설명 없이 JSON만 출력하세요."""
 
 
 @app.post("/admin/notes/from_pptx")
@@ -1489,6 +1561,102 @@ def notes_by_project(project_key: str = ""):
     }
 
 
+
+
+# ─── 노트 사진 마커 전/후처리 (ai_parse 용) ───
+import re as _re_photo
+_PHOTO_MARKER_RE = _re_photo.compile(
+    r"\u{1F4F7}\s*([^\n\r]+?)\s*@@photo_ref=([^\s\n\r]+)".replace(r"\u{1F4F7}", "\U0001F4F7"),
+    _re_photo.IGNORECASE,
+)
+
+def _extract_photo_markers(text: str):
+    """텍스트에서 사진 마커 추출.
+    반환: (clean_text, [{filename, photo_ref, anchor}])
+    anchor = 마커 직전의 비어있지 않은 줄 텍스트 (없으면 빈 문자열)
+    """
+    lines = text.split("\n")
+    out_lines = []
+    photos = []
+    last_nonempty = ""
+    for ln in lines:
+        m = _PHOTO_MARKER_RE.search(ln)
+        if m:
+            fname = (m.group(1) or "").strip()
+            ref = (m.group(2) or "").strip()
+            if fname and ref:
+                photos.append({
+                    "filename": fname,
+                    "photo_ref": ref,
+                    "anchor": last_nonempty,
+                })
+            # 이 줄은 본문에서 제거 (AI 가 보지 않게)
+            continue
+        out_lines.append(ln)
+        if ln.strip():
+            last_nonempty = ln.strip()
+    return ("\n".join(out_lines), photos)
+
+
+def _inject_photos_into_cards(cards, photos):
+    """정리된 카드 구조에 type:'photo' item 을 앵커 텍스트 기준으로 주입."""
+    if not photos or not isinstance(cards, list):
+        return cards
+
+    def _norm(s):
+        return re.sub(r"\s+", " ", str(s or "").strip().lower())
+
+    used = set()
+
+    for ph in photos:
+        anchor_n = _norm(ph.get("anchor"))
+        ref = ph.get("photo_ref")
+        fname = ph.get("filename") or ""
+        if not ref or ref in used:
+            continue
+
+        injected = False
+        if anchor_n:
+            # 모든 카드 / 섹션 / item 순회하며 anchor 매칭 item 찾기
+            for card in cards:
+                if injected:
+                    break
+                for sec in (card.get("sections") or []):
+                    if injected:
+                        break
+                    items = sec.get("items") or []
+                    for idx, it in enumerate(items):
+                        it_text = _norm(it.get("text") if isinstance(it, dict) else it)
+                        if not it_text:
+                            continue
+                        if anchor_n == it_text or anchor_n in it_text or it_text in anchor_n:
+                            items.insert(idx + 1, {
+                                "type": "photo",
+                                "text": fname,
+                                "photo_ref": ref,
+                            })
+                            sec["items"] = items
+                            injected = True
+                            used.add(ref)
+                            break
+
+        # 앵커 못 찾으면 첫 카드 마지막 섹션 끝
+        if not injected and cards:
+            card0 = cards[0]
+            secs = card0.setdefault("sections", [])
+            if not secs:
+                secs.append({"title": "첨부", "items": []})
+            last_sec = secs[-1]
+            last_sec.setdefault("items", []).append({
+                "type": "photo",
+                "text": fname,
+                "photo_ref": ref,
+            })
+            used.add(ref)
+
+    return cards
+
+
 @app.post("/admin/notes/ai_parse")
 def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)):
     """자유 형식 텍스트를 AI로 구조화 JSON으로 변환 (증분 병합 지원)."""
@@ -1496,6 +1664,9 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
     division_id = (payload or {}).get("division_id", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="text가 비어있습니다")
+
+    # 사진 마커 추출 (AI 가 보지 않도록 제거 후, 응답에 주입)
+    text, _extracted_photos = _extract_photo_markers(text)
 
     existing_cards = []
     if division_id:
@@ -1524,7 +1695,10 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
             temperature=0.1,
         )
         content = response.choices[0].message.content
-        return json.loads(content)
+        parsed = json.loads(content)
+        if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list):
+            parsed["cards"] = _inject_photos_into_cards(parsed["cards"], _extracted_photos)
+        return parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 파싱 실패: {str(e)}")
 
@@ -1650,6 +1824,81 @@ async def admin_upload_note_photo(
     return {"photo_ref": photo_ref, "url": f"/note_photos/{photo_ref}"}
 
 
+
+
+# ─── 엑셀 업로드 (드래그&드롭) ───
+@app.post("/admin/notes/excel")
+async def admin_upload_note_excel(
+    division_id: str = Form(...),
+    file: UploadFile = File(...),
+    _admin: int = Depends(get_admin_session),
+):
+    """엑셀(.xlsx/.xlsm) 업로드 → 첫 시트를 표로 변환 후 저장 → table_ref 반환."""
+    division_id = (division_id or "").strip()
+    if not division_id:
+        raise HTTPException(status_code=400, detail="division_id 필수")
+
+    orig_name = file.filename or "upload.xlsx"
+    lower = orig_name.lower()
+    if not (lower.endswith(".xlsx") or lower.endswith(".xlsm")):
+        raise HTTPException(status_code=400, detail="xlsx/xlsm 파일만 허용")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일")
+
+    # openpyxl 로 첫 시트 읽기
+    try:
+        import openpyxl  # noqa
+        from io import BytesIO
+        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True, read_only=True)
+        ws = wb.worksheets[0]
+        sheet_name = ws.title
+
+        all_rows = []
+        for row in ws.iter_rows(values_only=True):
+            cells = ["" if v is None else str(v).strip() for v in row]
+            if any(c != "" for c in cells):
+                all_rows.append(cells)
+
+        if not all_rows:
+            raise HTTPException(status_code=400, detail="엑셀에 데이터가 없음")
+
+        # 첫 행을 헤더로
+        max_cols = max(len(r) for r in all_rows)
+        norm_rows = [r + [""] * (max_cols - len(r)) for r in all_rows]
+        headers = norm_rows[0]
+        body_rows = norm_rows[1:]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"엑셀 파싱 실패: {e}")
+
+    # 제목 = 확장자 제거한 파일명
+    title = orig_name.rsplit(".", 1)[0]
+    table_obj = {
+        "title": title,
+        "headers": headers,
+        "rows": body_rows,
+    }
+
+    try:
+        table_ref = _save_note_table(division_id, table_obj)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"표 저장 실패: {e}")
+
+    return {
+        "ok": True,
+        "filename": orig_name,
+        "table_ref": table_ref,
+        "table": table_obj,
+        "sheet_name": sheet_name,
+        "rows": len(body_rows),
+        "cols": max_cols,
+    }
+
+
 @app.delete("/admin/notes/photo/{division_id}/{filename}")
 def admin_delete_note_photo(division_id: str, filename: str, _admin: int = Depends(get_admin_session)):
     photo_ref = f"{division_id}/{filename}"
@@ -1662,120 +1911,31 @@ def admin_delete_note_photo(division_id: str, filename: str, _admin: int = Depen
 @app.get("/divisions")
 def list_divisions():
     """공개 사업부 목록 + 각 사업부의 visible 프로젝트 리스트.
-    각 프로젝트에 노트 기반 상태(status, has_content, due_date) 포함.
     매핑 관리 대시보드 / 모바일 사업부 화면에서 사용."""
-
-    # 상태 우선순위 (낮을수록 긴급)
-    STATUS_PRIORITY = {"RED": 0, "ORANGE": 1, "BLUE": 2, "BLACK": 3, "GRAY": 4}
-
-    # 전체 노트 데이터 로드
-    try:
-        notes_data = _load_notes().get("notes", {})
-    except Exception:
-        notes_data = {}
-
-    def _norm(s):
-        return (s or "").strip().lower().replace(" ", "")
-
-    def _find_card_for_project(div_id, project):
-        """해당 프로젝트의 노트 카드 찾기 (title/aliases 매칭)"""
-        div_notes = notes_data.get(div_id, {})
-        cards = div_notes.get("cards", [])
-        if not cards:
-            return None
-        p_label = _norm(project.get("label"))
-        p_id = _norm(project.get("id"))
-        p_aliases = [_norm(a) for a in (project.get("aliases") or [])]
-        candidates = {p_label, p_id} | set(p_aliases)
-        candidates.discard("")
-        for card in cards:
-            ct = _norm(card.get("title"))
-            if not ct:
-                continue
-            if ct in candidates:
-                return card
-            # 부분 매칭
-            for c in candidates:
-                if c and (c in ct or ct in c):
-                    return card
-        return None
-
-    def _card_status(card):
-        """카드의 가장 긴급한 상태 + 가장 가까운 마감일 반환"""
-        if not card:
-            return ("GRAY", None)
-        # 직접 items 순회 (_calc_card_status가 튜플을 안 줄 수 있어서 안전하게 직접 계산)
-        best_status = None
-        best_due = None
-        for sec in (card.get("sections") or []):
-            for it in (sec.get("items") or []):
-                due = it.get("due_date")
-                if not due:
-                    continue
-                try:
-                    st = _due_status_one(due)
-                except Exception:
-                    st = "BLUE"
-                if best_status is None or STATUS_PRIORITY.get(st, 9) < STATUS_PRIORITY.get(best_status, 9):
-                    best_status = st
-                if best_due is None or due < best_due:
-                    best_due = due
-        # 마감일이 하나도 없으면 BLACK (내용은 있지만 일정 없음)
-        if best_status is None:
-            best_status = "BLACK"
-        return (best_status, best_due)
-
     divs = _cl.get_divisions(visible_only=True)
     result = []
     for d in divs:
         div_id = d.get("id")
+        # 해당 사업부의 visible 프로젝트만 (order 순)
         try:
             ps = _cl.get_projects(div_id, visible_only=True)
         except Exception:
             ps = []
         ps_sorted = sorted(ps, key=lambda x: x.get("order", 999))
-
-        projects_out = []
-        div_best_status = "GRAY"
-        div_has_updates = False
-
-        for p in ps_sorted:
-            card = _find_card_for_project(div_id, p)
-            has_content = card is not None
-            if has_content:
-                status, due = _card_status(card)
-                div_has_updates = True
-                if STATUS_PRIORITY.get(status, 9) < STATUS_PRIORITY.get(div_best_status, 9):
-                    div_best_status = status
-            else:
-                status, due = "GRAY", None
-
-            projects_out.append({
-                "id": p.get("id"),
-                "label": p.get("label"),
-                "order": p.get("order", 999),
-                "status": status,
-                "has_content": has_content,
-                "due_date": due,
-            })
-
-        # 상태 우선순위 -> 마감일 -> order 순 정렬
-        projects_out.sort(key=lambda x: (
-            STATUS_PRIORITY.get(x["status"], 9),
-            x["due_date"] or "9999-12-31",
-            x["order"],
-        ))
-
         result.append({
             "id": div_id,
             "label": d.get("label"),
             "order": d.get("order", 999),
             "badge_short_label": d.get("badge_short_label"),
-            "summary_status": div_best_status,
-            "has_updates": div_has_updates,
-            "projects": projects_out,
+            "projects": [
+                {
+                    "id": p.get("id"),
+                    "label": p.get("label"),
+                    "order": p.get("order", 999),
+                }
+                for p in ps_sorted
+            ],
         })
-
     result.sort(key=lambda x: x.get("order", 999))
     return {"divisions": result}
 
@@ -3377,14 +3537,8 @@ function renderNotePreview(cards) {
     .replace(/"/g, '&quot;');
 
   const renderAttachBtns = (ci, si, ii) => {
-    return `
-      <span style="display:inline-flex;gap:4px;flex-shrink:0;">
-        <button type="button" onclick="openTableModal(${ci}, ${si}, ${ii})"
-          style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer;">📊</button>
-        <button type="button" onclick="openPhotoUpload(${ci}, ${si}, ${ii})"
-          style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer;">📷</button>
-      </span>
-    `;
+    // disabled by request — 미리보기에서 표/사진 버튼 숨김
+    return '';
   };
 
   const renderMiniTable = (table) => {
@@ -3626,6 +3780,8 @@ function renderNotePreview(cards) {
   if (newSaveBtn) newSaveBtn.addEventListener('click', noteSave);
   card.style.display = 'block';
 }
+  window.renderNotePreview = renderNotePreview;
+
 
 
 
@@ -3659,10 +3815,7 @@ function renderNotePreview(cards) {
     }
     status.textContent = '🤖 AI 정리 중...';
     status.style.color = '#6b7280';
-    if (saveBtn) {
-      saveBtn.disabled = true;
-      saveBtn.style.opacity = '0.5';
-    }
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
     const _divId = document.getElementById('noteDivision').value;
     try {
       const r = await fetch('/admin/notes/ai_parse', {
@@ -3674,19 +3827,19 @@ function renderNotePreview(cards) {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       _noteParsedCards = data.cards || [];
+      window._noteParsedCards = _noteParsedCards;
       renderNotePreview(_noteParsedCards);
       status.textContent = `✅ ${_noteParsedCards.length}개 카드 정리 완료`;
       status.style.color = '#10b981';
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.style.opacity = '1';
-      }
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
     } catch (e) {
       status.textContent = '❌ AI 정리 실패: ' + e.message;
       status.style.color = '#dc2626';
       _noteParsedCards = null;
     }
   }
+  window.noteAiParse = noteAiParse;
+
 
   async function noteSave() {
     if (!_noteParsedCards) {
@@ -3781,114 +3934,38 @@ function renderNotePreview(cards) {
     return out.join(String.fromCharCode(10));
   }
 
-  // 사업부 + 프로젝트 단일 선택 → 텍스트 영역에 채우기
   async function noteLoadExisting() {
     const divisionId = document.getElementById('noteDivision').value;
     if (!divisionId) { alert('사업부를 먼저 선택하세요'); return; }
     const status = document.getElementById('noteStatus');
-    status.textContent = '📥 프로젝트 목록 불러오는 중...';
+    status.textContent = '📥 불러오는 중...';
     status.style.color = '#6b7280';
     try {
-      // 1) 사업부의 프로젝트 목록 + 저장된 노트
-      const [divRes, noteRes] = await Promise.all([
-        fetch('/divisions', { credentials: 'same-origin' }).then(r => r.json()),
-        fetch(`/notes?division_id=${encodeURIComponent(divisionId)}`).then(r => r.json()),
-      ]);
-      const divs = (divRes.divisions || []);
-      const div = divs.find(d => d.id === divisionId) || {};
-      const projects = div.projects || [];
-      const savedCards = noteRes.cards || [];
-      const reportDate = noteRes.report_date || '';
-
-      // 2) 어떤 프로젝트에 저장된 카드가 있는지 매칭
-      const savedByLabel = {};
-      savedCards.forEach(c => {
-        const t = (c.title || '').trim();
-        if (t) savedByLabel[t] = c;
-      });
-
-      // 3) 모달 열기
-      _openProjectPickModal(divisionId, projects, savedByLabel, reportDate);
-      status.textContent = '';
+      const r = await fetch(`/notes?division_id=${encodeURIComponent(divisionId)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const cards = data.cards || [];
+      if (data.report_date) {
+        document.getElementById('noteReportDate').value = data.report_date;
+      }
+      if (cards.length > 0) {
+        const txt = _cardsToText(cards);
+        const ta = document.getElementById('noteRawText');
+        if (ta) ta.value = txt;
+        // 미리보기 닫기 (사용자가 텍스트 먼저 보고 수정하도록)
+        _noteParsedCards = null;
+        const card = document.getElementById('notePreviewCard');
+        if (card) card.style.display = 'none';
+        status.textContent = `✅ ${cards.length}개 카드를 텍스트로 불러옴 — 수정 후 "🤖 AI 정리" 를 눌러주세요`;
+        status.style.color = '#10b981';
+      } else {
+        status.textContent = '저장된 노트가 없습니다';
+        status.style.color = '#6b7280';
+      }
     } catch (e) {
       status.textContent = '❌ 불러오기 실패: ' + e.message;
       status.style.color = '#dc2626';
     }
-  }
-
-  function _openProjectPickModal(divisionId, projects, savedByLabel, reportDate) {
-    const overlay = document.getElementById('projectPickModal');
-    const listEl = document.getElementById('projectPickList');
-    listEl.innerHTML = '';
-    if (projects.length === 0) {
-      listEl.innerHTML = '<div style="color:#6b7280;padding:20px;text-align:center;">이 사업부에 등록된 프로젝트가 없습니다.</div>';
-    } else {
-      projects.forEach(p => {
-        const label = p.label || p.id;
-        const saved = savedByLabel[label];
-        const row = document.createElement('label');
-        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;cursor:pointer;background:#fff;';
-        row.innerHTML = `
-          <input type="radio" name="projectPick" value="${label}" data-saved="${saved ? '1' : '0'}" style="flex-shrink:0;margin:0;width:18px;height:18px;cursor:pointer;" />
-          <div style="flex:1;min-width:0;overflow:hidden;">
-            <div style="font-weight:600;font-size:14px;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
-            <div style="font-size:12px;color:${saved ? '#10b981' : '#9ca3af'};margin-top:2px;">
-              ${saved ? '✅ 저장된 노트 있음' : '⚪ 새로 시작'}
-            </div>
-          </div>
-        `;
-        listEl.appendChild(row);
-      });
-    }
-
-    // 데이터 임시 저장
-    overlay._divisionId = divisionId;
-    overlay._savedByLabel = savedByLabel;
-    overlay._reportDate = reportDate;
-    overlay.classList.add('show');
-  }
-
-  function _closeProjectPickModal() {
-    document.getElementById('projectPickModal').classList.remove('show');
-  }
-
-  function _confirmProjectPick() {
-    const overlay = document.getElementById('projectPickModal');
-    const picked = document.querySelector('input[name="projectPick"]:checked');
-    if (!picked) { alert('프로젝트를 선택하세요'); return; }
-    const value = picked.value;
-    const savedByLabel = overlay._savedByLabel || {};
-    const reportDate = overlay._reportDate || '';
-
-    let txt = '';
-    const saved = savedByLabel[value];
-    if (saved) {
-      txt = _cardsToText([saved]);
-    } else {
-      // 새 시작: 제목만
-      txt = `<${value}>\n`;
-    }
-
-    const ta = document.getElementById('noteRawText');
-    if (ta) ta.value = txt;
-    if (reportDate) {
-      const dateEl = document.getElementById('noteReportDate');
-      if (dateEl) dateEl.value = reportDate;
-    }
-    _noteParsedCards = null;
-    const card = document.getElementById('notePreviewCard');
-    if (card) card.style.display = 'none';
-
-    const status = document.getElementById('noteStatus');
-    if (status) {
-      const label = value;
-      const isNew = !savedByLabel[value];
-      status.textContent = isNew
-        ? `🆕 [${label}] 새 프로젝트로 시작 — 내용 입력 후 "🤖 AI 정리"`
-        : `✅ [${label}] 불러옴 — 수정 후 "🤖 AI 정리"`;
-      status.style.color = '#10b981';
-    }
-    _closeProjectPickModal();
   }
 
   // ─── 표/사진 첨부 ───
@@ -4423,7 +4500,7 @@ function renderNotePreview(cards) {
     const saveBtn = document.getElementById('noteSaveBtn');
     if (saveBtn) saveBtn.addEventListener('click', noteSave);
     const loadBtn = document.getElementById('noteLoadBtn');
-    if (loadBtn) loadBtn.addEventListener('click', noteLoadExisting);
+    if (loadBtn) loadBtn.addEventListener('click', function(){ if (window.openNoteLoadModal) { window.openNoteLoadModal(); } else { alert('note_loader.js 로딩 실패'); } });
   });
 
 </script>
@@ -4484,22 +4561,6 @@ function renderNotePreview(cards) {
   </div>
 </div>
 
-<!-- 프로젝트 선택 모달 (기존 노트 불러오기) -->
-<div class="modal-overlay" id="projectPickModal">
-  <div class="modal-box" style="max-width:520px;width:90%;padding:20px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <h3 style="margin:0;">📥 프로젝트 선택</h3>
-      <button onclick="_closeProjectPickModal()" style="background:transparent;color:#6b7280;font-size:24px;padding:0;margin:0;border:none;cursor:pointer;line-height:1;">✕</button>
-    </div>
-    <p style="color:#6b7280;font-size:13px;margin:0 0 12px;">어느 프로젝트를 불러올까요?</p>
-    <div id="projectPickList" style="max-height:400px;overflow-y:auto;margin-bottom:14px;"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;">
-      <button onclick="_closeProjectPickModal()" style="padding:8px 14px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;cursor:pointer;">취소</button>
-      <button onclick="_confirmProjectPick()" style="padding:8px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">불러오기</button>
-    </div>
-  </div>
-</div>
-
 <!-- 사진 확대 모달 -->
 <div class="photo-overlay" id="photoOverlay" onclick="this.classList.remove('show')">
   <img id="photoOverlayImg" src="" alt="확대 사진" />
@@ -4508,6 +4569,9 @@ function renderNotePreview(cards) {
 <!-- 숨김 사진 업로드 input -->
 <input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
 
+<script src="/static/note_loader.js"></script>
+<script src="/static/excel_drop.js"></script>
+<script src="/static/photo_drop.js"></script>
 </body>
 
 </html>

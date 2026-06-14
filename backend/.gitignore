@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+venv/
+.env
+.env.*
+*.bak
+*.bak_*
+main.py.bak*
+static/*.bak*
+patch_*.py
+test_excel/
+.DS_Store
+.vscode/
+*.log

@@ -1,0 +1,344 @@
+{
+  "sheet_name": "Sheet1",
+  "filename": "tmpnuh2_egx.xlsx",
+  "cells": [
+    [
+      {
+        "text": "",
+        "rowspan": 3,
+        "colspan": 1
+      },
+      {
+        "text": "PO 수량",
+        "rowspan": 3,
+        "colspan": 1
+      },
+      {
+        "text": "실적",
+        "rowspan": 3,
+        "colspan": 1
+      },
+      {
+        "text": "5월 실적",
+        "rowspan": 3,
+        "colspan": 1
+      },
+      {
+        "text": "6월",
+        "rowspan": 1,
+        "colspan": 8
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "text": "7월 계획",
+        "rowspan": 3,
+        "colspan": 1
+      },
+      {
+        "text": "PO증감",
+        "rowspan": 3,
+        "colspan": 1
+      }
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      {
+        "text": "W23",
+        "rowspan": 1,
+        "colspan": 2
+      },
+      null,
+      {
+        "text": "W24",
+        "rowspan": 1,
+        "colspan": 2
+      },
+      null,
+      {
+        "text": "W25",
+        "rowspan": 1,
+        "colspan": 2
+      },
+      null,
+      {
+        "text": "W26",
+        "rowspan": 1,
+        "colspan": 2
+      },
+      null,
+      null,
+      null
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      {
+        "text": "계획",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "실적",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "계획",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "실적",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "계획",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "실적",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "계획",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "실적",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      null,
+      null
+    ],
+    [
+      {
+        "text": "양산",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "2468",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "2124",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "223",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "70",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "83",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "50",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "51",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "56",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "72",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "285",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "3월: 619 ▲\n4월: 231 ▲\n5월: 157 ▲\n--------------W24: 63▲\nW24: 121 ▲",
+        "rowspan": 2,
+        "colspan": 1
+      }
+    ],
+    [
+      {
+        "text": "개발 (31종 진행중, 96종 완료)",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "631",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "457",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "73",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "12",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "12",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "43",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "35",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "20",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "15",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      null
+    ],
+    [
+      {
+        "text": "합계",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "3099",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "2581",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "296",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "82",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "95",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "93",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "86",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "76",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "87",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "0",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "285",
+        "rowspan": 1,
+        "colspan": 1
+      },
+      {
+        "text": "",
+        "rowspan": 1,
+        "colspan": 1
+      }
+    ]
+  ],
+  "max_cols": 14,
+  "source_filename": "하바플레이트.xlsx"
+}

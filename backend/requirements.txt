@@ -8,3 +8,4 @@ httpcore==1.0.6
 Pillow==11.0.0
 pdf2image==1.17.0
 python-dotenv==1.0.1
+openpyxl==3.1.5
