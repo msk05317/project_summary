@@ -2294,7 +2294,29 @@ def get_project_detail(project_key: str):
     grouped = aggregate_projects(latest)
     detail = build_project_detail(project_key, grouped)
     if not detail:
-        raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
+        # PPT 없어도 노트만 있으면 노트 카드로 응답
+        try:
+            notes_data = _read_json(NOTES_FILE, {})
+            for div_id, div_obj in (notes_data.get("notes") or {}).items():
+                for card in (div_obj.get("cards") or []):
+                    if (card.get("title") or "").strip() == project_key.strip():
+                        detail = {
+                            "project_key": project_key,
+                            "label": project_key,
+                            "name": project_key,
+                            "status": "BLUE",
+                            "sections": card.get("sections") or [],
+                            "note_only": True,
+                            "report_date": div_obj.get("report_date"),
+                            "updated_at": div_obj.get("updated_at"),
+                        }
+                        break
+                if detail:
+                    break
+        except Exception as _e:
+            pass
+        if not detail:
+            raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
     
     # 🟢 프로젝트 상세 enrichment (기존 필드 변경 없음)
     detail = enrich_project_detail(detail)
