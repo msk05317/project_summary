@@ -2304,7 +2304,7 @@ def get_project_detail(project_key: str):
                             "project_key": project_key,
                             "label": project_key,
                             "name": project_key,
-                            "status": "BLUE",
+                            "status": _calc_card_status(card),
                             "sections": card.get("sections") or [],
                             "note_only": True,
                             "report_date": div_obj.get("report_date"),
