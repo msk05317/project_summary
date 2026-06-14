@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.0.1",
-  "latest_version_code": 2,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.1/app-release.apk",
-  "release_notes": "8개 사업부 표시 + 빨간 점 업데이트 알림 + 자동 업데이트 기능",
+  "latest_version": "1.0.2",
+  "latest_version_code": 3,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.2/app-release.apk",
+  "release_notes": "빈 부서 표시 + 날짜 기반 색깔 분류 + 엑셀 이미지 첨부",
   "force_update": false
 }
