@@ -1112,11 +1112,10 @@ def dashboard():
                         if t in ("bullet", "group_note", "sub") and len(bullets) < 5:
                             bullets.append(txt)
 
-                # 카드 본문: 날짜 있는 항목 리스트 우선, 없으면 highlight, 없으면 일반 bullets
-                if dated_bullets:
-                    bullets = dated_bullets[:5]
-                elif highlight_text:
-                    bullets = [highlight_text]
+                # 카드 본문: 날짜 있는 항목만 표시. 일정 없으면 대시보드 제외
+                if not dated_bullets:
+                    continue
+                bullets = dated_bullets[:10]
 
                 # headline: 빈 문자열 (앱에서 D-day 칩으로 따로 표시)
                 headline = ""
@@ -1717,6 +1716,143 @@ def _extract_photo_markers(text: str):
     return ("\n".join(out_lines), photos)
 
 
+_DONE_KEYWORDS = ("완료", "완료됨", "출고완료", "승인완료", "끝")
+_PENDING_KEYWORDS = ("예정", "예상", "타겟", "목표", "진행중", "준비중", "까지", "예약")
+
+
+def _split_for_date_scope(txt: str):
+    """문장을 ',', '/', '|', '·' 기준으로 조각내서 (시작idx, 끝idx, 조각텍스트) 리스트 반환."""
+    chunks = []
+    start = 0
+    for m in re.finditer(r"[,/|·]", txt):
+        end = m.start()
+        chunks.append((start, end, txt[start:end]))
+        start = m.end()
+    chunks.append((start, len(txt), txt[start:]))
+    return chunks
+
+
+def _is_done_scope(txt: str, idx: int) -> bool:
+    """idx 위치의 날짜가 '완료된 날짜'인지 판정.
+    한국어 어순: 날짜 → 키워드 (예: "5/29 승인완료", "W25 출하예정")
+    규칙:
+      1) idx 뒤에서 가장 가까이 나타나는 키워드(완료/예정)를 찾는다.
+         - 완료 키워드면: 완료 (True, 날짜 버림)
+         - 예정 키워드면: 살림 (False)
+      2) idx 뒤에 키워드 없으면 idx 앞 12자 윈도우에 완료 키워드 있으면 완료.
+      3) 그 외엔 살림.
+    """
+    if not txt:
+        return False
+
+    # 1) idx 뒤에서 가장 가까운 완료/예정 키워드 위치
+    nearest_pos = -1
+    nearest_kind = None  # 'done' or 'pending'
+    for k in _DONE_KEYWORDS:
+        i = txt.find(k, idx)
+        if i != -1 and (nearest_pos == -1 or i < nearest_pos):
+            nearest_pos = i
+            nearest_kind = "done"
+    for k in _PENDING_KEYWORDS:
+        i = txt.find(k, idx)
+        if i != -1 and (nearest_pos == -1 or i < nearest_pos):
+            nearest_pos = i
+            nearest_kind = "pending"
+
+    # 같은 줄에서 너무 멀면 무시 (다른 절일 가능성)
+    if nearest_pos != -1 and (nearest_pos - idx) <= 25:
+        return nearest_kind == "done"
+
+    # 2) idx 앞 12자 윈도우에 완료 키워드만 있으면 완료
+    lo = max(0, idx - 12)
+    front = txt[lo:idx]
+    if any(k in front for k in _DONE_KEYWORDS) and not any(k in front for k in _PENDING_KEYWORDS):
+        return True
+
+    return False
+
+
+def _extract_due_date_from_text(txt: str) -> str:
+    """본문 텍스트에서 due_date(YYYY-MM-DD) 추출. 못 찾으면 빈 문자열.
+    규칙:
+      - "X월말" → 해당 월 마지막 평일(일요일이면 금요일)
+      - "(M/D)", "M/D" → 2026-MM-DD
+      - "W23"~"W53" → 해당 ISO 주차의 금요일 (연도 2026 기준)
+      - "M월 D일", "M월D일" → 2026-MM-DD
+      - "YYYY-MM-DD" / "YY.M.D" → 그대로
+    여러 개 있으면 가장 빠른 날짜 채택.
+    """
+    from datetime import date, timedelta
+    import calendar
+    if not txt:
+        return ""
+    YEAR = 2026
+    candidates = []
+
+    # 1) YYYY-MM-DD
+    for m in re.finditer(r"(20\d{2})-(\d{1,2})-(\d{1,2})", txt):
+        try:
+            if not _is_done_scope(txt, m.start()):
+                candidates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+        except Exception:
+            pass
+
+    # 2) YY.M.D
+    for m in re.finditer(r"\b(\d{2})\.(\d{1,2})\.(\d{1,2})\b", txt):
+        try:
+            yy = 2000 + int(m.group(1))
+            if not _is_done_scope(txt, m.start()):
+                candidates.append(date(yy, int(m.group(2)), int(m.group(3))))
+        except Exception:
+            pass
+
+    # 3) X월말 / X월 말 → 해당 월 마지막 평일(일요일이면 금요일)
+    for m in re.finditer(r"(\d{1,2})\s*월\s*말", txt):
+        try:
+            mo = int(m.group(1))
+            last_day = calendar.monthrange(YEAR, mo)[1]
+            d = date(YEAR, mo, last_day)
+            if d.weekday() == 6:  # 일요일이면 금요일로
+                d = d - timedelta(days=2)
+            if not _is_done_scope(txt, m.start()):
+                candidates.append(d)
+        except Exception:
+            pass
+
+    # 4) M월 D일 / M월D일
+    for m in re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", txt):
+        try:
+            if not _is_done_scope(txt, m.start()):
+                candidates.append(date(YEAR, int(m.group(1)), int(m.group(2))))
+        except Exception:
+            pass
+
+    # 5) (M/D) 또는 단독 M/D (단, 분수/비율은 제외 — 양쪽에 공백/괄호/조사 등 경계 있을 때만)
+    for m in re.finditer(r"(?:^|[\s\(\[~])(\d{1,2})/(\d{1,2})(?=[\s\)\]\,\.~]|$)", txt):
+        try:
+            mo = int(m.group(1)); dd = int(m.group(2))
+            if 1 <= mo <= 12 and 1 <= dd <= 31:
+                if not _is_done_scope(txt, m.start()):
+                    candidates.append(date(YEAR, mo, dd))
+        except Exception:
+            pass
+
+    # 6) W23 ~ W53 → 해당 ISO 주차의 금요일
+    for m in re.finditer(r"\bW\s*(\d{1,2})\b", txt, flags=re.IGNORECASE):
+        try:
+            wk = int(m.group(1))
+            if 1 <= wk <= 53:
+                d = date.fromisocalendar(YEAR, wk, 5)  # 5 = Friday
+                if not _is_done_scope(txt, m.start()):
+                    candidates.append(d)
+        except Exception:
+            pass
+
+    if not candidates:
+        return ""
+    return min(candidates).isoformat()
+
+
 def _normalize_note_item(it: dict) -> dict:
     """AI 결과 아이템 후처리: 색상 태그, ※ 항목, 화살표 중복 제거."""
     if not isinstance(it, dict):
@@ -1757,6 +1893,13 @@ def _normalize_note_item(it: dict) -> dict:
     it["text"] = txt
     if color:
         it["color"] = color
+
+    # due_date 가 비어 있으면 본문에서 자동 추출
+    if not (it.get("due_date") or "").strip():
+        auto = _extract_due_date_from_text(txt)
+        if auto:
+            it["due_date"] = auto
+
     return it
 
 
@@ -1982,13 +2125,46 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
 
     from datetime import datetime
     data = _load_notes()
-    data.setdefault("notes", {})[division_id] = {
-        "report_date": report_date,
+    notes_map = data.setdefault("notes", {})
+    existing = notes_map.get(division_id) or {}
+    existing_cards = existing.get("cards") or []
+
+    # 카드 제목 기준으로 merge (같은 title은 새 내용으로 교체, 새 title은 추가)
+    def _norm_title(t):
+        return re.sub(r"\s+", "", (t or "").strip()).lower()
+
+    by_title = {}
+    order = []
+    for c in existing_cards:
+        if not isinstance(c, dict):
+            continue
+        tkey = _norm_title(c.get("title"))
+        if not tkey or tkey in by_title:
+            continue
+        by_title[tkey] = c
+        order.append(tkey)
+
+    for c in cards:
+        if not isinstance(c, dict):
+            continue
+        tkey = _norm_title(c.get("title"))
+        if not tkey:
+            continue
+        if tkey in by_title:
+            by_title[tkey] = c  # 교체
+        else:
+            by_title[tkey] = c
+            order.append(tkey)
+
+    merged_cards = [by_title[k] for k in order]
+
+    notes_map[division_id] = {
+        "report_date": report_date or existing.get("report_date", ""),
         "updated_at": datetime.now().isoformat(),
-        "cards": cards,
+        "cards": merged_cards,
     }
     _save_notes(data)
-    return {"ok": True, "division_id": division_id, "card_count": len(cards)}
+    return {"ok": True, "division_id": division_id, "card_count": len(merged_cards)}
 
 
 @app.get("/notes")
