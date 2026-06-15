@@ -1838,7 +1838,32 @@ def _inject_photos_into_cards(cards, photos):
                         if not it_text:
                             continue
                         if anchor_n == it_text or anchor_n in it_text or it_text in anchor_n:
-                            items.insert(idx + 1, {
+                            # 삽입 위치: 매칭 아이템 바로 뒤
+                            insert_at = idx + 1
+                            # 매칭 아이템이 group_id를 가지면, 같은 group의 마지막 group_note 뒤로 미룸
+                            matched_gid = (it.get("group_id") if isinstance(it, dict) else "") or ""
+                            if matched_gid:
+                                k = idx + 1
+                                while k < len(items):
+                                    nxt = items[k]
+                                    if not isinstance(nxt, dict):
+                                        break
+                                    if (nxt.get("group_id") or "") != matched_gid:
+                                        break
+                                    insert_at = k + 1
+                                    k += 1
+                            else:
+                                # group_id 없어도 바로 다음이 group_note이면 그 뒤로
+                                k = idx + 1
+                                while k < len(items):
+                                    nxt = items[k]
+                                    if not isinstance(nxt, dict):
+                                        break
+                                    if (nxt.get("type") or "") != "group_note":
+                                        break
+                                    insert_at = k + 1
+                                    k += 1
+                            items.insert(insert_at, {
                                 "type": "photo",
                                 "text": fname,
                                 "photo_ref": ref,
