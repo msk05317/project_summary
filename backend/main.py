@@ -2280,19 +2280,73 @@ async def admin_upload_note_photo(
 def _excel_sheet_to_preview_data_url(ws):
     from io import BytesIO
     import base64
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageChops
 
     NL = chr(10)
-    max_row, max_col = ws.max_row, ws.max_column
+
+    def _effective_sheet_bounds():
+        coords = []
+
+        def _has_value(v):
+            return v is not None and str(v).strip() != ""
+
+        def _has_border(cell):
+            try:
+                b = cell.border
+                return any([
+                    b.left and b.left.style,
+                    b.right and b.right.style,
+                    b.top and b.top.style,
+                    b.bottom and b.bottom.style,
+                ])
+            except Exception:
+                return False
+
+        def _has_fill(cell):
+            try:
+                f = cell.fill
+                if f and f.fgColor and f.fgColor.rgb:
+                    rgb = str(f.fgColor.rgb)
+                    # 투명/흰색 제외
+                    if rgb not in ("00000000", "FFFFFFFF", "FFFFFF", "None"):
+                        return True
+            except Exception:
+                pass
+            return False
+
+        # 값 OR 테두리 OR 배경색 있는 셀 모두 포함
+        for row in ws.iter_rows():
+            for cell in row:
+                if _has_value(cell.value) or _has_border(cell) or _has_fill(cell):
+                    coords.append((cell.row, cell.column))
+
+        # 병합 셀은 anchor 값이 있으면 병합 범위 전체 포함
+        for rng in ws.merged_cells.ranges:
+            min_col2, min_row2, max_col2, max_row2 = rng.bounds
+            anchor = ws.cell(min_row2, min_col2)
+            if _has_value(anchor.value) or _has_border(anchor) or _has_fill(anchor):
+                coords.append((min_row2, min_col2))
+                coords.append((max_row2, max_col2))
+
+        if not coords:
+            return 1, 1, 1, 1
+
+        min_row2 = min(r for r, c in coords)
+        max_row2 = max(r for r, c in coords)
+        min_col2 = min(c for r, c in coords)
+        max_col2 = max(c for r, c in coords)
+        return min_row2, max_row2, min_col2, max_col2
+
+    min_row, max_row, min_col, max_col = _effective_sheet_bounds()
 
     anchor_map = {}
     skip = set()
     for rng in ws.merged_cells.ranges:
-        min_col, min_row, max_col2, max_row2 = rng.bounds
-        anchor_map[(min_row, min_col)] = (max_row2, max_col2)
-        for rr in range(min_row, max_row2 + 1):
-            for cc in range(min_col, max_col2 + 1):
-                if (rr, cc) != (min_row, min_col):
+        mc, mr, max_col2, max_row2 = rng.bounds
+        anchor_map[(mr, mc)] = (max_row2, max_col2)
+        for rr in range(mr, max_row2 + 1):
+            for cc in range(mc, max_col2 + 1):
+                if (rr, cc) != (mr, mc):
                     skip.add((rr, cc))
 
     # 한글 폰트 후보 (Mac → Linux/Railway 순)
@@ -2359,50 +2413,53 @@ def _excel_sheet_to_preview_data_url(ws):
         return str(v)
 
     cell_text = {}
-    for r in range(1, max_row + 1):
-        for c in range(1, max_col + 1):
+    for r in range(min_row, max_row + 1):
+        for c in range(min_col, max_col + 1):
             cell_text[(r, c)] = format_value(ws.cell(r, c))
-
+    
     col_widths = [0] * (max_col + 2)
-    for c in range(1, max_col + 1):
-        widest = 60
-        for r in range(1, max_row + 1):
+    for c in range(min_col, max_col + 1):
+        widest = 72
+        for r in range(min_row, max_row + 1):
             if (r, c) in skip:
                 continue
-            if (r, c) in anchor_map:
-                rr, cc = anchor_map[(r, c)]
-                if cc > c:
-                    continue
             t = cell_text.get((r, c), "")
             if not t:
                 continue
+            use_font = font_bold if (ws.cell(r, c).font and ws.cell(r, c).font.b) else font
             for line in t.split(NL):
-                w, _ = text_size(line, font)
+                w, _ = text_size(line, use_font)
                 if w + 24 > widest:
-                    widest = min(w + 24, 280)
+                    widest = min(w + 24, 320)
         col_widths[c] = widest
 
     row_heights = [0] * (max_row + 2)
-    for r in range(1, max_row + 1):
+    for r in range(min_row, max_row + 1):
         lines_max = 1
-        for c in range(1, max_col + 1):
+        for c in range(min_col, max_col + 1):
             t = cell_text.get((r, c), "")
             lines = max(1, t.count(NL) + 1)
             if lines > lines_max:
                 lines_max = lines
         row_heights[r] = max(40, 14 + 26 * lines_max)
 
-    W = sum(col_widths[1:max_col + 1])
-    H = sum(row_heights[1:max_row + 1])
+    # 표 범위만 그리도록 인덱스 맵 통일
+    cols = list(range(min_col, max_col + 1))
+    rows = list(range(min_row, max_row + 1))
+    col_idx = {c: i for i, c in enumerate(cols)}
+    row_idx = {r: i for i, r in enumerate(rows)}
+
+    W = sum(col_widths[c] for c in cols)
+    H = sum(row_heights[r] for r in rows)
 
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
 
     xs = [0]
-    for c in range(1, max_col + 1):
+    for c in cols:
         xs.append(xs[-1] + col_widths[c])
     ys = [0]
-    for r in range(1, max_row + 1):
+    for r in rows:
         ys.append(ys[-1] + row_heights[r])
 
     def argb_to_hex(argb):
@@ -2449,13 +2506,13 @@ def _excel_sheet_to_preview_data_url(ws):
         except Exception:
             return False
 
-    for r in range(1, max_row + 1):
-        for c in range(1, max_col + 1):
+    for r in range(min_row, max_row + 1):
+        for c in range(min_col, max_col + 1):
             if (r, c) in skip:
                 continue
-            x1, y1 = xs[c - 1], ys[r - 1]
+            x1, y1 = xs[col_idx[c]], ys[row_idx[r]]
             rr, cc = anchor_map.get((r, c), (r, c))
-            x2, y2 = xs[cc], ys[rr]
+            x2, y2 = xs[col_idx[cc] + 1], ys[row_idx[rr] + 1]
             cell = ws.cell(r, c)
             bg = get_fill(cell) or "#ffffff"
             fc = get_font_color(cell)
@@ -2474,6 +2531,25 @@ def _excel_sheet_to_preview_data_url(ws):
                     w, _ = text_size(line, use_font)
                     tx = x1 + max(4, (cell_w - w) // 2)
                     draw.text((tx, ty + li * line_h), line, fill=fc, font=use_font)
+
+    # 마지막 흰 여백 소폭 trim
+    try:
+        bg = Image.new(img.mode, img.size, "white")
+        diff = ImageChops.difference(img, bg)
+        bbox = diff.getbbox()
+        if bbox:
+            l, t, r, b = bbox
+            # 공백 최소화: 거의 딱 맞게 자르되 2px만 여유
+            pad_x = 2
+            pad_y = 2
+            img = img.crop((
+                max(0, l - pad_x),
+                max(0, t - pad_y),
+                min(img.width, r + pad_x),
+                min(img.height, b + pad_y),
+            ))
+    except Exception:
+        pass
 
     bio = BytesIO()
     img.save(bio, format="PNG")
