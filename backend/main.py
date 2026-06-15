@@ -1940,12 +1940,12 @@ def _normalize_note_item(it: dict) -> dict:
     return it
 
 
-def _normalize_note_cards(parsed: dict) -> dict:
-    """parsed["cards"] 전체에 _normalize_note_item 적용 + 기타 특이사항 섹션 병합."""
+def _normalize_note_cards(parsed: dict, raw_text: str = "") -> dict:
+    """parsed["cards"] 전체에 _normalize_note_item 적용 + 기타 특이사항 섹션 병합 + 원문 ※ 줄 위치 기반 복구."""
     if not isinstance(parsed, dict):
         return parsed
     cards = parsed.get("cards") or []
-    _ETC_TITLES = {"기타 특이사항", "기타특이사항", "특이사항", "기타"}
+    _ETC_TITLES = {"기타 특이사항", "기타특이사항", "특이사항", "기타", "주의사항", "참고사항", "비고"}
     for card in cards:
         if not isinstance(card, dict):
             continue
@@ -1980,6 +1980,128 @@ def _normalize_note_cards(parsed: dict) -> dict:
                     continue
             merged_sections.append(sec)
         card["sections"] = merged_sections
+
+    # 3) 원문 ※ 줄 위치 기반 복구
+    if raw_text and cards:
+        raw_lines = raw_text.split("\n")
+        raw_star_entries = []  # [(orig, cmp, prev_anchor, next_anchor)]
+        for i, ln in enumerate(raw_lines):
+            v = ln.strip()
+            if v.startswith("※"):
+                prev_a = ""
+                for j in range(i - 1, -1, -1):
+                    pv = raw_lines[j].strip()
+                    if not pv:
+                        continue
+                    if pv.startswith("※") or pv.startswith("\U0001F4F7"):
+                        continue
+                    prev_a = pv
+                    break
+                next_a = ""
+                for j in range(i + 1, len(raw_lines)):
+                    nv = raw_lines[j].strip()
+                    if not nv:
+                        continue
+                    if nv.startswith("※") or nv.startswith("\U0001F4F7"):
+                        continue
+                    next_a = nv
+                    break
+                cmp_v = re.sub(r"\s+", " ", v).lower()
+                raw_star_entries.append((v, cmp_v, prev_a, next_a))
+
+        if raw_star_entries:
+            existing = set()
+            for c in cards:
+                if not isinstance(c, dict):
+                    continue
+                for sec in (c.get("sections") or []):
+                    if not isinstance(sec, dict):
+                        continue
+                    for it in (sec.get("items") or []):
+                        if not isinstance(it, dict):
+                            continue
+                        t = (it.get("text") or "").strip()
+                        if t.startswith("※"):
+                            existing.add(re.sub(r"\s+", " ", t).lower())
+
+            def _norm_cmp(s):
+                v = re.sub(r"^\s*\d+[.)\]]?\s*", "", str(s or "").strip())
+                return re.sub(r"\s+", " ", v.lower())
+
+            def _make_star_item(orig):
+                color = ""
+                text = orig
+                m = re.search(r"\[(빨간색|파란색|주황색|노란색)\]", text)
+                if m:
+                    tag = m.group(1)
+                    color_map = {"빨간색": "red", "파란색": "blue", "주황색": "orange", "노란색": "orange"}
+                    color = color_map.get(tag, "")
+                    text = re.sub(r"\s*\[(빨간색|파란색|주황색|노란색)\]\s*", " ", text).strip()
+                ni = {"type": "bullet", "text": text}
+                if color:
+                    ni["color"] = color
+                auto = _extract_due_date_from_text(text)
+                if auto:
+                    ni["due_date"] = auto
+                return ni
+
+            def _try_insert(orig, prev_a, next_a):
+                new_item = _make_star_item(orig)
+                next_n = _norm_cmp(next_a)
+                prev_n = _norm_cmp(prev_a)
+                # 1) next_anchor → 그 앞에 삽입
+                if next_n:
+                    for c in cards:
+                        if not isinstance(c, dict):
+                            continue
+                        for sec in (c.get("sections") or []):
+                            if not isinstance(sec, dict):
+                                continue
+                            items = sec.get("items") or []
+                            for idx, it in enumerate(items):
+                                tt = _norm_cmp(it.get("text") if isinstance(it, dict) else it)
+                                if not tt:
+                                    continue
+                                if next_n == tt or next_n in tt or tt in next_n:
+                                    items.insert(idx, new_item)
+                                    sec["items"] = items
+                                    return True
+                            sec_title = _norm_cmp(sec.get("title"))
+                            if sec_title and (next_n == sec_title or next_n in sec_title or sec_title in next_n):
+                                items.insert(0, new_item)
+                                sec["items"] = items
+                                return True
+                # 2) prev_anchor → 그 뒤에 삽입
+                if prev_n:
+                    for c in cards:
+                        if not isinstance(c, dict):
+                            continue
+                        for sec in (c.get("sections") or []):
+                            if not isinstance(sec, dict):
+                                continue
+                            items = sec.get("items") or []
+                            for idx, it in enumerate(items):
+                                tt = _norm_cmp(it.get("text") if isinstance(it, dict) else it)
+                                if not tt:
+                                    continue
+                                if prev_n == tt or prev_n in tt or tt in prev_n:
+                                    items.insert(idx + 1, new_item)
+                                    sec["items"] = items
+                                    return True
+                # 3) fallback: 첫 카드 마지막 섹션 끝
+                card0 = cards[0]
+                if isinstance(card0, dict):
+                    secs = card0.setdefault("sections", [])
+                    if not secs:
+                        secs.append({"title": "특이사항", "items": []})
+                    secs[-1].setdefault("items", []).append(new_item)
+                    return True
+                return False
+
+            for orig, cmp_v, prev_a, next_a in raw_star_entries:
+                if any(cmp_v in e or e in cmp_v for e in existing):
+                    continue
+                _try_insert(orig, prev_a, next_a)
 
     return parsed
 
@@ -2231,7 +2353,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
         parsed = json.loads(content)
         if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list):
             parsed["cards"] = _inject_photos_into_cards(parsed["cards"], _extracted_photos)
-            parsed = _normalize_note_cards(parsed)
+            parsed = _normalize_note_cards(parsed, raw_text=text)
             # parsed["cards"] = _inject_tables_into_cards(parsed["cards"], _extracted_tables)  # 엑셀은 photo로 처리
         return parsed
     except Exception as e:
@@ -2395,15 +2517,6 @@ async def admin_upload_note_photo(
 
 
 # ─── 엑셀 업로드 (드래그&드롭) ───
-
-
-
-
-
-
-
-
-
 def _excel_sheet_to_preview_data_url(ws):
     from io import BytesIO
     import base64
