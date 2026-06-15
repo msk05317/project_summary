@@ -2094,12 +2094,37 @@ def _excel_sheet_to_preview_data_url(ws):
                 if (rr, cc) != (min_row, min_col):
                     skip.add((rr, cc))
 
-    font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
-    try:
-        font = ImageFont.truetype(font_path, 22)
-    except Exception:
-        font = ImageFont.load_default()
-    font_bold = font
+    # 한글 폰트 후보 (Mac → Linux/Railway 순)
+    _font_candidates = [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
+    ]
+    _font_bold_candidates = [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothicBold.ttf",
+    ]
+
+    def _load_font(candidates, size):
+        import os
+        for fp in candidates:
+            if os.path.exists(fp):
+                try:
+                    return ImageFont.truetype(fp, size)
+                except Exception:
+                    continue
+        return ImageFont.load_default()
+
+    font = _load_font(_font_candidates, 22)
+    font_bold = _load_font(_font_bold_candidates, 22)
 
     def text_size(txt, f):
         try:
