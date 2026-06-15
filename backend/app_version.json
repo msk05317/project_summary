@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.0.3",
-  "latest_version_code": 4,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.3/app-release.apk",
-  "release_notes": "사진 로드 수정 + 카드 본문 날짜 항목 + D-day 칩 + 부서 칩 색깔",
+  "latest_version": "1.0.4",
+  "latest_version_code": 5,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.4/app-release.apk",
+  "release_notes": "색상 적용 + ※ 항목 유지 + 화살표 중복 제거 + 기타 특이사항 병합",
   "force_update": false
 }

@@ -1320,141 +1320,95 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
 }
 
 규칙:
-1. <텍스트>로 감싼 것은 새 카드(프로젝트 그룹)
-2. 1. 2. 같은 번호는 카드 내부의 섹션
-3. 1) 2) 같은 들여쓰기 된 번호는 일반 항목(bullet)으로 처리. 별도 섹션으로 분리 금지
-4. *로 시작하는 줄, 빨간색 강조하면 좋은 핵심 정보는 type: highlight
-5. -, ▸ 일반 항목은 type: bullet
-6. →, =>, 또는 들여쓰기 된 내용은 type: sub
-7. 카드 제목·섹션 제목에서 번호 제거
-8. 항목 텍스트에서 선행 기호 제거 (-, *, ▸). 단, 본문 안의 → 같은 화살표는 유지
-9. 의미는 절대 바꾸지 말 것
-10. 빈 항목·중복 항목은 만들지 말 것
+1. <텍스트>로 감싼 것은 새 카드(프로젝트)
+2. 줄 시작에 "1.", "2.", "3." 같은 숫자+점으로 시작하는 줄은 무조건 새 섹션(section)이다. 절대 item으로 만들지 마라.
+   - 예: "1. 양산 14종" → section title="양산 14종"
+   - 예: "2. 개발 18종" → section title="개발 18종"
+   - 예: "3. EMA 33종 (총 33종 중 승인 7종, 개발 26종)" → section title="EMA 33종 (총 33종 중 승인 7종, 개발 26종)"
+3. "1)", "2)" 같은 괄호 번호나 들여쓰기는 일반 item(bullet) — section 만들지 마라
+4. *로 시작하거나 "현황:" 표시는 type: highlight
+4-1. 색상 태그 처리 — 본문에 "[빨간색]" / "[파란색]" / "[주황색]" / "[노란색]" 이 포함된 항목은:
+     - 태그 문자열만 제거하고 본문은 그대로 유지
+     - 결과 JSON 아이템에 "color": "red" / "blue" / "orange" 필드를 추가
+     - 색상 태그는 group_id 부여의 신호가 아니다 (색깔이 같다고 묶지 말 것)
+     - 예: "[파란색] W23 출하 24EA" → {"type":"bullet","text":"W23 출하 24EA","color":"blue"}
+5. "-", "▸"로 시작하는 줄은 type: bullet
+6. "→", "=>", "↳" 또는 명백한 들여쓰기는 type: sub (상위 항목의 부가 설명)
+7. "※" 로 시작하는 줄은 type: highlight (참고/주의)
+   - "※" 기호는 절대 제거하지 말고 본문 첫 글자로 그대로 유지한다 (예: "※에테르GDX 자재 ...")
+   - "※" 줄을 별도 "기타 특이사항" 섹션으로 옮기지 말고, 원문이 속한 섹션 안에 그대로 둔다
+   - "※" 줄에는 group_id 를 절대 부여하지 않는다
+8. 카드 제목·섹션 제목에서 선행 번호와 기호는 제거
+9. item 텍스트에서 선행 기호(-, *, ▸)는 제거. 본문 안의 →, ↳는 유지
+10. "📷 파일명 @@photo_ref=..." 줄은 절대 수정/요약/제거하지 말고 그 자리에 그대로 한 줄 유지
+11. 의미는 절대 바꾸지 말고, 임의로 항목을 합치거나 추가하지 마라
+12. 빈 항목·중복 항목은 만들지 마라
 
-★ 매우 중요 — 공통 메모(group_note) 처리:
+★ group_id 부여 조건 (중요 — 함부로 묶지 말 것):
 
-다음 신호 중 하나라도 발견하면 반드시 group_note로 처리하세요:
-  (a) 줄 끝에 } 기호가 있고 그 뒤(같은 줄 또는 다음 줄)에 텍스트가 있는 경우
-      예: "- 항목B } 6월말 승인 예정"
-      예: "- 항목B }"
-            "← 6월말 승인 예정"
-  (b) } ← 또는 } <— 또는 } <- 같은 화살표 마커가 있는 경우
-  (c) 텍스트에 "포괄적으로 들어가야", "공통으로 적용", "모두 해당" 같은 표현이 있는 경우
-  (d) 한 메모가 위쪽 여러 항목 전체에 적용된다는 의미가 명백한 경우
+다음 신호 중 하나라도 명시적으로 존재할 때만 group_id를 부여한다:
+  (a) 줄 끝에 "}" 기호가 있는 경우
+  (b) "←", "<—", "<-" 화살표가 줄 시작이나 끝에 있는 경우
+  (c) 텍스트에 "포괄적으로 들어가야", "공통으로 적용", "모두 해당" 같은 명시적 표현이 있는 경우
 
-처리 방법:
-  1) } 기호 또는 공통 메모 신호가 나타난 줄 바로 위쪽의 연관된 bullet 항목들에 동일한 group_id를 부여한다 ("g1", "g2", ... 카드별로 g1부터 시작).
-  2) 공통 메모 자체는 별도 항목으로 추가: {"type":"group_note","text":"<메모 본문>","group_id":"g1"}
-  3) group_note의 text 에는 } 기호, ←, <—, "신규 장비 내용도 포괄적으로 들어가야돼" 같은 메타 설명을 제거하고 실제 메모 본문만 남긴다.
-  4) } 기호가 어느 줄에 있어도, 그 } 위쪽의 직전 bullet 항목 2-3개에 group_id 를 적용한다.
+위 신호가 전혀 없으면 group_id를 절대 부여하지 마라. (일반 bullet들을 마음대로 묶지 말 것)
 
-[예시 1 — } 마커]
+★ group_id 를 부여하면 안 되는 경우 (오해 방지):
+  - 색상 태그([빨간색]/[파란색]/[주황색]/[노란색])만으로는 group_id 부여 금지
+  - 같은 섹션에 속한다는 이유로 묶지 말 것
+  - 의미가 비슷하다는 이유로 묶지 말 것
+  - "※" 로 시작하는 줄은 묶지 말 것
+
+group_id를 부여하는 경우 처리 방법:
+  1) 신호가 나타난 줄 바로 위쪽의 연관된 bullet 2-3개에 동일한 group_id ("g1", "g2", ...) 부여
+  2) 공통 메모는 별도 항목으로 추가: {"type":"group_note","text":"<메모 본문>","group_id":"g1"}
+  3) group_note의 text 에서는 "}", "←" 같은 메타 기호 제거하고 본문만 남긴다
+
+[예시 1 — 번호 소제목]
 입력:
-<하바플레이트>
-*현황: 총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종
-- 신규 장비 40대
-- 플라스틱 전용 장비 6대 (텍슨 → B1 이동) } 6월말 고객사 승인 예정
+<파워박스>
+1. 양산 14종
+- 에테르 GDX : 연간 1,461대
+
+2. 개발 18종
+- 화성 세이버 5종 7월말 승인 타겟
 
 출력:
 {
-  "cards": [
-    {
-      "title": "하바플레이트",
-      "sections": [
-        {
-          "title": "현황",
-          "items": [
-            {"type":"highlight","text":"총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종"},
-            {"type":"bullet","text":"신규 장비 40대","group_id":"g1"},
-            {"type":"bullet","text":"플라스틱 전용 장비 6대 (텍슨 → B1 이동)","group_id":"g1"},
-            {"type":"group_note","text":"6월말 고객사 승인 예정","group_id":"g1"}
-          ]
-        }
-      ]
-    }
-  ]
+  "cards": [{
+    "title": "파워박스",
+    "sections": [
+      {"title": "양산 14종", "items": [
+        {"type":"bullet","text":"에테르 GDX : 연간 1,461대"}
+      ]},
+      {"title": "개발 18종", "items": [
+        {"type":"bullet","text":"화성 세이버 5종 7월말 승인 타겟"}
+      ]}
+    ]
+  }]
 }
 
-[예시 2 — } + 화살표 + 메타 설명]
+[예시 2 — } 마커가 있을 때만 group_id]
 입력:
 <하바플레이트>
+*현황: 총141개 모델 중 양산진행 14종
 - 신규 장비 40대
-- 플라스틱 전용 장비 6대 (텍슨 → B1 이동) } <— 신규 장비 내용도 포괄적으로 들어가야돼 6월말 고객사 승인 예정
+- 플라스틱 전용 장비 6대 } 6월말 고객사 승인 예정
 
 출력:
 {
-  "cards": [
-    {
-      "title": "하바플레이트",
-      "sections": [
-        {
-          "items": [
-            {"type":"bullet","text":"신규 장비 40대","group_id":"g1"},
-            {"type":"bullet","text":"플라스틱 전용 장비 6대 (텍슨 → B1 이동)","group_id":"g1"},
-            {"type":"group_note","text":"6월말 고객사 승인 예정","group_id":"g1"}
-          ]
-        }
-      ]
-    }
-  ]
+  "cards": [{
+    "title": "하바플레이트",
+    "sections": [
+      {"title": "현황", "items": [
+        {"type":"highlight","text":"총141개 모델 중 양산진행 14종"},
+        {"type":"bullet","text":"신규 장비 40대","group_id":"g1"},
+        {"type":"bullet","text":"플라스틱 전용 장비 6대","group_id":"g1"},
+        {"type":"group_note","text":"6월말 고객사 승인 예정","group_id":"g1"}
+      ]}
+    ]
+  }]
 }
-
-(메타 설명 "신규 장비 내용도 포괄적으로 들어가야돼" 는 group_note 본문이 아니라 단지 묶음 적용 지시이므로 출력에서 제거한다.)
-
-★ 매우 중요 — 항목별 due_date(마감일) 자동 추출:
-
-본문에 날짜/기한 표현이 있으면 해당 항목 객체에 "due_date" 필드를 ISO 형식("YYYY-MM-DD")으로 추가하세요.
-
-날짜 표현 해석 규칙:
-  - "6월말", "6월 말" → 그 달의 마지막 날 (예: 6월말 → 06-30)
-  - "6월초", "6월 초" → 그 달 5일
-  - "6월중", "6월 중순" → 그 달 15일
-  - "6/16", "6.16", "6월 16일" → 06-16
-  - "다음주", "차주" → 다음 주 금요일
-  - "이번주" → 이번 주 금요일
-  - "Q2말", "2분기말" → 06-30
-  - "연말" → 12-31
-  - "상반기말" → 06-30
-  - 연도가 없으면 현재 연도(혹은 가까운 미래) 기준
-  - 모호하면 due_date 필드 생략
-
-★ 매우 중요 — 그룹 메모(group_note)의 마감일 전파:
-
-group_note에 날짜가 있고 같은 group_id 항목들이 그 기한 안에 함께 해야 하는 경우:
-  - group_note 자체에 due_date 부여
-  - 같은 group_id를 가진 bullet/highlight 항목들에도 같은 due_date 부여
-  (단, 이미 자기 due_date가 있는 항목은 자기 것 유지)
-
-[예시 — } 묶음 + 6월말 → 06-30 전파]
-입력:
-<하바플레이트>
-*현황: 총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종
-- 신규 장비 40대
-- 플라스틱 전용 장비 6대 (텍슨 → B1 이동) } 6월말 고객사 승인 예정
-
-출력:
-{
-  "cards": [
-    {
-      "title": "하바플레이트",
-      "sections": [
-        {
-          "title": "현황",
-          "items": [
-            {"type":"highlight","text":"총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종"},
-            {"type":"bullet","text":"신규 장비 40대","group_id":"g1","due_date":"2026-06-30"},
-            {"type":"bullet","text":"플라스틱 전용 장비 6대 (텍슨 → B1 이동)","group_id":"g1","due_date":"2026-06-30"},
-            {"type":"group_note","text":"고객사 승인 예정","group_id":"g1","due_date":"2026-06-30"}
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-(주의: highlight 항목은 단순 현황 설명이므로 due_date 부여 안 함.)
-
-
 
 응답은 반드시 위 JSON 형식 한 객체만 출력. 마크다운, 코드블록, 설명 없이 JSON만 출력하세요."""
 
@@ -1763,13 +1717,102 @@ def _extract_photo_markers(text: str):
     return ("\n".join(out_lines), photos)
 
 
+def _normalize_note_item(it: dict) -> dict:
+    """AI 결과 아이템 후처리: 색상 태그, ※ 항목, 화살표 중복 제거."""
+    if not isinstance(it, dict):
+        return it
+
+    txt = (it.get("text") or "").strip()
+    typ = (it.get("type") or "bullet").strip().lower()
+    color = (it.get("color") or "").strip().lower()
+
+    # [빨간색]/[파란색]/[주황색]/[노란색] -> color 필드로 승격, 본문에서는 제거
+    if "[빨간색]" in txt:
+        color = "red"
+        txt = txt.replace("[빨간색]", "").strip()
+    if "[파란색]" in txt:
+        color = "blue"
+        txt = txt.replace("[파란색]", "").strip()
+    if "[주황색]" in txt:
+        color = "orange"
+        txt = txt.replace("[주황색]", "").strip()
+    if "[노란색]" in txt:
+        color = "orange"
+        txt = txt.replace("[노란색]", "").strip()
+
+    # ※ 로 시작하는 줄은 절대 group_note/특이사항으로 빼지 말고 일반 bullet 유지
+    if txt.startswith("※"):
+        if typ == "group_note":
+            typ = "bullet"
+        it.pop("group_id", None)
+
+    # sub: 선행 화살표가 여러 개거나 중복이면 1개로 정규화
+    if typ == "sub":
+        txt = re.sub(r"^(?:\s*(?:→|↳|=>)\s*)+", "→ ", txt).strip()
+
+    # bullet/highlight 도 "→ → ..." 처럼 화살표 중복 시 1개로 축약
+    txt = re.sub(r"^(→\s*){2,}", "→ ", txt)
+
+    it["type"] = typ
+    it["text"] = txt
+    if color:
+        it["color"] = color
+    return it
+
+
+def _normalize_note_cards(parsed: dict) -> dict:
+    """parsed["cards"] 전체에 _normalize_note_item 적용 + 기타 특이사항 섹션 병합."""
+    if not isinstance(parsed, dict):
+        return parsed
+    cards = parsed.get("cards") or []
+    _ETC_TITLES = {"기타 특이사항", "기타특이사항", "특이사항", "기타"}
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+
+        # 1) 각 섹션 아이템 정규화
+        for sec in (card.get("sections") or []):
+            if not isinstance(sec, dict):
+                continue
+            new_items = []
+            for it in (sec.get("items") or []):
+                if isinstance(it, dict):
+                    new_items.append(_normalize_note_item(it))
+                else:
+                    new_items.append(it)
+            sec["items"] = new_items
+
+        # 2) "기타 특이사항" 류 섹션은 직전 섹션에 흡수 후 삭제
+        sections = card.get("sections") or []
+        merged_sections = []
+        for sec in sections:
+            if not isinstance(sec, dict):
+                merged_sections.append(sec)
+                continue
+            title = (sec.get("title") or "").strip()
+            if title in _ETC_TITLES and merged_sections:
+                # 직전 섹션 마지막에 합치기
+                prev = merged_sections[-1]
+                if isinstance(prev, dict):
+                    prev_items = prev.get("items") or []
+                    prev_items.extend(sec.get("items") or [])
+                    prev["items"] = prev_items
+                    continue
+            merged_sections.append(sec)
+        card["sections"] = merged_sections
+
+    return parsed
+
+
 def _inject_photos_into_cards(cards, photos):
     """정리된 카드 구조에 type:'photo' item 을 앵커 텍스트 기준으로 주입."""
     if not photos or not isinstance(cards, list):
         return cards
 
     def _norm(s):
-        return re.sub(r"\s+", " ", str(s or "").strip().lower())
+        # 앞쪽 번호("1.", "2)" 등) 제거 + 공백 normalize
+        v = re.sub(r"^\s*\d+[.)\]]?\s*", "", str(s or "").strip())
+        return re.sub(r"\s+", " ", v.lower())
 
     used = set()
 
@@ -1782,7 +1825,7 @@ def _inject_photos_into_cards(cards, photos):
 
         injected = False
         if anchor_n:
-            # 모든 카드 / 섹션 / item 순회하며 anchor 매칭 item 찾기
+            # 1) item 텍스트 매칭
             for card in cards:
                 if injected:
                     break
@@ -1804,6 +1847,46 @@ def _inject_photos_into_cards(cards, photos):
                             injected = True
                             used.add(ref)
                             break
+
+            # 2) section title 매칭
+            if not injected:
+                for card in cards:
+                    if injected:
+                        break
+                    for sec in (card.get("sections") or []):
+                        sec_title = _norm(sec.get("title"))
+                        if not sec_title:
+                            continue
+                        if anchor_n == sec_title or anchor_n in sec_title or sec_title in anchor_n:
+                            items = sec.get("items") or []
+                            items.insert(0, {
+                                "type": "photo",
+                                "text": fname,
+                                "photo_ref": ref,
+                            })
+                            sec["items"] = items
+                            injected = True
+                            used.add(ref)
+                            break
+
+            # 3) card title 매칭
+            if not injected:
+                for card in cards:
+                    card_title = _norm(card.get("title"))
+                    if not card_title:
+                        continue
+                    if anchor_n == card_title or anchor_n in card_title or card_title in anchor_n:
+                        secs = card.setdefault("sections", [])
+                        if not secs:
+                            secs.append({"title": "첨부", "items": []})
+                        secs[-1].setdefault("items", []).append({
+                            "type": "photo",
+                            "text": fname,
+                            "photo_ref": ref,
+                        })
+                        injected = True
+                        used.add(ref)
+                        break
 
         # 앵커 못 찾으면 첫 카드 마지막 섹션 끝
         if not injected and cards:
@@ -1834,18 +1917,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
     text, _extracted_photos = _extract_photo_markers(text)
     text, _extracted_tables = _extract_excel_markers(text)
 
-    existing_cards = []
-    if division_id:
-        data = _load_notes()
-        existing = data.get("notes", {}).get(division_id, {})
-        existing_cards = existing.get("cards", []) or []
-
-    existing_json = json.dumps({"cards": existing_cards}, ensure_ascii=False)
-    user_message = (
-        f"[기존 노트 JSON]\n{existing_json}\n\n"
-        f"[이번 주 변경/추가 텍스트]\n{text}\n\n"
-        "위 기존 노트에 이번 주 변경을 병합한 최종 JSON을 출력해 주세요."
-    )
+    user_message = f"다음 텍스트를 정리:\n\n{text}"
 
     try:
         from openai import OpenAI
@@ -1864,6 +1936,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
         parsed = json.loads(content)
         if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list):
             parsed["cards"] = _inject_photos_into_cards(parsed["cards"], _extracted_photos)
+            parsed = _normalize_note_cards(parsed)
             # parsed["cards"] = _inject_tables_into_cards(parsed["cards"], _extracted_tables)  # 엑셀은 photo로 처리
         return parsed
     except Exception as e:
@@ -4038,16 +4111,34 @@ function renderNotePreview(cards) {
       return `<div style="margin:8px 0;">${renderPhoto(photoRef)}</div>`;
     }
 
+    // 색상 매핑 (item.color > 타입 기본색)
+    const _colorMap = { red:'#dc2626', blue:'#1e88e5', orange:'#ef6c00' };
+    const itemColor = _colorMap[String(it.color || '').toLowerCase()] || '';
+
     let prefix = '•';
     let textStyle = 'font-size:14px;color:#111827;';
     let leftPad = '';
+    const rawText = String(it.text || '').trim();
+    const startsWithStar = rawText.startsWith('※');
 
     if (type === 'highlight') {
       textStyle = 'font-size:14px;color:#dc2626;font-weight:700;';
     } else if (type === 'sub') {
-      prefix = '→';
+      // 화살표 중복 방지: 본문이 이미 → / ↳ / => 로 시작하면 prefix 비움
+      prefix = /^(?:→|↳|=>)\s*/.test(rawText) ? '' : '→';
       textStyle = 'font-size:13px;color:#374151;';
       leftPad = 'padding-left:18px;';
+    }
+
+    // ※ 줄은 굵게 + 기본 검정 (color 지정 있으면 그게 우선)
+    if (startsWithStar) {
+      textStyle = 'font-size:14px;color:#111827;font-weight:700;';
+      prefix = '';
+    }
+
+    // item.color 가 있으면 최종적으로 그 색으로 덮어쓰기 (font-weight 유지)
+    if (itemColor) {
+      textStyle = textStyle.replace(/color:[^;]+;?/, '') + 'color:' + itemColor + ';';
     }
 
     if (hasTable && !tableData && typeof loadTableDataForItem === 'function') {
