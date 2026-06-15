@@ -1352,6 +1352,14 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
 
 위 신호가 전혀 없으면 group_id를 절대 부여하지 마라. (일반 bullet들을 마음대로 묶지 말 것)
 
+★ 사진 placeholder 규칙 (매우 중요, 절대 어기지 말 것):
+  - 본문에 "[PHOTO_KEEP_0]", "[PHOTO_KEEP_1]" 같은 토큰이 포함된 줄이 있으면:
+    1) 그 줄 전체를 반드시 별도 item 으로 만들 것 (다른 줄과 병합 금지, 삭제 금지, 요약 금지)
+    2) item 의 text 는 원문 그대로 ("📷 파일명 [PHOTO_KEEP_0]") 유지
+    3) item 의 type 은 "bullet" 로 둔다
+    4) 원문에서 그 줄이 있던 위치 그대로 보존 — 앞뒤 내용 순서 절대 변경 금지, 카드 끝으로 옮기지 말 것
+    5) placeholder 줄을 group_id 의 신호로 사용하지 말 것
+
 ★ group_id 를 부여하면 안 되는 경우 (오해 방지):
   - 색상 태그([빨간색]/[파란색]/[주황색]/[노란색])만으로는 group_id 부여 금지
   - 같은 섹션에 속한다는 이유로 묶지 말 것
@@ -1689,26 +1697,53 @@ _PHOTO_MARKER_RE = _re_photo.compile(
 )
 
 def _extract_photo_markers(text: str):
-    """텍스트에서 사진 마커 추출.
-    반환: (clean_text, [{filename, photo_ref, anchor}])
-    anchor = 마커 직전의 비어있지 않은 줄 텍스트 (없으면 빈 문자열)
+    """텍스트에서 사진 마커 추출 (next_anchor 기반 위치 보존).
+    반환: (clean_text, [{filename, photo_ref, anchor, next_anchor, placeholder}])
+    anchor      = 마커 직전의 비어있지 않은 줄
+    next_anchor = 마커 다음에 나오는 비어있지 않은 줄 (마커가 아닌 줄)
     """
     lines = text.split("\n")
-    out_lines = []
-    photos = []
-    last_nonempty = ""
-    for ln in lines:
+
+    marker_positions = []
+    for i, ln in enumerate(lines):
         m = _PHOTO_MARKER_RE.search(ln)
         if m:
             fname = (m.group(1) or "").strip()
             ref = (m.group(2) or "").strip()
             if fname and ref:
-                photos.append({
-                    "filename": fname,
-                    "photo_ref": ref,
-                    "anchor": last_nonempty,
-                })
-            # 이 줄은 본문에서 제거 (AI 가 보지 않게)
+                marker_positions.append((i, fname, ref))
+
+    photos = []
+    out_lines = []
+    last_nonempty = ""
+    marker_idx_set = {pos[0] for pos in marker_positions}
+
+    def find_next_anchor(start):
+        for j in range(start + 1, len(lines)):
+            if j in marker_idx_set:
+                continue
+            v = lines[j].strip()
+            if v:
+                return v
+        return ""
+
+    pos_map = {pos[0]: pos for pos in marker_positions}
+    for i, ln in enumerate(lines):
+        if i in pos_map:
+            _, fname, ref = pos_map[i]
+            idx = len(photos)
+            placeholder = f"[PHOTO_KEEP_{idx}]"
+            placeholder_line = f"\U0001F4F7 {fname} {placeholder}"
+            nxt = find_next_anchor(i)
+            photos.append({
+                "filename": fname,
+                "photo_ref": ref,
+                "anchor": last_nonempty,
+                "next_anchor": nxt,
+                "placeholder": placeholder,
+            })
+            out_lines.append(placeholder_line)
+            last_nonempty = placeholder_line
             continue
         out_lines.append(ln)
         if ln.strip():
@@ -1948,27 +1983,110 @@ def _normalize_note_cards(parsed: dict) -> dict:
 
 
 def _inject_photos_into_cards(cards, photos):
-    """정리된 카드 구조에 type:'photo' item 을 앵커 텍스트 기준으로 주입."""
+    """정리된 카드 구조에 type:'photo' item 을 주입.
+    1순위: placeholder 텍스트 ('__PHOTO_PLACEHOLDER_N__') 가진 item 을 photo item 으로 직접 치환 → 원문 위치 보존
+    2순위(fallback): anchor 텍스트 매칭 (구버전 호환)
+    """
     if not photos or not isinstance(cards, list):
         return cards
 
     def _norm(s):
-        # 앞쪽 번호("1.", "2)" 등) 제거 + 공백 normalize
         v = re.sub(r"^\s*\d+[.)\]]?\s*", "", str(s or "").strip())
         return re.sub(r"\s+", " ", v.lower())
 
     used = set()
 
+    # ── 1순위: placeholder 직접 치환 ──
     for ph in photos:
-        anchor_n = _norm(ph.get("anchor"))
+        placeholder = ph.get("placeholder") or ""
         ref = ph.get("photo_ref")
         fname = ph.get("filename") or ""
-        if not ref or ref in used:
+        if not ref or not placeholder or ref in used:
             continue
 
+        replaced = False
+        for card in cards:
+            if replaced:
+                break
+            for sec in (card.get("sections") or []):
+                if replaced:
+                    break
+                items = sec.get("items") or []
+                for idx, it in enumerate(items):
+                    if not isinstance(it, dict):
+                        continue
+                    txt = str(it.get("text") or "")
+                    if placeholder in txt:
+                        # 해당 item 을 photo item 으로 치환
+                        items[idx] = {
+                            "type": "photo",
+                            "text": fname,
+                            "photo_ref": ref,
+                        }
+                        sec["items"] = items
+                        replaced = True
+                        used.add(ref)
+                        break
+
+        if replaced:
+            continue
+
+        # ── 1.5순위: next_anchor 매칭 (마커 다음 줄 앞에 삽입) ──
+        next_anchor_n = _norm(ph.get("next_anchor"))
+        if next_anchor_n:
+            inserted_by_next = False
+            # (a) item 텍스트 매칭 → 그 앞에 삽입
+            for card in cards:
+                if inserted_by_next:
+                    break
+                for sec in (card.get("sections") or []):
+                    if inserted_by_next:
+                        break
+                    items = sec.get("items") or []
+                    for idx, it in enumerate(items):
+                        it_text = _norm(it.get("text") if isinstance(it, dict) else it)
+                        if not it_text:
+                            continue
+                        if next_anchor_n == it_text or next_anchor_n in it_text or it_text in next_anchor_n:
+                            items.insert(idx, {
+                                "type": "photo",
+                                "text": fname,
+                                "photo_ref": ref,
+                            })
+                            sec["items"] = items
+                            inserted_by_next = True
+                            used.add(ref)
+                            break
+            # (b) section title 매칭 → 그 섹션의 첫 item 으로 삽입
+            if not inserted_by_next:
+                for card in cards:
+                    if inserted_by_next:
+                        break
+                    for sec in (card.get("sections") or []):
+                        sec_title = _norm(sec.get("title"))
+                        if not sec_title:
+                            continue
+                        if next_anchor_n == sec_title or next_anchor_n in sec_title or sec_title in next_anchor_n:
+                            items = sec.get("items") or []
+                            items.insert(0, {
+                                "type": "photo",
+                                "text": fname,
+                                "photo_ref": ref,
+                            })
+                            sec["items"] = items
+                            inserted_by_next = True
+                            used.add(ref)
+                            break
+            if inserted_by_next:
+                continue
+
+        # ── 2순위(fallback): anchor 텍스트 매칭 ──
+        anchor_n = _norm(ph.get("anchor"))
+        if anchor_n and anchor_n.startswith("__photo_placeholder_"):
+            anchor_n = ""  # placeholder 자체는 anchor 로 쓰지 않음
         injected = False
         if anchor_n:
-            # 1) item 텍스트 매칭
+            # item 텍스트 매칭
             for card in cards:
                 if injected:
                     break
@@ -1981,9 +2099,7 @@ def _inject_photos_into_cards(cards, photos):
                         if not it_text:
                             continue
                         if anchor_n == it_text or anchor_n in it_text or it_text in anchor_n:
-                            # 삽입 위치: 매칭 아이템 바로 뒤
                             insert_at = idx + 1
-                            # 매칭 아이템이 group_id를 가지면, 같은 group의 마지막 group_note 뒤로 미룸
                             matched_gid = (it.get("group_id") if isinstance(it, dict) else "") or ""
                             if matched_gid:
                                 k = idx + 1
@@ -1996,7 +2112,6 @@ def _inject_photos_into_cards(cards, photos):
                                     insert_at = k + 1
                                     k += 1
                             else:
-                                # group_id 없어도 바로 다음이 group_note이면 그 뒤로
                                 k = idx + 1
                                 while k < len(items):
                                     nxt = items[k]
@@ -2016,7 +2131,7 @@ def _inject_photos_into_cards(cards, photos):
                             used.add(ref)
                             break
 
-            # 2) section title 매칭
+            # section title 매칭
             if not injected:
                 for card in cards:
                     if injected:
@@ -2037,7 +2152,7 @@ def _inject_photos_into_cards(cards, photos):
                             used.add(ref)
                             break
 
-            # 3) card title 매칭
+            # card title 매칭
             if not injected:
                 for card in cards:
                     card_title = _norm(card.get("title"))
@@ -2069,6 +2184,16 @@ def _inject_photos_into_cards(cards, photos):
                 "photo_ref": ref,
             })
             used.add(ref)
+
+    # ── 후처리: 사용되지 않은 placeholder item 제거 (AI 가 위치 보존 안 한 경우 대비) ──
+    placeholder_re = re.compile(r"\[PHOTO_KEEP_\d+\]")
+    for card in cards:
+        for sec in (card.get("sections") or []):
+            items = sec.get("items") or []
+            sec["items"] = [
+                it for it in items
+                if not (isinstance(it, dict) and placeholder_re.match(str(it.get("text") or "").strip()))
+            ]
 
     return cards
 
