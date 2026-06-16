@@ -1326,7 +1326,19 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
    - 예: "3. EMA 33종 (총 33종 중 승인 7종, 개발 26종)" → section title="EMA 33종 (총 33종 중 승인 7종, 개발 26종)"
 3. "1)", "2)" 같은 괄호 번호나 들여쓰기는 일반 item(bullet) — section 만들지 마라
 4. *로 시작하거나 "현황:" 표시는 type: highlight
-4-1. 색상 태그 처리 — 본문에 "[빨간색]" / "[파란색]" / "[주황색]" / "[노란색]" 이 포함된 항목은:
+4-1. 색상 태그 처리 — 본문에 색상명("빨간색", "파란색", "주황색", "노란색")이 대괄호 안에 들어 있으면:
+
+   ★ 매우 중요: 색상 태그가 들어간 대괄호와 그 안의 내용은 **원문 그대로 본문에 포함**해야 한다 (대괄호도, 색상명도 절대 제거하지 말 것). 후처리 단계에서 자동 처리됨.
+
+   세부 형식:
+   - "[빨간색]" / "[파란색]" 단독 — 그 줄 전체 색상이라는 의미. 본문에 그대로 둘 것.
+   - "[내용 빨간색]" 형식 — 내용만 색상 적용 의미. 본문에 "[내용 빨간색]" 그대로 둘 것.
+   - "[[내용] 파란색]" 형식 — 내용에 대괄호 포함. 본문에 "[[내용] 파란색]" 그대로 둘 것.
+
+   금지 사항:
+   - 색상명("빨간색", "파란색" 등) 만 떼고 대괄호와 내용을 남기지 말 것
+   - 색상 태그 안의 내용을 다른 곳으로 옮기지 말 것
+   - 색상 태그가 들어있다고 highlight 로 분류하지 말 것 (type 은 원문 맥락대로)
      - 태그 문자열만 제거하고 본문은 그대로 유지
      - 결과 JSON 아이템에 "color": "red" / "blue" / "orange" 필드를 추가
      - 색상 태그는 group_id 부여의 신호가 아니다 (색깔이 같다고 묶지 말 것)
@@ -1358,6 +1370,12 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
   - "①", "②", "③", "④", ... 같은 원형 숫자로 시작하는 줄은 그 기호를 반드시 그대로 유지한다
   - 일반 숫자("1)", "2)") 로 변환하지 말 것
   - 원형 숫자 줄은 type: "sub" 로 분류 (상위 항목의 하위 분기를 의미)
+
+★ 일반 숫자 번호 보존 규칙 (매우 중요):
+  - "1)", "2)", "3)", "1.", "2." 같은 일반 번호로 시작하는 줄은 그 번호를 반드시 본문 첫 부분으로 유지한다
+  - 예: 원문 "1) Banff 벤푸" → text: "1) Banff 벤푸" (번호 제거 금지)
+  - 번호를 떼서 별도 섹션 제목으로만 만들지 말고, **본문 첫 글자로 그대로** 유지할 것
+  - 이런 번호 줄은 type: "sub" 로 분류 (소제목)
 
 ★ 사진 placeholder 규칙 (매우 중요, 절대 어기지 말 것):
   - 본문에 "[PHOTO_KEEP_0]", "[PHOTO_KEEP_1]" 같은 토큰이 포함된 줄이 있으면:
@@ -1911,7 +1929,124 @@ def _extract_due_date_from_text(txt: str) -> str:
 
     if not candidates:
         return ""
+
+    # 같은 (mo, dd) 가 done clause 에 한 번이라도 등장하면 전체 후보에서 제거
+    # (예: "제작 완료 6/15 ... (FQC 진행 중) → ..." 의 6/15 는 done 으로 봄)
+    try:
+        date_positions = {}  # (mo, dd) -> [positions]
+        for m in re.finditer(r"(?:^|[\s\(\[~])(\d{1,2})/(\d{1,2})(?=[\s\)\]\,\.~]|$)", txt):
+            mo_ = int(m.group(1)); dd_ = int(m.group(2))
+            if 1 <= mo_ <= 12 and 1 <= dd_ <= 31:
+                date_positions.setdefault((mo_, dd_), []).append(m.start())
+
+        done_dates = set()
+        for (mo_, dd_), positions in date_positions.items():
+            for pos in positions:
+                if _is_done_scope(txt, pos):
+                    done_dates.add((mo_, dd_))
+                    break
+
+        if done_dates:
+            from datetime import date as _date
+            filtered = [d for d in candidates if (d.month, d.day) not in done_dates]
+            if filtered:
+                candidates = filtered
+    except Exception:
+        pass
+
+    if not candidates:
+        return ""
     return min(candidates).isoformat()
+
+
+_COLOR_NAME_MAP = {
+    "빨간색": "red",
+    "파란색": "blue",
+    "주황색": "orange",
+    "노란색": "orange",
+}
+
+_COLOR_ONLY_RE = re.compile(r"\[(빨간색|파란색|주황색|노란색)\]")
+_ESCAPED_INLINE_COLOR_RE = re.compile(r"\[\[([^\]]+?)\]\s*(빨간색|파란색|주황색|노란색)\]")
+_INLINE_COLOR_RE = re.compile(r"\[([^\[\]]+?)\s+(빨간색|파란색|주황색|노란색)\]")
+
+
+def _extract_color_render_info(txt: str):
+    """대괄호 색상 표기 처리.
+    반환: (clean_text, whole_color, rich_parts)
+      - "[파란색]"  -> whole_color = "blue", 본문에서 제거
+      - "[내용 파란색]" -> rich_parts 에 부분 색상, 본문은 "내용"
+      - "[[내용] 파란색]" -> rich_parts 에 "[내용]" 색상, 본문은 "[내용]"
+    """
+    work = str(txt or "")
+    whole_color = ""
+    placeholders = {}
+
+    def _esc_repl(m):
+        token = f"__RC_ESC_{len(placeholders)}__"
+        placeholders[token] = {
+            "text": f"[{(m.group(1) or '').strip()}]",
+            "color": _COLOR_NAME_MAP.get(m.group(2), ""),
+        }
+        return token
+
+    work = _ESCAPED_INLINE_COLOR_RE.sub(_esc_repl, work)
+
+    found_line_colors = _COLOR_ONLY_RE.findall(work)
+    if found_line_colors:
+        whole_color = _COLOR_NAME_MAP.get(found_line_colors[-1], "")
+        work = _COLOR_ONLY_RE.sub("", work)
+
+    token_re = None
+    if placeholders:
+        token_re = re.compile("|".join(re.escape(k) for k in placeholders.keys()))
+
+    rich_parts = []
+    buf = []
+    has_inline = False
+    i = 0
+
+    def flush_buf():
+        if buf:
+            rich_parts.append({"text": "".join(buf)})
+            buf.clear()
+
+    while i < len(work):
+        matched = False
+        if token_re:
+            m_tok = token_re.match(work, i)
+            if m_tok:
+                flush_buf()
+                rich_parts.append(placeholders[m_tok.group(0)])
+                has_inline = True
+                i = m_tok.end()
+                matched = True
+        if matched:
+            continue
+        m_inline = _INLINE_COLOR_RE.match(work, i)
+        if m_inline:
+            flush_buf()
+            rich_parts.append({
+                "text": (m_inline.group(1) or "").strip(),
+                "color": _COLOR_NAME_MAP.get(m_inline.group(2), ""),
+            })
+            has_inline = True
+            i = m_inline.end()
+            continue
+        buf.append(work[i])
+        i += 1
+    flush_buf()
+
+    if rich_parts:
+        clean_text = "".join(p.get("text", "") for p in rich_parts).strip()
+    else:
+        clean_text = work.strip()
+
+    if not has_inline:
+        rich_parts = []
+
+    clean_text = re.sub(r"\s{2,}", " ", clean_text).strip()
+    return clean_text, whole_color, rich_parts
 
 
 def _normalize_note_item(it: dict) -> dict:
@@ -1923,19 +2058,14 @@ def _normalize_note_item(it: dict) -> dict:
     typ = (it.get("type") or "bullet").strip().lower()
     color = (it.get("color") or "").strip().lower()
 
-    # [빨간색]/[파란색]/[주황색]/[노란색] -> color 필드로 승격, 본문에서는 제거
-    if "[빨간색]" in txt:
-        color = "red"
-        txt = txt.replace("[빨간색]", "").strip()
-    if "[파란색]" in txt:
-        color = "blue"
-        txt = txt.replace("[파란색]", "").strip()
-    if "[주황색]" in txt:
-        color = "orange"
-        txt = txt.replace("[주황색]", "").strip()
-    if "[노란색]" in txt:
-        color = "orange"
-        txt = txt.replace("[노란색]", "").strip()
+    # 대괄호 색상 처리 ([파란색] | [내용 파란색] | [[내용] 파란색])
+    txt, _whole_color, _rich_parts = _extract_color_render_info(txt)
+    if _whole_color:
+        color = _whole_color
+    if _rich_parts:
+        it["rich_parts"] = _rich_parts
+    else:
+        it.pop("rich_parts", None)
 
     # ※ 로 시작하는 줄은 절대 group_note/특이사항으로 빼지 말고 일반 bullet 유지
     if txt.startswith("※"):
@@ -1944,15 +2074,30 @@ def _normalize_note_item(it: dict) -> dict:
         it.pop("group_id", None)
 
     # --> 같은 ASCII 화살표를 유니코드 → 로 통일 (한 번에 여러 개 처리)
-    txt = re.sub(r"-{2,}\s*>", "→", txt)
-    txt = re.sub(r"=+\s*>", "→", txt)
-    txt = re.sub(r"<-{2,}", "←", txt)
+    def _arrow_norm(_t):
+        _t = re.sub(r"-{2,}\s*>", "→", _t)
+        _t = re.sub(r"=+\s*>", "→", _t)
+        _t = re.sub(r"<-{2,}", "←", _t)
+        return _t
+    txt = _arrow_norm(txt)
+    # rich_parts 안의 각 part text 도 동일 변환
+    _rp = it.get("rich_parts")
+    if isinstance(_rp, list):
+        for _part in _rp:
+            if isinstance(_part, dict) and isinstance(_part.get("text"), str):
+                _part["text"] = _arrow_norm(_part["text"])
+    # 숫자) 또는 ①②③ 시작 줄은 화살표 모두 제거 (소제목)
+    _is_numbered = bool(re.match(r"^\s*(?:\d+\)|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])", txt))
+    if _is_numbered:
+        txt = re.sub(r"^(?:\s*(?:→|↳|=>)\s*)+", "", txt).strip()
+
     # sub: 선행 화살표가 여러 개거나 중복이면 1개로 정규화
-    if typ == "sub":
+    if typ == "sub" and not _is_numbered:
         txt = re.sub(r"^(?:\s*(?:→|↳|=>)\s*)+", "→ ", txt).strip()
 
     # bullet/highlight 도 "→ → ..." 처럼 화살표 중복 시 1개로 축약
-    txt = re.sub(r"^(→\s*){2,}", "→ ", txt)
+    if not _is_numbered:
+        txt = re.sub(r"^(→\s*){2,}", "→ ", txt)
 
     it["type"] = typ
     it["text"] = txt
@@ -2133,6 +2278,141 @@ def _normalize_note_cards(parsed: dict, raw_text: str = "") -> dict:
 
     return parsed
 
+
+
+
+def _restore_numbered_lines(parsed: dict, raw_text: str) -> dict:
+    """원문 숫자 라인 보정 (보수적).
+    - section title 에는 절대 번호를 prepend 하지 않는다
+    - 'N) ...' 원문 sub 라인만 item text 앞에 'N)' 복원
+    - 'N. 제목 [...]' 한 줄 원문 라인이 section title + 첫 item 으로 쪼개졌을 때만 다시 합쳐서 한 줄 title 로 복원 (FIX #4)
+    - '-' / '*' / 이미 번호 있는 라인은 건드리지 않음
+    """
+    if not isinstance(parsed, dict) or not raw_text:
+        return parsed
+
+    def _arrow_norm(t: str) -> str:
+        t = t or ""
+        t = re.sub(r"-{2,}\s*>", "→", t)
+        t = re.sub(r"=+\s*>", "→", t)
+        t = re.sub(r"<-{2,}", "←", t)
+        t = re.sub(r"\s*→\s*", " → ", t)
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    def _plain_inline(t: str) -> str:
+        t = t or ""
+        try:
+            cleaned, _w, _parts = _extract_color_render_info(t)
+            t = cleaned
+        except Exception:
+            pass
+        t = _arrow_norm(t)
+        t = t.replace("[", "").replace("]", "")
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    def _key(t: str) -> str:
+        t = _plain_inline(t).lower()
+        t = re.sub(r'[\s"\'`]', '', t)
+        t = re.sub(r'[()\[\]{}<>:：,./·•\-]+', '', t)
+        return t
+
+    # 원문에서 top-level / sub 숫자 라인 추출
+    top_lines = []   # FIX #4 전용: 'N. 제목 [...]' 한 줄
+    sub_lines = []   # 'N) 본문'
+
+    for ln in raw_text.splitlines():
+        stripped = ln.strip()
+        if not stripped:
+            continue
+
+        m_top = re.match(r'^(\d+)\.\s+(.+)$', stripped)
+        if m_top:
+            num = m_top.group(1)
+            body_raw = m_top.group(2).strip()
+            top_lines.append({
+                "num": num,
+                "body_raw": body_raw,
+                "body_plain": _plain_inline(body_raw),
+                "body_key": _key(body_raw),
+            })
+            continue
+
+        m_sub = re.match(r'^(\d+)\)\s+(.+)$', stripped)
+        if m_sub:
+            num = m_sub.group(1)
+            body_raw = m_sub.group(2).strip()
+            sub_lines.append({
+                "num": num,
+                "body_raw": body_raw,
+                "body_plain": _plain_inline(body_raw),
+                "body_key": _key(body_raw),
+            })
+            continue
+
+    cards = parsed.get("cards") or []
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+
+        sections = card.get("sections") or []
+        for sec in sections:
+            if not isinstance(sec, dict):
+                continue
+
+            title = (sec.get("title") or "").strip()
+            title_key = _key(title)
+            items = sec.get("items") or []
+
+            # ─── FIX #4: top-level 한 줄 복원 ───
+            # title + first item 이 원문 한 줄 'N. 제목 [...]' 와 일치하면 한 줄 title 로 합치고 first item 제거
+            if items and isinstance(items[0], dict):
+                first_txt = (items[0].get("text") or "").strip()
+                first_key = _key(first_txt)
+                first_plain = _plain_inline(first_txt)
+
+                merged_key = title_key + first_key
+
+                for tl in top_lines:
+                    bk = tl["body_key"]
+                    if not bk or len(bk) < 6:
+                        continue
+                    # title 이 원문 라인의 앞부분, first_item 이 뒷부분일 때만
+                    if bk.startswith(title_key) and title_key and first_key and first_key in bk:
+                        merged_plain = f'{tl["num"]}. {tl["body_plain"]}'
+                        sec["title"] = merged_plain
+                        sec["items"] = items[1:]
+                        break
+
+            # ─── sub 'N)' 복원: item 기준만, 매우 보수적으로 ───
+            for it in (sec.get("items") or []):
+                if not isinstance(it, dict):
+                    continue
+
+                txt = (it.get("text") or "").strip()
+                if not txt:
+                    continue
+
+                # 이미 번호/원형숫자/별/대시로 시작하면 건드리지 않음
+                if re.match(r'^\s*(?:\d+[.)]|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|[-*])', txt):
+                    continue
+
+                txt_key = _key(txt)
+                if not txt_key or len(txt_key) < 6:
+                    continue
+
+                for sl in sub_lines:
+                    bk = sl["body_key"]
+                    if not bk or len(bk) < 6:
+                        continue
+
+                    head = bk[:15]
+                    if head and (txt_key.startswith(head) or bk.startswith(txt_key[:15])):
+                        it["text"] = f'{sl["num"]}) {txt.strip()}'
+                        break
+
+    return parsed
 
 def _inject_photos_into_cards(cards, photos):
     """정리된 카드 구조에 type:'photo' item 을 주입.
@@ -2382,6 +2662,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
         if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list):
             parsed["cards"] = _inject_photos_into_cards(parsed["cards"], _extracted_photos)
             parsed = _normalize_note_cards(parsed, raw_text=text)
+            parsed = _restore_numbered_lines(parsed, raw_text=text)
             # parsed["cards"] = _inject_tables_into_cards(parsed["cards"], _extracted_tables)  # 엑셀은 photo로 처리
         return parsed
     except Exception as e:
@@ -4550,6 +4831,7 @@ function showUploadDonePopup(cardCount, onClose) {
 
 function renderNotePreview(cards) {
   window._circledGroupActive = false;
+    window._numberedGroupActive = false;
   const area = document.getElementById('notePreviewArea');
   const card = document.getElementById('notePreviewCard');
   if (!area || !card) return;
@@ -4608,6 +4890,15 @@ function renderNotePreview(cards) {
     return html;
   };
 
+  const renderRichParts = (parts) => {
+    const cmap = { red:'#dc2626', blue:'#1e88e5', orange:'#ef6c00' };
+    return (parts || []).map(p => {
+      const t = esc(String(p.text || ''));
+      const c = cmap[String(p.color || '').toLowerCase()] || '';
+      return c ? `<span style="color:${c};">${t}</span>` : `<span>${t}</span>`;
+    }).join('');
+  };
+
   const renderDueChip = (dueRaw) => {
     if (!dueRaw) return '';
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);
@@ -4657,6 +4948,9 @@ function renderNotePreview(cards) {
     if (!it || typeof it !== 'object') return '';
     const type = it.type || 'bullet';
     const text = esc(it.text || '');
+    const textHtml = (Array.isArray(it.rich_parts) && it.rich_parts.length)
+                       ? renderRichParts(it.rich_parts)
+                       : text;
     const hasTable = !!it.table_ref;
     const hasPhoto = !!it.photo_ref;
     const tableData = it.table_data || null;
@@ -4691,14 +4985,23 @@ function renderNotePreview(cards) {
     let leftPad = '';
     const rawText = String(it.text || '').trim();
     const startsWithStar = rawText.startsWith('※');
+    const startsWithAsterisk = rawText.startsWith('*') && !rawText.startsWith('**');
 
     if (type === 'highlight') {
       textStyle = 'font-size:14px;color:#dc2626;font-weight:700;';
     } else if (type === 'sub') {
-      // 화살표 중복 방지: 본문이 이미 → / ↳ / => 로 시작하면 prefix 비움
-      prefix = /^(?:→|↳|=>)\s*/.test(rawText) ? '' : '→';
+      const isNumberedSub = /^\s*(?:\d+[.)])/.test(rawText);
+      const hasLeadingArrow = /^(?:→|↳|=>)\s*/.test(rawText);
+      // 숫자 번호 시작이거나 이미 화살표면 prefix 없음
+      prefix = (isNumberedSub || hasLeadingArrow) ? '' : '→';
       textStyle = 'font-size:13px;color:#374151;';
-      leftPad = 'padding-left:18px;';
+      leftPad = isNumberedSub ? 'padding-left:8px;' : 'padding-left:18px;';
+      if (isNumberedSub) {
+        textStyle = 'font-size:14px;color:#111827;font-weight:600;';
+        leftPad = 'padding-left:0;';
+        window._numberedGroupActive = true;
+        window._circledGroupActive = false;
+      }
     }
 
     // 원형 숫자 (①②③...) 시작 sub 는 화살표 없이 소제목처럼 표시
@@ -4714,11 +5017,31 @@ function renderNotePreview(cards) {
     }
     if (isCircledSub) {
       window._circledGroupActive = true;
+      window._numberedGroupActive = false;
+    }
+
+    // numbered 그룹 내부 (직전에 1)/2)/3) 만난 후 다음 numbered/circled/새 섹션 전까지) 의 일반 bullet 은
+    // 들여쓰기 + 화살표 sub 처럼 처리
+    const _isNumberedSubLocal = type === 'sub' && /^\s*\d+[.)]/.test(rawText);
+    const _isCircledSubLocal = isCircledSub;
+    const _hasArrowLocal = /^(?:→|↳|=>)\s*/.test(rawText);
+    if (!_isNumberedSubLocal && !_isCircledSubLocal && window._numberedGroupActive) {
+      if (type === 'bullet') {
+        prefix = '→';
+        textStyle = 'font-size:13px;color:#374151;';
+        leftPad = 'padding-left:24px;';
+      } else if (type === 'sub' && !_hasArrowLocal) {
+        leftPad = 'padding-left:24px;';
+      }
     }
 
     // ※ 줄은 굵게 + 기본 검정 (color 지정 있으면 그게 우선)
     if (startsWithStar) {
       textStyle = 'font-size:14px;color:#111827;font-weight:700;';
+      prefix = '';
+    }
+    // * 로 시작하는 줄은 bullet 점 제거하고 * 그대로 표시
+    if (startsWithAsterisk) {
       prefix = '';
     }
 
@@ -4737,7 +5060,7 @@ function renderNotePreview(cards) {
     return `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:6px 0;${leftPad}">
         <div style="flex:1;min-width:0;">
-          <div style="${textStyle}">${prefix} ${text} ${dueChip}</div>
+          <div style="${textStyle}">${prefix} ${textHtml} ${dueChip}</div>
           ${hasTable ? renderMiniTable(tableData) : ''}
           ${hasPhoto ? renderPhoto(photoRef) : ''}
         </div>
@@ -4829,6 +5152,9 @@ function renderNotePreview(cards) {
     `;
 
     sections.forEach((s, si) => {
+      window._circledGroupActive = false;
+      window._numberedGroupActive = false;
+      // 각 section 시작 시 그룹 플래그 reset
       const stitle = esc(s.title || '');
       const items = Array.isArray(s.items) ? s.items : [];
       html += `
@@ -4920,6 +5246,12 @@ function renderNotePreview(cards) {
       status.textContent = `✅ ${_noteParsedCards.length}개 카드 정리 완료`;
       status.style.color = '#10b981';
       if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+      // 사업부 mismatch 검증
+      try {
+        if (typeof window._validateCardsBelongToDivision === 'function') {
+          await window._validateCardsBelongToDivision();
+        }
+      } catch (e) { console.error('validate err', e); }
     } catch (e) {
       status.textContent = '❌ AI 정리 실패: ' + e.message;
       status.style.color = '#dc2626';
@@ -4928,10 +5260,347 @@ function renderNotePreview(cards) {
   }
   window.noteAiParse = noteAiParse;
 
+  // [DIVISION_GUARD_START]
+  async function _validateCardsBelongToDivision() {
+    if (!_noteParsedCards || _noteParsedCards.length === 0) return true;
+    window._lastDivisionGuardMessage = '';
+
+    const curDivId = document.getElementById('noteDivision').value;
+    if (!curDivId) return true;
+
+    const saveBtn = document.getElementById('noteSaveBtn');
+    const status = document.getElementById('noteStatus');
+    const sel = document.getElementById('noteDivision');
+
+    const setSaveEnabled = (ok) => {
+      if (saveBtn) {
+        saveBtn.disabled = !ok;
+        saveBtn.style.opacity = ok ? '1' : '0.5';
+      }
+    };
+
+    const titleNorm = (t) => String(t || '')
+      .replace(/^\s*\d+[.)]\s*/,'')
+      .replace(/["'`\u201C\u201D]/g,'')
+      .replace(/[\[\]\(\)\{\}<>]/g,'')
+      .replace(/[·•]/g,'')
+      .replace(/\s+/g,'')
+      .toLowerCase();
+    const divLabel = (divId) => {
+      let label = divId;
+      Array.from(sel.options || []).forEach(opt => {
+        if (opt.value === divId) label = (opt.textContent || '').trim() || divId;
+      });
+      return label;
+    };
+
+    let notes = {};
+    try {
+      const r = await fetch('/notes', { credentials: 'same-origin' });
+      const d = await r.json();
+      notes = d.notes || {};
+    } catch (e) {
+      console.warn('division guard: failed to load /notes', e);
+      return true; // 조회 실패 시 저장까지 막진 않음
+    }
+
+    // title -> [division_id...]
+    const titleToDivs = {};
+    Object.entries(notes).forEach(([divId, item]) => {
+      (item.cards || []).forEach(card => {
+        const k = titleNorm(card.title);
+        if (!k) return;
+        if (!titleToDivs[k]) titleToDivs[k] = [];
+        if (!titleToDivs[k].includes(divId)) titleToDivs[k].push(divId);
+      });
+    });
+
+    const issues = [];
+    for (const card of _noteParsedCards) {
+      const rawTitle = String(card.title || '').trim();
+      const k = titleNorm(rawTitle);
+      if (!k) continue;
+
+      const divs = titleToDivs[k] || [];
+
+      // 0개: 고정 카드 정책상 차단
+      if (divs.length === 0) {
+        issues.push({ kind: 'not_found', title: rawTitle, divs: [] });
+        continue;
+      }
+
+      // 1개: 그 사업부와 다르면 차단 + 변경 제안
+      if (divs.length === 1) {
+        if (divs[0] !== curDivId) {
+          issues.push({ kind: 'unique_mismatch', title: rawTitle, divs });
+        }
+        continue;
+      }
+
+      // 여러 사업부: 현재 사업부가 그 목록에 없을 때만 차단
+      if (divs.length > 1 && !divs.includes(curDivId)) {
+        issues.push({ kind: 'multi_mismatch', title: rawTitle, divs });
+      }
+    }
+
+    if (issues.length === 0) {
+      setSaveEnabled(true);
+      return true;
+    }
+
+    setSaveEnabled(false);
+
+    // 1) unique mismatch 1건이면 자동 변경 제안 모달
+    const uniqueOne = issues.length === 1 && issues[0].kind === 'unique_mismatch';
+    if (uniqueOne) {
+      const issue = issues[0];
+      const targetDivId = issue.divs[0];
+      _showDivisionMismatchModal({
+        title: issue.title,
+        curDivId,
+        targetDivId,
+      });
+      return false;
+    }
+
+    // 2) 나머지는 차단만
+    const msg = issues.map(i => {
+      if (i.kind === 'not_found') return `"${i.title}" 카드 매핑 없음`;
+      if (i.kind === 'multi_mismatch') return `"${i.title}"는 ${i.divs.map(divLabel).join(', ')}에만 존재`;
+      if (i.kind === 'unique_mismatch') return `"${i.title}"는 ${divLabel(i.divs[0])} 전용`;
+      return `"${i.title}" 사업부 확인 필요`;
+    }).join(' / ');
+
+    if (status) {
+      status.textContent = `⚠️ 저장 차단 — ${msg}`;
+      status.style.color = '#dc2626';
+    }
+    return false;
+  }
+
+  function _showDivisionMismatchModal({ title, curDivId, targetDivId }) {
+    const existed = document.getElementById('divisionMismatchModal');
+    if (existed) existed.remove();
+
+    const sel = document.getElementById('noteDivision');
+    const curLabel = Array.from(sel.options || []).find(o => o.value === curDivId)?.textContent?.trim() || curDivId;
+    const targetLabel = Array.from(sel.options || []).find(o => o.value === targetDivId)?.textContent?.trim() || targetDivId;
+
+    const bg = document.createElement('div');
+    bg.id = 'divisionMismatchModal';
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'width:min(92vw,480px);background:#fff;border-radius:12px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25);';
+    box.innerHTML = `
+      <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:12px;">사업부 확인</div>
+      <div style="font-size:14px;line-height:1.6;color:#374151;">
+        <b>${title}</b> 카드는 <b>${targetLabel}</b>에만 있습니다.<br>
+        현재 선택된 사업부는 <b>${curLabel}</b>입니다.
+      </div>
+      <div style="margin-top:18px;font-size:14px;color:#111827;">
+        사업부를 <b>${targetLabel}</b>로 변경하시겠습니까?
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+        <button id="divMismatchCancel" style="padding:8px 14px;border:none;border-radius:8px;background:#e5e7eb;color:#374151;cursor:pointer;">취소</button>
+        <button id="divMismatchSwitch" style="padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;">변경 후 재정리</button>
+      </div>
+    `;
+    bg.appendChild(box);
+    document.body.appendChild(bg);
+
+    document.getElementById('divMismatchCancel').onclick = () => {
+      bg.remove();
+      const saveBtn = document.getElementById('noteSaveBtn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+      }
+    };
+
+    document.getElementById('divMismatchSwitch').onclick = async () => {
+      bg.remove();
+      sel.value = targetDivId;
+      await noteAiParse();
+    };
+  }
+
+  window._validateCardsBelongToDivision = _validateCardsBelongToDivision;
+  window._showDivisionMismatchModal = _showDivisionMismatchModal;
+  // [DIVISION_GUARD_END]
+
+
+  // ── 사업부 mismatch 검증 + 모달 ──
+  async function _validateCardsBelongToDivision() {
+    if (!_noteParsedCards || _noteParsedCards.length === 0) return;
+    const curDivId = document.getElementById('noteDivision').value;
+    if (!curDivId) return;
+
+    const saveBtn = document.getElementById('noteSaveBtn');
+    const status = document.getElementById('noteStatus');
+
+    let allNotes = {};
+    try {
+      const r = await fetch('/notes', { credentials: 'same-origin' });
+      const d = await r.json();
+      allNotes = d.notes || {};
+    } catch (e) {
+      console.warn('notes load failed', e);
+      return;
+    }
+
+    const titleNorm = (t) => String(t || '')
+      .replace(/^\s*\d+[.)]\s*/,'')
+      .replace(/["'`\u201C\u201D]/g,'')
+      .replace(/[\[\]\(\)\{\}<>]/g,'')
+      .replace(/[·•]/g,'')
+      .replace(/\s+/g,'')
+      .toLowerCase();
+
+    // 카드 title -> 등장 사업부 목록
+    const titleToDivs = {};
+    Object.entries(allNotes).forEach(([divId, item]) => {
+      (item.cards || []).forEach(c => {
+        const t = titleNorm(c.title);
+        if (!t) return;
+        if (!titleToDivs[t]) titleToDivs[t] = [];
+        if (!titleToDivs[t].includes(divId)) titleToDivs[t].push(divId);
+      });
+    });
+
+    // 현재 정리한 카드 중 문제 있는 것 찾기
+    // 정책:
+    //  - title 이 현재 사업부에 있고, 다른 사업부에는 없으면 OK
+    //  - title 이 다른 사업부에만 있으면 → switch 제안
+    //  - title 이 여러 사업부에 있으면 → 모호함 경고 (저장 차단)
+    //  - title 이 어디에도 없으면 → 신규 (저장 차단, 사업부 확인 요청)
+    const issues = [];
+    _noteParsedCards.forEach(c => {
+      const t = titleNorm(c.title);
+      if (!t) return;
+      const divs = titleToDivs[t] || [];
+      if (divs.length === 1 && divs[0] === curDivId) return; // OK
+      if (divs.length === 0) {
+        issues.push({ kind: 'new', title: c.title, foundIn: [] });
+      } else if (!divs.includes(curDivId)) {
+        issues.push({ kind: 'wrong_division', title: c.title, foundIn: divs });
+      } else if (divs.length > 1) {
+        issues.push({ kind: 'ambiguous', title: c.title, foundIn: divs });
+      }
+    });
+
+    if (issues.length === 0) {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+      return;
+    }
+
+    // 저장 차단
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
+
+    // 다른 사업부에 있는 케이스 → switch 제안
+    const switchable = issues.find(i => i.kind === 'wrong_division' && i.foundIn.length === 1);
+    if (switchable) {
+      const targetDivId = switchable.foundIn[0];
+      const sel = document.getElementById('noteDivision');
+      let targetLabel = targetDivId;
+      let curLabel = curDivId;
+      Array.from(sel.options).forEach(opt => {
+        if (opt.value === targetDivId) targetLabel = opt.textContent.trim();
+        if (opt.value === curDivId) curLabel = opt.textContent.trim();
+      });
+      _showDivisionMismatchModal({
+        title: switchable.title,
+        curLabel,
+        targetLabel,
+        targetDivId,
+        otherIssues: issues.filter(i => i !== switchable),
+      });
+    } else {
+      // ambiguous / new / 다중 발견
+      const msg = issues.map(i => {
+        if (i.kind === 'new') return `"${i.title}" (신규)`;
+        if (i.kind === 'ambiguous') return `"${i.title}" (여러 사업부에 존재: ${i.foundIn.join(', ')})`;
+        return `"${i.title}" (다른 사업부: ${i.foundIn.join(', ')})`;
+      }).join(', ');
+      if (status) {
+        status.textContent = `⚠️ 저장 차단 — ${msg}. 사업부를 확인하세요.`;
+        status.style.color = '#dc2626';
+      }
+    }
+  }
+
+  function _showDivisionMismatchModal({ title, curLabel, targetLabel, targetDivId, otherIssues }) {
+    const existed = document.getElementById('divisionMismatchModal');
+    if (existed) existed.remove();
+
+    const bg = document.createElement('div');
+    bg.id = 'divisionMismatchModal';
+    bg.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const extraMsg = (otherIssues && otherIssues.length > 0)
+      ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;">그 외 이슈: ${otherIssues.map(i => `"${i.title}"`).join(', ')}</div>`
+      : '';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+    box.innerHTML = `
+      <h3 style="margin:0 0 12px 0;font-size:18px;color:#dc2626;">⚠️ 사업부 불일치</h3>
+      <p style="margin:0 0 8px 0;font-size:14px;color:#374151;line-height:1.6;">
+        <strong>"${title}"</strong> 카드는 현재 선택한 <strong>${curLabel}</strong>에 없습니다.<br>
+        <strong>${targetLabel}</strong>에서 발견되었습니다.
+      </p>
+      ${extraMsg}
+      <p style="margin:16px 0 0 0;font-size:14px;color:#111827;">사업부를 <strong>${targetLabel}</strong>로 변경하시겠습니까?</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+        <button id="divMismatchCancel" style="padding:8px 16px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;cursor:pointer;font-size:14px;">취소</button>
+        <button id="divMismatchSwitch" style="padding:8px 16px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;">변경 후 재정리</button>
+      </div>
+    `;
+    bg.appendChild(box);
+    document.body.appendChild(bg);
+
+    document.getElementById('divMismatchCancel').addEventListener('click', () => {
+      bg.remove();
+      const status = document.getElementById('noteStatus');
+      if (status) {
+        status.textContent = `⚠️ 저장 차단됨 — 카드가 현재 사업부에 없습니다.`;
+        status.style.color = '#dc2626';
+      }
+    });
+
+    document.getElementById('divMismatchSwitch').addEventListener('click', async () => {
+      bg.remove();
+      const sel = document.getElementById('noteDivision');
+      sel.value = targetDivId;
+      const status = document.getElementById('noteStatus');
+      if (status) {
+        status.textContent = `🔄 ${targetLabel}로 변경, AI 재정리 중...`;
+        status.style.color = '#6b7280';
+      }
+      try { await noteAiParse(); } catch (e) { console.error(e); }
+    });
+  }
+  window._validateCardsBelongToDivision = _validateCardsBelongToDivision;
+  window._showDivisionMismatchModal = _showDivisionMismatchModal;
+
+
 
   async function noteSave() {
     if (!_noteParsedCards) {
       alert('먼저 AI로 정리해주세요');
+      return;
+    }
+    if (typeof window._validateCardsBelongToDivision === 'function') {
+      const result = await window._validateCardsBelongToDivision();
+      // 명시적으로 false 일 때만 차단. undefined / true 는 통과
+      if (result === false) {
+        alert(window._lastDivisionGuardMessage || '사업부가 카드 매핑과 일치하지 않습니다. 사업부를 확인해주세요.');
+        return;
+      }
+    }
+    const _saveBtn0 = document.getElementById('noteSaveBtn');
+    if (_saveBtn0 && _saveBtn0.disabled) {
+      alert('사업부가 일치하지 않습니다. 사업부를 변경하거나 카드 제목을 확인하세요.');
       return;
     }
     const divisionId = document.getElementById('noteDivision').value;
