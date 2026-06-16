@@ -1354,6 +1354,11 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
 
 위 신호가 전혀 없으면 group_id를 절대 부여하지 마라. (일반 bullet들을 마음대로 묶지 말 것)
 
+★ 원형 숫자 보존 규칙:
+  - "①", "②", "③", "④", ... 같은 원형 숫자로 시작하는 줄은 그 기호를 반드시 그대로 유지한다
+  - 일반 숫자("1)", "2)") 로 변환하지 말 것
+  - 원형 숫자 줄은 type: "sub" 로 분류 (상위 항목의 하위 분기를 의미)
+
 ★ 사진 placeholder 규칙 (매우 중요, 절대 어기지 말 것):
   - 본문에 "[PHOTO_KEEP_0]", "[PHOTO_KEEP_1]" 같은 토큰이 포함된 줄이 있으면:
     1) 그 줄 전체를 반드시 별도 item 으로 만들 것 (다른 줄과 병합 금지, 삭제 금지, 요약 금지)
@@ -1753,7 +1758,7 @@ def _extract_photo_markers(text: str):
     return ("\n".join(out_lines), photos)
 
 
-_DONE_KEYWORDS = ("완료", "완료됨", "출고완료", "승인완료", "끝")
+_DONE_KEYWORDS = ("완료", "완료됨", "출고완료", "승인완료", "회신 완료", "회신완료", "검토 완료", "검토완료", "협의 완료", "협의완료", "진행완료", "진행 완료", "받음", "받았음", "입고완료", "입고 완료", "도착", "끝")
 _PENDING_KEYWORDS = ("예정", "예상", "타겟", "목표", "진행중", "준비중", "까지", "예약")
 
 
@@ -1772,41 +1777,60 @@ def _split_for_date_scope(txt: str):
 def _is_done_scope(txt: str, idx: int) -> bool:
     """idx 위치의 날짜가 '완료된 날짜'인지 판정.
     한국어 어순: 날짜 → 키워드 (예: "5/29 승인완료", "W25 출하예정")
+    절 단위 처리: '→', ',', '/' 같은 구분자를 만나면 다른 절로 간주.
     규칙:
-      1) idx 뒤에서 가장 가까이 나타나는 키워드(완료/예정)를 찾는다.
-         - 완료 키워드면: 완료 (True, 날짜 버림)
-         - 예정 키워드면: 살림 (False)
-      2) idx 뒤에 키워드 없으면 idx 앞 12자 윈도우에 완료 키워드 있으면 완료.
-      3) 그 외엔 살림.
+      1) idx 가 포함된 절(앞뒤 구분자 사이)을 추출
+      2) 그 절 안에서 가장 가까운 (날짜로부터의 거리) 키워드 우선
+      3) 날짜와 가장 가까운 키워드가 완료면 done, 예정이면 pending
     """
     if not txt:
         return False
 
-    # 1) idx 뒤에서 가장 가까운 완료/예정 키워드 위치
-    nearest_pos = -1
-    nearest_kind = None  # 'done' or 'pending'
+    # 절 경계 추출: '→', ',', '/', '|', '·' 만나면 절 경계
+    SEPARATORS = ("→", "↳", "=>", ",", "|", "·")
+    # 앞쪽 경계
+    lo = 0
+    for sep in SEPARATORS:
+        i = txt.rfind(sep, 0, idx)
+        if i != -1 and i > lo:
+            lo = i + len(sep)
+    # 뒤쪽 경계
+    hi = len(txt)
+    for sep in SEPARATORS:
+        i = txt.find(sep, idx)
+        if i != -1 and i < hi:
+            hi = i
+
+    clause = txt[lo:hi]
+    rel_idx = idx - lo
+
+    # 절 안에서 모든 키워드 위치 + 거리 수집
+    candidates = []  # [(distance, kind, abs_pos)]
     for k in _DONE_KEYWORDS:
-        i = txt.find(k, idx)
-        if i != -1 and (nearest_pos == -1 or i < nearest_pos):
-            nearest_pos = i
-            nearest_kind = "done"
+        start = 0
+        while True:
+            i = clause.find(k, start)
+            if i == -1:
+                break
+            dist = abs(i - rel_idx)
+            candidates.append((dist, "done", i))
+            start = i + 1
     for k in _PENDING_KEYWORDS:
-        i = txt.find(k, idx)
-        if i != -1 and (nearest_pos == -1 or i < nearest_pos):
-            nearest_pos = i
-            nearest_kind = "pending"
+        start = 0
+        while True:
+            i = clause.find(k, start)
+            if i == -1:
+                break
+            dist = abs(i - rel_idx)
+            candidates.append((dist, "pending", i))
+            start = i + 1
 
-    # 같은 줄에서 너무 멀면 무시 (다른 절일 가능성)
-    if nearest_pos != -1 and (nearest_pos - idx) <= 25:
-        return nearest_kind == "done"
+    if not candidates:
+        return False
 
-    # 2) idx 앞 12자 윈도우에 완료 키워드만 있으면 완료
-    lo = max(0, idx - 12)
-    front = txt[lo:idx]
-    if any(k in front for k in _DONE_KEYWORDS) and not any(k in front for k in _PENDING_KEYWORDS):
-        return True
-
-    return False
+    # 가장 가까운 키워드
+    candidates.sort(key=lambda x: x[0])
+    return candidates[0][1] == "done"
 
 
 def _extract_due_date_from_text(txt: str) -> str:
@@ -1919,6 +1943,10 @@ def _normalize_note_item(it: dict) -> dict:
             typ = "bullet"
         it.pop("group_id", None)
 
+    # --> 같은 ASCII 화살표를 유니코드 → 로 통일 (한 번에 여러 개 처리)
+    txt = re.sub(r"-{2,}\s*>", "→", txt)
+    txt = re.sub(r"=+\s*>", "→", txt)
+    txt = re.sub(r"<-{2,}", "←", txt)
     # sub: 선행 화살표가 여러 개거나 중복이면 1개로 정규화
     if typ == "sub":
         txt = re.sub(r"^(?:\s*(?:→|↳|=>)\s*)+", "→ ", txt).strip()
@@ -4521,6 +4549,7 @@ function showUploadDonePopup(cardCount, onClose) {
 }
 
 function renderNotePreview(cards) {
+  window._circledGroupActive = false;
   const area = document.getElementById('notePreviewArea');
   const card = document.getElementById('notePreviewCard');
   if (!area || !card) return;
@@ -4670,6 +4699,21 @@ function renderNotePreview(cards) {
       prefix = /^(?:→|↳|=>)\s*/.test(rawText) ? '' : '→';
       textStyle = 'font-size:13px;color:#374151;';
       leftPad = 'padding-left:18px;';
+    }
+
+    // 원형 숫자 (①②③...) 시작 sub 는 화살표 없이 소제목처럼 표시
+    const isCircledSub = type === 'sub' && /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/.test(rawText);
+    if (isCircledSub) {
+      prefix = '';
+      textStyle = 'font-size:14px;color:#111827;font-weight:600;';
+      leftPad = 'padding-left:0;';
+    }
+    // circled 그룹 내부 (직전에 ①②③④ 만난 후 다음 ①~⑳ 또는 새 섹션 전까지) 의 일반 아이템은 들여쓰기
+    if (!isCircledSub && window._circledGroupActive && type !== 'sub') {
+      leftPad = 'padding-left:20px;';
+    }
+    if (isCircledSub) {
+      window._circledGroupActive = true;
     }
 
     // ※ 줄은 굵게 + 기본 검정 (color 지정 있으면 그게 우선)
