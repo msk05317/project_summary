@@ -2123,10 +2123,15 @@ def _normalize_note_cards(parsed: dict, raw_text: str = "") -> dict:
         if not isinstance(card, dict):
             continue
 
-        # 1) 각 섹션 아이템 정규화
+        # 1) 각 섹션 아이템 정규화 + section title 의 "N." prefix 제거
         for sec in (card.get("sections") or []):
             if not isinstance(sec, dict):
                 continue
+            # section title 앞의 "1.", "2.", "10." 같은 번호 prefix 제거 (일관성)
+            _tt = (sec.get("title") or "").strip()
+            _tt_stripped = re.sub(r'^\s*\d+\.\s+', '', _tt)
+            if _tt_stripped != _tt:
+                sec["title"] = _tt_stripped
             new_items = []
             for it in (sec.get("items") or []):
                 if isinstance(it, dict):
@@ -2380,8 +2385,8 @@ def _restore_numbered_lines(parsed: dict, raw_text: str) -> dict:
                         continue
                     # title 이 원문 라인의 앞부분, first_item 이 뒷부분일 때만
                     if bk.startswith(title_key) and title_key and first_key and first_key in bk:
-                        merged_plain = f'{tl["num"]}. {tl["body_plain"]}'
-                        sec["title"] = merged_plain
+                        # 번호 prefix 없이 body 만 title 로 (일관성)
+                        sec["title"] = tl["body_plain"]
                         sec["items"] = items[1:]
                         break
 
