@@ -82,6 +82,97 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
   }
 
+  bool _circledGroupActive = false;
+  bool _numberedGroupActive = false;
+
+  // rich_parts 가 있으면 RichText, 없으면 Text
+  Widget _buildItemText(Map<String, dynamic> it, String text, TextStyle base) {
+    final parts = it['rich_parts'];
+    if (parts is List && parts.isNotEmpty) {
+      final spans = <TextSpan>[];
+      for (final p in parts) {
+        if (p is! Map) continue;
+        final ptext = (p['text'] ?? '').toString();
+        final pcolor = (p['color'] ?? '').toString().toLowerCase();
+        Color? c;
+        if (pcolor == 'red') c = const Color(0xFFDC2626);
+        else if (pcolor == 'blue') c = const Color(0xFF1E88E5);
+        else if (pcolor == 'orange') c = const Color(0xFFEF6C00);
+        spans.add(TextSpan(
+          text: ptext,
+          style: c != null ? base.copyWith(color: c) : base,
+        ));
+      }
+      return RichText(text: TextSpan(style: base, children: spans));
+    }
+    return Text(text, style: base);
+  }
+
+  // 웹 미리보기와 동일한 D-day 칩
+  Widget _buildDueChip(dynamic dueRaw) {
+    final raw = (dueRaw ?? '').toString().trim();
+    if (raw.isEmpty) return const SizedBox.shrink();
+    final due = DateTime.tryParse(raw);
+    if (due == null) return const SizedBox.shrink();
+
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final d = DateTime(due.year, due.month, due.day);
+    final diff = d.difference(today).inDays;
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+
+    late final String label;
+    late final Color bg;
+    late final Color fg;
+    late final Color bd;
+
+    if (diff == 0) {
+      label = 'D-0 오늘 ($mm/$dd)';
+      bg = const Color(0xFFFFF7ED);
+      fg = const Color(0xFF9A3412);
+      bd = const Color(0xFFFDBA74);
+    } else if (diff > 0) {
+      label = 'D-$diff ($mm/$dd)';
+      bg = const Color(0xFFEEF2FF);
+      fg = const Color(0xFF4338CA);
+      bd = const Color(0xFFC7D2FE);
+    } else {
+      label = 'D+${-diff} 지남 ($mm/$dd)';
+      bg = const Color(0xFFFFE4E6);
+      fg = const Color(0xFFBE123C);
+      bd = const Color(0xFFFDA4AF);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: bd),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: fg,
+              height: 1.0)),
+    );
+  }
+
+  Color? _itemColor(Map<String, dynamic> it) {
+    switch ((it['color'] ?? '').toString().toLowerCase()) {
+      case 'red':
+        return Colors.red.shade700;
+      case 'blue':
+        return Colors.blue.shade700;
+      case 'orange':
+        return Colors.orange.shade800;
+      default:
+        return null;
+    }
+  }
+
   Color _statusColor(String status) {
     switch (status) {
       case 'RED':
@@ -202,6 +293,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   // group_id 같은 항목들을 노란 박스로 묶어 렌더
   List<Widget> _buildItemsWithGroups(List items) {
+    _circledGroupActive = false;
+    _numberedGroupActive = false;
     final widgets = <Widget>[];
     int i = 0;
     while (i < items.length) {
@@ -326,41 +419,102 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final it = Map<String, dynamic>.from(raw);
     final type = (it['type'] ?? 'bullet').toString();
     final text = (it['text'] ?? '').toString();
+    final rawText = text.trim();
+
+    final isStar = rawText.startsWith('※');
+    final isAsterisk = rawText.startsWith('*') && !rawText.startsWith('**');
+    final isCircledSub = type == 'sub' &&
+        RegExp(r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]').hasMatch(rawText);
+    final isNumberedSub = type == 'sub' &&
+        RegExp(r'^\s*\d+[.)]\s').hasMatch(rawText);
+
+    // 그룹 상태 갱신
+    if (isCircledSub) {
+      _circledGroupActive = true;
+      _numberedGroupActive = false;
+    }
+    if (isNumberedSub) {
+      _numberedGroupActive = true;
+      _circledGroupActive = false;
+    }
+    final inGroup = (_circledGroupActive || _numberedGroupActive);
 
     switch (type) {
-      case 'highlight':
+      case 'highlight': {
+        final colorOverride = _itemColor(it);
+        final mainColor = colorOverride ?? Colors.red.shade800;
+        final prefixColor = colorOverride ?? Colors.red.shade700;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('★ ',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.red.shade700)),
-              Expanded(
-                child: Text(text,
+              if (!isStar && !isAsterisk)
+                Text('★ ',
                     style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.red.shade800)),
+                        fontWeight: FontWeight.bold, color: prefixColor)),
+              Expanded(
+                child: _buildItemText(
+                  it,
+                  text,
+                  TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: mainColor),
+                ),
               ),
+              _buildDueChip(it['due_date']),
             ],
           ),
         );
-      case 'sub':
+      }
+      case 'sub': {
+        final colorOverride = _itemColor(it);
+        final hasArrow = RegExp(r'^(?:→|↳|=>)\s*').hasMatch(rawText);
+
+        // 원형/숫자 sub: 화살표 없이 소제목처럼 표시
+        if (isCircledSub || isNumberedSub) {
+          final mainColor = colorOverride ?? Colors.grey.shade900;
+          return Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _buildItemText(
+                    it,
+                    text,
+                    TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: mainColor),
+                  ),
+                ),
+                _buildDueChip(it['due_date']),
+              ],
+            ),
+          );
+        }
+
+        final mainColor = colorOverride ?? Colors.grey.shade800;
+        final prefixColor = colorOverride ?? Colors.grey.shade600;
+        final leftPad = inGroup ? 32.0 : 24.0;
         return Padding(
-          padding: const EdgeInsets.only(left: 24, top: 2, bottom: 2),
+          padding: EdgeInsets.only(left: leftPad, top: 2, bottom: 2),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('→ ', style: TextStyle(color: Colors.grey.shade600)),
+              if (!hasArrow)
+                Text('→ ', style: TextStyle(color: prefixColor)),
               Expanded(
-                child: Text(text,
-                    style: TextStyle(fontSize: 13.5, color: Colors.grey.shade800)),
+                child: _buildItemText(
+                  it,
+                  text,
+                  TextStyle(fontSize: 13.5, color: mainColor),
+                ),
               ),
+              _buildDueChip(it['due_date']),
             ],
           ),
         );
+      }
       case 'group_note':
         return Padding(
           padding: const EdgeInsets.only(left: 16, top: 4, bottom: 6),
@@ -378,24 +532,20 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     style: TextStyle(
                         fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
                 Expanded(
-                  child: Text(text,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          color: Colors.brown.shade800,
-                          fontStyle: FontStyle.italic)),
+                  child: _buildItemText(
+                    it,
+                    text,
+                    TextStyle(
+                        fontSize: 13.5,
+                        color: Colors.brown.shade800,
+                        fontStyle: FontStyle.italic),
+                  ),
                 ),
               ],
             ),
           ),
         );
       case 'table':
-        final tdata = it['table_data'];
-        if (tdata is Map) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: _buildTableMini(Map<String, dynamic>.from(tdata)),
-          );
-        }
         return const SizedBox.shrink();
       case 'photo':
         final ref = (it['photo_ref'] ?? '').toString();
@@ -405,17 +555,56 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           child: _buildPhotoMini('/note_photos/$ref'),
         );
       case 'bullet':
-      default:
+      default: {
+        final colorOverride = _itemColor(it);
+        final mainColor = colorOverride ?? Colors.black87;
+
+        // 그룹 상태에서 일반 bullet → 화살표 + 들여쓰기
+        if (inGroup && !isStar && !isAsterisk) {
+          final prefixColor = colorOverride ?? Colors.grey.shade600;
+          return Padding(
+            padding: const EdgeInsets.only(left: 24, top: 2, bottom: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('→ ', style: TextStyle(color: prefixColor)),
+                Expanded(
+                  child: _buildItemText(
+                    it,
+                    text,
+                    TextStyle(fontSize: 13.5, color: mainColor),
+                  ),
+                ),
+                _buildDueChip(it['due_date']),
+              ],
+            ),
+          );
+        }
+
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('• ', style: TextStyle(fontWeight: FontWeight.bold)),
-              Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+              if (!isStar && !isAsterisk)
+                Text('• ',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: mainColor)),
+              Expanded(
+                child: _buildItemText(
+                  it,
+                  text,
+                  TextStyle(
+                      fontSize: 14,
+                      fontWeight: isStar ? FontWeight.w700 : FontWeight.w400,
+                      color: mainColor),
+                ),
+              ),
+              _buildDueChip(it['due_date']),
             ],
           ),
         );
+      }
     }
   }
 

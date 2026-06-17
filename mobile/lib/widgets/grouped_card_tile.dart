@@ -4,7 +4,7 @@ import '../models/product_card.dart';
 /// 모델 단위 그룹 카드 위젯
 /// - 헤더: 신호등 색 dot + 모델명 + 부서 배지
 /// - 본문: 이슈마다 색 dot + headline
-class GroupedCardTile extends StatelessWidget {
+class GroupedCardTile extends StatefulWidget {
   final GroupedCard group;
   final void Function(GroupedCard group, GroupedIssue issue)? onIssueTap;
   final void Function(GroupedCard group)? onGroupTap;
@@ -15,6 +15,24 @@ class GroupedCardTile extends StatelessWidget {
     this.onGroupTap,
     this.onIssueTap,
   });
+
+  @override
+  State<GroupedCardTile> createState() => _GroupedCardTileState();
+}
+
+class _GroupedCardTileState extends State<GroupedCardTile> {
+  bool _expanded = false;
+  static const int _kCollapsedMax = 3;
+
+  // 줄 끝 보조 날짜 제거: (06-17), ( 6/17 ), (6-17) 등
+  String _cleanTail(String s) {
+    return s
+        .replaceAll(RegExp(r'\s*\(\s*\d{1,2}[-/]\d{1,2}\s*\)\s*$'), '')
+        .replaceAll(RegExp(r'\s*\(\s*0?\d{1,2}-0?\d{1,2}\s*\)\s*$'), '')
+        .trimRight();
+  }
+
+  GroupedCard get group => widget.group;
 
   /// bullets를 렌더링하되, ↪ (그룹 메모)가 있으면
   /// 그 그룹 메모와 직전의 bullet 항목들을 노란 박스로 묶어 표시.
@@ -81,6 +99,8 @@ class GroupedCardTile extends StatelessWidget {
                   Expanded(
                     child: Text(
                       b,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 14,
                         color: isGroupNote
@@ -123,6 +143,8 @@ class GroupedCardTile extends StatelessWidget {
             Expanded(
               child: Text(
                 b,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 14,
                   color: Color(0xFF374151),
@@ -177,7 +199,7 @@ class GroupedCardTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cardColor = _statusColor(group.status);
     final dday = _ddayLabel(group.dueDate);
-    final badge = dday ?? (group.projectBadge ?? group.projectLabel ?? '');
+    final badge = dday ?? '';
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -195,7 +217,7 @@ class GroupedCardTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onGroupTap == null ? null : () => onGroupTap!(group),
+        onTap: widget.onGroupTap == null ? null : () => widget.onGroupTap!(group),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Column(
@@ -204,15 +226,6 @@ class GroupedCardTile extends StatelessWidget {
               // ===== 헤더: 모델명 + 배지 =====
               Row(
                 children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       group.model.isEmpty ? '(이름 없음)' : group.model,
@@ -232,16 +245,40 @@ class GroupedCardTile extends StatelessWidget {
               // ===== 본문: 진행 중 항목 (bullets 우선, 없으면 issues 폴백) =====
               if (group.bullets.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                _buildBulletsWithGroup(group.bullets, cardColor),
+                _buildBulletsWithGroup(
+                  _expanded
+                      ? group.bullets.map(_cleanTail).toList()
+                      : group.bullets.take(_kCollapsedMax).map(_cleanTail).toList(),
+                  cardColor,
+                ),
+                if (group.bullets.length > _kCollapsedMax)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: const Color(0xFF1E3A5F),
+                      ),
+                      onPressed: () => setState(() => _expanded = !_expanded),
+                      child: Text(
+                        _expanded
+                            ? '▴ 접기'
+                            : '▾ 더 보기 (${group.bullets.length - _kCollapsedMax}건)',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
               ] else if (group.issues.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 ...group.issues.map((it) {
                   final dotColor = _statusColor(it.status);
                   return InkWell(
                     borderRadius: BorderRadius.circular(6),
-                    onTap: onIssueTap == null
+                    onTap: widget.onIssueTap == null
                         ? null
-                        : () => onIssueTap!(group, it),
+                        : () => widget.onIssueTap!(group, it),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
@@ -260,7 +297,9 @@ class GroupedCardTile extends StatelessWidget {
                           ),
                           Expanded(
                             child: Text(
-                              it.headline,
+                              _cleanTail(it.headline),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 14,
                                 color: Color(0xFF374151),

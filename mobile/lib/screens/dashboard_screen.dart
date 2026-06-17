@@ -557,6 +557,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             if (redGroups.isNotEmpty)
+              _buildCeoKpiBar(redGroups, orangeGroups, blueGroups, blackGroups),
               _buildGroupedStatusSection('🔴 즉시 확인', redGroups),
             if (orangeGroups.isNotEmpty)
               _buildGroupedStatusSection('🟠 임박', orangeGroups),
@@ -617,6 +618,78 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             )),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ===== 사장님용 KPI 한 줄 =====
+  int _countByStatus(List<GroupedCard> cards, String status) {
+    int n = 0;
+    for (final c in cards) {
+      for (final it in c.issues) {
+        if (it.status == status) n++;
+      }
+      if (c.issues.isEmpty && c.status == status) n++;
+    }
+    return n;
+  }
+
+  Widget _buildCeoKpiBar(
+    List<GroupedCard> red,
+    List<GroupedCard> orange,
+    List<GroupedCard> blue,
+    List<GroupedCard> black,
+  ) {
+    final all = [...red, ...orange, ...blue, ...black];
+    final delayed = _countByStatus(all, 'RED');
+    final imminent = _countByStatus(all, 'ORANGE');
+    final normal = _countByStatus(all, 'BLUE') + _countByStatus(all, 'BLACK');
+
+    Widget chip(Color dot, Color text, String label, int n) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 18),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$label $n',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: text,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          chip(const Color(0xFFE53935), const Color(0xFFB91C1C), '지연', delayed),
+          chip(const Color(0xFFEF6C00), const Color(0xFFB45309), '임박', imminent),
+          chip(const Color(0xFF10B981), const Color(0xFF374151), '정상', normal),
         ],
       ),
     );

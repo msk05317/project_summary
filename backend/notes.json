@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "updated_at": "2026-06-17T09:01:17.307020",
+  "updated_at": "2026-06-17T11:17:26.332863",
   "notes": {
     "semiconductor": {
-      "report_date": "2026-06-16",
-      "updated_at": "2026-06-16T14:38:29.808649",
+      "report_date": "2026-06-17",
+      "updated_at": "2026-06-17T11:17:26.331388",
+      "raw_text": "<스텔란티스>\n1. OIL PUMP HOUSING 공정별 생산 CAPA\n   - 일 별 생산 CAPA: 약 1,398대\n     \n2. 주요 이슈\n   1) 2027년 물량: 48만대 (1만대/주)\n   2) 원소재 부족 및 잦은 금형 수리\n      - 5월 전체 불량율: 51%\n         --> W25 공정 불량율: 41%\n",
       "cards": [
         {
           "title": "하바플레이트",
@@ -289,6 +290,41 @@
                 {
                   "type": "bullet",
                   "text": "승인순위 4순위, 우선순위대로 승인예정"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "스텔란티스",
+          "sections": [
+            {
+              "title": "OIL PUMP HOUSING 공정별 생산 CAPA",
+              "items": [
+                {
+                  "type": "bullet",
+                  "text": "일 별 생산 CAPA: 약 1,398대"
+                }
+              ]
+            },
+            {
+              "title": "주요 이슈",
+              "items": [
+                {
+                  "type": "sub",
+                  "text": "1) 2027년 물량: 48만대 (1만대/주)"
+                },
+                {
+                  "type": "sub",
+                  "text": "2) 원소재 부족 및 잦은 금형 수리"
+                },
+                {
+                  "type": "bullet",
+                  "text": "5월 전체 불량율: 51%"
+                },
+                {
+                  "type": "sub",
+                  "text": "→ W25 공정 불량율: 41%"
                 }
               ]
             }
