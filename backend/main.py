@@ -2752,6 +2752,11 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     report_date = (payload or {}).get("report_date", "").strip()
     raw_text = (payload or {}).get("raw_text", "")
     cards = (payload or {}).get("cards", [])
+    raw_text = (payload or {}).get("raw_text", "")
+    if isinstance(cards, list) and isinstance(raw_text, str) and raw_text.strip():
+        for c in cards:
+            if isinstance(c, dict):
+                c["raw_text"] = raw_text
 
     if not division_id:
         raise HTTPException(status_code=400, detail="division_id 필수")

@@ -121,7 +121,11 @@
         chip.style.background = '#eff6ff';
       });
       chip.addEventListener('click', function () {
-        applyCard(card, rawText);
+        var effectiveRaw =
+          (card && typeof card.raw_text === 'string' && card.raw_text.trim())
+            ? card.raw_text
+            : ((cards.length === 1 && rawText && String(rawText).trim()) ? String(rawText) : '');
+        applyCard(card, effectiveRaw);
         overlay.style.display = 'none';
       });
       chipArea.appendChild(chip);
@@ -198,7 +202,11 @@
         var dateEl = document.getElementById('noteReportDate');
         if (dateEl && !dateEl.value) dateEl.value = data.report_date;
       }
-      renderChips(cards, divisionId, data && data.raw_text ? data.raw_text : '');
+      renderChips(
+        cards,
+        divisionId,
+        (cards.length === 1 && data && data.raw_text) ? data.raw_text : ''
+      );
     } catch (e) {
       info.textContent = '❌ 불러오기 실패: ' + (e && e.message ? e.message : e);
       info.style.color = '#dc2626';
