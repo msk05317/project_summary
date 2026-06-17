@@ -1792,6 +1792,41 @@ def _split_for_date_scope(txt: str):
     return chunks
 
 
+_REFERENCE_KEYWORDS = ("고객요청", "고객 요청", "고객 요청일", "고객요청일", "요청일", "Due", "due date", "due_date", "납기")
+
+
+def _is_reference_date_scope(txt: str, idx: int) -> bool:
+    """idx 위치의 날짜가 '참고용' 날짜인지 판정.
+    예: "고객 요청일 6/15" 의 6/15 는 우리쪽 due_date 가 아닌 참고 날짜.
+    절 단위 처리: '→', ',', '/' 같은 구분자를 만나면 다른 절로 간주.
+    날짜 앞쪽 (date에서 왼쪽으로) 12자 이내에 reference 키워드 있으면 True.
+    """
+    if not txt:
+        return False
+
+    SEPARATORS = ("→", "↳", "=>", ",", "|", "·")
+    lo = 0
+    for sep in SEPARATORS:
+        i = txt.rfind(sep, 0, idx)
+        if i != -1 and i > lo:
+            lo = i + len(sep)
+    hi = len(txt)
+    for sep in SEPARATORS:
+        i = txt.find(sep, idx)
+        if i != -1 and i < hi:
+            hi = i
+
+    clause = txt[lo:hi]
+    rel_idx = idx - lo
+    front = clause[:rel_idx]
+
+    for k in _REFERENCE_KEYWORDS:
+        ki = front.lower().rfind(k.lower())
+        if ki >= 0 and (rel_idx - ki - len(k)) <= 12:
+            return True
+    return False
+
+
 def _is_done_scope(txt: str, idx: int) -> bool:
     """idx 위치의 날짜가 '완료된 날짜'인지 판정.
     한국어 어순: 날짜 → 키워드 (예: "5/29 승인완료", "W25 출하예정")
@@ -1871,7 +1906,7 @@ def _extract_due_date_from_text(txt: str) -> str:
     # 1) YYYY-MM-DD
     for m in re.finditer(r"(20\d{2})-(\d{1,2})-(\d{1,2})", txt):
         try:
-            if not _is_done_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
                 candidates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
         except Exception:
             pass
@@ -1880,7 +1915,7 @@ def _extract_due_date_from_text(txt: str) -> str:
     for m in re.finditer(r"\b(\d{2})\.(\d{1,2})\.(\d{1,2})\b", txt):
         try:
             yy = 2000 + int(m.group(1))
-            if not _is_done_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
                 candidates.append(date(yy, int(m.group(2)), int(m.group(3))))
         except Exception:
             pass
@@ -1893,7 +1928,7 @@ def _extract_due_date_from_text(txt: str) -> str:
             d = date(YEAR, mo, last_day)
             if d.weekday() == 6:  # 일요일이면 금요일로
                 d = d - timedelta(days=2)
-            if not _is_done_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
                 candidates.append(d)
         except Exception:
             pass
@@ -1901,7 +1936,7 @@ def _extract_due_date_from_text(txt: str) -> str:
     # 4) M월 D일 / M월D일
     for m in re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", txt):
         try:
-            if not _is_done_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
                 candidates.append(date(YEAR, int(m.group(1)), int(m.group(2))))
         except Exception:
             pass
@@ -1911,7 +1946,7 @@ def _extract_due_date_from_text(txt: str) -> str:
         try:
             mo = int(m.group(1)); dd = int(m.group(2))
             if 1 <= mo <= 12 and 1 <= dd <= 31:
-                if not _is_done_scope(txt, m.start()):
+                if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
                     candidates.append(date(YEAR, mo, dd))
         except Exception:
             pass
@@ -1922,7 +1957,7 @@ def _extract_due_date_from_text(txt: str) -> str:
             wk = int(m.group(1))
             if 1 <= wk <= 53:
                 d = date.fromisocalendar(YEAR, wk, 5)  # 5 = Friday
-                if not _is_done_scope(txt, m.start()):
+                if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
                     candidates.append(d)
         except Exception:
             pass
@@ -1956,6 +1991,41 @@ def _extract_due_date_from_text(txt: str) -> str:
 
     if not candidates:
         return ""
+
+    # 줄 마지막 50자 안에 done 키워드 있고, 다른 done/pending 키워드가 절 안에 더 가까이 없으면
+    # 줄 전체를 done 으로 간주
+    tail = txt[-60:] if len(txt) > 60 else txt
+    tail_lower = tail.lower()
+    line_end_done = False
+    for k in _DONE_KEYWORDS:
+        if k.lower() in tail_lower:
+            # tail 안에 pending 키워드도 함께 있으면 무효 (혼합 케이스)
+            has_pending_in_tail = any(pk.lower() in tail_lower for pk in _PENDING_KEYWORDS)
+            if not has_pending_in_tail:
+                line_end_done = True
+                break
+
+    if line_end_done:
+        # 줄 끝에 done 이 명확히 있는데, 모든 candidate 가 "고객요청" 같은 reference 만 살아남은 경우면 전체 제거
+        # candidate 가 절 안에서 pending clause 에 있었으면 그건 살림 (다른 due 가 진짜 있는 경우)
+        # 보수적으로: 모든 candidate 가 txt 의 앞쪽 30% 안에 있으면 (즉 본문 초반 "고객요청 X/Y" 정도) 제거
+        try:
+            from datetime import date as _date
+            front_threshold = max(30, int(len(txt) * 0.4))
+            all_front = True
+            for d in candidates:
+                # candidate 가 txt 어디서 매칭됐는지 다시 찾기
+                pat_pos = txt.find(f"{d.month}/{d.day}")
+                if pat_pos < 0:
+                    pat_pos = txt.find(f"{d.month:02d}/{d.day:02d}")
+                if pat_pos < 0 or pat_pos > front_threshold:
+                    all_front = False
+                    break
+            if all_front:
+                return ""
+        except Exception:
+            pass
+
     return min(candidates).isoformat()
 
 
@@ -4839,6 +4909,76 @@ function showUploadDonePopup(cardCount, onClose) {
 function renderNotePreview(cards) {
   window._circledGroupActive = false;
     window._numberedGroupActive = false;
+
+  // D-day 편집 함수 (한 번만 정의)
+  if (!window._editDueDate) {
+    window._editDueDate = function(ci, si, ii) {
+      const cards = window._noteParsedCards;
+      if (!cards || !cards[ci]) return;
+      const sec = (cards[ci].sections || [])[si];
+      if (!sec) return;
+      const it = (sec.items || [])[ii];
+      if (!it || typeof it !== 'object') return;
+
+      const cur = it.due_date || '';
+      _showDueDateModal(cur, function(newVal) {
+        if (newVal === null) return; // 취소
+        if (newVal === '') {
+          delete it.due_date;
+        } else {
+          it.due_date = newVal;
+        }
+        renderNotePreview(window._noteParsedCards);
+      });
+    };
+  }
+
+  function _showDueDateModal(curDate, callback) {
+    const existed = document.getElementById('dueDateModal');
+    if (existed) existed.remove();
+
+    const bg = document.createElement('div');
+    bg.id = 'dueDateModal';
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:12px;padding:24px;min-width:300px;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+    box.innerHTML = `
+      <h3 style="margin:0 0 12px 0;font-size:16px;color:#111827;">📅 D-day 편집</h3>
+      <input type="date" id="dueDateInput" value="${curDate || ''}"
+        style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:16px;" />
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <button id="dueDateDelete" style="padding:8px 14px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🗑️ 삭제</button>
+        <div style="display:flex;gap:6px;">
+          <button id="dueDateCancel" style="padding:8px 14px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;cursor:pointer;font-size:13px;">취소</button>
+          <button id="dueDateSave" style="padding:8px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;">저장</button>
+        </div>
+      </div>
+    `;
+    bg.appendChild(box);
+    document.body.appendChild(bg);
+
+    const input = document.getElementById('dueDateInput');
+    setTimeout(() => input.focus(), 50);
+
+    document.getElementById('dueDateSave').onclick = () => {
+      const v = input.value;
+      bg.remove();
+      callback(v || '');
+    };
+    document.getElementById('dueDateDelete').onclick = () => {
+      bg.remove();
+      callback('');
+    };
+    document.getElementById('dueDateCancel').onclick = () => {
+      bg.remove();
+      callback(null);
+    };
+    bg.addEventListener('click', (e) => {
+      if (e.target === bg) { bg.remove(); callback(null); }
+    });
+  }
+  window._showDueDateModal = _showDueDateModal;
   const area = document.getElementById('notePreviewArea');
   const card = document.getElementById('notePreviewCard');
   if (!area || !card) return;
@@ -4906,8 +5046,18 @@ function renderNotePreview(cards) {
     }).join('');
   };
 
-  const renderDueChip = (dueRaw) => {
-    if (!dueRaw) return '';
+  const renderDueChip = (dueRaw, ci, si, ii) => {
+    const hasPos = (typeof ci === 'number' && typeof si === 'number' && typeof ii === 'number');
+    const onclickAttr = hasPos ? `onclick="window._editDueDate(${ci},${si},${ii})"` : '';
+    const cursorStyle = hasPos ? 'cursor:pointer;' : '';
+
+    if (!dueRaw) {
+      // 칩 없을 때 + D-day 추가 버튼
+      if (hasPos) {
+        return `<span ${onclickAttr} style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:500;cursor:pointer;border:1px dashed #d1d5db;">+ D-day</span>`;
+      }
+      return '';
+    }
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);
     if (!m) return '';
     const due = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
@@ -4920,7 +5070,7 @@ function renderNotePreview(cards) {
     else if (diff <= 3) { bg = '#fed7aa'; fg = '#9a3412'; label = `D-${diff}`; }
     else { label = `D-${diff}`; }
     const dateLabel = `${m[2]}/${m[3]}`;
-    return `<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${bg};color:${fg};font-size:11px;font-weight:600;">${label} (${dateLabel})</span>`;
+    return `<span ${onclickAttr} title="클릭하여 편집" style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${bg};color:${fg};font-size:11px;font-weight:600;${cursorStyle}">${label} (${dateLabel})</span>`;
   };
 
   const renderPhoto = (photoRef) => {
@@ -5063,7 +5213,7 @@ function renderNotePreview(cards) {
       }, 0);
     }
 
-    const dueChip = renderDueChip(it.due_date || '');
+    const dueChip = renderDueChip(it.due_date || '', ci, si, ii);
     return `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:6px 0;${leftPad}">
         <div style="flex:1;min-width:0;">
@@ -5123,7 +5273,7 @@ function renderNotePreview(cards) {
           const text = esc(o.text || '');
           html += `
             <div style="margin:6px 0 0 4px;padding-top:6px;border-top:1px dashed #fcd34d;">
-              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '')}</div>
+              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '', ci, si, ii)}</div>
             </div>
           `;
         });
