@@ -5082,23 +5082,14 @@ function renderNotePreview(cards) {
   const renderPhoto = (photoRef) => {
     if (!photoRef) return '';
     const url = '/note_photos/' + photoRef;
-    const isExcel = /\/xls_/.test(photoRef);
-    if (isExcel) {
-      return `
-        <div style="margin:8px 0 14px 0;">
-          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;overflow:auto;">
-            <img src="${esc(url)}"
-                 onclick="showPhotoOverlay('${esc(url)}')"
-                 style="display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;" />
-          </div>
-        </div>
-      `;
-    }
+    // 엑셀/일반 사진 통일: 카드 가로폭에 꽉 채움
     return `
-      <div style="margin-top:8px;">
-        <img src="${esc(url)}"
-             onclick="showPhotoOverlay('${esc(url)}')"
-             style="max-width:240px;max-height:150px;border-radius:8px;border:1px solid #d1d5db;cursor:pointer;object-fit:cover;" />
+      <div style="margin:8px 0 14px 0;">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;overflow:auto;">
+          <img src="${esc(url)}"
+               onclick="showPhotoOverlay('${esc(url)}')"
+               style="display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;" />
+        </div>
       </div>
     `;
   };
@@ -5279,7 +5270,7 @@ function renderNotePreview(cards) {
           const text = esc(o.text || '');
           html += `
             <div style="margin:6px 0 0 4px;padding-top:6px;border-top:1px dashed #fcd34d;">
-              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '', ci, si, ii)}</div>
+              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '', ci, si, g.idx)}</div>
             </div>
           `;
         });
@@ -5388,6 +5379,14 @@ function renderNotePreview(cards) {
     if (!text) {
       status.textContent = '⚠️ 텍스트를 입력하세요';
       status.style.color = '#dc2626';
+      return;
+    }
+    // 카드 제목 <...> 검증 — 없으면 AI 정리 차단
+    const titleMatches = text.match(/<[^<>]+>/g) || [];
+    if (titleMatches.length === 0) {
+      status.textContent = '⚠️ 카드 제목이 없습니다. 원본 텍스트 맨 위에 <카드제목> 형식으로 작성해주세요. (예: <하바플레이트>)';
+      status.style.color = '#dc2626';
+      alert('카드 제목이 없습니다. 원본 텍스트 맨 위에 <카드제목> 형식으로 작성해주세요. 예: <하바플레이트>');
       return;
     }
     status.textContent = '🤖 AI 정리 중...';
@@ -5565,7 +5564,7 @@ function renderNotePreview(cards) {
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
         <button id="divMismatchCancel" style="padding:8px 14px;border:none;border-radius:8px;background:#e5e7eb;color:#374151;cursor:pointer;">취소</button>
-        <button id="divMismatchSwitch" style="padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;">변경 후 재정리</button>
+        <button id="divMismatchSwitch" style="padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;">사업부 변경</button>
       </div>
     `;
     bg.appendChild(box);
@@ -5580,10 +5579,17 @@ function renderNotePreview(cards) {
       }
     };
 
-    document.getElementById('divMismatchSwitch').onclick = async () => {
+    document.getElementById('divMismatchSwitch').onclick = () => {
       bg.remove();
       sel.value = targetDivId;
-      await noteAiParse();
+      try { sel.dispatchEvent(new Event('change')); } catch (_) {}
+      const _st = document.getElementById('noteStatus');
+      if (_st) {
+        _st.textContent = `🔄 ${targetLabel} 로 변경됨`;
+        _st.style.color = '#10b981';
+      }
+      const _sb = document.getElementById('noteSaveBtn');
+      if (_sb) { _sb.disabled = true; _sb.style.opacity = '0.5'; }
     };
   }
 
