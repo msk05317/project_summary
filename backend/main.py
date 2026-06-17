@@ -1154,34 +1154,6 @@ def dashboard():
 
     return {"cards": cards, "grouped_cards": grouped_cards}
 
-@app.get("/reports")
-def list_reports():
-    return {"reports": _read_json(LATEST_FILE, [])}
-
-
-@app.get("/reports/{doc_id}/{product_name}")
-def get_product_detail(doc_id: str, product_name: str):
-    """제품 단위 상세 (기존 카드 탭용)"""
-    latest = _read_json(LATEST_FILE, [])
-    for report in latest:
-        if report.get("doc_id") != doc_id:
-            continue
-        for p in report.get("products", []):
-            name = p.get("product") or p.get("name", "")
-            if name == product_name:
-                return {
-                    "doc_id": doc_id,
-                    "report_date": (
-                        report.get("report_meta", {}).get("date")
-                        or report.get("report_date")
-                    ),
-                    "slide_images": report.get("slide_images", {}),
-                    "section_images": report.get("section_images", {}),
-                    **p,
-                }
-    raise HTTPException(status_code=404, detail="제품을 찾을 수 없습니다.")
-
-
 # =========================================================
 # 4. 프로젝트별 보기
 # =========================================================
@@ -3338,7 +3310,7 @@ def get_divisions_updates():
 
 @app.get("/projects")
 def list_projects():
-    """프로젝트 버튼 목록"""
+    """프로젝트 버튼 목록 — PPT(reports_latest) + Notes(notes.json) 통합"""
     latest = _read_json(LATEST_FILE, [])
     grouped = aggregate_projects(latest)
     projects = [
@@ -3350,7 +3322,36 @@ def list_projects():
         }
         for k, v in grouped.items()
     ]
-    severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
+
+    # 🟢 Notes.json 의 카드도 합친다 — notes 가 우선 (PPT 보다 최신)
+    try:
+        notes_data = _read_json(NOTES_FILE, {})
+        # 기존 projects 를 dict 로 변환 (key 로 빠르게 덮어쓰기 위함)
+        proj_by_key = {p["key"]: p for p in projects}
+        for div_id, div_obj in (notes_data.get("notes") or {}).items():
+            report_date = div_obj.get("report_date") or div_obj.get("updated_at")
+            for card in (div_obj.get("cards") or []):
+                title = (card.get("title") or "").strip()
+                if not title:
+                    continue
+                pkey = None
+                try:
+                    pkey = _cl.classify_project(title)
+                except Exception:
+                    pkey = None
+                key_for_entry = pkey or title
+                # notes 우선: 같은 key 든 새 key 든 notes 데이터로 덮어씀
+                proj_by_key[key_for_entry] = {
+                    "key": key_for_entry,
+                    "label": title,
+                    "status": _calc_card_status(card),
+                    "report_date": report_date,
+                }
+        projects = list(proj_by_key.values())
+    except Exception as _e:
+        pass
+
+    severity = {"RED": 4, "ORANGE": 3, "BLUE": 2, "BLACK": 1, "GRAY": 0}
 
     # 🟢 프로젝트 목록 enrichment (기존 필드 변경 없음)
     projects = [enrich_project_entry(p) for p in projects]
@@ -3453,82 +3454,6 @@ def admin_config_projects(division_id: str | None = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"projects load error: {e}")
 
-
-@app.get("/admin/config/sections")
-def admin_config_sections(project_key: str, _exp: int = Depends(get_admin_session)):
-    """
-    admin 이미지 업로드 탭의 섹션 dropdown 용.
-    현재 분석된 PPT 결과에서 해당 프로젝트의 실제 GPT 섹션 제목들을 가져옴.
-    이것이 핵심 — 더 이상 자유 입력 안 함, GPT 가 만든 실제 섹션만 옵션으로 노출.
-    """
-    try:
-        latest = _read_json(LATEST_FILE, [])
-        grouped = aggregate_projects(latest)
-        detail = build_project_detail(project_key, grouped)
-        if not detail:
-            return {"project_key": project_key, "sections": []}
-
-        sections = detail.get("sections", [])
-        return {
-            "project_key": project_key,
-            "project_label": detail.get("label"),
-            "sections": [
-                {
-                    "title": s.get("title"),
-                    "image_count": len(s.get("image_urls", []) or []),
-                }
-                for s in sections
-            ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"sections load error: {e}")
-
-
-@app.get("/admin/config/stats")
-def admin_config_stats(_exp: int = Depends(get_admin_session)):
-    """
-    매핑 관리 탭용 통계.
-    - 현재 사업부/프로젝트 수
-    - 자동 분류된 카드/실패 카드 수
-    - 실패 카드의 product/category 샘플
-    """
-    try:
-        divs = _cl.get_divisions(visible_only=True)
-        all_projects = _cl.get_projects(visible_only=True)
-
-        latest = _read_json(LATEST_FILE, [])
-        total_cards = 0
-        unclassified_cards = []
-        for report in latest:
-            for p in report.get("products", []):
-                total_cards += 1
-                name = p.get("name") or p.get("product", "")
-                category = p.get("category", "")
-                text = f"{name} {category}".strip()
-                pid = _cl.classify_project(text)
-                if not pid:
-                    unclassified_cards.append({
-                        "name": name,
-                        "category": category,
-                        "report_family": report.get("report_meta", {}).get("report_family", ""),
-                    })
-
-        return {
-            "divisions_count": len(divs),
-            "projects_count": len(all_projects),
-            "total_cards": total_cards,
-            "unclassified_count": len(unclassified_cards),
-            "unclassified_samples": unclassified_cards[:20],
-            "projects_by_division": {
-                d.get("id"): [
-                    {"id": p.get("id"), "label": p.get("label")}
-                    for p in _cl.get_projects(division_id=d.get("id"), visible_only=True)
-                ]
-                for d in divs
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"stats load error: {e}")
 
 # =========================================================
 # 6. 어드민 페이지 (브라우저용)

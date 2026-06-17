@@ -534,7 +534,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 16),
           ],
           if (useGrouped) ...[
-            if (redGroups.isEmpty && blueGroups.isEmpty && blackGroups.isEmpty)
+            if (redGroups.isEmpty && orangeGroups.isEmpty && blueGroups.isEmpty && blackGroups.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 24),
                 child: Center(
@@ -556,7 +556,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
-            if (redGroups.isNotEmpty)
+            if (redGroups.isNotEmpty || orangeGroups.isNotEmpty || blueGroups.isNotEmpty || blackGroups.isNotEmpty)
               _buildCeoKpiBar(redGroups, orangeGroups, blueGroups, blackGroups),
               _buildGroupedStatusSection('🔴 즉시 확인', redGroups),
             if (orangeGroups.isNotEmpty)
@@ -625,14 +625,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ===== 사장님용 KPI 한 줄 =====
   int _countByStatus(List<GroupedCard> cards, String status) {
-    int n = 0;
-    for (final c in cards) {
-      for (final it in c.issues) {
-        if (it.status == status) n++;
-      }
-      if (c.issues.isEmpty && c.status == status) n++;
-    }
-    return n;
+    return cards.where((c) => c.status == status).length;
   }
 
   Widget _buildCeoKpiBar(

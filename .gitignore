@@ -100,3 +100,4 @@ backend/upload_hashes.json
 .DS_Store
 __pycache__/
 *.pyc
+_archive/
