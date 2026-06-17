@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-09",
+  "updated_at": "2026-06-17",
   "projects": [
     {
       "id": "chamber",
@@ -330,36 +330,6 @@
       "order": 3
     },
     {
-      "id": "sys_bloom",
-      "division_id": "system",
-      "label": "블룸",
-      "badge_label": "블룸",
-      "aliases": [
-        "Bloom"
-      ],
-      "keywords": [
-        "블룸",
-        "Bloom"
-      ],
-      "visible": true,
-      "order": 1
-    },
-    {
-      "id": "sys_arista",
-      "division_id": "system",
-      "label": "아리스타",
-      "badge_label": "아리스타",
-      "aliases": [
-        "Arista"
-      ],
-      "keywords": [
-        "아리스타",
-        "Arista"
-      ],
-      "visible": true,
-      "order": 2
-    },
-    {
       "id": "sys_cable",
       "division_id": "system",
       "label": "케이블",
@@ -459,25 +429,6 @@
       ],
       "visible": false,
       "order": 13
-    },
-    {
-      "division_id": "pcb",
-      "badge_label": "PCB 개발",
-      "visible": true,
-      "order": 1,
-      "id": "pcb_arista",
-      "label": "아리스타",
-      "badge": "아리스타",
-      "aliases": [
-        "아리스타",
-        "ARISTA",
-        "Arista"
-      ],
-      "keywords": [
-        "아리스타",
-        "ARISTA",
-        "Arista"
-      ]
     },
     {
       "division_id": "pcb",
@@ -668,6 +619,39 @@
       ],
       "visible": true,
       "order": 6
+    },
+    {
+      "id": "arista_pcb",
+      "division_id": "arista",
+      "label": "PCB",
+      "badge_label": "PCB",
+      "aliases": [
+        "아리스타 PCB",
+        "Arista PCB"
+      ],
+      "keywords": [
+        "PCB"
+      ],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "arista_cooling_rack",
+      "division_id": "arista",
+      "label": "쿨링랙",
+      "badge_label": "쿨링랙",
+      "aliases": [
+        "Cooling Rack",
+        "cooling rack",
+        "쿨링 랙"
+      ],
+      "keywords": [
+        "쿨링랙",
+        "쿨링 랙",
+        "Cooling Rack"
+      ],
+      "visible": true,
+      "order": 2
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated_at": "2026-06-11",
+  "updated_at": "2026-06-17",
   "divisions": [
     {
       "id": "semiconductor",
@@ -40,7 +40,7 @@
       "visible": true,
       "badge_color": "#6B7280",
       "badge_short_label": "시스템",
-      "description": "블룸, 아리스타, 케이블"
+      "description": "케이블"
     },
     {
       "id": "ess",
@@ -81,6 +81,46 @@
       "badge_color": "#6B7280",
       "badge_short_label": "자동차",
       "description": "자동차 관련 프로젝트"
+    },
+    {
+      "id": "wheel",
+      "label": "휠사업부",
+      "mode": "project",
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "휠",
+      "description": "휠 관련 프로젝트",
+      "order": 9
+    },
+    {
+      "id": "healthcare",
+      "label": "헬스케어사업부",
+      "mode": "project",
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "헬스케어",
+      "description": "헬스케어 관련 프로젝트",
+      "order": 10
+    },
+    {
+      "id": "bloom",
+      "label": "블룸",
+      "mode": "project",
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "블룸",
+      "description": "블룸 관련 프로젝트",
+      "order": 11
+    },
+    {
+      "id": "arista",
+      "label": "아리스타",
+      "mode": "project",
+      "visible": true,
+      "badge_color": "#6B7280",
+      "badge_short_label": "아리스타",
+      "description": "PCB, 쿨링랙",
+      "order": 12
     }
   ]
 }

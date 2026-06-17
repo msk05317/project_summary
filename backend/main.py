@@ -1112,10 +1112,11 @@ def dashboard():
                         if t in ("bullet", "group_note", "sub") and len(bullets) < 5:
                             bullets.append(txt)
 
-                # 카드 본문: 날짜 있는 항목만 표시. 일정 없으면 대시보드 제외
-                if not dated_bullets:
-                    continue
-                bullets = dated_bullets[:10]
+                # 카드 본문: 날짜 있는 항목 우선, 없으면 일반 항목 3줄
+                if dated_bullets:
+                    bullets = dated_bullets[:10]
+                else:
+                    bullets = bullets[:3]
 
                 # headline: 빈 문자열 (앱에서 D-day 칩으로 따로 표시)
                 headline = ""
