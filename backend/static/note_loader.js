@@ -92,7 +92,7 @@
     return overlay;
   }
 
-  function renderChips(cards, divisionId) {
+  function renderChips(cards, divisionId, rawText) {
     var overlay = ensureModal();
     var info = document.getElementById(MODAL_ID + '_info');
     var chipArea = document.getElementById(MODAL_ID + '_chips');
@@ -121,31 +121,54 @@
         chip.style.background = '#eff6ff';
       });
       chip.addEventListener('click', function () {
-        applyCard(card);
+        applyCard(card, rawText);
         overlay.style.display = 'none';
       });
       chipArea.appendChild(chip);
     });
   }
 
-  function applyCard(card) {
+  function applyCard(card, rawText) {
     var ta = document.getElementById('noteRawText');
     if (!ta) {
       console.warn('[note_loader] #noteRawText not found');
       return;
     }
-    ta.value = cardToText(card);
-    // 미리보기 상태 초기화 (기존 _noteParsedCards 가 있으면 비움)
-    try { if (typeof _noteParsedCards !== 'undefined') { _noteParsedCards = null; } } catch (_) {}
+
+    // raw_text 가 있으면 그대로, 없으면 cardToText() 로 fallback
+    ta.value = (rawText && String(rawText).trim()) ? String(rawText) : cardToText(card);
+
+    // 미리보기 상태 초기화
+    try {
+      if (typeof _noteParsedCards !== 'undefined') {
+        _noteParsedCards = null;
+        window._noteParsedCards = null;
+      }
+    } catch (_) {}
     var pv = document.getElementById('notePreviewCard');
     if (pv) pv.style.display = 'none';
+    var pvArea = document.getElementById('notePreviewArea');
+    if (pvArea) pvArea.innerHTML = '';
+
+    // 저장 버튼은 비활성 (AI 정리 다시 해야 활성화)
+    var saveBtn = document.getElementById('noteSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = '0.5';
+    }
 
     var status = document.getElementById('noteStatus');
     if (status) {
       var t = (card && card.title) ? card.title : '(제목없음)';
-      status.textContent = '✅ [' + t + '] 원본 텍스트 복원 — 수정 후 "🤖 AI 정리" 를 눌러주세요';
-      status.style.color = '#10b981';
+      if (rawText && String(rawText).trim()) {
+        status.textContent = '✅ [' + t + '] 저장된 원본 텍스트 불러옴 — 수정 후 "🤖 AI 정리" 를 눌러주세요';
+        status.style.color = '#10b981';
+      } else {
+        status.textContent = '⚠️ [' + t + '] 저장된 원본 텍스트가 없어 카드 내용으로 복원됨';
+        status.style.color = '#f59e0b';
+      }
     }
+
     ta.focus();
     ta.scrollTop = 0;
   }
@@ -175,7 +198,7 @@
         var dateEl = document.getElementById('noteReportDate');
         if (dateEl && !dateEl.value) dateEl.value = data.report_date;
       }
-      renderChips(cards, divisionId);
+      renderChips(cards, divisionId, data && data.raw_text ? data.raw_text : '');
     } catch (e) {
       info.textContent = '❌ 불러오기 실패: ' + (e && e.message ? e.message : e);
       info.style.color = '#dc2626';

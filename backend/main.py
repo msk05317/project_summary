@@ -2679,6 +2679,7 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     """사업부별 노트 저장."""
     division_id = (payload or {}).get("division_id", "").strip()
     report_date = (payload or {}).get("report_date", "").strip()
+    raw_text = (payload or {}).get("raw_text", "")
     cards = (payload or {}).get("cards", [])
 
     if not division_id:
@@ -2724,6 +2725,7 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     notes_map[division_id] = {
         "report_date": report_date or existing.get("report_date", ""),
         "updated_at": datetime.now().isoformat(),
+        "raw_text": raw_text if isinstance(raw_text, str) and raw_text.strip() else existing.get("raw_text", ""),
         "cards": merged_cards,
     }
     _save_notes(data)
@@ -5624,6 +5626,7 @@ function renderNotePreview(cards) {
         body: JSON.stringify({
           division_id: divisionId,
           report_date: reportDate,
+          raw_text: (document.getElementById('noteRawText') || {}).value || '',
           cards: _noteParsedCards,
         }),
       });
