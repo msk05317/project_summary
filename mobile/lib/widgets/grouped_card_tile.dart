@@ -245,12 +245,41 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
               // ===== 본문: 진행 중 항목 (bullets 우선, 없으면 issues 폴백) =====
               if (group.bullets.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                _buildBulletsWithGroup(
-                  _expanded
-                      ? group.bullets.map(_cleanTail).toList()
-                      : group.bullets.take(_kCollapsedMax).map(_cleanTail).toList(),
-                  cardColor,
-                ),
+                ...(() {
+                  // 1) 다중 제품 그룹 우선 (__PRODUCT__ 마커 포함 시)
+                  final hasMarker = group.bullets.any((b) => b.startsWith('__PRODUCT__'));
+                  if (hasMarker) {
+                    final groups = _parseProcessGroups(group.bullets);
+                    if (groups.isNotEmpty) {
+                      return <Widget>[_buildProcessGroups(groups)];
+                    }
+                  }
+                  // 2) 단일 4단계 흐름
+                  final parsed = _parseProcessBullets(
+                    group.bullets.map(_cleanTail).toList(),
+                  );
+                  if (parsed.stages.isEmpty) {
+                    return <Widget>[
+                      _buildBulletsWithGroup(
+                        _expanded
+                            ? group.bullets.map(_cleanTail).toList()
+                            : group.bullets.take(_kCollapsedMax).map(_cleanTail).toList(),
+                        cardColor,
+                      ),
+                    ];
+                  }
+                  final remaining = parsed.remaining;
+                  return <Widget>[
+                    _buildProcessTracker(parsed.stages),
+                    if (remaining.isNotEmpty)
+                      _buildBulletsWithGroup(
+                        _expanded
+                            ? remaining
+                            : remaining.take(_kCollapsedMax).toList(),
+                        cardColor,
+                      ),
+                  ];
+                })(),
                 if (group.bullets.length > _kCollapsedMax)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -320,6 +349,324 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
     );
   }
 }
+
+
+class _ProcessStageData {
+  final String key;
+  final String label;
+  final double percent;
+  final String detail;
+  final Color color;
+  const _ProcessStageData({
+    required this.key,
+    required this.label,
+    required this.percent,
+    required this.detail,
+    required this.color,
+  });
+}
+
+class _ProcessParseResult {
+  final List<_ProcessStageData> stages;
+  final List<String> remaining;
+  const _ProcessParseResult({
+    required this.stages,
+    required this.remaining,
+  });
+}
+
+String? _detectProcessStage(String line) {
+  final text = line.trim();
+  final patterns = <String, List<String>>{
+    '원자재': ['[원자재]', '원자재', '[원자재발주]', '원자재발주'],
+    '입고': ['[입고]', '입고'],
+    '생산': ['[생산]', '생산', '[생산일정]', '생산일정'],
+    '납기': ['[납기]', '납기', '[출하]', '출하'],
+  };
+  for (final entry in patterns.entries) {
+    for (final token in entry.value) {
+      final normalized = text.replaceFirst(RegExp(r'^[\-\*\•]\s*'), '');
+      if (normalized.startsWith(token)) return entry.key;
+    }
+  }
+  return null;
+}
+
+String _stripProcessPrefix(String line, String stage) {
+  var text = line.trim();
+  text = text.replaceFirst(RegExp(r'^[\-\*\•]\s*'), '');
+  text = text.replaceFirst(RegExp(r'^\[' + RegExp.escape(stage) + r'\]\s*'), '');
+  if (stage == '원자재') {
+    text = text.replaceFirst(RegExp(r'^\[원자재발주\]\s*'), '');
+    text = text.replaceFirst(RegExp(r'^원자재발주\s*[:：-]?\s*'), '');
+  }
+  if (stage == '생산') {
+    text = text.replaceFirst(RegExp(r'^\[생산일정\]\s*'), '');
+    text = text.replaceFirst(RegExp(r'^생산일정\s*[:：-]?\s*'), '');
+  }
+  if (stage == '납기') {
+    text = text.replaceFirst(RegExp(r'^\[출하\]\s*'), '');
+    text = text.replaceFirst(RegExp(r'^출하\s*[:：-]?\s*'), '');
+  }
+  text = text.replaceFirst(RegExp(r'^' + RegExp.escape(stage) + r'\s*[:：-]?\s*'), '');
+  return text.trim();
+}
+
+double _extractStagePercent(String text) {
+  // 1) 명시적 퍼센티지 우선
+  final explicit = RegExp(r'(\d+(?:\.\d+)?)\s*%').firstMatch(text);
+  if (explicit != null) {
+    return double.tryParse(explicit.group(1) ?? '') ?? 0;
+  }
+
+  // 2) 납기/출하 패턴: "출하완료 N", "총 PO M", "잔량 K" → N / M
+  final shipped = RegExp(r'출하\s*완료\s*([\d,]+)').firstMatch(text);
+  final total = RegExp(r'(?:총\s*PO|PO|총수량|총)\s*([\d,]+)').firstMatch(text);
+  if (shipped != null && total != null) {
+    final a = double.tryParse((shipped.group(1) ?? '0').replaceAll(',', '')) ?? 0;
+    final b = double.tryParse((total.group(1) ?? '0').replaceAll(',', '')) ?? 0;
+    if (b > 0) return ((a / b) * 100.0).clamp(0, 100);
+  }
+
+  // 3) 일반 비율 (생산 N/M 등)
+  final ratio = RegExp(r'(\d[\d,]*)\s*/\s*(\d[\d,]*)').firstMatch(text);
+  if (ratio != null) {
+    final a = double.tryParse((ratio.group(1) ?? '0').replaceAll(',', '')) ?? 0;
+    final b = double.tryParse((ratio.group(2) ?? '0').replaceAll(',', '')) ?? 0;
+    if (b > 0) {
+      final v = (a / b) * 100.0;
+      return v.clamp(0, 100);
+    }
+    return 0;
+  }
+
+  // 4) 키워드 기반
+  if (text.contains('완료') && !text.contains('미완')) return 100;
+  if (text.contains('진행')) return 50;
+  if (text.contains('예정') || text.contains('대기')) return 0;
+  return 0;
+}
+
+Color _stageColor(String detail, double percent) {
+  final d = detail.toLowerCase();
+  if (d.contains('지연') || d.contains('부족') || d.contains('불량') || d.contains('문제')) {
+    return const Color(0xFFDC2626);
+  }
+  if (percent >= 100) return const Color(0xFF16A34A);
+  if (percent > 0) return const Color(0xFFF59E0B);
+  return const Color(0xFFCBD5E1);
+}
+
+String _percentLabel(double value) {
+  if (value == value.roundToDouble()) return '${value.toInt()}%';
+  return '${value.toStringAsFixed(1)}%';
+}
+
+class _ProcessGroup {
+  final String title;
+  final List<_ProcessStageData> stages;
+  const _ProcessGroup({required this.title, required this.stages});
+}
+
+List<_ProcessGroup> _parseProcessGroups(List<String> bullets) {
+  // __PRODUCT__N) 제품명 헤더로 분할
+  final groups = <_ProcessGroup>[];
+  String currentTitle = '';
+  List<String> currentBullets = [];
+
+  void flush() {
+    if (currentTitle.isEmpty && currentBullets.isEmpty) return;
+    final parsed = _parseProcessBullets(currentBullets);
+    if (parsed.stages.isNotEmpty) {
+      groups.add(_ProcessGroup(title: currentTitle, stages: parsed.stages));
+    }
+    currentTitle = '';
+    currentBullets = [];
+  }
+
+  for (final raw in bullets) {
+    if (raw.startsWith('__PRODUCT__')) {
+      flush();
+      currentTitle = raw.substring('__PRODUCT__'.length).trim();
+    } else {
+      currentBullets.add(raw);
+    }
+  }
+  flush();
+  return groups;
+}
+
+Widget _buildProcessGroups(List<_ProcessGroup> groups) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (int i = 0; i < groups.length; i++) ...[
+        if (i > 0) const SizedBox(height: 8),
+        if (groups[i].title.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 4, top: 2),
+            child: Text(
+              groups[i].title,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF111827),
+              ),
+            ),
+          ),
+        _buildProcessTracker(groups[i].stages),
+      ],
+    ],
+  );
+}
+
+_ProcessParseResult _parseProcessBullets(List<String> bullets) {
+  final found = <String, _ProcessStageData>{};
+  final remaining = <String>[];
+
+  for (final raw in bullets) {
+    final stage = _detectProcessStage(raw);
+    if (stage == null) {
+      remaining.add(raw);
+      continue;
+    }
+    final detail = _stripProcessPrefix(raw, stage);
+    final percent = _extractStagePercent(detail);
+    found[stage] = _ProcessStageData(
+      key: stage,
+      label: stage,
+      percent: percent,
+      detail: detail,
+      color: _stageColor(detail, percent),
+    );
+  }
+
+  if (found.isEmpty) {
+    return _ProcessParseResult(stages: const [], remaining: bullets);
+  }
+
+  const order = ['원자재', '입고', '생산', '납기'];
+  final stages = <_ProcessStageData>[
+    for (final key in order)
+      found[key] ??
+          const _ProcessStageData(
+            key: '',
+            label: '',
+            percent: 0,
+            detail: '',
+            color: Color(0xFFCBD5E1),
+          )
+  ];
+  return _ProcessParseResult(stages: stages, remaining: remaining);
+}
+
+String _shortenDetail(String text) {
+  // 카드 좁은 폭에 맞게 detail 을 짧게 다듬는다
+  var t = text.trim();
+  // 괄호 안 보충 정보 제거: "(6월 출하계획 없음...)" 등
+  t = t.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
+  // "조립완료" 같은 보조어 제거
+  t = t.replaceAll(RegExp(r'\s*(조립완료|조립진행|발주완료|입고완료)'), '');
+  // 빈 표기 정리
+  t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (t.length > 40) t = t.substring(0, 40) + '…';
+  return t;
+}
+
+Widget _buildProcessTracker(List<_ProcessStageData> stages) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: const Color(0xFFE5E7EB)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: List.generate(stages.length, (i) {
+        final s = stages[i];
+        final item = Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: s.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    )
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                s.label.isEmpty ? '-' : s.label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _percentLabel(s.percent),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: s.color == const Color(0xFFCBD5E1)
+                      ? const Color(0xFF6B7280)
+                      : s.color,
+                ),
+              ),
+              if (s.detail.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  _shortenDetail(s.detail),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    height: 1.3,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+
+        if (i == stages.length - 1) return item;
+
+        return Expanded(
+          child: Row(
+            children: [
+              item,
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 38),
+                  height: 2,
+                  color: const Color(0xFFE5E7EB),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    ),
+  );
+}
+
 
 class _BadgeChip extends StatelessWidget {
   final String label;

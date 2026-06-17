@@ -652,6 +652,23 @@
       ],
       "visible": true,
       "order": 2
+    },
+    {
+      "id": "bloom_main",
+      "division_id": "bloom",
+      "label": "블룸",
+      "badge_label": "블룸",
+      "aliases": [
+        "Bloom",
+        "BLOOM",
+        "블룸"
+      ],
+      "keywords": [
+        "블룸",
+        "bloom"
+      ],
+      "visible": true,
+      "order": 1
     }
   ]
 }

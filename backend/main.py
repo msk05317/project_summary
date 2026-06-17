@@ -1113,7 +1113,36 @@ def dashboard():
                             bullets.append(txt)
 
                 # 카드 본문: 날짜 있는 항목 우선, 없으면 일반 항목 3줄
-                if dated_bullets:
+                # 단, "제품별 진행 현황" 섹션이 있으면 그걸 우선 사용 (Flutter tracker용)
+                _process_bullets = []
+                for sec in (nc.get("sections") or []):
+                    sec_title = (sec.get("title") or "").strip()
+                    if "진행 현황" in sec_title or "진행현황" in sec_title or "Process" in sec_title.lower():
+                        for it in (sec.get("items") or []):
+                            if not isinstance(it, dict):
+                                continue
+                            t = (it.get("type") or "bullet").lower()
+                            txt = (it.get("text") or "").strip()
+                            if not txt:
+                                continue
+                            if t == "sub":
+                                _process_bullets.append(f"__PRODUCT__{txt}")
+                            elif t == "highlight" and any(txt.lstrip().startswith(tag) for tag in ('[원자재]','[입고]','[생산]','[납기]','[출하]','[생산일정]','[원자재발주]')):
+                                _process_bullets.append(txt)
+                            elif t in ("bullet",) and any(txt.lstrip().startswith(tag) for tag in ('[원자재]','[입고]','[생산]','[납기]','[출하]','[생산일정]','[원자재발주]')):
+                                _process_bullets.append(txt)
+
+                _is_process_flow_single = any(
+                    any(b.lstrip().startswith(tag) for tag in ('[원자재]', '[입고]', '[생산]', '[납기]', '[출하]', '[생산일정]', '[원자재발주]'))
+                    for b in bullets
+                )
+                if _process_bullets:
+                    # 제품별 진행 현황 다중 tracker
+                    bullets = _process_bullets
+                elif _is_process_flow_single:
+                    # 단일 4단계 흐름 카드는 전체 보존
+                    pass
+                elif dated_bullets:
                     bullets = dated_bullets[:10]
                 else:
                     bullets = bullets[:3]
@@ -3372,11 +3401,17 @@ def get_project_detail(project_key: str):
             notes_data = _read_json(NOTES_FILE, {})
             for div_id, div_obj in (notes_data.get("notes") or {}).items():
                 for card in (div_obj.get("cards") or []):
-                    if (card.get("title") or "").strip() == project_key.strip():
+                    title = (card.get("title") or "").strip()
+                    title_key = None
+                    try:
+                        title_key = _cl.classify_project(title) if title else None
+                    except Exception:
+                        title_key = None
+                    if title == project_key.strip() or title_key == project_key.strip():
                         detail = {
-                            "project_key": project_key,
-                            "label": project_key,
-                            "name": project_key,
+                            "project_key": title_key or project_key,
+                            "label": title or project_key,
+                            "name": title or project_key,
                             "status": _calc_card_status(card),
                             "sections": card.get("sections") or [],
                             "note_only": True,

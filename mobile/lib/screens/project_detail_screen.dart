@@ -256,7 +256,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
+
   Widget _buildNoteSection(Map<String, dynamic> s) {
+    final _title0 = (s['title'] ?? '').toString().trim();
+    final _items0 = (s['items'] as List?) ?? const [];
+    if (_isProcessSectionTitle(_title0)) {
+      final groups = _extractProcessGroupsFromItems(_items0);
+      if (groups.isNotEmpty) {
+        return _buildProcessGroupsSection(_title0, groups);
+      }
+    }
+
     final title = (s['title'] ?? '').toString();
     final items = (s['items'] as List?) ?? [];
     final secTableData = s['table_data'];   // 섹션 레벨 표 (호환)
@@ -400,6 +410,345 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
     return widgets;
   }
+
+
+  bool _isProcessSectionTitle(String title) {
+    final t = title.trim();
+    return t.contains('제품별 진행 현황') || t.contains('제품별진행현황');
+  }
+
+  String? _detectProcessStage(String raw) {
+    final text = raw.trim();
+    if (text.startsWith('[원자재]') || text.startsWith('[원자재발주]')) return '원자재';
+    if (text.startsWith('[입고]')) return '입고';
+    if (text.startsWith('[생산]') || text.startsWith('[생산일정]')) return '생산';
+    if (text.startsWith('[납기]') || text.startsWith('[출하]')) return '납기';
+    return null;
+  }
+
+  String _stripProcessPrefix(String stage, String raw) {
+    var text = raw.trim();
+    final prefixes = <String>[
+      '[$stage]',
+      if (stage == '원자재') '[원자재발주]',
+      if (stage == '생산') '[생산일정]',
+      if (stage == '납기') '[출하]',
+    ];
+    for (final p in prefixes) {
+      if (text.startsWith(p)) {
+        text = text.substring(p.length).trim();
+        break;
+      }
+    }
+    return text;
+  }
+
+  double _extractProcessPercent(String stage, String text) {
+    // 1) 명시 퍼센트 우선
+    final explicit = RegExp(r'(\d+(?:\.\d+)?)\s*%').firstMatch(text);
+    if (explicit != null) {
+      return double.tryParse(explicit.group(1) ?? '') ?? 0;
+    }
+
+    // 2) 납기: 출하완료 / 총 PO
+    if (stage == '납기') {
+      final shipped = RegExp(r'출하완료\s*([\d,]+)').firstMatch(text);
+      final total = RegExp(r'(?:총\s*PO|PO)\s*([\d,]+)').firstMatch(text);
+      if (shipped != null && total != null) {
+        final a = double.tryParse((shipped.group(1) ?? '0').replaceAll(',', '')) ?? 0;
+        final b = double.tryParse((total.group(1) ?? '0').replaceAll(',', '')) ?? 0;
+        if (b > 0) return ((a / b) * 100.0).clamp(0, 100);
+      }
+    }
+
+    // 3) 일반 비율: 108 / 640
+    final ratio = RegExp(r'([\d,]+)\s*/\s*([\d,]+)').firstMatch(text);
+    if (ratio != null) {
+      final a = double.tryParse((ratio.group(1) ?? '0').replaceAll(',', '')) ?? 0;
+      final b = double.tryParse((ratio.group(2) ?? '0').replaceAll(',', '')) ?? 0;
+      if (b > 0) return ((a / b) * 100.0).clamp(0, 100);
+    }
+
+    // 4) 키워드 기반
+    if (text.contains('완료') && !text.contains('미완')) return 100;
+    if (text.contains('진행')) return 50;
+    if (text.contains('예정') || text.contains('대기')) return 0;
+    return 0;
+  }
+
+  Color _processStageColor(String stage, double percent, String detail) {
+    final d = detail.toLowerCase();
+    if (d.contains('지연') || d.contains('부족') || d.contains('문제') || d.contains('불가')) {
+      return const Color(0xFFDC2626);
+    }
+    if (percent >= 100) return const Color(0xFF16A34A);
+    if (percent > 0) return const Color(0xFFF59E0B);
+    return const Color(0xFFCBD5E1);
+  }
+
+  String _processPercentLabel(double value) {
+    if (value == value.roundToDouble()) return '${value.toInt()}%';
+    return '${value.toStringAsFixed(1)}%';
+  }
+
+  List<Map<String, dynamic>> _extractProcessGroupsFromItems(List items) {
+    final groups = <Map<String, dynamic>>[];
+    Map<String, dynamic>? current;
+
+    void flush() {
+      if (current != null) {
+        groups.add(current!);
+        current = null;
+      }
+    }
+
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final type = (raw['type'] ?? 'bullet').toString().toLowerCase();
+      final text = (raw['text'] ?? '').toString().trim();
+      if (text.isEmpty) continue;
+
+      if (type == 'sub') {
+        flush();
+        current = {
+          'title': text,
+          'stages': <Map<String, dynamic>>[],
+        };
+        continue;
+      }
+
+      final stage = _detectProcessStage(text);
+      if (stage != null) {
+        current ??= {
+          'title': '',
+          'stages': <Map<String, dynamic>>[],
+        };
+        final detail = _stripProcessPrefix(stage, text);
+        final percent = _extractProcessPercent(stage, detail);
+        current!['stages'].add({
+          'stage': stage,
+          'percent': percent,
+          'detail': detail,
+          'color': _processStageColor(stage, percent, detail),
+        });
+      }
+    }
+
+    flush();
+    return groups;
+  }
+
+  Widget _buildProcessStageDot(String stage, double percent, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            stage,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _processPercentLabel(percent),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: color == const Color(0xFFCBD5E1)
+                  ? const Color(0xFF6B7280)
+                  : color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProcessGroupsSection(String title, List<Map<String, dynamic>> groups) {
+    const order = ['원자재', '입고', '생산', '납기'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (int i = 0; i < groups.length; i++) ...[
+            if (i > 0) const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Builder(
+                builder: (context) {
+                  final group = groups[i];
+                  final groupTitle = (group['title'] ?? '').toString();
+                  final stages = (group['stages'] as List).cast<Map<String, dynamic>>();
+
+                  Map<String, dynamic>? findStage(String stage) {
+                    for (final s in stages) {
+                      if ((s['stage'] ?? '') == stage) return s;
+                    }
+                    return null;
+                  }
+
+                  final stageMap = {
+                    for (final key in order)
+                      key: findStage(key) ??
+                          {
+                            'stage': key,
+                            'percent': 0.0,
+                            'detail': '',
+                            'color': const Color(0xFFCBD5E1),
+                          }
+                  };
+
+                  Widget detailLine(String stage, String detail) {
+                    if (detail.trim().isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$stage  ',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF374151),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              detail,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                height: 1.4,
+                                color: Color(0xFF4B5563),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (groupTitle.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            groupTitle,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildProcessStageDot(
+                            '원자재',
+                            (stageMap['원자재']!['percent'] as num).toDouble(),
+                            stageMap['원자재']!['color'] as Color,
+                          ),
+                          Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.only(top: 9),
+                              height: 2,
+                              color: const Color(0xFFE5E7EB),
+                            ),
+                          ),
+                          _buildProcessStageDot(
+                            '입고',
+                            (stageMap['입고']!['percent'] as num).toDouble(),
+                            stageMap['입고']!['color'] as Color,
+                          ),
+                          Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.only(top: 9),
+                              height: 2,
+                              color: const Color(0xFFE5E7EB),
+                            ),
+                          ),
+                          _buildProcessStageDot(
+                            '생산',
+                            (stageMap['생산']!['percent'] as num).toDouble(),
+                            stageMap['생산']!['color'] as Color,
+                          ),
+                          Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.only(top: 9),
+                              height: 2,
+                              color: const Color(0xFFE5E7EB),
+                            ),
+                          ),
+                          _buildProcessStageDot(
+                            '납기',
+                            (stageMap['납기']!['percent'] as num).toDouble(),
+                            stageMap['납기']!['color'] as Color,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      detailLine('원자재', (stageMap['원자재']!['detail'] ?? '').toString()),
+                      detailLine('입고', (stageMap['입고']!['detail'] ?? '').toString()),
+                      detailLine('생산', (stageMap['생산']!['detail'] ?? '').toString()),
+                      detailLine('납기', (stageMap['납기']!['detail'] ?? '').toString()),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildNoteItem(dynamic raw) {
     // 문자열도 허용 (구버전)
