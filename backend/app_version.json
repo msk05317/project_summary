@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.0.5",
-  "latest_version_code": 6,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.5/app-release.apk",
-  "release_notes": "블룸 4단계 흐름 tracker + 제품별 진행 현황 다중 tracker + KPI 카드 단위 집계",
+  "latest_version": "1.0.6",
+  "latest_version_code": 7,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.6/app-release.apk",
+  "release_notes": "블룸 엑셀 3개 자동 노트 생성 + 미리보기 표 / 블룸 외 사업부 tracker 제거",
   "force_update": false
 }
