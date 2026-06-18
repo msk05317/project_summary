@@ -534,7 +534,94 @@ _ADMIN_LOGIN_HTML = """<!doctype html>
   input[type=password] { width:100%; padding:12px; font-size:14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box; }
   button { width:100%; padding:12px; margin-top:14px; background:#1E3A5F; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer; }
   .err { color:#b91c1c; font-size:13px; margin-top:10px; min-height:18px; }
-</style></head>
+</style>
+<style>
+/* === bloom-preview-css === */
+#bloomPreviewMount .note-card{border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:16px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04);}
+#bloomPreviewMount .note-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+#bloomPreviewMount .note-card-title{font-size:20px;font-weight:800;color:#111827;}
+#bloomPreviewMount .note-badge{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:28px;padding:0 10px;border-radius:999px;background:#ef4444;color:#fff;font-size:13px;font-weight:700;}
+#bloomPreviewMount .issue-list{margin:0 0 14px 0;padding-left:18px;}
+#bloomPreviewMount .issue-list li{margin:6px 0;line-height:1.5;color:#374151;}
+#bloomPreviewMount .product-block{border:1px solid #eceff3;border-radius:14px;padding:14px;margin:14px 0;background:#fafafa;}
+#bloomPreviewMount .product-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#111827;}
+#bloomPreviewMount .tracker{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;}
+#bloomPreviewMount .tracker-step{text-align:center;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 6px;}
+#bloomPreviewMount .tracker-dot{width:12px;height:12px;border-radius:50%;margin:0 auto 8px;background:#d1d5db;}
+#bloomPreviewMount .tracker-dot.red{background:#ef4444;}
+#bloomPreviewMount .tracker-dot.yellow{background:#f59e0b;}
+#bloomPreviewMount .tracker-dot.green{background:#10b981;}
+#bloomPreviewMount .tracker-dot.gray{background:#cbd5e1;}
+#bloomPreviewMount .tracker-label{font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;}
+#bloomPreviewMount .tracker-pct{font-size:20px;font-weight:800;line-height:1;}
+#bloomPreviewMount .tracker-sub{margin-top:6px;font-size:12px;color:#6b7280;line-height:1.35;white-space:pre-line;}
+#bloomPreviewMount .material-detail{margin-top:8px;font-size:13px;line-height:1.5;color:#374151;white-space:pre-line;}
+</style>
+
+<style>
+/* === bloom-preview-table-css === */
+#bloomPreviewMount .bloom-preview-card{
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  overflow:hidden;
+}
+#bloomPreviewMount .bloom-preview-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 16px;
+  border-bottom:1px solid #e5e7eb;
+  background:#fafafa;
+}
+#bloomPreviewMount .bloom-preview-title{
+  font-size:22px;
+  font-weight:800;
+  color:#111827;
+}
+#bloomPreviewMount .bloom-preview-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:56px;
+  height:30px;
+  border-radius:999px;
+  background:#ef4444;
+  color:#fff;
+  font-size:13px;
+  font-weight:800;
+  padding:0 12px;
+}
+#bloomPreviewMount .bloom-preview-table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+#bloomPreviewMount .bloom-preview-table th,
+#bloomPreviewMount .bloom-preview-table td{
+  border:1px solid #e5e7eb;
+  padding:14px 16px;
+  text-align:left;
+  vertical-align:middle;
+  font-size:16px;
+}
+#bloomPreviewMount .bloom-preview-table th{
+  background:#f8fafc;
+  font-weight:800;
+  color:#111827;
+}
+#bloomPreviewMount .bloom-preview-table td{
+  color:#111827;
+  font-weight:600;
+}
+</style>
+
+<style>
+/* === bloom-preview-material-sub-css === */
+#bloomPreviewMount .cell-main{font-size:16px;font-weight:700;color:#111827;line-height:1.35;}
+#bloomPreviewMount .cell-sub{margin-top:6px;font-size:12px;line-height:1.45;color:#6b7280;white-space:pre-line;}
+</style>
+</head>
 <body>
   <form class="card" id="loginForm">
     <h2>🔒 관리자 인증</h2>
@@ -3629,6 +3716,186 @@ def admin_reset(password: str = Form(...)):
     return {"ok": True, "message": "최신 데이터가 초기화되었습니다."}
 
 
+
+# =========================================================
+# 블룸 엑셀 자동 생성 API (v1.0.6)
+# =========================================================
+from bloom_excel_parser import (
+    generate_bloom_note_from_files as _bloom_generate,
+    parse_po_excel as _bloom_parse_po,
+    parse_nct_excel as _bloom_parse_nct,
+    classify_excel as _bloom_classify,
+    build_product_sections as _bloom_build_sections,
+    update_card_sections as _bloom_update_sections,
+    build_card_from_note as _bloom_build_card,
+)
+import pathlib as _bloom_pathlib
+import tempfile as _bloom_tempfile
+import shutil as _bloom_shutil
+
+
+def _bloom_save_to_notes_json(note_payload: dict, product_section_items: list = None) -> dict:
+    """파싱 결과를 notes.json 의 bloom 사업부 카드에 저장.
+    - raw_text 갱신
+    - sections 중 "제품별 진행 현황" 만 자동 교체 (다른 섹션은 보존)
+    """
+    notes = _read_json(NOTES_FILE, {})
+    if not isinstance(notes, dict):
+        notes = {}
+    notes.setdefault("notes", {})
+    bloom = notes["notes"].setdefault("bloom", {"cards": []})
+    if not isinstance(bloom, dict):
+        bloom = {"cards": []}
+        notes["notes"]["bloom"] = bloom
+    bloom.setdefault("cards", [])
+
+    title = note_payload.get("title") or "<블룸>"
+    raw_text = note_payload.get("raw_text") or ""
+    status_hint = note_payload.get("status_hint") or "BLACK"
+
+    # 기존 <블룸> 카드 찾기 (title이 "블룸" 또는 "<블룸>")
+    target = None
+    for c in bloom["cards"]:
+        if isinstance(c, dict) and (c.get("title") == title or c.get("title") == "블룸" or c.get("title") == "<블룸>"):
+            target = c
+            break
+
+    if target is None:
+        target = {"title": title, "sections": []}
+        bloom["cards"].append(target)
+
+    # 1) 메타 갱신
+    target["title"] = title
+    target["raw_text"] = raw_text
+    target["status"] = status_hint
+    target["auto_generated"] = True
+    target["auto_source"] = "excel_3files"
+
+    # 2) "제품별 진행 현황" 섹션만 자동 교체
+    if product_section_items is not None:
+        _bloom_update_sections(target, product_section_items)
+
+    _write_json(NOTES_FILE, notes)
+    return {"ok": True, "saved_title": title, "status": status_hint}
+
+
+@app.post("/admin/notes/bloom/auto_generate")
+async def admin_notes_bloom_auto_generate(
+    files: list[UploadFile] = File(...),
+    admin_auth: str = Cookie(default=""),
+):
+    """엑셀 3개 자동 분류 + 파싱 → 미리보기 JSON 반환 (저장 X)."""
+    if not _verify_session(admin_auth):
+        raise HTTPException(status_code=401, detail="로그인 필요")
+
+    if not files or len(files) < 1:
+        raise HTTPException(status_code=400, detail="엑셀 파일을 1개 이상 업로드해주세요.")
+
+    # 임시 폴더에 저장
+    tmpdir = _bloom_tempfile.mkdtemp(prefix="bloom_upload_")
+    saved_paths = []
+    try:
+        for uf in files:
+            safe_name = (uf.filename or "upload.xlsx").replace("/", "_").replace("\\", "_")
+            dest = _bloom_pathlib.Path(tmpdir) / safe_name
+            with dest.open("wb") as w:
+                w.write(await uf.read())
+            saved_paths.append(str(dest))
+
+        result = _bloom_generate(saved_paths)
+
+        try:
+
+            if isinstance(result, dict):
+
+                result["card"] = _bloom_build_card(result.get("note") or {})
+
+        except Exception as _e:
+
+            print("[bloom] card build error:", _e)
+        return result
+    finally:
+        try:
+            _bloom_shutil.rmtree(tmpdir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+@app.post("/admin/notes/bloom/auto_save")
+async def admin_notes_bloom_auto_save(
+    files: list[UploadFile] = File(...),
+    admin_auth: str = Cookie(default=""),
+):
+    """엑셀 3개 자동 파싱 → notes.json 의 블룸 카드 갱신."""
+    if not _verify_session(admin_auth):
+        raise HTTPException(status_code=401, detail="로그인 필요")
+
+    if not files or len(files) < 1:
+        raise HTTPException(status_code=400, detail="엑셀 파일을 1개 이상 업로드해주세요.")
+
+    tmpdir = _bloom_tempfile.mkdtemp(prefix="bloom_upload_")
+    saved_paths = []
+    try:
+        for uf in files:
+            safe_name = (uf.filename or "upload.xlsx").replace("/", "_").replace("\\", "_")
+            dest = _bloom_pathlib.Path(tmpdir) / safe_name
+            with dest.open("wb") as w:
+                w.write(await uf.read())
+            saved_paths.append(str(dest))
+
+        result = _bloom_generate(saved_paths)
+
+        try:
+
+            if isinstance(result, dict):
+
+                result["card"] = _bloom_build_card(result.get("note") or {})
+
+        except Exception as _e:
+
+            print("[bloom] card build error:", _e)
+        if not result.get("ok"):
+            raise HTTPException(status_code=400, detail={"message": "파싱 실패", "detail": result})
+
+        # 제품별 진행 현황 sections 자동 생성
+        po_data = result.get("po_data") or {}
+        bop = None
+        kpe = None
+        if result.get("classified", {}).get("bop_nct"):
+            # parse_nct_excel 재호출 대신 result에서 가져옴 — 단 result는 summary만 있으므로 다시 파싱
+            pass
+        # 위 파싱은 result.note 가 이미 산출되었기에 product_section_items 만 별도 호출
+        # bop/kpe NCT 객체를 다시 파싱
+        _bop_obj = None
+        _kpe_obj = None
+        # classified 는 파일명(짧은)만 반환하므로 임시폴더의 풀패스를 재이용
+        # generate_bloom_note_from_files 내부에서 이미 했지만 결과 객체가 없으므로
+        # 여기서 saved_paths 의 파일을 다시 분류해서 NCT 객체 얻음
+        for sp in saved_paths:
+            kind = _bloom_classify(sp)
+            if kind == "bop_nct":
+                _bop_obj = _bloom_parse_nct(sp)
+            elif kind == "kpe_nct":
+                _kpe_obj = _bloom_parse_nct(sp)
+        product_section_items = _bloom_build_sections(po_data, _bop_obj, _kpe_obj)
+        save_info = _bloom_save_to_notes_json(result["note"], product_section_items)
+        return {
+            "ok": True,
+            "classified": result.get("classified"),
+            "bop_nct_summary": result.get("bop_nct_summary"),
+            "kpe_nct_summary": result.get("kpe_nct_summary"),
+            "saved": save_info,
+            "note": result["note"],
+            "card": result.get("card"),
+        }
+    finally:
+        try:
+            _bloom_shutil.rmtree(tmpdir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+
 # =========================================================
 # 어드민 업로드 페이지 HTML
 # =========================================================
@@ -4070,7 +4337,37 @@ _ADMIN_UPLOAD_HTML = """
       <h2>✨ 미리보기 (앱에서 이렇게 보입니다)</h2>
       <div id="notePreviewArea" style="background:#f5f7fb;padding:16px;border-radius:8px;"></div>
     </div>
-  </section>
+
+    <!-- ========== 블룸 자동 생성 카드 (v1.0.6) ========== -->
+    <div class="card" id="bloomAutoCard" style="border-left:4px solid #10b981;display:none;">
+      <h2 style="margin-top:0;">🤖 블룸 자동 노트 생성</h2>
+      <p style="color:#6b7280;margin-top:-6px;">실적 / BOP NCT / KPE NCT 엑셀 3개를 올리면 앱과 동일한 카드로 미리보기됩니다.</p>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
+        <label style="font-size:13px;">실적 엑셀
+          <input type="file" id="bloomPoFile" accept=".xlsx,.xls" />
+        </label>
+        <label style="font-size:13px;">BOP NCT
+          <input type="file" id="bloomBopFile" accept=".xlsx,.xls" />
+        </label>
+        <label style="font-size:13px;">KPE NCT
+          <input type="file" id="bloomKpeFile" accept=".xlsx,.xls" />
+        </label>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+        <button id="bloomPreviewBtn" type="button">▶ 미리보기</button>
+        <button id="bloomSaveBtn" type="button">💾 저장</button>
+        <span id="bloomAutoStatus" style="font-size:13px;color:#6b7280;"></span>
+      </div>
+
+      <div id="bloomPreviewWrap" style="display:none;margin-top:16px;">
+        <div id="bloomPreviewMount"></div>
+      </div>
+    </div>
+    <!-- /bloomAutoCard -->
+
+    </section>
 
   <section class="tab-content" id="tab-mapping">
     <div class="card">
@@ -6316,6 +6613,7 @@ function renderNotePreview(cards) {
 <input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
 
 <script src="/static/note_loader.js"></script>
+<script src="/static/bloom_auto.js"></script>
 <script src="/static/excel_drop.js"></script>
 <script src="/static/photo_drop.js"></script>
 </body>

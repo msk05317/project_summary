@@ -101,3 +101,23 @@ backend/upload_hashes.json
 __pycache__/
 *.pyc
 _archive/
+
+# === auto-added 2026-06-18 ===
+# 자동 백업 파일
+backend/*.bak_*
+backend/**/*.bak_*
+
+# 테스트 데이터
+backend/test_data/
+
+# 캐시
+backend/__pycache__/
+backend/**/__pycache__/
+
+# 노트 사진 자동 생성물
+backend/note_assets/photos/automotive/
+backend/note_assets/photos/bloom/
+backend/note_assets/photos/semiconductor/
+
+# 임시 결과
+/tmp/bloom_*.json
