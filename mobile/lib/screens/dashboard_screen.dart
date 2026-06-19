@@ -701,6 +701,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               group: g,
               onGroupTap: _onGroupTap,
               onIssueTap: _onIssueTap,
+              compact: true,
             )),
         const SizedBox(height: 8),
       ],

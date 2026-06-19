@@ -1205,24 +1205,20 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 10),
-            ...items.map((it) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('• ', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Expanded(child: Text(it.toString(), style: const TextStyle(fontSize: 14))),
-                    ],
-                  ),
-                )),
-            ...notes.map((n) => Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text('※ ${n.toString()}',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.orange.shade900,
-                          fontStyle: FontStyle.italic)),
-                )),
+            ..._buildItemsWithGroups(items),
+            ...notes.map<Widget>((n) {
+              if (n is Map) {
+                return _buildNoteItem(Map<String, dynamic>.from(n));
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('※ \$n',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.orange.shade900,
+                        fontStyle: FontStyle.italic)),
+              );
+            }),
             ...images.map<Widget>((img) => _buildLegacyImage(img)),
           ],
         ),

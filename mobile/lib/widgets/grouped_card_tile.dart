@@ -8,12 +8,14 @@ class GroupedCardTile extends StatefulWidget {
   final GroupedCard group;
   final void Function(GroupedCard group, GroupedIssue issue)? onIssueTap;
   final void Function(GroupedCard group)? onGroupTap;
+  final bool compact;
 
   const GroupedCardTile({
     super.key,
     required this.group,
     this.onGroupTap,
     this.onIssueTap,
+    this.compact = false,
   });
 
   @override
@@ -197,6 +199,8 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = widget.compact;
+
     final cardColor = _statusColor(group.status);
     final dday = _ddayLabel(group.dueDate);
     final badge = dday ?? '';
@@ -254,7 +258,7 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
                   if (hasMarker && isBloom) {
                     final groups = _parseProcessGroups(group.bullets);
                     if (groups.isNotEmpty) {
-                      return <Widget>[_buildProcessGroups(groups)];
+                      return <Widget>[_buildProcessGroups(groups, compact: compact)];
                     }
                   }
 
@@ -290,8 +294,8 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
                   }
                   final remaining = parsed.remaining;
                   return <Widget>[
-                    _buildProcessTracker(parsed.stages),
-                    if (remaining.isNotEmpty)
+                    _buildProcessTracker(parsed.stages, compact: compact),
+                    if (!compact && remaining.isNotEmpty)
                       _buildBulletsWithGroup(
                         _expanded
                             ? remaining
@@ -516,7 +520,7 @@ List<_ProcessGroup> _parseProcessGroups(List<String> bullets) {
   return groups;
 }
 
-Widget _buildProcessGroups(List<_ProcessGroup> groups) {
+Widget _buildProcessGroups(List<_ProcessGroup> groups, {bool compact = false}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -534,7 +538,7 @@ Widget _buildProcessGroups(List<_ProcessGroup> groups) {
               ),
             ),
           ),
-        _buildProcessTracker(groups[i].stages),
+        _buildProcessTracker(groups[i].stages, compact: compact),
       ],
     ],
   );
@@ -593,7 +597,7 @@ String _shortenDetail(String text) {
   return t;
 }
 
-Widget _buildProcessTracker(List<_ProcessStageData> stages) {
+Widget _buildProcessTracker(List<_ProcessStageData> stages, {bool compact = false}) {
   return Container(
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -648,7 +652,7 @@ Widget _buildProcessTracker(List<_ProcessStageData> stages) {
                       : s.color,
                 ),
               ),
-              if (s.detail.isNotEmpty) ...[
+              if (!compact && s.detail.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   _shortenDetail(s.detail),
