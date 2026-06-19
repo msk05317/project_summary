@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.0.6",
-  "latest_version_code": 7,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.6/app-release.apk",
-  "release_notes": "블룸 엑셀 3개 자동 노트 생성 + 미리보기 표 / 블룸 외 사업부 tracker 제거",
+  "latest_version": "1.0.7",
+  "latest_version_code": 8,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.7/app-release.apk",
+  "release_notes": "사업부 카드 tracker 컴팩트화 (단계명+% 만)",
   "force_update": false
 }
