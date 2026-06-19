@@ -409,6 +409,11 @@
                 {
                   "type": "bullet",
                   "text": "장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중"
+                },
+                {
+                  "type": "photo",
+                  "text": "블룸.xlsx",
+                  "photo_ref": "bloom/xls_2026-06-18_8888e46b.png"
                 }
               ]
             },
@@ -542,66 +547,6 @@
           "status": "RED",
           "auto_generated": true,
           "auto_source": "excel_3files"
-        },
-        {
-          "title": "블룸",
-          "sections": [
-            {
-              "title": "이슈사항",
-              "items": [
-                {
-                  "type": "photo",
-                  "text": "블룸.xlsx",
-                  "photo_ref": "bloom/xls_2026-06-18_8888e46b.png"
-                },
-                {
-                  "type": "sub",
-                  "text": "1) CORVA KPE"
-                },
-                {
-                  "type": "bullet",
-                  "text": "6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨",
-                  "due_date": "2026-06-15"
-                },
-                {
-                  "type": "bullet",
-                  "text": "스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요",
-                  "due_date": "2026-06-17"
-                },
-                {
-                  "type": "bullet",
-                  "text": "마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)"
-                },
-                {
-                  "type": "bullet",
-                  "text": "엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요",
-                  "due_date": "2026-12-03"
-                },
-                {
-                  "type": "sub",
-                  "text": "2) KPE EFM BP"
-                },
-                {
-                  "type": "bullet",
-                  "text": "엔더슨 자재 5종이 2026년 내 납품 불가 → ETA 2027/03/25로 BE 통한 물량 배정 필요"
-                },
-                {
-                  "type": "sub",
-                  "text": "3) BOP"
-                },
-                {
-                  "type": "bullet",
-                  "text": "출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정",
-                  "due_date": "2026-06-15"
-                },
-                {
-                  "type": "bullet",
-                  "text": "장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중"
-                }
-              ]
-            }
-          ],
-          "raw_text": "<블룸>\n\n📷 블룸.xlsx @@photo_ref=bloom/xls_2026-06-18_8888e46b.png\n\n1. 이슈사항\n  1) CORVA KPE\n    - 6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨\n    - 스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요\n    - 마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)\n    - 엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요\n  2) KPE EFM BP\n    - 엔더슨 자재 5종이 2026년 내 납품 불가 --> ETA 2027/03/25로 BE 통한 물량 배정 필요\n  3) BOP\n    - 출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정\n    - 장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중 \n"
         }
       ]
     }
