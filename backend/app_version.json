@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.0.7",
-  "latest_version_code": 8,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.7/app-release.apk",
-  "release_notes": "사업부 카드 tracker 컴팩트화 (단계명+% 만)",
+  "latest_version": "1.0.8",
+  "latest_version_code": 9,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.8/app-release.apk",
+  "release_notes": "상세 화면 렌더 수정",
   "force_update": false
 }
