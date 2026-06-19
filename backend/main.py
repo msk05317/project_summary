@@ -1676,7 +1676,13 @@ def notes_by_project(project_key: str = ""):
             ctitle = (c.get("title") or "").strip()
             matched = False
             _pk_norm = _normalize_project_key(project_key)
-            if ck and (ck == project_key or _normalize_project_key(ck) == _pk_norm or _normalize_project_key(c.get("title") or "") == _pk_norm):
+            _title_norm = _normalize_project_key(c.get("title") or "")
+            _ck_norm = _normalize_project_key(ck)
+            if (
+                (ck and ck == project_key) or
+                (_ck_norm and _ck_norm == _pk_norm) or
+                (_title_norm and _title_norm == _pk_norm)
+            ):
                 matched = True
             elif ctitle and (ctitle == project_label or ctitle in project_aliases):
                 matched = True
