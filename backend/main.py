@@ -1615,6 +1615,24 @@ def admin_notes_from_pptx(payload: dict, _admin: int = Depends(get_admin_session
     return {"cards": cards, "saved_tables": saved_tables}
 
 
+
+
+def _normalize_project_key(s: str) -> str:
+    """매칭용 정규화: 양 끝 <>, ◆, 공백, 대소문자 무시"""
+    if not s:
+        return ""
+    t = str(s).strip()
+    # 양 끝 <>, ＜＞, 「」, [] 같은 괄호 제거 (반복)
+    for _ in range(3):
+        t = t.strip()
+        if not t:
+            break
+        if t[0] in '<＜「[' and t[-1] in '>＞」]':
+            t = t[1:-1].strip()
+        else:
+            break
+    return t.lower()
+
 @app.get("/notes/by_project")
 def notes_by_project(project_key: str = ""):
     """프로젝트 키로 가장 최근 노트 카드를 찾아 반환.
@@ -1657,7 +1675,8 @@ def notes_by_project(project_key: str = ""):
             ck = (c.get("project_key") or "").strip()
             ctitle = (c.get("title") or "").strip()
             matched = False
-            if ck and ck == project_key:
+            _pk_norm = _normalize_project_key(project_key)
+            if ck and (ck == project_key or _normalize_project_key(ck) == _pk_norm or _normalize_project_key(c.get("title") or "") == _pk_norm):
                 matched = True
             elif ctitle and (ctitle == project_label or ctitle in project_aliases):
                 matched = True
