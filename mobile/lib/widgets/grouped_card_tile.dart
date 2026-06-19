@@ -247,14 +247,34 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
                 const SizedBox(height: 10),
                 ...(() {
                   // 1) 다중 제품 그룹 우선 (__PRODUCT__ 마커 포함 시)
+                  final isBloom = (group.divisionId ?? '').toLowerCase() == 'bloom';
                   final hasMarker = group.bullets.any((b) => b.startsWith('__PRODUCT__'));
-                  if (hasMarker) {
+
+                  // 1) 블룸 + __PRODUCT__ 마커 → 제품별 멀티 tracker
+                  if (hasMarker && isBloom) {
                     final groups = _parseProcessGroups(group.bullets);
                     if (groups.isNotEmpty) {
                       return <Widget>[_buildProcessGroups(groups)];
                     }
                   }
-                  // 2) 단일 4단계 흐름
+
+                  // 2) 블룸 외 사업부 → tracker 표시 안 함, bullet 텍스트만
+                  if (!isBloom) {
+                    final cleanBullets = group.bullets
+                        .where((b) => !b.startsWith('__PRODUCT__'))
+                        .map(_cleanTail)
+                        .toList();
+                    return <Widget>[
+                      _buildBulletsWithGroup(
+                        _expanded
+                            ? cleanBullets
+                            : cleanBullets.take(_kCollapsedMax).toList(),
+                        cardColor,
+                      ),
+                    ];
+                  }
+
+                  // 3) 블룸 단일 4단계 흐름
                   final parsed = _parseProcessBullets(
                     group.bullets.map(_cleanTail).toList(),
                   );
