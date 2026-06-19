@@ -3790,6 +3790,23 @@ def _bloom_save_to_notes_json(note_payload: dict, product_section_items: list = 
         bloom["cards"].append(target)
 
     # 1) 메타 갱신
+    # 이슈사항 보존: 기존 target.raw_text 의 [이슈사항] 블록을 새 raw_text 앞에 유지
+    try:
+        _existing_raw = (target.get("raw_text") if isinstance(target, dict) else "") or ""
+        if _existing_raw and "[이슈사항]" not in raw_text:
+            import re as _re_pres
+            _m = _re_pres.search(r"\[이슈사항\].*?(?=\n\[|\Z)",
+                                 _existing_raw, flags=_re_pres.S)
+            if _m:
+                _issues_block = _m.group(0).strip()
+                if raw_text.startswith("<블룸>"):
+                    _head, _sep, _rest = raw_text.partition("\n")
+                    raw_text = _head + "\n\n" + _issues_block + "\n\n" + _rest.lstrip("\n")
+                else:
+                    raw_text = _issues_block + "\n\n" + raw_text
+    except Exception as _e:
+        print("[bloom] issues preserve error:", _e)
+
     target["title"] = title
     target["raw_text"] = raw_text
     target["status"] = status_hint
