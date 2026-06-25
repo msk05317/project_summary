@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../design/design.dart';
 import '../config/app_settings.dart';
 import '../models/product_card.dart';
 import '../services/api_client.dart';
@@ -449,15 +450,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // 사업부 필터: widget.divisionKey 가 있으면 해당 사업부 카드만
     final divKey = widget.divisionKey;
 
-    final filteredGrouped = (divKey == null || divKey.isEmpty)
+    // === [hide-bloom v1] 모바일 UI에서 블룸 사업부 숨김 ===
+    // 사유: 디자인 시스템/컴포넌트 재정리 동안 블룸 화면 비표시
+    // 복귀: 아래 isBloom / !isBloom 조건만 제거하면 즉시 복원
+    bool _isBloom(String? id) => (id ?? '').toLowerCase() == 'bloom';
+
+    final baseGrouped = (divKey == null || divKey.isEmpty)
         ? groupedCards
         : groupedCards.where((g) => g.divisionId == divKey).toList();
-    final filteredCards = (divKey == null || divKey.isEmpty)
+    final baseCards = (divKey == null || divKey.isEmpty)
         ? cards
         : cards.where((c) => c.divisionId == divKey).toList();
-    final filteredProjects = (divKey == null || divKey.isEmpty)
+    final baseProjects = (divKey == null || divKey.isEmpty)
         ? projects
         : projects.where((p) => (p['division_id']?.toString() ?? '') == divKey).toList();
+
+    final filteredGrouped = baseGrouped.where((g) => !_isBloom(g.divisionId)).toList();
+    final filteredCards = baseCards.where((c) => !_isBloom(c.divisionId)).toList();
+    final filteredProjects = baseProjects
+        .where((p) => !_isBloom(p['division_id']?.toString()))
+        .toList();
 
     // GroupedCard 기준으로 분류 (백엔드가 grouped 응답을 주면 우선 사용)
     final useGrouped = groupedCards.isNotEmpty;
@@ -669,7 +681,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: AppColors.borderDefault),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -681,8 +693,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         children: [
           chip(const Color(0xFFE53935), const Color(0xFFB91C1C), '지연', delayed),
-          chip(const Color(0xFFEF6C00), const Color(0xFFB45309), '임박', imminent),
-          chip(const Color(0xFF10B981), const Color(0xFF374151), '정상', normal),
+          chip(AppColors.statusYellow, const Color(0xFFB45309), '임박', imminent),
+          chip(AppColors.statusGreen, const Color(0xFF374151), '정상', normal),
         ],
       ),
     );
