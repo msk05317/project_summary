@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../design/design.dart';
 import '../config/app_settings.dart';
 import '../services/api_client.dart';
 import 'dashboard_screen.dart';
@@ -161,7 +162,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                                                 width: 10,
                                                 height: 10,
                                                 decoration: const BoxDecoration(
-                                                  color: Color(0xFFEF4444),
+                                                  color: AppColors.statusRed,
                                                   shape: BoxShape.circle,
                                                 ),
                                               ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../design/design.dart';
 import '../models/product_card.dart';
 
 /// 모델 단위 그룹 카드 위젯
@@ -70,7 +71,7 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
           color: const Color(0xFFFFFBEB), // 옅은 노란 배경
           borderRadius: BorderRadius.circular(8),
           border: Border(
-            left: BorderSide(color: const Color(0xFFF59E0B), width: 3),
+            left: BorderSide(color: AppColors.statusYellow, width: 3),
           ),
         ),
         child: Column(
@@ -170,7 +171,7 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
       case 'RED':
         return const Color(0xFFE53935);
       case 'ORANGE':
-        return const Color(0xFFEF6C00);
+        return AppColors.statusYellow;
       case 'BLUE':
         return const Color(0xFF1E88E5);
       case 'GRAY':
@@ -236,7 +237,7 @@ class _GroupedCardTileState extends State<GroupedCardTile> {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF111827),
+                        color: AppColors.textMain,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -474,11 +475,11 @@ double _extractStagePercent(String text) {
 Color _stageColor(String detail, double percent) {
   final d = detail.toLowerCase();
   if (d.contains('지연') || d.contains('부족') || d.contains('불량') || d.contains('문제')) {
-    return const Color(0xFFDC2626);
+    return AppColors.statusRed;
   }
   if (percent >= 100) return const Color(0xFF16A34A);
-  if (percent > 0) return const Color(0xFFF59E0B);
-  return const Color(0xFFCBD5E1);
+  if (percent > 0) return AppColors.statusYellow;
+  return AppColors.statusGray;
 }
 
 String _percentLabel(double value) {
@@ -534,7 +535,7 @@ Widget _buildProcessGroups(List<_ProcessGroup> groups, {bool compact = false}) {
               style: const TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF111827),
+                color: AppColors.textMain,
               ),
             ),
           ),
@@ -578,7 +579,7 @@ _ProcessParseResult _parseProcessBullets(List<String> bullets) {
             label: '',
             percent: 0,
             detail: '',
-            color: Color(0xFFCBD5E1),
+            color: AppColors.statusGray,
           )
   ];
   return _ProcessParseResult(stages: stages, remaining: remaining);
@@ -602,9 +603,9 @@ Widget _buildProcessTracker(List<_ProcessStageData> stages, {bool compact = fals
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
     decoration: BoxDecoration(
-      color: const Color(0xFFF8FAFC),
+      color: AppColors.bgPage,
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0xFFE5E7EB)),
+      border: Border.all(color: AppColors.borderDefault),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,7 +638,7 @@ Widget _buildProcessTracker(List<_ProcessStageData> stages, {bool compact = fals
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF111827),
+                  color: AppColors.textMain,
                 ),
               ),
               const SizedBox(height: 2),
@@ -647,8 +648,8 @@ Widget _buildProcessTracker(List<_ProcessStageData> stages, {bool compact = fals
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  color: s.color == const Color(0xFFCBD5E1)
-                      ? const Color(0xFF6B7280)
+                  color: s.color == AppColors.statusGray
+                      ? AppColors.textMute
                       : s.color,
                 ),
               ),
@@ -662,7 +663,7 @@ Widget _buildProcessTracker(List<_ProcessStageData> stages, {bool compact = fals
                   style: const TextStyle(
                     fontSize: 10,
                     height: 1.3,
-                    color: Color(0xFF6B7280),
+                    color: AppColors.textMute,
                   ),
                 ),
               ],
@@ -680,7 +681,7 @@ Widget _buildProcessTracker(List<_ProcessStageData> stages, {bool compact = fals
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 38),
                   height: 2,
-                  color: const Color(0xFFE5E7EB),
+                  color: AppColors.borderDefault,
                 ),
               ),
             ],

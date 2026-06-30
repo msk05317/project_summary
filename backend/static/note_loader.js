@@ -121,11 +121,7 @@
         chip.style.background = '#eff6ff';
       });
       chip.addEventListener('click', function () {
-        var effectiveRaw =
-          (card && typeof card.raw_text === 'string' && card.raw_text.trim())
-            ? card.raw_text
-            : ((cards.length === 1 && rawText && String(rawText).trim()) ? String(rawText) : '');
-        applyCard(card, effectiveRaw);
+        applyCard(card, rawText);
         overlay.style.display = 'none';
       });
       chipArea.appendChild(chip);
@@ -154,7 +150,10 @@
     var pvArea = document.getElementById('notePreviewArea');
     if (pvArea) pvArea.innerHTML = '';
 
-    // 저장 버튼은 비활성 (AI 정리 다시 해야 활성화)
+    // 저장 버튼은 비활성 (AI 정리 다시 해야 활성화)export PATH="$HOME/development/flutter/bin:$PATH"
+cd /Users/minseo/Desktop/project_summary/mobile
+flutter analyze lib/screens/project_detail_screen.dart 2>&1 | grep -E "error" | head -10
+
     var saveBtn = document.getElementById('noteSaveBtn');
     if (saveBtn) {
       saveBtn.disabled = true;
@@ -202,11 +201,7 @@
         var dateEl = document.getElementById('noteReportDate');
         if (dateEl && !dateEl.value) dateEl.value = data.report_date;
       }
-      renderChips(
-        cards,
-        divisionId,
-        (cards.length === 1 && data && data.raw_text) ? data.raw_text : ''
-      );
+      renderChips(cards, divisionId, data && data.raw_text ? data.raw_text : '');
     } catch (e) {
       info.textContent = '❌ 불러오기 실패: ' + (e && e.message ? e.message : e);
       info.style.color = '#dc2626';

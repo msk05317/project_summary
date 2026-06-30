@@ -534,94 +534,7 @@ _ADMIN_LOGIN_HTML = """<!doctype html>
   input[type=password] { width:100%; padding:12px; font-size:14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box; }
   button { width:100%; padding:12px; margin-top:14px; background:#1E3A5F; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer; }
   .err { color:#b91c1c; font-size:13px; margin-top:10px; min-height:18px; }
-</style>
-<style>
-/* === bloom-preview-css === */
-#bloomPreviewMount .note-card{border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:16px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04);}
-#bloomPreviewMount .note-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
-#bloomPreviewMount .note-card-title{font-size:20px;font-weight:800;color:#111827;}
-#bloomPreviewMount .note-badge{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:28px;padding:0 10px;border-radius:999px;background:#ef4444;color:#fff;font-size:13px;font-weight:700;}
-#bloomPreviewMount .issue-list{margin:0 0 14px 0;padding-left:18px;}
-#bloomPreviewMount .issue-list li{margin:6px 0;line-height:1.5;color:#374151;}
-#bloomPreviewMount .product-block{border:1px solid #eceff3;border-radius:14px;padding:14px;margin:14px 0;background:#fafafa;}
-#bloomPreviewMount .product-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#111827;}
-#bloomPreviewMount .tracker{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;}
-#bloomPreviewMount .tracker-step{text-align:center;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 6px;}
-#bloomPreviewMount .tracker-dot{width:12px;height:12px;border-radius:50%;margin:0 auto 8px;background:#d1d5db;}
-#bloomPreviewMount .tracker-dot.red{background:#ef4444;}
-#bloomPreviewMount .tracker-dot.yellow{background:#f59e0b;}
-#bloomPreviewMount .tracker-dot.green{background:#10b981;}
-#bloomPreviewMount .tracker-dot.gray{background:#cbd5e1;}
-#bloomPreviewMount .tracker-label{font-size:12px;font-weight:700;color:#374151;margin-bottom:4px;}
-#bloomPreviewMount .tracker-pct{font-size:20px;font-weight:800;line-height:1;}
-#bloomPreviewMount .tracker-sub{margin-top:6px;font-size:12px;color:#6b7280;line-height:1.35;white-space:pre-line;}
-#bloomPreviewMount .material-detail{margin-top:8px;font-size:13px;line-height:1.5;color:#374151;white-space:pre-line;}
-</style>
-
-<style>
-/* === bloom-preview-table-css === */
-#bloomPreviewMount .bloom-preview-card{
-  border:1px solid #e5e7eb;
-  border-radius:14px;
-  background:#fff;
-  overflow:hidden;
-}
-#bloomPreviewMount .bloom-preview-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:14px 16px;
-  border-bottom:1px solid #e5e7eb;
-  background:#fafafa;
-}
-#bloomPreviewMount .bloom-preview-title{
-  font-size:22px;
-  font-weight:800;
-  color:#111827;
-}
-#bloomPreviewMount .bloom-preview-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-width:56px;
-  height:30px;
-  border-radius:999px;
-  background:#ef4444;
-  color:#fff;
-  font-size:13px;
-  font-weight:800;
-  padding:0 12px;
-}
-#bloomPreviewMount .bloom-preview-table{
-  width:100%;
-  border-collapse:collapse;
-  table-layout:fixed;
-}
-#bloomPreviewMount .bloom-preview-table th,
-#bloomPreviewMount .bloom-preview-table td{
-  border:1px solid #e5e7eb;
-  padding:14px 16px;
-  text-align:left;
-  vertical-align:middle;
-  font-size:16px;
-}
-#bloomPreviewMount .bloom-preview-table th{
-  background:#f8fafc;
-  font-weight:800;
-  color:#111827;
-}
-#bloomPreviewMount .bloom-preview-table td{
-  color:#111827;
-  font-weight:600;
-}
-</style>
-
-<style>
-/* === bloom-preview-material-sub-css === */
-#bloomPreviewMount .cell-main{font-size:16px;font-weight:700;color:#111827;line-height:1.35;}
-#bloomPreviewMount .cell-sub{margin-top:6px;font-size:12px;line-height:1.45;color:#6b7280;white-space:pre-line;}
-</style>
-</head>
+</style></head>
 <body>
   <form class="card" id="loginForm">
     <h2>🔒 관리자 인증</h2>
@@ -1199,40 +1112,10 @@ def dashboard():
                         if t in ("bullet", "group_note", "sub") and len(bullets) < 5:
                             bullets.append(txt)
 
-                # 카드 본문: 날짜 있는 항목 우선, 없으면 일반 항목 3줄
-                # 단, "제품별 진행 현황" 섹션이 있으면 그걸 우선 사용 (Flutter tracker용)
-                _process_bullets = []
-                for sec in (nc.get("sections") or []):
-                    sec_title = (sec.get("title") or "").strip()
-                    if "진행 현황" in sec_title or "진행현황" in sec_title or "Process" in sec_title.lower():
-                        for it in (sec.get("items") or []):
-                            if not isinstance(it, dict):
-                                continue
-                            t = (it.get("type") or "bullet").lower()
-                            txt = (it.get("text") or "").strip()
-                            if not txt:
-                                continue
-                            if t == "sub":
-                                _process_bullets.append(f"__PRODUCT__{txt}")
-                            elif t == "highlight" and any(txt.lstrip().startswith(tag) for tag in ('[원자재]','[입고]','[생산]','[납기]','[출하]','[생산일정]','[원자재발주]')):
-                                _process_bullets.append(txt)
-                            elif t in ("bullet",) and any(txt.lstrip().startswith(tag) for tag in ('[원자재]','[입고]','[생산]','[납기]','[출하]','[생산일정]','[원자재발주]')):
-                                _process_bullets.append(txt)
-
-                _is_process_flow_single = any(
-                    any(b.lstrip().startswith(tag) for tag in ('[원자재]', '[입고]', '[생산]', '[납기]', '[출하]', '[생산일정]', '[원자재발주]'))
-                    for b in bullets
-                )
-                if _process_bullets:
-                    # 제품별 진행 현황 다중 tracker
-                    bullets = _process_bullets
-                elif _is_process_flow_single:
-                    # 단일 4단계 흐름 카드는 전체 보존
-                    pass
-                elif dated_bullets:
-                    bullets = dated_bullets[:10]
-                else:
-                    bullets = bullets[:3]
+                # 카드 본문: 날짜 있는 항목만 표시. 일정 없으면 대시보드 제외
+                if not dated_bullets:
+                    continue
+                bullets = dated_bullets[:10]
 
                 # headline: 빈 문자열 (앱에서 D-day 칩으로 따로 표시)
                 headline = ""
@@ -1269,6 +1152,34 @@ def dashboard():
     grouped_cards = _group_dashboard_cards(cards)
 
     return {"cards": cards, "grouped_cards": grouped_cards}
+
+@app.get("/reports")
+def list_reports():
+    return {"reports": _read_json(LATEST_FILE, [])}
+
+
+@app.get("/reports/{doc_id}/{product_name}")
+def get_product_detail(doc_id: str, product_name: str):
+    """제품 단위 상세 (기존 카드 탭용)"""
+    latest = _read_json(LATEST_FILE, [])
+    for report in latest:
+        if report.get("doc_id") != doc_id:
+            continue
+        for p in report.get("products", []):
+            name = p.get("product") or p.get("name", "")
+            if name == product_name:
+                return {
+                    "doc_id": doc_id,
+                    "report_date": (
+                        report.get("report_meta", {}).get("date")
+                        or report.get("report_date")
+                    ),
+                    "slide_images": report.get("slide_images", {}),
+                    "section_images": report.get("section_images", {}),
+                    **p,
+                }
+    raise HTTPException(status_code=404, detail="제품을 찾을 수 없습니다.")
+
 
 # =========================================================
 # 4. 프로젝트별 보기
@@ -1415,19 +1326,7 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
    - 예: "3. EMA 33종 (총 33종 중 승인 7종, 개발 26종)" → section title="EMA 33종 (총 33종 중 승인 7종, 개발 26종)"
 3. "1)", "2)" 같은 괄호 번호나 들여쓰기는 일반 item(bullet) — section 만들지 마라
 4. *로 시작하거나 "현황:" 표시는 type: highlight
-4-1. 색상 태그 처리 — 본문에 색상명("빨간색", "파란색", "주황색", "노란색")이 대괄호 안에 들어 있으면:
-
-   ★ 매우 중요: 색상 태그가 들어간 대괄호와 그 안의 내용은 **원문 그대로 본문에 포함**해야 한다 (대괄호도, 색상명도 절대 제거하지 말 것). 후처리 단계에서 자동 처리됨.
-
-   세부 형식:
-   - "[빨간색]" / "[파란색]" 단독 — 그 줄 전체 색상이라는 의미. 본문에 그대로 둘 것.
-   - "[내용 빨간색]" 형식 — 내용만 색상 적용 의미. 본문에 "[내용 빨간색]" 그대로 둘 것.
-   - "[[내용] 파란색]" 형식 — 내용에 대괄호 포함. 본문에 "[[내용] 파란색]" 그대로 둘 것.
-
-   금지 사항:
-   - 색상명("빨간색", "파란색" 등) 만 떼고 대괄호와 내용을 남기지 말 것
-   - 색상 태그 안의 내용을 다른 곳으로 옮기지 말 것
-   - 색상 태그가 들어있다고 highlight 로 분류하지 말 것 (type 은 원문 맥락대로)
+4-1. 색상 태그 처리 — 본문에 "[빨간색]" / "[파란색]" / "[주황색]" / "[노란색]" 이 포함된 항목은:
      - 태그 문자열만 제거하고 본문은 그대로 유지
      - 결과 JSON 아이템에 "color": "red" / "blue" / "orange" 필드를 추가
      - 색상 태그는 group_id 부여의 신호가 아니다 (색깔이 같다고 묶지 말 것)
@@ -1454,17 +1353,6 @@ _NOTE_AI_SYSTEM_PROMPT = """당신은 회사 임원에게 보고되는 주간 �
   (c) 텍스트에 "포괄적으로 들어가야", "공통으로 적용", "모두 해당" 같은 명시적 표현이 있는 경우
 
 위 신호가 전혀 없으면 group_id를 절대 부여하지 마라. (일반 bullet들을 마음대로 묶지 말 것)
-
-★ 원형 숫자 보존 규칙:
-  - "①", "②", "③", "④", ... 같은 원형 숫자로 시작하는 줄은 그 기호를 반드시 그대로 유지한다
-  - 일반 숫자("1)", "2)") 로 변환하지 말 것
-  - 원형 숫자 줄은 type: "sub" 로 분류 (상위 항목의 하위 분기를 의미)
-
-★ 일반 숫자 번호 보존 규칙 (매우 중요):
-  - "1)", "2)", "3)", "1.", "2." 같은 일반 번호로 시작하는 줄은 그 번호를 반드시 본문 첫 부분으로 유지한다
-  - 예: 원문 "1) Banff 벤푸" → text: "1) Banff 벤푸" (번호 제거 금지)
-  - 번호를 떼서 별도 섹션 제목으로만 만들지 말고, **본문 첫 글자로 그대로** 유지할 것
-  - 이런 번호 줄은 type: "sub" 로 분류 (소제목)
 
 ★ 사진 placeholder 규칙 (매우 중요, 절대 어기지 말 것):
   - 본문에 "[PHOTO_KEEP_0]", "[PHOTO_KEEP_1]" 같은 토큰이 포함된 줄이 있으면:
@@ -1615,24 +1503,6 @@ def admin_notes_from_pptx(payload: dict, _admin: int = Depends(get_admin_session
     return {"cards": cards, "saved_tables": saved_tables}
 
 
-
-
-def _normalize_project_key(s: str) -> str:
-    """매칭용 정규화: 양 끝 <>, ◆, 공백, 대소문자 무시"""
-    if not s:
-        return ""
-    t = str(s).strip()
-    # 양 끝 <>, ＜＞, 「」, [] 같은 괄호 제거 (반복)
-    for _ in range(3):
-        t = t.strip()
-        if not t:
-            break
-        if t[0] in '<＜「[' and t[-1] in '>＞」]':
-            t = t[1:-1].strip()
-        else:
-            break
-    return t.lower()
-
 @app.get("/notes/by_project")
 def notes_by_project(project_key: str = ""):
     """프로젝트 키로 가장 최근 노트 카드를 찾아 반환.
@@ -1675,14 +1545,7 @@ def notes_by_project(project_key: str = ""):
             ck = (c.get("project_key") or "").strip()
             ctitle = (c.get("title") or "").strip()
             matched = False
-            _pk_norm = _normalize_project_key(project_key)
-            _title_norm = _normalize_project_key(c.get("title") or "")
-            _ck_norm = _normalize_project_key(ck)
-            if (
-                (ck and ck == project_key) or
-                (_ck_norm and _ck_norm == _pk_norm) or
-                (_title_norm and _title_norm == _pk_norm)
-            ):
+            if ck and ck == project_key:
                 matched = True
             elif ctitle and (ctitle == project_label or ctitle in project_aliases):
                 matched = True
@@ -1890,7 +1753,7 @@ def _extract_photo_markers(text: str):
     return ("\n".join(out_lines), photos)
 
 
-_DONE_KEYWORDS = ("완료", "완료됨", "출고완료", "승인완료", "회신 완료", "회신완료", "검토 완료", "검토완료", "협의 완료", "협의완료", "진행완료", "진행 완료", "받음", "받았음", "입고완료", "입고 완료", "도착", "끝")
+_DONE_KEYWORDS = ("완료", "완료됨", "출고완료", "승인완료", "끝")
 _PENDING_KEYWORDS = ("예정", "예상", "타겟", "목표", "진행중", "준비중", "까지", "예약")
 
 
@@ -1906,98 +1769,44 @@ def _split_for_date_scope(txt: str):
     return chunks
 
 
-_REFERENCE_KEYWORDS = ("고객요청", "고객 요청", "고객 요청일", "고객요청일", "요청일", "Due", "due date", "due_date", "납기")
-
-
-def _is_reference_date_scope(txt: str, idx: int) -> bool:
-    """idx 위치의 날짜가 '참고용' 날짜인지 판정.
-    예: "고객 요청일 6/15" 의 6/15 는 우리쪽 due_date 가 아닌 참고 날짜.
-    절 단위 처리: '→', ',', '/' 같은 구분자를 만나면 다른 절로 간주.
-    날짜 앞쪽 (date에서 왼쪽으로) 12자 이내에 reference 키워드 있으면 True.
-    """
-    if not txt:
-        return False
-
-    SEPARATORS = ("→", "↳", "=>", ",", "|", "·")
-    lo = 0
-    for sep in SEPARATORS:
-        i = txt.rfind(sep, 0, idx)
-        if i != -1 and i > lo:
-            lo = i + len(sep)
-    hi = len(txt)
-    for sep in SEPARATORS:
-        i = txt.find(sep, idx)
-        if i != -1 and i < hi:
-            hi = i
-
-    clause = txt[lo:hi]
-    rel_idx = idx - lo
-    front = clause[:rel_idx]
-
-    for k in _REFERENCE_KEYWORDS:
-        ki = front.lower().rfind(k.lower())
-        if ki >= 0 and (rel_idx - ki - len(k)) <= 12:
-            return True
-    return False
-
-
 def _is_done_scope(txt: str, idx: int) -> bool:
     """idx 위치의 날짜가 '완료된 날짜'인지 판정.
     한국어 어순: 날짜 → 키워드 (예: "5/29 승인완료", "W25 출하예정")
-    절 단위 처리: '→', ',', '/' 같은 구분자를 만나면 다른 절로 간주.
     규칙:
-      1) idx 가 포함된 절(앞뒤 구분자 사이)을 추출
-      2) 그 절 안에서 가장 가까운 (날짜로부터의 거리) 키워드 우선
-      3) 날짜와 가장 가까운 키워드가 완료면 done, 예정이면 pending
+      1) idx 뒤에서 가장 가까이 나타나는 키워드(완료/예정)를 찾는다.
+         - 완료 키워드면: 완료 (True, 날짜 버림)
+         - 예정 키워드면: 살림 (False)
+      2) idx 뒤에 키워드 없으면 idx 앞 12자 윈도우에 완료 키워드 있으면 완료.
+      3) 그 외엔 살림.
     """
     if not txt:
         return False
 
-    # 절 경계 추출: '→', ',', '/', '|', '·' 만나면 절 경계
-    SEPARATORS = ("→", "↳", "=>", ",", "|", "·")
-    # 앞쪽 경계
-    lo = 0
-    for sep in SEPARATORS:
-        i = txt.rfind(sep, 0, idx)
-        if i != -1 and i > lo:
-            lo = i + len(sep)
-    # 뒤쪽 경계
-    hi = len(txt)
-    for sep in SEPARATORS:
-        i = txt.find(sep, idx)
-        if i != -1 and i < hi:
-            hi = i
-
-    clause = txt[lo:hi]
-    rel_idx = idx - lo
-
-    # 절 안에서 모든 키워드 위치 + 거리 수집
-    candidates = []  # [(distance, kind, abs_pos)]
+    # 1) idx 뒤에서 가장 가까운 완료/예정 키워드 위치
+    nearest_pos = -1
+    nearest_kind = None  # 'done' or 'pending'
     for k in _DONE_KEYWORDS:
-        start = 0
-        while True:
-            i = clause.find(k, start)
-            if i == -1:
-                break
-            dist = abs(i - rel_idx)
-            candidates.append((dist, "done", i))
-            start = i + 1
+        i = txt.find(k, idx)
+        if i != -1 and (nearest_pos == -1 or i < nearest_pos):
+            nearest_pos = i
+            nearest_kind = "done"
     for k in _PENDING_KEYWORDS:
-        start = 0
-        while True:
-            i = clause.find(k, start)
-            if i == -1:
-                break
-            dist = abs(i - rel_idx)
-            candidates.append((dist, "pending", i))
-            start = i + 1
+        i = txt.find(k, idx)
+        if i != -1 and (nearest_pos == -1 or i < nearest_pos):
+            nearest_pos = i
+            nearest_kind = "pending"
 
-    if not candidates:
-        return False
+    # 같은 줄에서 너무 멀면 무시 (다른 절일 가능성)
+    if nearest_pos != -1 and (nearest_pos - idx) <= 25:
+        return nearest_kind == "done"
 
-    # 가장 가까운 키워드
-    candidates.sort(key=lambda x: x[0])
-    return candidates[0][1] == "done"
+    # 2) idx 앞 12자 윈도우에 완료 키워드만 있으면 완료
+    lo = max(0, idx - 12)
+    front = txt[lo:idx]
+    if any(k in front for k in _DONE_KEYWORDS) and not any(k in front for k in _PENDING_KEYWORDS):
+        return True
+
+    return False
 
 
 def _extract_due_date_from_text(txt: str) -> str:
@@ -2020,7 +1829,7 @@ def _extract_due_date_from_text(txt: str) -> str:
     # 1) YYYY-MM-DD
     for m in re.finditer(r"(20\d{2})-(\d{1,2})-(\d{1,2})", txt):
         try:
-            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()):
                 candidates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
         except Exception:
             pass
@@ -2029,7 +1838,7 @@ def _extract_due_date_from_text(txt: str) -> str:
     for m in re.finditer(r"\b(\d{2})\.(\d{1,2})\.(\d{1,2})\b", txt):
         try:
             yy = 2000 + int(m.group(1))
-            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()):
                 candidates.append(date(yy, int(m.group(2)), int(m.group(3))))
         except Exception:
             pass
@@ -2042,7 +1851,7 @@ def _extract_due_date_from_text(txt: str) -> str:
             d = date(YEAR, mo, last_day)
             if d.weekday() == 6:  # 일요일이면 금요일로
                 d = d - timedelta(days=2)
-            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()):
                 candidates.append(d)
         except Exception:
             pass
@@ -2050,7 +1859,7 @@ def _extract_due_date_from_text(txt: str) -> str:
     # 4) M월 D일 / M월D일
     for m in re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", txt):
         try:
-            if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
+            if not _is_done_scope(txt, m.start()):
                 candidates.append(date(YEAR, int(m.group(1)), int(m.group(2))))
         except Exception:
             pass
@@ -2060,7 +1869,7 @@ def _extract_due_date_from_text(txt: str) -> str:
         try:
             mo = int(m.group(1)); dd = int(m.group(2))
             if 1 <= mo <= 12 and 1 <= dd <= 31:
-                if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
+                if not _is_done_scope(txt, m.start()):
                     candidates.append(date(YEAR, mo, dd))
         except Exception:
             pass
@@ -2071,166 +1880,14 @@ def _extract_due_date_from_text(txt: str) -> str:
             wk = int(m.group(1))
             if 1 <= wk <= 53:
                 d = date.fromisocalendar(YEAR, wk, 5)  # 5 = Friday
-                if not _is_done_scope(txt, m.start()) and not _is_reference_date_scope(txt, m.start()):
+                if not _is_done_scope(txt, m.start()):
                     candidates.append(d)
         except Exception:
             pass
 
     if not candidates:
         return ""
-
-    # 같은 (mo, dd) 가 done clause 에 한 번이라도 등장하면 전체 후보에서 제거
-    # (예: "제작 완료 6/15 ... (FQC 진행 중) → ..." 의 6/15 는 done 으로 봄)
-    try:
-        date_positions = {}  # (mo, dd) -> [positions]
-        for m in re.finditer(r"(?:^|[\s\(\[~])(\d{1,2})/(\d{1,2})(?=[\s\)\]\,\.~]|$)", txt):
-            mo_ = int(m.group(1)); dd_ = int(m.group(2))
-            if 1 <= mo_ <= 12 and 1 <= dd_ <= 31:
-                date_positions.setdefault((mo_, dd_), []).append(m.start())
-
-        done_dates = set()
-        for (mo_, dd_), positions in date_positions.items():
-            for pos in positions:
-                if _is_done_scope(txt, pos):
-                    done_dates.add((mo_, dd_))
-                    break
-
-        if done_dates:
-            from datetime import date as _date
-            filtered = [d for d in candidates if (d.month, d.day) not in done_dates]
-            if filtered:
-                candidates = filtered
-    except Exception:
-        pass
-
-    if not candidates:
-        return ""
-
-    # 줄 마지막 50자 안에 done 키워드 있고, 다른 done/pending 키워드가 절 안에 더 가까이 없으면
-    # 줄 전체를 done 으로 간주
-    tail = txt[-60:] if len(txt) > 60 else txt
-    tail_lower = tail.lower()
-    line_end_done = False
-    for k in _DONE_KEYWORDS:
-        if k.lower() in tail_lower:
-            # tail 안에 pending 키워드도 함께 있으면 무효 (혼합 케이스)
-            has_pending_in_tail = any(pk.lower() in tail_lower for pk in _PENDING_KEYWORDS)
-            if not has_pending_in_tail:
-                line_end_done = True
-                break
-
-    if line_end_done:
-        # 줄 끝에 done 이 명확히 있는데, 모든 candidate 가 "고객요청" 같은 reference 만 살아남은 경우면 전체 제거
-        # candidate 가 절 안에서 pending clause 에 있었으면 그건 살림 (다른 due 가 진짜 있는 경우)
-        # 보수적으로: 모든 candidate 가 txt 의 앞쪽 30% 안에 있으면 (즉 본문 초반 "고객요청 X/Y" 정도) 제거
-        try:
-            from datetime import date as _date
-            front_threshold = max(30, int(len(txt) * 0.4))
-            all_front = True
-            for d in candidates:
-                # candidate 가 txt 어디서 매칭됐는지 다시 찾기
-                pat_pos = txt.find(f"{d.month}/{d.day}")
-                if pat_pos < 0:
-                    pat_pos = txt.find(f"{d.month:02d}/{d.day:02d}")
-                if pat_pos < 0 or pat_pos > front_threshold:
-                    all_front = False
-                    break
-            if all_front:
-                return ""
-        except Exception:
-            pass
-
     return min(candidates).isoformat()
-
-
-_COLOR_NAME_MAP = {
-    "빨간색": "red",
-    "파란색": "blue",
-    "주황색": "orange",
-    "노란색": "orange",
-}
-
-_COLOR_ONLY_RE = re.compile(r"\[(빨간색|파란색|주황색|노란색)\]")
-_ESCAPED_INLINE_COLOR_RE = re.compile(r"\[\[([^\]]+?)\]\s*(빨간색|파란색|주황색|노란색)\]")
-_INLINE_COLOR_RE = re.compile(r"\[([^\[\]]+?)\s+(빨간색|파란색|주황색|노란색)\]")
-
-
-def _extract_color_render_info(txt: str):
-    """대괄호 색상 표기 처리.
-    반환: (clean_text, whole_color, rich_parts)
-      - "[파란색]"  -> whole_color = "blue", 본문에서 제거
-      - "[내용 파란색]" -> rich_parts 에 부분 색상, 본문은 "내용"
-      - "[[내용] 파란색]" -> rich_parts 에 "[내용]" 색상, 본문은 "[내용]"
-    """
-    work = str(txt or "")
-    whole_color = ""
-    placeholders = {}
-
-    def _esc_repl(m):
-        token = f"__RC_ESC_{len(placeholders)}__"
-        placeholders[token] = {
-            "text": f"[{(m.group(1) or '').strip()}]",
-            "color": _COLOR_NAME_MAP.get(m.group(2), ""),
-        }
-        return token
-
-    work = _ESCAPED_INLINE_COLOR_RE.sub(_esc_repl, work)
-
-    found_line_colors = _COLOR_ONLY_RE.findall(work)
-    if found_line_colors:
-        whole_color = _COLOR_NAME_MAP.get(found_line_colors[-1], "")
-        work = _COLOR_ONLY_RE.sub("", work)
-
-    token_re = None
-    if placeholders:
-        token_re = re.compile("|".join(re.escape(k) for k in placeholders.keys()))
-
-    rich_parts = []
-    buf = []
-    has_inline = False
-    i = 0
-
-    def flush_buf():
-        if buf:
-            rich_parts.append({"text": "".join(buf)})
-            buf.clear()
-
-    while i < len(work):
-        matched = False
-        if token_re:
-            m_tok = token_re.match(work, i)
-            if m_tok:
-                flush_buf()
-                rich_parts.append(placeholders[m_tok.group(0)])
-                has_inline = True
-                i = m_tok.end()
-                matched = True
-        if matched:
-            continue
-        m_inline = _INLINE_COLOR_RE.match(work, i)
-        if m_inline:
-            flush_buf()
-            rich_parts.append({
-                "text": (m_inline.group(1) or "").strip(),
-                "color": _COLOR_NAME_MAP.get(m_inline.group(2), ""),
-            })
-            has_inline = True
-            i = m_inline.end()
-            continue
-        buf.append(work[i])
-        i += 1
-    flush_buf()
-
-    if rich_parts:
-        clean_text = "".join(p.get("text", "") for p in rich_parts).strip()
-    else:
-        clean_text = work.strip()
-
-    if not has_inline:
-        rich_parts = []
-
-    clean_text = re.sub(r"\s{2,}", " ", clean_text).strip()
-    return clean_text, whole_color, rich_parts
 
 
 def _normalize_note_item(it: dict) -> dict:
@@ -2242,14 +1899,19 @@ def _normalize_note_item(it: dict) -> dict:
     typ = (it.get("type") or "bullet").strip().lower()
     color = (it.get("color") or "").strip().lower()
 
-    # 대괄호 색상 처리 ([파란색] | [내용 파란색] | [[내용] 파란색])
-    txt, _whole_color, _rich_parts = _extract_color_render_info(txt)
-    if _whole_color:
-        color = _whole_color
-    if _rich_parts:
-        it["rich_parts"] = _rich_parts
-    else:
-        it.pop("rich_parts", None)
+    # [빨간색]/[파란색]/[주황색]/[노란색] -> color 필드로 승격, 본문에서는 제거
+    if "[빨간색]" in txt:
+        color = "red"
+        txt = txt.replace("[빨간색]", "").strip()
+    if "[파란색]" in txt:
+        color = "blue"
+        txt = txt.replace("[파란색]", "").strip()
+    if "[주황색]" in txt:
+        color = "orange"
+        txt = txt.replace("[주황색]", "").strip()
+    if "[노란색]" in txt:
+        color = "orange"
+        txt = txt.replace("[노란색]", "").strip()
 
     # ※ 로 시작하는 줄은 절대 group_note/특이사항으로 빼지 말고 일반 bullet 유지
     if txt.startswith("※"):
@@ -2257,31 +1919,12 @@ def _normalize_note_item(it: dict) -> dict:
             typ = "bullet"
         it.pop("group_id", None)
 
-    # --> 같은 ASCII 화살표를 유니코드 → 로 통일 (한 번에 여러 개 처리)
-    def _arrow_norm(_t):
-        _t = re.sub(r"-{2,}\s*>", "→", _t)
-        _t = re.sub(r"=+\s*>", "→", _t)
-        _t = re.sub(r"<-{2,}", "←", _t)
-        return _t
-    txt = _arrow_norm(txt)
-    # rich_parts 안의 각 part text 도 동일 변환
-    _rp = it.get("rich_parts")
-    if isinstance(_rp, list):
-        for _part in _rp:
-            if isinstance(_part, dict) and isinstance(_part.get("text"), str):
-                _part["text"] = _arrow_norm(_part["text"])
-    # 숫자) 또는 ①②③ 시작 줄은 화살표 모두 제거 (소제목)
-    _is_numbered = bool(re.match(r"^\s*(?:\d+\)|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳])", txt))
-    if _is_numbered:
-        txt = re.sub(r"^(?:\s*(?:→|↳|=>)\s*)+", "", txt).strip()
-
     # sub: 선행 화살표가 여러 개거나 중복이면 1개로 정규화
-    if typ == "sub" and not _is_numbered:
+    if typ == "sub":
         txt = re.sub(r"^(?:\s*(?:→|↳|=>)\s*)+", "→ ", txt).strip()
 
     # bullet/highlight 도 "→ → ..." 처럼 화살표 중복 시 1개로 축약
-    if not _is_numbered:
-        txt = re.sub(r"^(→\s*){2,}", "→ ", txt)
+    txt = re.sub(r"^(→\s*){2,}", "→ ", txt)
 
     it["type"] = typ
     it["text"] = txt
@@ -2297,25 +1940,20 @@ def _normalize_note_item(it: dict) -> dict:
     return it
 
 
-def _normalize_note_cards(parsed: dict, raw_text: str = "") -> dict:
-    """parsed["cards"] 전체에 _normalize_note_item 적용 + 기타 특이사항 섹션 병합 + 원문 ※ 줄 위치 기반 복구."""
+def _normalize_note_cards(parsed: dict) -> dict:
+    """parsed["cards"] 전체에 _normalize_note_item 적용 + 기타 특이사항 섹션 병합."""
     if not isinstance(parsed, dict):
         return parsed
     cards = parsed.get("cards") or []
-    _ETC_TITLES = {"기타 특이사항", "기타특이사항", "특이사항", "기타", "주의사항", "참고사항", "비고"}
+    _ETC_TITLES = {"기타 특이사항", "기타특이사항", "특이사항", "기타"}
     for card in cards:
         if not isinstance(card, dict):
             continue
 
-        # 1) 각 섹션 아이템 정규화 + section title 의 "N." prefix 제거
+        # 1) 각 섹션 아이템 정규화
         for sec in (card.get("sections") or []):
             if not isinstance(sec, dict):
                 continue
-            # section title 앞의 "1.", "2.", "10." 같은 번호 prefix 제거 (일관성)
-            _tt = (sec.get("title") or "").strip()
-            _tt_stripped = re.sub(r'^\s*\d+\.\s+', '', _tt)
-            if _tt_stripped != _tt:
-                sec["title"] = _tt_stripped
             new_items = []
             for it in (sec.get("items") or []):
                 if isinstance(it, dict):
@@ -2343,265 +1981,8 @@ def _normalize_note_cards(parsed: dict, raw_text: str = "") -> dict:
             merged_sections.append(sec)
         card["sections"] = merged_sections
 
-    # 3) 원문 ※ 줄 위치 기반 복구
-    if raw_text and cards:
-        raw_lines = raw_text.split("\n")
-        raw_star_entries = []  # [(orig, cmp, prev_anchor, next_anchor)]
-        for i, ln in enumerate(raw_lines):
-            v = ln.strip()
-            if v.startswith("※"):
-                prev_a = ""
-                for j in range(i - 1, -1, -1):
-                    pv = raw_lines[j].strip()
-                    if not pv:
-                        continue
-                    if pv.startswith("※") or pv.startswith("\U0001F4F7"):
-                        continue
-                    prev_a = pv
-                    break
-                next_a = ""
-                for j in range(i + 1, len(raw_lines)):
-                    nv = raw_lines[j].strip()
-                    if not nv:
-                        continue
-                    if nv.startswith("※") or nv.startswith("\U0001F4F7"):
-                        continue
-                    next_a = nv
-                    break
-                cmp_v = re.sub(r"\s+", " ", v).lower()
-                raw_star_entries.append((v, cmp_v, prev_a, next_a))
-
-        if raw_star_entries:
-            existing = set()
-            for c in cards:
-                if not isinstance(c, dict):
-                    continue
-                for sec in (c.get("sections") or []):
-                    if not isinstance(sec, dict):
-                        continue
-                    for it in (sec.get("items") or []):
-                        if not isinstance(it, dict):
-                            continue
-                        t = (it.get("text") or "").strip()
-                        if t.startswith("※"):
-                            existing.add(re.sub(r"\s+", " ", t).lower())
-
-            def _norm_cmp(s):
-                v = re.sub(r"^\s*\d+[.)\]]?\s*", "", str(s or "").strip())
-                return re.sub(r"\s+", " ", v.lower())
-
-            def _make_star_item(orig):
-                color = ""
-                text = orig
-                m = re.search(r"\[(빨간색|파란색|주황색|노란색)\]", text)
-                if m:
-                    tag = m.group(1)
-                    color_map = {"빨간색": "red", "파란색": "blue", "주황색": "orange", "노란색": "orange"}
-                    color = color_map.get(tag, "")
-                    text = re.sub(r"\s*\[(빨간색|파란색|주황색|노란색)\]\s*", " ", text).strip()
-                ni = {"type": "bullet", "text": text}
-                if color:
-                    ni["color"] = color
-                auto = _extract_due_date_from_text(text)
-                if auto:
-                    ni["due_date"] = auto
-                return ni
-
-            def _try_insert(orig, prev_a, next_a):
-                new_item = _make_star_item(orig)
-                next_n = _norm_cmp(next_a)
-                prev_n = _norm_cmp(prev_a)
-                # 1) next_anchor → 그 앞에 삽입
-                if next_n:
-                    for c in cards:
-                        if not isinstance(c, dict):
-                            continue
-                        for sec in (c.get("sections") or []):
-                            if not isinstance(sec, dict):
-                                continue
-                            items = sec.get("items") or []
-                            for idx, it in enumerate(items):
-                                tt = _norm_cmp(it.get("text") if isinstance(it, dict) else it)
-                                if not tt:
-                                    continue
-                                if next_n == tt or next_n in tt or tt in next_n:
-                                    items.insert(idx, new_item)
-                                    sec["items"] = items
-                                    return True
-                            sec_title = _norm_cmp(sec.get("title"))
-                            if sec_title and (next_n == sec_title or next_n in sec_title or sec_title in next_n):
-                                items.insert(0, new_item)
-                                sec["items"] = items
-                                return True
-                # 2) prev_anchor → 그 뒤에 삽입
-                if prev_n:
-                    for c in cards:
-                        if not isinstance(c, dict):
-                            continue
-                        for sec in (c.get("sections") or []):
-                            if not isinstance(sec, dict):
-                                continue
-                            items = sec.get("items") or []
-                            for idx, it in enumerate(items):
-                                tt = _norm_cmp(it.get("text") if isinstance(it, dict) else it)
-                                if not tt:
-                                    continue
-                                if prev_n == tt or prev_n in tt or tt in prev_n:
-                                    items.insert(idx + 1, new_item)
-                                    sec["items"] = items
-                                    return True
-                # 3) fallback: 첫 카드 마지막 섹션 끝
-                card0 = cards[0]
-                if isinstance(card0, dict):
-                    secs = card0.setdefault("sections", [])
-                    if not secs:
-                        secs.append({"title": "특이사항", "items": []})
-                    secs[-1].setdefault("items", []).append(new_item)
-                    return True
-                return False
-
-            for orig, cmp_v, prev_a, next_a in raw_star_entries:
-                if any(cmp_v in e or e in cmp_v for e in existing):
-                    continue
-                _try_insert(orig, prev_a, next_a)
-
     return parsed
 
-
-
-
-def _restore_numbered_lines(parsed: dict, raw_text: str) -> dict:
-    """원문 숫자 라인 보정 (보수적).
-    - section title 에는 절대 번호를 prepend 하지 않는다
-    - 'N) ...' 원문 sub 라인만 item text 앞에 'N)' 복원
-    - 'N. 제목 [...]' 한 줄 원문 라인이 section title + 첫 item 으로 쪼개졌을 때만 다시 합쳐서 한 줄 title 로 복원 (FIX #4)
-    - '-' / '*' / 이미 번호 있는 라인은 건드리지 않음
-    """
-    if not isinstance(parsed, dict) or not raw_text:
-        return parsed
-
-    def _arrow_norm(t: str) -> str:
-        t = t or ""
-        t = re.sub(r"-{2,}\s*>", "→", t)
-        t = re.sub(r"=+\s*>", "→", t)
-        t = re.sub(r"<-{2,}", "←", t)
-        t = re.sub(r"\s*→\s*", " → ", t)
-        t = re.sub(r"\s+", " ", t).strip()
-        return t
-
-    def _plain_inline(t: str) -> str:
-        t = t or ""
-        try:
-            cleaned, _w, _parts = _extract_color_render_info(t)
-            t = cleaned
-        except Exception:
-            pass
-        t = _arrow_norm(t)
-        t = t.replace("[", "").replace("]", "")
-        t = re.sub(r"\s+", " ", t).strip()
-        return t
-
-    def _key(t: str) -> str:
-        t = _plain_inline(t).lower()
-        t = re.sub(r'[\s"\'`]', '', t)
-        t = re.sub(r'[()\[\]{}<>:：,./·•\-]+', '', t)
-        return t
-
-    # 원문에서 top-level / sub 숫자 라인 추출
-    top_lines = []   # FIX #4 전용: 'N. 제목 [...]' 한 줄
-    sub_lines = []   # 'N) 본문'
-
-    for ln in raw_text.splitlines():
-        stripped = ln.strip()
-        if not stripped:
-            continue
-
-        m_top = re.match(r'^(\d+)\.\s+(.+)$', stripped)
-        if m_top:
-            num = m_top.group(1)
-            body_raw = m_top.group(2).strip()
-            top_lines.append({
-                "num": num,
-                "body_raw": body_raw,
-                "body_plain": _plain_inline(body_raw),
-                "body_key": _key(body_raw),
-            })
-            continue
-
-        m_sub = re.match(r'^(\d+)\)\s+(.+)$', stripped)
-        if m_sub:
-            num = m_sub.group(1)
-            body_raw = m_sub.group(2).strip()
-            sub_lines.append({
-                "num": num,
-                "body_raw": body_raw,
-                "body_plain": _plain_inline(body_raw),
-                "body_key": _key(body_raw),
-            })
-            continue
-
-    cards = parsed.get("cards") or []
-    for card in cards:
-        if not isinstance(card, dict):
-            continue
-
-        sections = card.get("sections") or []
-        for sec in sections:
-            if not isinstance(sec, dict):
-                continue
-
-            title = (sec.get("title") or "").strip()
-            title_key = _key(title)
-            items = sec.get("items") or []
-
-            # ─── FIX #4: top-level 한 줄 복원 ───
-            # title + first item 이 원문 한 줄 'N. 제목 [...]' 와 일치하면 한 줄 title 로 합치고 first item 제거
-            if items and isinstance(items[0], dict):
-                first_txt = (items[0].get("text") or "").strip()
-                first_key = _key(first_txt)
-                first_plain = _plain_inline(first_txt)
-
-                merged_key = title_key + first_key
-
-                for tl in top_lines:
-                    bk = tl["body_key"]
-                    if not bk or len(bk) < 6:
-                        continue
-                    # title 이 원문 라인의 앞부분, first_item 이 뒷부분일 때만
-                    if bk.startswith(title_key) and title_key and first_key and first_key in bk:
-                        # 번호 prefix 없이 body 만 title 로 (일관성)
-                        sec["title"] = tl["body_plain"]
-                        sec["items"] = items[1:]
-                        break
-
-            # ─── sub 'N)' 복원: item 기준만, 매우 보수적으로 ───
-            for it in (sec.get("items") or []):
-                if not isinstance(it, dict):
-                    continue
-
-                txt = (it.get("text") or "").strip()
-                if not txt:
-                    continue
-
-                # 이미 번호/원형숫자/별/대시로 시작하면 건드리지 않음
-                if re.match(r'^\s*(?:\d+[.)]|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|[-*])', txt):
-                    continue
-
-                txt_key = _key(txt)
-                if not txt_key or len(txt_key) < 6:
-                    continue
-
-                for sl in sub_lines:
-                    bk = sl["body_key"]
-                    if not bk or len(bk) < 6:
-                        continue
-
-                    head = bk[:15]
-                    if head and (txt_key.startswith(head) or bk.startswith(txt_key[:15])):
-                        it["text"] = f'{sl["num"]}) {txt.strip()}'
-                        break
-
-    return parsed
 
 def _inject_photos_into_cards(cards, photos):
     """정리된 카드 구조에 type:'photo' item 을 주입.
@@ -2850,8 +2231,7 @@ def admin_notes_ai_parse(payload: dict, _admin: int = Depends(get_admin_session)
         parsed = json.loads(content)
         if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list):
             parsed["cards"] = _inject_photos_into_cards(parsed["cards"], _extracted_photos)
-            parsed = _normalize_note_cards(parsed, raw_text=text)
-            parsed = _restore_numbered_lines(parsed, raw_text=text)
+            parsed = _normalize_note_cards(parsed)
             # parsed["cards"] = _inject_tables_into_cards(parsed["cards"], _extracted_tables)  # 엑셀은 photo로 처리
         return parsed
     except Exception as e:
@@ -2863,13 +2243,8 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     """사업부별 노트 저장."""
     division_id = (payload or {}).get("division_id", "").strip()
     report_date = (payload or {}).get("report_date", "").strip()
-    raw_text = (payload or {}).get("raw_text", "")
+    raw_text = (payload or {}).get("raw_text", "").strip()
     cards = (payload or {}).get("cards", [])
-    raw_text = (payload or {}).get("raw_text", "")
-    if isinstance(cards, list) and isinstance(raw_text, str) and raw_text.strip():
-        for c in cards:
-            if isinstance(c, dict):
-                c["raw_text"] = raw_text
 
     if not division_id:
         raise HTTPException(status_code=400, detail="division_id 필수")
@@ -2914,7 +2289,7 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     notes_map[division_id] = {
         "report_date": report_date or existing.get("report_date", ""),
         "updated_at": datetime.now().isoformat(),
-        "raw_text": raw_text if isinstance(raw_text, str) and raw_text.strip() else existing.get("raw_text", ""),
+        "raw_text": raw_text if isinstance(raw_text, str) else existing.get("raw_text", ""),
         "cards": merged_cards,
     }
     _save_notes(data)
@@ -3022,6 +2397,15 @@ async def admin_upload_note_photo(
 
 
 # ─── 엑셀 업로드 (드래그&드롭) ───
+
+
+
+
+
+
+
+
+
 def _excel_sheet_to_preview_data_url(ws):
     from io import BytesIO
     import base64
@@ -3451,7 +2835,7 @@ def get_divisions_updates():
 
 @app.get("/projects")
 def list_projects():
-    """프로젝트 버튼 목록 — PPT(reports_latest) + Notes(notes.json) 통합"""
+    """프로젝트 버튼 목록"""
     latest = _read_json(LATEST_FILE, [])
     grouped = aggregate_projects(latest)
     projects = [
@@ -3463,36 +2847,7 @@ def list_projects():
         }
         for k, v in grouped.items()
     ]
-
-    # 🟢 Notes.json 의 카드도 합친다 — notes 가 우선 (PPT 보다 최신)
-    try:
-        notes_data = _read_json(NOTES_FILE, {})
-        # 기존 projects 를 dict 로 변환 (key 로 빠르게 덮어쓰기 위함)
-        proj_by_key = {p["key"]: p for p in projects}
-        for div_id, div_obj in (notes_data.get("notes") or {}).items():
-            report_date = div_obj.get("report_date") or div_obj.get("updated_at")
-            for card in (div_obj.get("cards") or []):
-                title = (card.get("title") or "").strip()
-                if not title:
-                    continue
-                pkey = None
-                try:
-                    pkey = _cl.classify_project(title)
-                except Exception:
-                    pkey = None
-                key_for_entry = pkey or title
-                # notes 우선: 같은 key 든 새 key 든 notes 데이터로 덮어씀
-                proj_by_key[key_for_entry] = {
-                    "key": key_for_entry,
-                    "label": title,
-                    "status": _calc_card_status(card),
-                    "report_date": report_date,
-                }
-        projects = list(proj_by_key.values())
-    except Exception as _e:
-        pass
-
-    severity = {"RED": 4, "ORANGE": 3, "BLUE": 2, "BLACK": 1, "GRAY": 0}
+    severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
 
     # 🟢 프로젝트 목록 enrichment (기존 필드 변경 없음)
     projects = [enrich_project_entry(p) for p in projects]
@@ -3513,17 +2868,11 @@ def get_project_detail(project_key: str):
             notes_data = _read_json(NOTES_FILE, {})
             for div_id, div_obj in (notes_data.get("notes") or {}).items():
                 for card in (div_obj.get("cards") or []):
-                    title = (card.get("title") or "").strip()
-                    title_key = None
-                    try:
-                        title_key = _cl.classify_project(title) if title else None
-                    except Exception:
-                        title_key = None
-                    if title == project_key.strip() or title_key == project_key.strip():
+                    if (card.get("title") or "").strip() == project_key.strip():
                         detail = {
-                            "project_key": title_key or project_key,
-                            "label": title or project_key,
-                            "name": title or project_key,
+                            "project_key": project_key,
+                            "label": project_key,
+                            "name": project_key,
                             "status": _calc_card_status(card),
                             "sections": card.get("sections") or [],
                             "note_only": True,
@@ -3601,6 +2950,82 @@ def admin_config_projects(division_id: str | None = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"projects load error: {e}")
 
+
+@app.get("/admin/config/sections")
+def admin_config_sections(project_key: str, _exp: int = Depends(get_admin_session)):
+    """
+    admin 이미지 업로드 탭의 섹션 dropdown 용.
+    현재 분석된 PPT 결과에서 해당 프로젝트의 실제 GPT 섹션 제목들을 가져옴.
+    이것이 핵심 — 더 이상 자유 입력 안 함, GPT 가 만든 실제 섹션만 옵션으로 노출.
+    """
+    try:
+        latest = _read_json(LATEST_FILE, [])
+        grouped = aggregate_projects(latest)
+        detail = build_project_detail(project_key, grouped)
+        if not detail:
+            return {"project_key": project_key, "sections": []}
+
+        sections = detail.get("sections", [])
+        return {
+            "project_key": project_key,
+            "project_label": detail.get("label"),
+            "sections": [
+                {
+                    "title": s.get("title"),
+                    "image_count": len(s.get("image_urls", []) or []),
+                }
+                for s in sections
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"sections load error: {e}")
+
+
+@app.get("/admin/config/stats")
+def admin_config_stats(_exp: int = Depends(get_admin_session)):
+    """
+    매핑 관리 탭용 통계.
+    - 현재 사업부/프로젝트 수
+    - 자동 분류된 카드/실패 카드 수
+    - 실패 카드의 product/category 샘플
+    """
+    try:
+        divs = _cl.get_divisions(visible_only=True)
+        all_projects = _cl.get_projects(visible_only=True)
+
+        latest = _read_json(LATEST_FILE, [])
+        total_cards = 0
+        unclassified_cards = []
+        for report in latest:
+            for p in report.get("products", []):
+                total_cards += 1
+                name = p.get("name") or p.get("product", "")
+                category = p.get("category", "")
+                text = f"{name} {category}".strip()
+                pid = _cl.classify_project(text)
+                if not pid:
+                    unclassified_cards.append({
+                        "name": name,
+                        "category": category,
+                        "report_family": report.get("report_meta", {}).get("report_family", ""),
+                    })
+
+        return {
+            "divisions_count": len(divs),
+            "projects_count": len(all_projects),
+            "total_cards": total_cards,
+            "unclassified_count": len(unclassified_cards),
+            "unclassified_samples": unclassified_cards[:20],
+            "projects_by_division": {
+                d.get("id"): [
+                    {"id": p.get("id"), "label": p.get("label")}
+                    for p in _cl.get_projects(division_id=d.get("id"), visible_only=True)
+                ]
+                for d in divs
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"stats load error: {e}")
 
 # =========================================================
 # 6. 어드민 페이지 (브라우저용)
@@ -3739,203 +3164,6 @@ def admin_reset(password: str = Form(...)):
         raise HTTPException(status_code=401, detail="비밀번호가 틀립니다.")
     _write_json(LATEST_FILE, [])
     return {"ok": True, "message": "최신 데이터가 초기화되었습니다."}
-
-
-
-# =========================================================
-# 블룸 엑셀 자동 생성 API (v1.0.6)
-# =========================================================
-from bloom_excel_parser import (
-    generate_bloom_note_from_files as _bloom_generate,
-    parse_po_excel as _bloom_parse_po,
-    parse_nct_excel as _bloom_parse_nct,
-    classify_excel as _bloom_classify,
-    build_product_sections as _bloom_build_sections,
-    update_card_sections as _bloom_update_sections,
-    build_card_from_note as _bloom_build_card,
-)
-import pathlib as _bloom_pathlib
-import tempfile as _bloom_tempfile
-import shutil as _bloom_shutil
-
-
-def _bloom_save_to_notes_json(note_payload: dict, product_section_items: list = None) -> dict:
-    """파싱 결과를 notes.json 의 bloom 사업부 카드에 저장.
-    - raw_text 갱신
-    - sections 중 "제품별 진행 현황" 만 자동 교체 (다른 섹션은 보존)
-    """
-    notes = _read_json(NOTES_FILE, {})
-    if not isinstance(notes, dict):
-        notes = {}
-    notes.setdefault("notes", {})
-    bloom = notes["notes"].setdefault("bloom", {"cards": []})
-    if not isinstance(bloom, dict):
-        bloom = {"cards": []}
-        notes["notes"]["bloom"] = bloom
-    bloom.setdefault("cards", [])
-
-    title = note_payload.get("title") or "<블룸>"
-    raw_text = note_payload.get("raw_text") or ""
-    status_hint = note_payload.get("status_hint") or "BLACK"
-
-    # 기존 <블룸> 카드 찾기 (title이 "블룸" 또는 "<블룸>")
-    target = None
-    for c in bloom["cards"]:
-        if isinstance(c, dict) and (c.get("title") == title or c.get("title") == "블룸" or c.get("title") == "<블룸>"):
-            target = c
-            break
-
-    if target is None:
-        target = {"title": title, "sections": []}
-        bloom["cards"].append(target)
-
-    # 1) 메타 갱신
-    # 이슈사항 보존: 기존 target.raw_text 의 [이슈사항] 블록을 새 raw_text 앞에 유지
-    try:
-        _existing_raw = (target.get("raw_text") if isinstance(target, dict) else "") or ""
-        if _existing_raw and "[이슈사항]" not in raw_text:
-            import re as _re_pres
-            _m = _re_pres.search(r"\[이슈사항\].*?(?=\n\[|\Z)",
-                                 _existing_raw, flags=_re_pres.S)
-            if _m:
-                _issues_block = _m.group(0).strip()
-                if raw_text.startswith("<블룸>"):
-                    _head, _sep, _rest = raw_text.partition("\n")
-                    raw_text = _head + "\n\n" + _issues_block + "\n\n" + _rest.lstrip("\n")
-                else:
-                    raw_text = _issues_block + "\n\n" + raw_text
-    except Exception as _e:
-        print("[bloom] issues preserve error:", _e)
-
-    target["title"] = title
-    target["raw_text"] = raw_text
-    target["status"] = status_hint
-    target["auto_generated"] = True
-    target["auto_source"] = "excel_3files"
-
-    # 2) "제품별 진행 현황" 섹션만 자동 교체
-    if product_section_items is not None:
-        _bloom_update_sections(target, product_section_items)
-
-    _write_json(NOTES_FILE, notes)
-    return {"ok": True, "saved_title": title, "status": status_hint}
-
-
-@app.post("/admin/notes/bloom/auto_generate")
-async def admin_notes_bloom_auto_generate(
-    files: list[UploadFile] = File(...),
-    admin_auth: str = Cookie(default=""),
-):
-    """엑셀 3개 자동 분류 + 파싱 → 미리보기 JSON 반환 (저장 X)."""
-    if not _verify_session(admin_auth):
-        raise HTTPException(status_code=401, detail="로그인 필요")
-
-    if not files or len(files) < 1:
-        raise HTTPException(status_code=400, detail="엑셀 파일을 1개 이상 업로드해주세요.")
-
-    # 임시 폴더에 저장
-    tmpdir = _bloom_tempfile.mkdtemp(prefix="bloom_upload_")
-    saved_paths = []
-    try:
-        for uf in files:
-            safe_name = (uf.filename or "upload.xlsx").replace("/", "_").replace("\\", "_")
-            dest = _bloom_pathlib.Path(tmpdir) / safe_name
-            with dest.open("wb") as w:
-                w.write(await uf.read())
-            saved_paths.append(str(dest))
-
-        result = _bloom_generate(saved_paths)
-
-        try:
-
-            if isinstance(result, dict):
-
-                result["card"] = _bloom_build_card(result.get("note") or {})
-
-        except Exception as _e:
-
-            print("[bloom] card build error:", _e)
-        return result
-    finally:
-        try:
-            _bloom_shutil.rmtree(tmpdir, ignore_errors=True)
-        except Exception:
-            pass
-
-
-@app.post("/admin/notes/bloom/auto_save")
-async def admin_notes_bloom_auto_save(
-    files: list[UploadFile] = File(...),
-    admin_auth: str = Cookie(default=""),
-):
-    """엑셀 3개 자동 파싱 → notes.json 의 블룸 카드 갱신."""
-    if not _verify_session(admin_auth):
-        raise HTTPException(status_code=401, detail="로그인 필요")
-
-    if not files or len(files) < 1:
-        raise HTTPException(status_code=400, detail="엑셀 파일을 1개 이상 업로드해주세요.")
-
-    tmpdir = _bloom_tempfile.mkdtemp(prefix="bloom_upload_")
-    saved_paths = []
-    try:
-        for uf in files:
-            safe_name = (uf.filename or "upload.xlsx").replace("/", "_").replace("\\", "_")
-            dest = _bloom_pathlib.Path(tmpdir) / safe_name
-            with dest.open("wb") as w:
-                w.write(await uf.read())
-            saved_paths.append(str(dest))
-
-        result = _bloom_generate(saved_paths)
-
-        try:
-
-            if isinstance(result, dict):
-
-                result["card"] = _bloom_build_card(result.get("note") or {})
-
-        except Exception as _e:
-
-            print("[bloom] card build error:", _e)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail={"message": "파싱 실패", "detail": result})
-
-        # 제품별 진행 현황 sections 자동 생성
-        po_data = result.get("po_data") or {}
-        bop = None
-        kpe = None
-        if result.get("classified", {}).get("bop_nct"):
-            # parse_nct_excel 재호출 대신 result에서 가져옴 — 단 result는 summary만 있으므로 다시 파싱
-            pass
-        # 위 파싱은 result.note 가 이미 산출되었기에 product_section_items 만 별도 호출
-        # bop/kpe NCT 객체를 다시 파싱
-        _bop_obj = None
-        _kpe_obj = None
-        # classified 는 파일명(짧은)만 반환하므로 임시폴더의 풀패스를 재이용
-        # generate_bloom_note_from_files 내부에서 이미 했지만 결과 객체가 없으므로
-        # 여기서 saved_paths 의 파일을 다시 분류해서 NCT 객체 얻음
-        for sp in saved_paths:
-            kind = _bloom_classify(sp)
-            if kind == "bop_nct":
-                _bop_obj = _bloom_parse_nct(sp)
-            elif kind == "kpe_nct":
-                _kpe_obj = _bloom_parse_nct(sp)
-        product_section_items = _bloom_build_sections(po_data, _bop_obj, _kpe_obj)
-        save_info = _bloom_save_to_notes_json(result["note"], product_section_items)
-        return {
-            "ok": True,
-            "classified": result.get("classified"),
-            "bop_nct_summary": result.get("bop_nct_summary"),
-            "kpe_nct_summary": result.get("kpe_nct_summary"),
-            "saved": save_info,
-            "note": result["note"],
-            "card": result.get("card"),
-        }
-    finally:
-        try:
-            _bloom_shutil.rmtree(tmpdir, ignore_errors=True)
-        except Exception:
-            pass
-
 
 
 # =========================================================
@@ -4379,37 +3607,7 @@ _ADMIN_UPLOAD_HTML = """
       <h2>✨ 미리보기 (앱에서 이렇게 보입니다)</h2>
       <div id="notePreviewArea" style="background:#f5f7fb;padding:16px;border-radius:8px;"></div>
     </div>
-
-    <!-- ========== 블룸 자동 생성 카드 (v1.0.6) ========== -->
-    <div class="card" id="bloomAutoCard" style="border-left:4px solid #10b981;display:none;">
-      <h2 style="margin-top:0;">🤖 블룸 자동 노트 생성</h2>
-      <p style="color:#6b7280;margin-top:-6px;">실적 / BOP NCT / KPE NCT 엑셀 3개를 올리면 앱과 동일한 카드로 미리보기됩니다.</p>
-
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
-        <label style="font-size:13px;">실적 엑셀
-          <input type="file" id="bloomPoFile" accept=".xlsx,.xls" />
-        </label>
-        <label style="font-size:13px;">BOP NCT
-          <input type="file" id="bloomBopFile" accept=".xlsx,.xls" />
-        </label>
-        <label style="font-size:13px;">KPE NCT
-          <input type="file" id="bloomKpeFile" accept=".xlsx,.xls" />
-        </label>
-      </div>
-
-      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
-        <button id="bloomPreviewBtn" type="button">▶ 미리보기</button>
-        <button id="bloomSaveBtn" type="button">💾 저장</button>
-        <span id="bloomAutoStatus" style="font-size:13px;color:#6b7280;"></span>
-      </div>
-
-      <div id="bloomPreviewWrap" style="display:none;margin-top:16px;">
-        <div id="bloomPreviewMount"></div>
-      </div>
-    </div>
-    <!-- /bloomAutoCard -->
-
-    </section>
+  </section>
 
   <section class="tab-content" id="tab-mapping">
     <div class="card">
@@ -5212,78 +4410,6 @@ function showUploadDonePopup(cardCount, onClose) {
 }
 
 function renderNotePreview(cards) {
-  window._circledGroupActive = false;
-    window._numberedGroupActive = false;
-
-  // D-day 편집 함수 (한 번만 정의)
-  if (!window._editDueDate) {
-    window._editDueDate = function(ci, si, ii) {
-      const cards = window._noteParsedCards;
-      if (!cards || !cards[ci]) return;
-      const sec = (cards[ci].sections || [])[si];
-      if (!sec) return;
-      const it = (sec.items || [])[ii];
-      if (!it || typeof it !== 'object') return;
-
-      const cur = it.due_date || '';
-      _showDueDateModal(cur, function(newVal) {
-        if (newVal === null) return; // 취소
-        if (newVal === '') {
-          delete it.due_date;
-        } else {
-          it.due_date = newVal;
-        }
-        renderNotePreview(window._noteParsedCards);
-      });
-    };
-  }
-
-  function _showDueDateModal(curDate, callback) {
-    const existed = document.getElementById('dueDateModal');
-    if (existed) existed.remove();
-
-    const bg = document.createElement('div');
-    bg.id = 'dueDateModal';
-    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
-
-    const box = document.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:12px;padding:24px;min-width:300px;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
-    box.innerHTML = `
-      <h3 style="margin:0 0 12px 0;font-size:16px;color:#111827;">📅 D-day 편집</h3>
-      <input type="date" id="dueDateInput" value="${curDate || ''}"
-        style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:16px;" />
-      <div style="display:flex;justify-content:space-between;gap:8px;">
-        <button id="dueDateDelete" style="padding:8px 14px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🗑️ 삭제</button>
-        <div style="display:flex;gap:6px;">
-          <button id="dueDateCancel" style="padding:8px 14px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;cursor:pointer;font-size:13px;">취소</button>
-          <button id="dueDateSave" style="padding:8px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;">저장</button>
-        </div>
-      </div>
-    `;
-    bg.appendChild(box);
-    document.body.appendChild(bg);
-
-    const input = document.getElementById('dueDateInput');
-    setTimeout(() => input.focus(), 50);
-
-    document.getElementById('dueDateSave').onclick = () => {
-      const v = input.value;
-      bg.remove();
-      callback(v || '');
-    };
-    document.getElementById('dueDateDelete').onclick = () => {
-      bg.remove();
-      callback('');
-    };
-    document.getElementById('dueDateCancel').onclick = () => {
-      bg.remove();
-      callback(null);
-    };
-    bg.addEventListener('click', (e) => {
-      if (e.target === bg) { bg.remove(); callback(null); }
-    });
-  }
-  window._showDueDateModal = _showDueDateModal;
   const area = document.getElementById('notePreviewArea');
   const card = document.getElementById('notePreviewCard');
   if (!area || !card) return;
@@ -5342,27 +4468,8 @@ function renderNotePreview(cards) {
     return html;
   };
 
-  const renderRichParts = (parts) => {
-    const cmap = { red:'#dc2626', blue:'#1e88e5', orange:'#ef6c00' };
-    return (parts || []).map(p => {
-      const t = esc(String(p.text || ''));
-      const c = cmap[String(p.color || '').toLowerCase()] || '';
-      return c ? `<span style="color:${c};">${t}</span>` : `<span>${t}</span>`;
-    }).join('');
-  };
-
-  const renderDueChip = (dueRaw, ci, si, ii) => {
-    const hasPos = (typeof ci === 'number' && typeof si === 'number' && typeof ii === 'number');
-    const onclickAttr = hasPos ? `onclick="window._editDueDate(${ci},${si},${ii})"` : '';
-    const cursorStyle = hasPos ? 'cursor:pointer;' : '';
-
-    if (!dueRaw) {
-      // 칩 없을 때 + D-day 추가 버튼
-      if (hasPos) {
-        return `<span ${onclickAttr} style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:500;cursor:pointer;border:1px dashed #d1d5db;">+ D-day</span>`;
-      }
-      return '';
-    }
+  const renderDueChip = (dueRaw) => {
+    if (!dueRaw) return '';
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);
     if (!m) return '';
     const due = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
@@ -5375,20 +4482,29 @@ function renderNotePreview(cards) {
     else if (diff <= 3) { bg = '#fed7aa'; fg = '#9a3412'; label = `D-${diff}`; }
     else { label = `D-${diff}`; }
     const dateLabel = `${m[2]}/${m[3]}`;
-    return `<span ${onclickAttr} title="클릭하여 편집" style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${bg};color:${fg};font-size:11px;font-weight:600;${cursorStyle}">${label} (${dateLabel})</span>`;
+    return `<span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:10px;background:${bg};color:${fg};font-size:11px;font-weight:600;">${label} (${dateLabel})</span>`;
   };
 
   const renderPhoto = (photoRef) => {
     if (!photoRef) return '';
     const url = '/note_photos/' + photoRef;
-    // 엑셀/일반 사진 통일: 카드 가로폭에 꽉 채움
-    return `
-      <div style="margin:8px 0 14px 0;">
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;overflow:auto;">
-          <img src="${esc(url)}"
-               onclick="showPhotoOverlay('${esc(url)}')"
-               style="display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;" />
+    const isExcel = /\/xls_/.test(photoRef);
+    if (isExcel) {
+      return `
+        <div style="margin:8px 0 14px 0;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;overflow:auto;">
+            <img src="${esc(url)}"
+                 onclick="showPhotoOverlay('${esc(url)}')"
+                 style="display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;" />
+          </div>
         </div>
+      `;
+    }
+    return `
+      <div style="margin-top:8px;">
+        <img src="${esc(url)}"
+             onclick="showPhotoOverlay('${esc(url)}')"
+             style="max-width:240px;max-height:150px;border-radius:8px;border:1px solid #d1d5db;cursor:pointer;object-fit:cover;" />
       </div>
     `;
   };
@@ -5401,9 +4517,6 @@ function renderNotePreview(cards) {
     if (!it || typeof it !== 'object') return '';
     const type = it.type || 'bullet';
     const text = esc(it.text || '');
-    const textHtml = (Array.isArray(it.rich_parts) && it.rich_parts.length)
-                       ? renderRichParts(it.rich_parts)
-                       : text;
     const hasTable = !!it.table_ref;
     const hasPhoto = !!it.photo_ref;
     const tableData = it.table_data || null;
@@ -5438,63 +4551,19 @@ function renderNotePreview(cards) {
     let leftPad = '';
     const rawText = String(it.text || '').trim();
     const startsWithStar = rawText.startsWith('※');
-    const startsWithAsterisk = rawText.startsWith('*') && !rawText.startsWith('**');
 
     if (type === 'highlight') {
       textStyle = 'font-size:14px;color:#dc2626;font-weight:700;';
     } else if (type === 'sub') {
-      const isNumberedSub = /^\s*(?:\d+[.)])/.test(rawText);
-      const hasLeadingArrow = /^(?:→|↳|=>)\s*/.test(rawText);
-      // 숫자 번호 시작이거나 이미 화살표면 prefix 없음
-      prefix = (isNumberedSub || hasLeadingArrow) ? '' : '→';
+      // 화살표 중복 방지: 본문이 이미 → / ↳ / => 로 시작하면 prefix 비움
+      prefix = /^(?:→|↳|=>)\s*/.test(rawText) ? '' : '→';
       textStyle = 'font-size:13px;color:#374151;';
-      leftPad = isNumberedSub ? 'padding-left:8px;' : 'padding-left:18px;';
-      if (isNumberedSub) {
-        textStyle = 'font-size:14px;color:#111827;font-weight:600;';
-        leftPad = 'padding-left:0;';
-        window._numberedGroupActive = true;
-        window._circledGroupActive = false;
-      }
-    }
-
-    // 원형 숫자 (①②③...) 시작 sub 는 화살표 없이 소제목처럼 표시
-    const isCircledSub = type === 'sub' && /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/.test(rawText);
-    if (isCircledSub) {
-      prefix = '';
-      textStyle = 'font-size:14px;color:#111827;font-weight:600;';
-      leftPad = 'padding-left:0;';
-    }
-    // circled 그룹 내부 (직전에 ①②③④ 만난 후 다음 ①~⑳ 또는 새 섹션 전까지) 의 일반 아이템은 들여쓰기
-    if (!isCircledSub && window._circledGroupActive && type !== 'sub') {
-      leftPad = 'padding-left:20px;';
-    }
-    if (isCircledSub) {
-      window._circledGroupActive = true;
-      window._numberedGroupActive = false;
-    }
-
-    // numbered 그룹 내부 (직전에 1)/2)/3) 만난 후 다음 numbered/circled/새 섹션 전까지) 의 일반 bullet 은
-    // 들여쓰기 + 화살표 sub 처럼 처리
-    const _isNumberedSubLocal = type === 'sub' && /^\s*\d+[.)]/.test(rawText);
-    const _isCircledSubLocal = isCircledSub;
-    const _hasArrowLocal = /^(?:→|↳|=>)\s*/.test(rawText);
-    if (!_isNumberedSubLocal && !_isCircledSubLocal && window._numberedGroupActive) {
-      if (type === 'bullet') {
-        prefix = '→';
-        textStyle = 'font-size:13px;color:#374151;';
-        leftPad = 'padding-left:24px;';
-      } else if (type === 'sub' && !_hasArrowLocal) {
-        leftPad = 'padding-left:24px;';
-      }
+      leftPad = 'padding-left:18px;';
     }
 
     // ※ 줄은 굵게 + 기본 검정 (color 지정 있으면 그게 우선)
     if (startsWithStar) {
       textStyle = 'font-size:14px;color:#111827;font-weight:700;';
-      prefix = '';
-    }
-    // * 로 시작하는 줄은 bullet 점 제거하고 * 그대로 표시
-    if (startsWithAsterisk) {
       prefix = '';
     }
 
@@ -5509,11 +4578,11 @@ function renderNotePreview(cards) {
       }, 0);
     }
 
-    const dueChip = renderDueChip(it.due_date || '', ci, si, ii);
+    const dueChip = renderDueChip(it.due_date || '');
     return `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:6px 0;${leftPad}">
         <div style="flex:1;min-width:0;">
-          <div style="${textStyle}">${prefix} ${textHtml} ${dueChip}</div>
+          <div style="${textStyle}">${prefix} ${text} ${dueChip}</div>
           ${hasTable ? renderMiniTable(tableData) : ''}
           ${hasPhoto ? renderPhoto(photoRef) : ''}
         </div>
@@ -5569,7 +4638,7 @@ function renderNotePreview(cards) {
           const text = esc(o.text || '');
           html += `
             <div style="margin:6px 0 0 4px;padding-top:6px;border-top:1px dashed #fcd34d;">
-              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '', ci, si, g.idx)}</div>
+              <div style="font-size:13px;color:#92400e;font-style:italic;">↪ ${text} ${renderDueChip(o.due_date || '')}</div>
             </div>
           `;
         });
@@ -5605,9 +4674,6 @@ function renderNotePreview(cards) {
     `;
 
     sections.forEach((s, si) => {
-      window._circledGroupActive = false;
-      window._numberedGroupActive = false;
-      // 각 section 시작 시 그룹 플래그 reset
       const stitle = esc(s.title || '');
       const items = Array.isArray(s.items) ? s.items : [];
       html += `
@@ -5680,14 +4746,6 @@ function renderNotePreview(cards) {
       status.style.color = '#dc2626';
       return;
     }
-    // 카드 제목 <...> 검증 — 없으면 AI 정리 차단
-    const titleMatches = text.match(/<[^<>]+>/g) || [];
-    if (titleMatches.length === 0) {
-      status.textContent = '⚠️ 카드 제목이 없습니다. 원본 텍스트 맨 위에 <카드제목> 형식으로 작성해주세요. (예: <하바플레이트>)';
-      status.style.color = '#dc2626';
-      alert('카드 제목이 없습니다. 원본 텍스트 맨 위에 <카드제목> 형식으로 작성해주세요. 예: <하바플레이트>');
-      return;
-    }
     status.textContent = '🤖 AI 정리 중...';
     status.style.color = '#6b7280';
     if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
@@ -5707,12 +4765,6 @@ function renderNotePreview(cards) {
       status.textContent = `✅ ${_noteParsedCards.length}개 카드 정리 완료`;
       status.style.color = '#10b981';
       if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
-      // 사업부 mismatch 검증
-      try {
-        if (typeof window._validateCardsBelongToDivision === 'function') {
-          await window._validateCardsBelongToDivision();
-        }
-      } catch (e) { console.error('validate err', e); }
     } catch (e) {
       status.textContent = '❌ AI 정리 실패: ' + e.message;
       status.style.color = '#dc2626';
@@ -5721,203 +4773,10 @@ function renderNotePreview(cards) {
   }
   window.noteAiParse = noteAiParse;
 
-  // [DIVISION_GUARD_START]
-  async function _validateCardsBelongToDivision() {
-    if (!_noteParsedCards || _noteParsedCards.length === 0) return true;
-    window._lastDivisionGuardMessage = '';
-
-    const curDivId = document.getElementById('noteDivision').value;
-    if (!curDivId) return true;
-
-    const saveBtn = document.getElementById('noteSaveBtn');
-    const status = document.getElementById('noteStatus');
-    const sel = document.getElementById('noteDivision');
-
-    const setSaveEnabled = (ok) => {
-      if (saveBtn) {
-        saveBtn.disabled = !ok;
-        saveBtn.style.opacity = ok ? '1' : '0.5';
-      }
-    };
-
-    const titleNorm = (t) => String(t || '')
-      .replace(/^\s*\d+[.)]\s*/,'')
-      .replace(/["'`\u201C\u201D]/g,'')
-      .replace(/[\[\]\(\)\{\}<>]/g,'')
-      .replace(/[·•]/g,'')
-      .replace(/\s+/g,'')
-      .toLowerCase();
-    const divLabel = (divId) => {
-      let label = divId;
-      Array.from(sel.options || []).forEach(opt => {
-        if (opt.value === divId) label = (opt.textContent || '').trim() || divId;
-      });
-      return label;
-    };
-
-    let notes = {};
-    try {
-      const r = await fetch('/notes', { credentials: 'same-origin' });
-      const d = await r.json();
-      notes = d.notes || {};
-    } catch (e) {
-      console.warn('division guard: failed to load /notes', e);
-      return true; // 조회 실패 시 저장까지 막진 않음
-    }
-
-    // title -> [division_id...]
-    const titleToDivs = {};
-    Object.entries(notes).forEach(([divId, item]) => {
-      (item.cards || []).forEach(card => {
-        const k = titleNorm(card.title);
-        if (!k) return;
-        if (!titleToDivs[k]) titleToDivs[k] = [];
-        if (!titleToDivs[k].includes(divId)) titleToDivs[k].push(divId);
-      });
-    });
-
-    const issues = [];
-    for (const card of _noteParsedCards) {
-      const rawTitle = String(card.title || '').trim();
-      const k = titleNorm(rawTitle);
-      if (!k) continue;
-
-      const divs = titleToDivs[k] || [];
-
-      // 0개: 어디에도 없는 신규 카드 → 허용 (신규 등록 가능)
-      if (divs.length === 0) {
-        continue;
-      }
-
-      // 1개: 그 사업부와 다르면 차단 + 변경 제안
-      if (divs.length === 1) {
-        if (divs[0] !== curDivId) {
-          issues.push({ kind: 'unique_mismatch', title: rawTitle, divs });
-        }
-        continue;
-      }
-
-      // 여러 사업부: 현재 사업부가 그 목록에 없을 때만 차단
-      if (divs.length > 1 && !divs.includes(curDivId)) {
-        issues.push({ kind: 'multi_mismatch', title: rawTitle, divs });
-      }
-    }
-
-    if (issues.length === 0) {
-      setSaveEnabled(true);
-      return true;
-    }
-
-    setSaveEnabled(false);
-
-    // 1) unique mismatch 1건이면 자동 변경 제안 모달
-    const uniqueOne = issues.length === 1 && issues[0].kind === 'unique_mismatch';
-    if (uniqueOne) {
-      const issue = issues[0];
-      const targetDivId = issue.divs[0];
-      _showDivisionMismatchModal({
-        title: issue.title,
-        curDivId,
-        targetDivId,
-      });
-      return false;
-    }
-
-    // 2) 나머지는 차단만
-    const msg = issues.map(i => {
-      if (i.kind === 'not_found') return `"${i.title}" 카드 매핑 없음`;
-      if (i.kind === 'multi_mismatch') return `"${i.title}"는 ${i.divs.map(divLabel).join(', ')}에만 존재`;
-      if (i.kind === 'unique_mismatch') return `"${i.title}"는 ${divLabel(i.divs[0])} 전용`;
-      return `"${i.title}" 사업부 확인 필요`;
-    }).join(' / ');
-
-    if (status) {
-      status.textContent = `⚠️ 저장 차단 — ${msg}`;
-      status.style.color = '#dc2626';
-    }
-    return false;
-  }
-
-  function _showDivisionMismatchModal({ title, curDivId, targetDivId }) {
-    const existed = document.getElementById('divisionMismatchModal');
-    if (existed) existed.remove();
-
-    const sel = document.getElementById('noteDivision');
-    const curLabel = Array.from(sel.options || []).find(o => o.value === curDivId)?.textContent?.trim() || curDivId;
-    const targetLabel = Array.from(sel.options || []).find(o => o.value === targetDivId)?.textContent?.trim() || targetDivId;
-
-    const bg = document.createElement('div');
-    bg.id = 'divisionMismatchModal';
-    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
-
-    const box = document.createElement('div');
-    box.style.cssText = 'width:min(92vw,480px);background:#fff;border-radius:12px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.25);';
-    box.innerHTML = `
-      <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:12px;">사업부 확인</div>
-      <div style="font-size:14px;line-height:1.6;color:#374151;">
-        <b>${title}</b> 카드는 <b>${targetLabel}</b>에만 있습니다.<br>
-        현재 선택된 사업부는 <b>${curLabel}</b>입니다.
-      </div>
-      <div style="margin-top:18px;font-size:14px;color:#111827;">
-        사업부를 <b>${targetLabel}</b>로 변경하시겠습니까?
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
-        <button id="divMismatchCancel" style="padding:8px 14px;border:none;border-radius:8px;background:#e5e7eb;color:#374151;cursor:pointer;">취소</button>
-        <button id="divMismatchSwitch" style="padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;">사업부 변경</button>
-      </div>
-    `;
-    bg.appendChild(box);
-    document.body.appendChild(bg);
-
-    document.getElementById('divMismatchCancel').onclick = () => {
-      bg.remove();
-      const saveBtn = document.getElementById('noteSaveBtn');
-      if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.style.opacity = '0.5';
-      }
-    };
-
-    document.getElementById('divMismatchSwitch').onclick = () => {
-      bg.remove();
-      sel.value = targetDivId;
-      try { sel.dispatchEvent(new Event('change')); } catch (_) {}
-      const _st = document.getElementById('noteStatus');
-      if (_st) {
-        _st.textContent = `🔄 ${targetLabel} 로 변경됨`;
-        _st.style.color = '#10b981';
-      }
-      const _sb = document.getElementById('noteSaveBtn');
-      if (_sb) { _sb.disabled = true; _sb.style.opacity = '0.5'; }
-    };
-  }
-
-  window._validateCardsBelongToDivision = _validateCardsBelongToDivision;
-  window._showDivisionMismatchModal = _showDivisionMismatchModal;
-  // [DIVISION_GUARD_END]
-
-
-  // ── 사업부 mismatch 검증 + 모달 ──
-  window._showDivisionMismatchModal = _showDivisionMismatchModal;
-
-
 
   async function noteSave() {
     if (!_noteParsedCards) {
       alert('먼저 AI로 정리해주세요');
-      return;
-    }
-    if (typeof window._validateCardsBelongToDivision === 'function') {
-      const result = await window._validateCardsBelongToDivision();
-      // 명시적으로 false 일 때만 차단. undefined / true 는 통과
-      if (result === false) {
-        alert(window._lastDivisionGuardMessage || '사업부가 카드 매핑과 일치하지 않습니다. 사업부를 확인해주세요.');
-        return;
-      }
-    }
-    const _saveBtn0 = document.getElementById('noteSaveBtn');
-    if (_saveBtn0 && _saveBtn0.disabled) {
-      alert('사업부가 일치하지 않습니다. 사업부를 변경하거나 카드 제목을 확인하세요.');
       return;
     }
     const divisionId = document.getElementById('noteDivision').value;
@@ -5936,7 +4795,7 @@ function renderNotePreview(cards) {
         body: JSON.stringify({
           division_id: divisionId,
           report_date: reportDate,
-          raw_text: (document.getElementById('noteRawText') || {}).value || '',
+          raw_text: document.getElementById('noteRawText').value || '',
           cards: _noteParsedCards,
         }),
       });
@@ -6655,7 +5514,6 @@ function renderNotePreview(cards) {
 <input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
 
 <script src="/static/note_loader.js"></script>
-<script src="/static/bloom_auto.js"></script>
 <script src="/static/excel_drop.js"></script>
 <script src="/static/photo_drop.js"></script>
 </body>

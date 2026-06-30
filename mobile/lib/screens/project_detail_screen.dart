@@ -1,5 +1,6 @@
 import '../config/app_config.dart';
 import 'package:flutter/material.dart';
+import '../design/design.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -95,9 +96,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         final ptext = (p['text'] ?? '').toString();
         final pcolor = (p['color'] ?? '').toString().toLowerCase();
         Color? c;
-        if (pcolor == 'red') c = const Color(0xFFDC2626);
+        if (pcolor == 'red') c = AppColors.statusRed;
         else if (pcolor == 'blue') c = const Color(0xFF1E88E5);
-        else if (pcolor == 'orange') c = const Color(0xFFEF6C00);
+        else if (pcolor == 'orange') c = AppColors.statusYellow;
         spans.add(TextSpan(
           text: ptext,
           style: c != null ? base.copyWith(color: c) : base,
@@ -479,11 +480,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   Color _processStageColor(String stage, double percent, String detail) {
     final d = detail.toLowerCase();
     if (d.contains('지연') || d.contains('부족') || d.contains('문제') || d.contains('불가')) {
-      return const Color(0xFFDC2626);
+      return AppColors.statusRed;
     }
     if (percent >= 100) return const Color(0xFF16A34A);
-    if (percent > 0) return const Color(0xFFF59E0B);
-    return const Color(0xFFCBD5E1);
+    if (percent > 0) return AppColors.statusYellow;
+    return AppColors.statusGray;
   }
 
   String _processPercentLabel(double value) {
@@ -565,7 +566,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             style: const TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF111827),
+              color: AppColors.textMain,
             ),
           ),
           const SizedBox(height: 2),
@@ -575,8 +576,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: color == const Color(0xFFCBD5E1)
-                  ? const Color(0xFF6B7280)
+              color: color == AppColors.statusGray
+                  ? AppColors.textMute
                   : color,
             ),
           ),
@@ -594,7 +595,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: AppColors.borderDefault),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,7 +605,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
+              color: AppColors.textMain,
             ),
           ),
           const SizedBox(height: 12),
@@ -614,9 +615,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.bgPage,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
+                border: Border.all(color: AppColors.borderDefault),
               ),
               child: Builder(
                 builder: (context) {
@@ -638,7 +639,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             'stage': key,
                             'percent': 0.0,
                             'detail': '',
-                            'color': const Color(0xFFCBD5E1),
+                            'color': AppColors.statusGray,
                           }
                   };
 
@@ -663,7 +664,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                               style: const TextStyle(
                                 fontSize: 12,
                                 height: 1.4,
-                                color: Color(0xFF4B5563),
+                                color: AppColors.textSub,
                               ),
                             ),
                           ),
@@ -683,7 +684,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             style: const TextStyle(
                               fontSize: 14.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF111827),
+                              color: AppColors.textMain,
                             ),
                           ),
                         ),
@@ -699,7 +700,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             child: Container(
                               margin: const EdgeInsets.only(top: 9),
                               height: 2,
-                              color: const Color(0xFFE5E7EB),
+                              color: AppColors.borderDefault,
                             ),
                           ),
                           _buildProcessStageDot(
@@ -711,7 +712,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             child: Container(
                               margin: const EdgeInsets.only(top: 9),
                               height: 2,
-                              color: const Color(0xFFE5E7EB),
+                              color: AppColors.borderDefault,
                             ),
                           ),
                           _buildProcessStageDot(
@@ -723,7 +724,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             child: Container(
                               margin: const EdgeInsets.only(top: 9),
                               height: 2,
-                              color: const Color(0xFFE5E7EB),
+                              color: AppColors.borderDefault,
                             ),
                           ),
                           _buildProcessStageDot(
