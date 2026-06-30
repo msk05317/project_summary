@@ -297,7 +297,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // 2) 마감이 가까운 순 정렬 (이미 지난 것 = 음수가 가장 앞으로 옴)
-    candidates.sort((a, b) => a.diffDays.compareTo(b.diffDays));
+    // 정렬 규칙 (시안 v3):
+    // - 7일 이상 지난 항목은 제외 (오래된 RED 카드 노출 방지)
+    // - 미래/오늘(diffDays >= 0) 항목을 먼저, 가까운 순으로
+    // - 그 다음 과거(diffDays < 0) 항목을 최근 지난 순으로
+    candidates.removeWhere((c) => c.diffDays < -30);
+    candidates.sort((a, b) {
+      final aFuture = a.diffDays >= 0 ? 0 : 1;
+      final bFuture = b.diffDays >= 0 ? 0 : 1;
+      if (aFuture != bFuture) return aFuture.compareTo(bFuture);
+      return a.diffDays.abs().compareTo(b.diffDays.abs());
+    });
 
     // 3) 상위 3개만
     final top = candidates.take(3).toList();
