@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../design/design.dart';
+import '../models/dashboard.dart';
+import '../services/dashboard_service.dart';
 import '../components/immediate/priority_badge.dart';
 import '../components/immediate/issue_card.dart';
 import '../components/home/bottom_prompt_bar.dart';
@@ -9,6 +11,31 @@ import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
 
 enum _IssueFilter { all, delayed, warning }
+
+// 카드 → 화면에서 보여줄 이슈 데이터로 변환한 결과.
+class _Issue {
+  final String projectKey;
+  final IssuePriority priority;
+  final String status;
+  final String dueText;
+  final String divisionLabel;
+  final String projectLabel;
+  final String headline;
+  final String dueDate;
+  final int diffDays;
+
+  const _Issue({
+    required this.projectKey,
+    required this.priority,
+    required this.status,
+    required this.dueText,
+    required this.divisionLabel,
+    required this.projectLabel,
+    required this.headline,
+    required this.dueDate,
+    required this.diffDays,
+  });
+}
 
 class ImmediateCheckScreen extends StatefulWidget {
   final String? divisionFilterLabel;
@@ -26,62 +53,188 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
   _IssueFilter _filter = _IssueFilter.all;
   bool _priorityDesc = true;
 
-  final List<_IssueMock> _issues = const [
-    _IssueMock('i1', 'chamber', IssuePriority.critical, '지연', 'D-1',
-        '반도체사업부', '챔버', '출하 지연', '6/20'),
-    _IssueMock('i2', 'bloom', IssuePriority.high, '지연', 'D-1',
-        '블룸', 'BL-002', '자재 미입고', '6/20'),
-    _IssueMock('i3', 'arista', IssuePriority.high, '지연', 'D-2',
-        '아리스타', 'AR-001', '일정 지연', '6/19'),
-    _IssueMock('i4', 'automotive', IssuePriority.mid, '주의', 'D-3',
-        '자동차', 'AT-003', '수율 이슈', '6/19'),
-    _IssueMock('i5', 'powerbox', IssuePriority.mid, '지연', 'D-4',
-        '반도체사업부', '파워박스', '부품 교체 지연', '6/18'),
-    _IssueMock('i6', 'network', IssuePriority.mid, '주의', 'D-5',
-        '네트워크', 'NW-002', '테스트 실패', '6/17'),
-    _IssueMock('i7', 'healthcare', IssuePriority.low, '지연', 'D-6',
-        '헬스케어', 'HC-001', '승인 절차 지연', '6/16'),
-    _IssueMock('i8', 'mill', IssuePriority.low, '주의', 'D-7',
-        '밀', 'WH-001', '재고 부족', '6/15'),
-  ];
+  late Future<List<DashboardCard>> _future;
 
-  List<_IssueMock> get _filteredByDivision {
-    if (widget.divisionFilterLabel == null) return _issues;
-    return _issues
-        .where((e) => e.divisionLabel == widget.divisionFilterLabel)
-        .toList();
+  @override
+  void initState() {
+    super.initState();
+    _future = DashboardService.fetchCards();
   }
 
-  List<_IssueMock> get _visible {
-    var list = [..._filteredByDivision];
+  Future<void> _refresh() async {
+    setState(() {
+      _future = DashboardService.fetchCards();
+    });
+    await _future;
+  }
+
+  // 카드 상태 → 우선순위 등급.
+  // RED + 임박(D-1 이하) → critical
+  // RED → high
+  // ORANGE → mid
+  // YELLOW → low
+  IssuePriority _priorityOf(String status, int diffDays) {
+    final s = status.toUpperCase();
+    if (s == 'RED') {
+      if (diffDays <= 1) return IssuePriority.critical;
+      return IssuePriority.high;
+    }
+    if (s == 'ORANGE') return IssuePriority.mid;
+    return IssuePriority.low;
+  }
+
+  String _statusLabel(String status) {
+    switch (status.toUpperCase()) {
+      case 'RED':
+        return '지연';
+      case 'ORANGE':
+      case 'YELLOW':
+        return '주의';
+      default:
+        return '정상';
+    }
+  }
+
+  String _dueText(int diffDays) {
+    if (diffDays == 0) return 'D-day';
+    if (diffDays > 0) return 'D-$diffDays';
+    return 'D+${-diffDays}';
+  }
+
+  String _dueDateShort(String? isoDate) {
+    if (isoDate == null || isoDate.isEmpty) return '';
+    // yyyy-MM-dd → M/d
+    try {
+      final parts = isoDate.split('-');
+      if (parts.length < 3) return isoDate;
+      final m = int.parse(parts[1]);
+      final d = int.parse(parts[2].substring(0, 2));
+      return '$m/$d';
+    } catch (_) {
+      return isoDate;
+    }
+  }
+
+  String _headlineOf(DashboardCard c) {
+    // 백엔드 headline이 대부분 빈 문자열이라 summary_bullets[0]에서 뽑기.
+    if (c.headline.trim().isNotEmpty) return c.headline.trim();
+    if (c.summaryBullets.isEmpty) return '';
+
+    var text = c.summaryBullets.first;
+
+    // 마크다운/특수문자 제거
+    text = text.replaceAll(RegExp(r'[*_`>#]'), '');
+    // placeholder(__X__) 제거
+    text = text.replaceAll(RegExp(r'__[A-Za-z0-9_]+__'), '');
+    // 괄호 안 날짜/부가정보 제거: (06-19) 등
+    text = text.replaceAll(RegExp(r'\([^)]*\)'), '');
+    // 화살표/이후 잘라내기
+    for (final sep in ['→', '->', '∎', '·']) {
+      final idx = text.indexOf(sep);
+      if (idx > 0 && idx < 30) {
+        text = text.substring(0, idx);
+        break;
+      }
+    }
+    text = text.trim();
+
+    // 조사 정리
+    text = text.replaceAll(RegExp(r'(이|가|을|를|은|는|의|에|로|와|과|도)$'), '');
+
+    // 길이 컷
+    if (text.length > 20) {
+      final cut = text.substring(0, 20);
+      final space = cut.lastIndexOf(' ');
+      text = space > 10 ? '${cut.substring(0, space)}…' : '$cut…';
+    }
+
+    return text;
+  }
+
+  List<_Issue> _buildIssues(List<DashboardCard> cards) {
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    final result = <_Issue>[];
+    for (final c in cards) {
+      final s = c.status.toUpperCase();
+      // 지연/주의 카드만 즉시 확인 대상
+      if (s != 'RED' && s != 'ORANGE' && s != 'YELLOW') continue;
+
+      final dueRaw = c.dueDateMin;
+      DateTime? dueDate;
+      int diffDays = 999;
+      if (dueRaw != null && dueRaw.isNotEmpty) {
+        try {
+          final parts = dueRaw.split('-');
+          if (parts.length >= 3) {
+            dueDate = DateTime(
+              int.parse(parts[0]),
+              int.parse(parts[1]),
+              int.parse(parts[2].substring(0, 2)),
+            );
+            diffDays = dueDate.difference(todayDate).inDays;
+          }
+        } catch (_) {}
+      }
+
+      final headline = _headlineOf(c);
+
+      result.add(_Issue(
+        projectKey: c.projectKey,
+        priority: _priorityOf(s, diffDays),
+        status: _statusLabel(s),
+        dueText: dueDate == null ? '-' : _dueText(diffDays),
+        divisionLabel: c.divisionLabel,
+        projectLabel: c.projectLabel,
+        headline: headline.isEmpty ? c.projectLabel : headline,
+        dueDate: _dueDateShort(dueRaw),
+        diffDays: diffDays,
+      ));
+    }
+
+    return result;
+  }
+
+  List<_Issue> _filteredByDivision(List<_Issue> all) {
+    if (widget.divisionFilterLabel == null) return all;
+    return all.where((e) => e.divisionLabel == widget.divisionFilterLabel).toList();
+  }
+
+  List<_Issue> _applyTabAndSort(List<_Issue> list) {
+    final result = [...list];
 
     switch (_filter) {
       case _IssueFilter.all:
         break;
       case _IssueFilter.delayed:
-        list.retainWhere((e) => e.status == '지연');
+        result.retainWhere((e) => e.status == '지연');
         break;
       case _IssueFilter.warning:
-        list.retainWhere((e) => e.status == '주의');
+        result.retainWhere((e) => e.status == '주의');
         break;
     }
 
-    list.sort((a, b) {
+    result.sort((a, b) {
       final ai = a.priority.index;
       final bi = b.priority.index;
-      return _priorityDesc ? ai.compareTo(bi) : bi.compareTo(ai);
+      if (ai != bi) {
+        return _priorityDesc ? ai.compareTo(bi) : bi.compareTo(ai);
+      }
+      // 같은 우선순위: 임박한 것 먼저
+      return a.diffDays.compareTo(b.diffDays);
     });
 
-    return list;
+    return result;
   }
 
-  int get _totalCount => _filteredByDivision.length;
-  int get _delayedCount =>
-      _filteredByDivision.where((e) => e.status == '지연').length;
-  int get _warningCount =>
-      _filteredByDivision.where((e) => e.status == '주의').length;
-
   void _openReport(String projectKey) {
+    if (projectKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('연결된 프로젝트가 없습니다.')),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ReportDetailScreen(projectKey: projectKey),
@@ -112,8 +265,6 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final visible = _visible;
-
     return Scaffold(
       backgroundColor: AppColors.reportPageBg,
       appBar: AppBar(
@@ -139,160 +290,175 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('새로고침은 다음 단계에서 연결합니다.')),
-              );
-            },
+            onPressed: _refresh,
           ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFCA5A5)),
+      body: FutureBuilder<List<DashboardCard>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError || snap.data == null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '이슈를 불러오지 못했어요.\n${snap.error ?? ''}',
+                  textAlign: TextAlign.center,
+                  style: AppText.caption.copyWith(color: AppColors.reportBody),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            );
+          }
+
+          final all = _buildIssues(snap.data!);
+          final scoped = _filteredByDivision(all);
+          final visible = _applyTabAndSort(scoped);
+
+          final totalCount = scoped.length;
+          final delayedCount =
+              scoped.where((e) => e.status == '지연').length;
+          final warningCount =
+              scoped.where((e) => e.status == '주의').length;
+
+          return SafeArea(
+            top: false,
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.error,
+                                color: Color(0xFFFF0000), size: 16),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '지연 $delayedCount건 · 주의 $warningCount건',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.headerNavy,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '총 $totalCount건 — 우선순위 높은 순으로 정렬',
+                          style: AppText.caption.copyWith(
+                            fontSize: 11,
+                            color: const Color(0xFF7C8594),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _tab('전체 $totalCount', _IssueFilter.all,
+                            color: AppColors.headerNavy),
+                        const SizedBox(width: 6),
+                        _tab('지연 $delayedCount', _IssueFilter.delayed,
+                            color: const Color(0xFFFF0000)),
+                        const SizedBox(width: 6),
+                        _tab('주의 $warningCount', _IssueFilter.warning,
+                            color: const Color(0xFFE97132)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Icon(Icons.error,
-                          color: Color(0xFFFF0000), size: 16),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '지연 $_delayedCount건 · 주의 $_warningCount건',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.headerNavy,
+                      InkWell(
+                        onTap: () => setState(
+                            () => _priorityDesc = !_priorityDesc),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _priorityDesc
+                                    ? '우선순위 순 (높음↑)'
+                                    : '우선순위 순 (낮음↑)',
+                                style: AppText.caption.copyWith(
+                                  fontSize: 11,
+                                  color: AppColors.headerNavy,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Icon(
+                                _priorityDesc
+                                    ? Icons.arrow_downward_rounded
+                                    : Icons.arrow_upward_rounded,
+                                size: 14,
+                                color: AppColors.headerNavy,
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '총 $_totalCount건 — 우선순위 높은 순으로 정렬',
-                    style: AppText.caption.copyWith(
-                      fontSize: 11,
-                      color: const Color(0xFF7C8594),
-                    ),
-                  ),
+                  const SizedBox(height: 10),
+                  if (visible.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '해당하는 이슈가 없어요',
+                        style: AppText.caption.copyWith(
+                          fontSize: 12,
+                          color: const Color(0xFF7C8594),
+                        ),
+                      ),
+                    )
+                  else
+                    for (int i = 0; i < visible.length; i++) ...[
+                      IssueCard(
+                        data: IssueCardData(
+                          id: visible[i].projectKey,
+                          projectKey: visible[i].projectKey,
+                          priority: visible[i].priority,
+                          status: visible[i].status,
+                          dueText: visible[i].dueText,
+                          divisionLabel: visible[i].divisionLabel,
+                          projectLabel: visible[i].projectLabel,
+                          headline: visible[i].headline,
+                          dueDate: visible[i].dueDate,
+                          onTap: () => _openReport(visible[i].projectKey),
+                        ),
+                      ),
+                      if (i < visible.length - 1)
+                        const SizedBox(height: 10),
+                    ],
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _tab('전체 $_totalCount', _IssueFilter.all,
-                      color: AppColors.headerNavy),
-                  const SizedBox(width: 6),
-                  _tab('지연 $_delayedCount', _IssueFilter.delayed,
-                      color: const Color(0xFFFF0000)),
-                  const SizedBox(width: 6),
-                  _tab('주의 $_warningCount', _IssueFilter.warning,
-                      color: const Color(0xFFE97132)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                InkWell(
-                  onTap: () =>
-                      setState(() => _priorityDesc = !_priorityDesc),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _priorityDesc ? '우선순위 순 (높음↑)' : '우선순위 순 (낮음↑)',
-                          style: AppText.caption.copyWith(
-                            fontSize: 11,
-                            color: AppColors.headerNavy,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Icon(
-                          _priorityDesc
-                              ? Icons.arrow_downward_rounded
-                              : Icons.arrow_upward_rounded,
-                          size: 14,
-                          color: AppColors.headerNavy,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (visible.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                alignment: Alignment.center,
-                child: Text(
-                  '해당하는 이슈가 없어요',
-                  style: AppText.caption.copyWith(
-                    fontSize: 12,
-                    color: const Color(0xFF7C8594),
-                  ),
-                ),
-              )
-            else
-              for (int i = 0; i < visible.length; i++) ...[
-                IssueCard(
-                  data: IssueCardData(
-                    id: visible[i].id,
-                    projectKey: visible[i].projectKey,
-                    priority: visible[i].priority,
-                    status: visible[i].status,
-                    dueText: visible[i].dueText,
-                    divisionLabel: visible[i].divisionLabel,
-                    projectLabel: visible[i].projectLabel,
-                    headline: visible[i].headline,
-                    dueDate: visible[i].dueDate,
-                    onTap: () => _openReport(visible[i].projectKey),
-                  ),
-                ),
-                if (i < visible.length - 1) const SizedBox(height: 10),
-              ],
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('이전 이슈 로딩은 다음 단계입니다.')),
-                  );
-                },
-                icon: const Icon(Icons.expand_more_rounded,
-                    size: 18, color: Color(0xFF7C8594)),
-                label: Text(
-                  '이전 이슈 더 보기',
-                  style: AppText.bodyStrong.copyWith(
-                    fontSize: 13,
-                    color: AppColors.headerNavy,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
@@ -317,8 +483,8 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
         decoration: BoxDecoration(
           color: selected ? color : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border:
-              Border.all(color: selected ? color : color.withValues(alpha: 0.4)),
+          border: Border.all(
+              color: selected ? color : color.withValues(alpha: 0.4)),
         ),
         child: Text(
           label,
@@ -331,28 +497,4 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
       ),
     );
   }
-}
-
-class _IssueMock {
-  final String id;
-  final String projectKey;
-  final IssuePriority priority;
-  final String status;
-  final String dueText;
-  final String divisionLabel;
-  final String projectLabel;
-  final String headline;
-  final String dueDate;
-
-  const _IssueMock(
-    this.id,
-    this.projectKey,
-    this.priority,
-    this.status,
-    this.dueText,
-    this.divisionLabel,
-    this.projectLabel,
-    this.headline,
-    this.dueDate,
-  );
 }

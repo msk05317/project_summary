@@ -11,6 +11,7 @@ class ProjectGridCard extends StatelessWidget {
   final int progressPercent;    // 55
   final bool isFavorite;
   final bool isSelected;
+  final bool hasData;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
 
@@ -22,11 +23,13 @@ class ProjectGridCard extends StatelessWidget {
     required this.progressPercent,
     required this.isFavorite,
     required this.isSelected,
+    this.hasData = true,
     required this.onTap,
     required this.onToggleFavorite,
   });
 
   Color get _statusColor {
+    if (!hasData) return const Color(0xFFB8BFCC);
     switch (status) {
       case '지연':
         return const Color(0xFFFF0000);
@@ -49,7 +52,7 @@ class ProjectGridCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: onTap,
+        onTap: hasData ? onTap : null,
         borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
@@ -127,7 +130,7 @@ class ProjectGridCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            status,
+                            hasData ? status : '데이터 없음',
                             style: AppText.caption.copyWith(
                               fontSize: 11,
                               color: const Color(0xFF7C8594),

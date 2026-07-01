@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../design/design.dart';
 import '../models/division.dart';
+import '../models/dashboard.dart';
+import '../services/dashboard_service.dart';
+import '../services/divisions_service.dart';
 import '../components/overall/overall_progress_card.dart';
 import '../components/overall/status_distribution_bar.dart';
-import '../components/overall/progress_trend_chart.dart';
 import '../components/overall/division_progress_row.dart';
+import '../components/overall/progress_trend_chart.dart';
 import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_projects_screen.dart';
@@ -14,6 +17,29 @@ import 'division_select_screen.dart' show DivisionSelectScreen;
 enum _Period { today, week, month }
 
 enum _DivisionFilter { all, normal, warning, delayed }
+
+// 사업부별 집계 결과.
+class _DivisionAgg {
+  final Division division;
+  final int total;
+  final int normal;
+  final int warning;
+  final int delayed;
+  final int inProgress;
+  final int progressPercent;
+  final String primaryStatus;
+
+  const _DivisionAgg({
+    required this.division,
+    required this.total,
+    required this.normal,
+    required this.warning,
+    required this.delayed,
+    required this.inProgress,
+    required this.progressPercent,
+    required this.primaryStatus,
+  });
+}
 
 class OverallStatusScreen extends StatefulWidget {
   const OverallStatusScreen({super.key});
@@ -26,32 +52,123 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
   _Period _period = _Period.week;
   _DivisionFilter _filter = _DivisionFilter.all;
 
-  final List<_DivisionMock> _divisions = const [
-    _DivisionMock('semiconductor', '반도체사업부', 7, 5, 1, 1, 68, '주의'),
-    _DivisionMock('automotive', '자동차', 4, 2, 1, 1, 52, '지연'),
-    _DivisionMock('bloom', '블룸', 3, 1, 1, 1, 47, '지연'),
-    _DivisionMock('arista', '아리스타', 3, 2, 1, 0, 55, '주의'),
-    _DivisionMock('network', '네트워크', 3, 2, 1, 0, 71, '주의'),
-    _DivisionMock('system', '시스템', 2, 1, 1, 0, 66, '주의'),
-    _DivisionMock('pcb', 'PCB', 3, 2, 1, 0, 63, '주의'),
-    _DivisionMock('automation', '자동화', 3, 3, 0, 0, 80, '정상'),
-    _DivisionMock('mill', '밀', 2, 1, 1, 0, 58, '주의'),
-    _DivisionMock('healthcare', '헬스케어', 3, 2, 1, 0, 49, '주의'),
-    _DivisionMock('ess', 'ESS', 2, 2, 0, 0, 74, '정상'),
-    _DivisionMock('heavy', '중공업', 2, 2, 0, 0, 70, '정상'),
-  ];
+  late Future<_LoadedData> _future;
 
-  List<_DivisionMock> get _visibleDivisions {
-    final list = [..._divisions];
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_LoadedData> _load() async {
+    final results = await Future.wait([
+      DashboardService.fetchCards(),
+      DivisionsService.fetchAll(),
+    ]);
+    return _LoadedData(
+      cards: results[0] as List<DashboardCard>,
+      divisions: results[1] as List<Division>,
+    );
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _future = _load();
+    });
+    await _future;
+  }
+
+  // 상태별 진행률 가중치 (mock 기반 근사)
+  // 실제 진행률 필드가 백엔드에 생기면 이 로직 교체 예정
+  int _progressWeight(String status) {
+    switch (status.toUpperCase()) {
+      case 'GREEN':
+        return 100;
+      case 'BLUE':
+      case 'GRAY':
+      case 'BLACK':
+        return 80;
+      case 'YELLOW':
+      case 'ORANGE':
+        return 50;
+      case 'RED':
+        return 20;
+      default:
+        return 60;
+    }
+  }
+
+  List<_DivisionAgg> _aggregateByDivision(
+    List<Division> divisions,
+    List<DashboardCard> cards,
+  ) {
+    final byId = <String, List<DashboardCard>>{};
+    for (final c in cards) {
+      byId.putIfAbsent(c.divisionId, () => []).add(c);
+    }
+
+    final result = <_DivisionAgg>[];
+    for (final d in divisions) {
+      final divCards = byId[d.id] ?? const <DashboardCard>[];
+
+      int normal = 0, warning = 0, delayed = 0, inProgress = 0;
+      int weightSum = 0;
+
+      for (final c in divCards) {
+        final s = c.status.toUpperCase();
+        weightSum += _progressWeight(s);
+        switch (s) {
+          case 'GREEN':
+            normal++;
+            break;
+          case 'YELLOW':
+          case 'ORANGE':
+            warning++;
+            break;
+          case 'RED':
+            delayed++;
+            break;
+          default:
+            inProgress++;
+        }
+      }
+
+      final total = divCards.length;
+      final progressPercent =
+          total == 0 ? 0 : (weightSum / total).round();
+
+      String primary;
+      if (delayed > 0) {
+        primary = '지연';
+      } else if (warning > 0) {
+        primary = '주의';
+      } else {
+        primary = '정상';
+      }
+
+      result.add(_DivisionAgg(
+        division: d,
+        total: total,
+        normal: normal + inProgress,
+        warning: warning,
+        delayed: delayed,
+        inProgress: inProgress,
+        progressPercent: progressPercent,
+        primaryStatus: primary,
+      ));
+    }
+
+    return result;
+  }
+
+  List<_DivisionAgg> _filterAndSort(List<_DivisionAgg> aggs) {
+    final list = [...aggs];
+
     switch (_filter) {
       case _DivisionFilter.all:
         list.sort((a, b) {
-          if (b.delayed != a.delayed) {
-            return b.delayed.compareTo(a.delayed);
-          }
-          if (b.warning != a.warning) {
-            return b.warning.compareTo(a.warning);
-          }
+          if (b.delayed != a.delayed) return b.delayed.compareTo(a.delayed);
+          if (b.warning != a.warning) return b.warning.compareTo(a.warning);
           return a.progressPercent.compareTo(b.progressPercent);
         });
         break;
@@ -65,19 +182,14 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
         list.retainWhere((d) => d.primaryStatus == '지연');
         break;
     }
+
     return list;
   }
 
-  void _openDivision(_DivisionMock d) {
-    final division = Division(
-      id: d.id,
-      label: d.label,
-      order: 0,
-      projects: const [],
-    );
+  void _openDivision(Division d) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => DivisionProjectsScreen(division: division),
+        builder: (_) => DivisionProjectsScreen(division: d),
       ),
     );
   }
@@ -101,6 +213,75 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
         );
         break;
     }
+  }
+
+String _periodLabel() {
+    switch (_period) {
+      case _Period.today:
+        return '최근 7일';
+      case _Period.week:
+        return '최근 4주';
+      case _Period.month:
+        return '최근 6개월';
+    }
+  }
+
+    String _todayText() {
+    final now = DateTime.now();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  List<ProgressTrendPoint> _trendPoints(int todayPercent) {
+    // 백엔드 히스토리 API가 아직 없어 오늘 값을 기준으로 근사치를 생성.
+    // 기간 탭에 따라 표시 단위와 범위가 바뀌도록 구성.
+    final now = DateTime.now();
+    final points = <ProgressTrendPoint>[];
+
+    switch (_period) {
+      case _Period.today:
+        // 최근 7일 (일 단위)
+        for (int i = 6; i >= 0; i--) {
+          final day = now.subtract(Duration(days: i));
+          final label = '${day.month}/${day.day}';
+          final value = i == 0
+              ? todayPercent.toDouble()
+              : (todayPercent - i - (i % 2 == 0 ? 1 : 0)).toDouble();
+          points.add(ProgressTrendPoint(
+              label, value.clamp(0, 100).toDouble()));
+        }
+        break;
+
+      case _Period.week:
+        // 최근 4주 (주 단위)
+        for (int i = 3; i >= 0; i--) {
+          final day = now.subtract(Duration(days: i * 7));
+          final label = '${day.month}/${day.day}';
+          final value = i == 0
+              ? todayPercent.toDouble()
+              : (todayPercent - (i * 3) - (i % 2 == 0 ? 2 : 0)).toDouble();
+          points.add(ProgressTrendPoint(
+              label, value.clamp(0, 100).toDouble()));
+        }
+        break;
+
+      case _Period.month:
+        // 최근 6개월 (월 단위)
+        for (int i = 5; i >= 0; i--) {
+          final base = DateTime(now.year, now.month - i, 1);
+          final label = '${base.month}월';
+          final value = i == 0
+              ? todayPercent.toDouble()
+              : (todayPercent - (i * 5) - (i % 2 == 0 ? 2 : 0)).toDouble();
+          points.add(ProgressTrendPoint(
+              label, value.clamp(0, 100).toDouble()));
+        }
+        break;
+    }
+
+    return points;
   }
 
   @override
@@ -128,167 +309,198 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('새로고침은 다음 단계에서 연결합니다.')),
-              );
-            },
+            onPressed: _refresh,
           ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          children: [
-            Row(
-              children: [
-                _periodChip('오늘', _Period.today),
-                const SizedBox(width: 6),
-                _periodChip('이번 주', _Period.week),
-                const SizedBox(width: 6),
-                _periodChip('이번 달', _Period.month),
-                const Spacer(),
-                Text(
-                  '기준: 2026-06-22',
-                  style: AppText.caption.copyWith(
-                    fontSize: 11,
-                    color: const Color(0xFF7C8594),
-                  ),
+      body: FutureBuilder<_LoadedData>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError || snap.data == null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '데이터를 불러오지 못했어요.\n${snap.error ?? ''}',
+                  textAlign: TextAlign.center,
+                  style: AppText.caption.copyWith(color: AppColors.reportBody),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const OverallProgressCard(
-              progressPercent: 64,
-              deltaVsYesterday: 2,
-              deltaVsAverage: 6,
-              totalCount: 37,
-              normalCount: 24,
-              warningCount: 9,
-              delayedCount: 4,
-            ),
-            const SizedBox(height: 12),
-            const StatusDistributionBar(
-              normalCount: 24,
-              warningCount: 9,
-              delayedCount: 4,
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.reportCardBorder),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            );
+          }
+
+          final data = snap.data!;
+          final summary = DashboardSummary.fromCards(data.cards);
+          final aggs = _aggregateByDivision(data.divisions, data.cards);
+          final visible = _filterAndSort(aggs);
+          final trendPoints = _trendPoints(summary.progressPercent);
+
+          return SafeArea(
+            top: false,
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
                   Row(
                     children: [
+                      _periodChip('오늘', _Period.today),
+                      const SizedBox(width: 6),
+                      _periodChip('이번 주', _Period.week),
+                      const SizedBox(width: 6),
+                      _periodChip('이번 달', _Period.month),
+                      const Spacer(),
                       Text(
-                        '진행률 추이 (최근 7일)',
+                        '기준: ${_todayText()}',
+                        style: AppText.caption.copyWith(
+                          fontSize: 11,
+                          color: const Color(0xFF7C8594),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  OverallProgressCard(
+                    progressPercent: summary.progressPercent,
+                    deltaVsYesterday: 2,
+                    deltaVsAverage: 6,
+                    totalCount: summary.total,
+                    normalCount: summary.normal + summary.inProgress,
+                    warningCount: summary.warning,
+                    delayedCount: summary.delayed,
+                  ),
+                  const SizedBox(height: 12),
+                  StatusDistributionBar(
+                    normalCount: summary.normal + summary.inProgress,
+                    warningCount: summary.warning,
+                    delayedCount: summary.delayed,
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.reportCardBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '진행률 추이 (${_periodLabel()})',
+                              style: AppText.bodyStrong.copyWith(
+                                fontSize: 13,
+                                color: AppColors.headerNavy,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF196B24)
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                '이번 주 +6%',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF196B24),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ProgressTrendChart(points: trendPoints),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text(
+                        '사업부별 진행 현황',
                         style: AppText.bodyStrong.copyWith(
-                          fontSize: 13,
+                          fontSize: 14,
                           color: AppColors.headerNavy,
                         ),
                       ),
                       const Spacer(),
-                      Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF196B24).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          '이번 주 +6%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF196B24),
-                          ),
+                      Text(
+                        '지연 많은 순',
+                        style: AppText.caption.copyWith(
+                          fontSize: 11,
+                          color: const Color(0xFF7C8594),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  const ProgressTrendChart(
-                    points: [
-                      ProgressTrendPoint('6/16', 58),
-                      ProgressTrendPoint('6/17', 59),
-                      ProgressTrendPoint('6/18', 60),
-                      ProgressTrendPoint('6/19', 61),
-                      ProgressTrendPoint('6/20', 62),
-                      ProgressTrendPoint('6/21', 63),
-                      ProgressTrendPoint('6/22', 64),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _filterChip('전체', _DivisionFilter.all),
+                      const SizedBox(width: 6),
+                      _filterChip('정상', _DivisionFilter.normal),
+                      const SizedBox(width: 6),
+                      _filterChip('주의', _DivisionFilter.warning),
+                      const SizedBox(width: 6),
+                      _filterChip('지연', _DivisionFilter.delayed),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text(
-                  '사업부별 진행 현황',
-                  style: AppText.bodyStrong.copyWith(
-                    fontSize: 14,
-                    color: AppColors.headerNavy,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '지연 많은 순',
-                  style: AppText.caption.copyWith(
-                    fontSize: 11,
-                    color: const Color(0xFF7C8594),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                _filterChip('전체', _DivisionFilter.all),
-                const SizedBox(width: 6),
-                _filterChip('정상', _DivisionFilter.normal),
-                const SizedBox(width: 6),
-                _filterChip('주의', _DivisionFilter.warning),
-                const SizedBox(width: 6),
-                _filterChip('지연', _DivisionFilter.delayed),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.reportCardBorder),
-              ),
-              child: Column(
-                children: [
-                  for (int i = 0; i < _visibleDivisions.length; i++) ...[
-                    DivisionProgressRow(
-                      divisionLabel: _visibleDivisions[i].label,
-                      primaryStatus: _visibleDivisions[i].primaryStatus,
-                      totalCount: _visibleDivisions[i].total,
-                      normalCount: _visibleDivisions[i].normal,
-                      warningCount: _visibleDivisions[i].warning,
-                      delayedCount: _visibleDivisions[i].delayed,
-                      progressPercent: _visibleDivisions[i].progressPercent,
-                      onTap: () => _openDivision(_visibleDivisions[i]),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.reportCardBorder),
                     ),
-                    if (i < _visibleDivisions.length - 1)
-                      const Divider(
-                          height: 1, color: Color(0xFFEEF1F5), thickness: 1),
-                  ],
+                    child: Column(
+                      children: [
+                        if (visible.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Text(
+                              '해당 상태의 사업부가 없어요',
+                              style: AppText.caption.copyWith(
+                                fontSize: 12,
+                                color: const Color(0xFF7C8594),
+                              ),
+                            ),
+                          )
+                        else
+                          for (int i = 0; i < visible.length; i++) ...[
+                            DivisionProgressRow(
+                              divisionLabel: visible[i].division.label,
+                              primaryStatus: visible[i].primaryStatus,
+                              totalCount: visible[i].total,
+                              normalCount: visible[i].normal,
+                              warningCount: visible[i].warning,
+                              delayedCount: visible[i].delayed,
+                              progressPercent: visible[i].progressPercent,
+                              onTap: () => _openDivision(visible[i].division),
+                            ),
+                            if (i < visible.length - 1)
+                              const Divider(
+                                  height: 1,
+                                  color: Color(0xFFEEF1F5),
+                                  thickness: 1),
+                          ],
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
@@ -356,24 +568,9 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
   }
 }
 
-class _DivisionMock {
-  final String id;
-  final String label;
-  final int total;
-  final int normal;
-  final int warning;
-  final int delayed;
-  final int progressPercent;
-  final String primaryStatus;
+class _LoadedData {
+  final List<DashboardCard> cards;
+  final List<Division> divisions;
 
-  const _DivisionMock(
-    this.id,
-    this.label,
-    this.total,
-    this.normal,
-    this.warning,
-    this.delayed,
-    this.progressPercent,
-    this.primaryStatus,
-  );
+  const _LoadedData({required this.cards, required this.divisions});
 }
