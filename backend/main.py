@@ -160,10 +160,13 @@ def _ai_headline(source_text: str) -> str:
     try:
         if client is not None:
             prompt = (
-                "다음 프로젝트 상태 문장을 15자 이내 행동 중심 한 줄로 요약해라. "
-                "규칙: 조사/어미 최소화, 명사형 종결, 숫자/모델명 유지, "
-                "괄호 안 부가설명 제거, 날짜 제거, 이모지 금지. "
-                "결과는 요약문만 출력.\n\n"
+                "다음 프로젝트 상태 문장에서 가장 중요한 액션 하나만 뽑아 20자 이내 명사형 한 줄로 요약해라. "
+                "규칙: 원문을 앞에서부터 그대로 자르지 말고 핵심 행동/상태를 재구성. "
+                "조사·어미·부사어 삭제. 여러 항목 나열 금지(가장 시급한 것 하나만). "
+                "괄호·날짜·이모지 제거. 숫자와 모델명(W25, CEFEM 등)은 유지. "
+                "예시: 'W23 24EA, W24 7개 완료, W25 3개 출하예정 (자재부족)' → 'W25 3개 출하 지연'. "
+                "예시: 'CEFEM 2대, VTM 2대 제작중, VTM 1대 자재 지연' → 'VTM 1대 자재 지연'. "
+                "요약문만 출력.\n\n"
                 f"원문: {src}"
             )
             resp = client.chat.completions.create(
@@ -182,11 +185,11 @@ def _ai_headline(source_text: str) -> str:
 
     # 폴백: 원문 앞 15자
     if not result:
-        result = src[:15]
+        result = src[:22]
 
     # 15자 초과 방어
-    if len(result) > 18:
-        result = result[:18].rstrip() + "…"
+    if len(result) > 24:
+        result = result[:24].rstrip() + "…"
 
     cache[key] = result
     _save_headline_cache(cache)
