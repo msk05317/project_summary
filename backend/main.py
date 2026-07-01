@@ -1221,7 +1221,7 @@ def dashboard():
                     "doc_id": f"note:{div_id}",
                     "product": title,
                     "status": computed_status,
-                    "headline": "",
+                    "headline": headline,
                     "summary_bullets": bullets,
                     "due_date_min": due_date_min_str,
                     "report_date": report_date,
