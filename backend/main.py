@@ -105,6 +105,93 @@ def _worst_status(statuses):
 
 
 
+# ---------- headline AI 요약 (캐시 기반) ----------
+import hashlib as _hashlib_hl
+import json as _json_hl
+from pathlib import Path as _Path_hl
+
+_HEADLINE_CACHE_PATH = _Path_hl(__file__).parent / "headline_cache.json"
+
+def _load_headline_cache() -> dict:
+    try:
+        return _json_hl.loads(_HEADLINE_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_headline_cache(cache: dict) -> None:
+    try:
+        _HEADLINE_CACHE_PATH.write_text(
+            _json_hl.dumps(cache, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+def _pick_headline_source(dated_items: list, due_date_min) -> str:
+    """
+    dated_items: [(due_date, text, raw_str), ...]
+    due_date_min 과 같은 날짜의 항목을 우선 선택.
+    없으면 첫 항목.
+    """
+    if not dated_items:
+        return ""
+    if due_date_min:
+        for d, t, _ in dated_items:
+            if d == due_date_min:
+                return t
+    return dated_items[0][1]
+
+def _ai_headline(source_text: str) -> str:
+    """
+    원문 한 줄을 15자 이내 행동 중심 요약으로 변환.
+    캐시 우선. OpenAI 실패 시 원문 앞 15자.
+    """
+    src = (source_text or "").strip()
+    if not src:
+        return ""
+    # 캐시 키: 원문 해시
+    key = _hashlib_hl.sha256(src.encode("utf-8")).hexdigest()[:16]
+    cache = _load_headline_cache()
+    if key in cache:
+        return cache[key]
+
+    # OpenAI 호출
+    result = ""
+    try:
+        if client is not None:
+            prompt = (
+                "다음 프로젝트 상태 문장을 15자 이내 행동 중심 한 줄로 요약해라. "
+                "규칙: 조사/어미 최소화, 명사형 종결, 숫자/모델명 유지, "
+                "괄호 안 부가설명 제거, 날짜 제거, 이모지 금지. "
+                "결과는 요약문만 출력.\n\n"
+                f"원문: {src}"
+            )
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=40,
+            )
+            result = (resp.choices[0].message.content or "").strip()
+            # 따옴표/쌍따옴표 감싸져 오면 제거
+            result = result.strip("\"'` ")
+            # 개행 제거
+            result = result.split("\n")[0].strip()
+    except Exception:
+        result = ""
+
+    # 폴백: 원문 앞 15자
+    if not result:
+        result = src[:15]
+
+    # 15자 초과 방어
+    if len(result) > 18:
+        result = result[:18].rstrip() + "…"
+
+    cache[key] = result
+    _save_headline_cache(cache)
+    return result
+
 def _normalize_issue_headline(text: str) -> str:
     """
     이슈 헤드라인 dedup 용 정규화 (중간 강도).
@@ -1117,8 +1204,16 @@ def dashboard():
                     continue
                 bullets = dated_bullets[:10]
 
-                # headline: 빈 문자열 (앱에서 D-day 칩으로 따로 표시)
-                headline = ""
+                # headline: summary_bullets[0] 또는 첫 dated bullet 에서 날짜 제거
+                def _shorten(txt: str, limit: int = 20) -> str:
+                    txt = (txt or "").strip()
+                    if len(txt) <= limit:
+                        return txt
+                    return txt[:limit].rstrip() + "…"
+
+                # headline: due_date_min 항목 우선 선택 후 AI 15자 요약
+                headline_src = _pick_headline_source(due_items, due_date_min)
+                headline = _ai_headline(headline_src) if headline_src else ""
                 due_date_min_str = due_date_min.isoformat() if due_date_min else None
 
                 computed_status = _calc_card_status(nc)
