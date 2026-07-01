@@ -23,6 +23,9 @@ import '../services/divisions_service.dart';
 import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
 import 'division_projects_screen.dart';
+import 'overall_status_screen.dart';
+import 'immediate_check_screen.dart';
+import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -392,6 +395,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // 사업부 카드 클릭 시 사업부 내 프로젝트 목록 화면으로 진입.
+  void _openImmediateCheck({String? divisionLabel}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImmediateCheckScreen(
+          divisionFilterLabel: divisionLabel,
+        ),
+      ),
+    );
+  }
+
+  void _openOverallStatus() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const OverallStatusScreen(),
+      ),
+    );
+  }
+
   void _openDivision(Division division) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -435,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: _SummarySection(future: _dashboardFuture),
+                      child: _SummarySection(future: _dashboardFuture, onTap: _openOverallStatus),
                     ),
 
                     // 즉시 확인 섹션 (시안 v2 신규)
@@ -454,6 +475,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         future: _dashboardFuture,
                         buildItems: _buildImmediateItems,
                         onTapItem: (item) => _openProject(item.projectKey),
+                        onTapShowAll: () => _openImmediateCheck(),
                       ),
                     ),
 
@@ -492,10 +514,25 @@ class _HomeScreenState extends State<HomeScreen> {
               current: _currentTab,
               onChanged: (tab) {
                 setState(() => _currentTab = tab);
-                if (tab != AppNavTab.home) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${_labelOf(tab)} 화면 준비 중입니다.')),
-                  );
+                switch (tab) {
+                  case AppNavTab.home:
+                    break;
+                  case AppNavTab.list:
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const DivisionSelectScreen(),
+                      ),
+                    ).then((_) {
+                      if (!mounted) return;
+                      setState(() => _currentTab = AppNavTab.home);
+                    });
+                    break;
+                  case AppNavTab.calendar:
+                  case AppNavTab.settings:
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${_labelOf(tab)} 화면 준비 중입니다.')),
+                    );
+                    break;
                 }
               },
             ),
@@ -524,8 +561,9 @@ class _HomeScreenState extends State<HomeScreen> {
 // /dashboard 응답을 받아 DashboardSummary 로 집계 후 SummaryCard 에 전달합니다.
 class _SummarySection extends StatelessWidget {
   final Future<List<DashboardCard>> future;
+  final VoidCallback onTap;
 
-  const _SummarySection({required this.future});
+  const _SummarySection({required this.future, required this.onTap});
   // SummaryCard 우측 상단 캡션 포맷터.
   // - "오늘 09:07 기준" 형태로 두 자리 패딩.
   String _formatSummaryCaption(DateTime now) {
@@ -562,13 +600,16 @@ class _SummarySection extends StatelessWidget {
         final cards = snapshot.data ?? const <DashboardCard>[];
         final summary = DashboardSummary.fromCards(cards);
 
-        return SummaryCard(
-          summary: summary,
-          // 시안 기준 'HH:mm' 까지 표시. HomeScreen state 의 게터에서 가져옴.
-          // _SummarySection 은 자기 부모(_HomeScreenState) 에 접근할 수 없으므로
-          // 부모에서 캡션 문자열을 만들어 prop 으로 내려주는 방식이 더 깔끔하지만,
-          // 현재 구조 변경 최소화를 위해 DateTime.now() 를 직접 사용합니다.
-          rightCaption: _formatSummaryCaption(DateTime.now()),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: SummaryCard(
+              summary: summary,
+              rightCaption: _formatSummaryCaption(DateTime.now()),
+            ),
+          ),
         );
       },
     );
@@ -671,6 +712,7 @@ class _DivisionsSection extends StatelessWidget {
             value: query,
             onChanged: onChangedQuery,
             onTapFilter: onTapFilter,
+            hintText: '사업부명 검색',
           ),
           const SizedBox(height: AppSpacing.x3),
 
@@ -903,10 +945,14 @@ class _ImmediateCheckSection extends StatelessWidget {
   // 항목 탭 콜백.
   final void Function(ImmediateCheckItem item) onTapItem;
 
+  // '모두 보기' 탭 콜백.
+  final VoidCallback? onTapShowAll;
+
   const _ImmediateCheckSection({
     required this.future,
     required this.buildItems,
     required this.onTapItem,
+    this.onTapShowAll,
   });
 
   @override
@@ -935,8 +981,7 @@ class _ImmediateCheckSection extends StatelessWidget {
         return ImmediateCheckCard(
           items: items,
           onTapItem: onTapItem,
-          // '모두 보기' 라우팅은 아직 미정 — 현재는 비활성(회색 톤).
-          onTapShowAll: null,
+          onTapShowAll: onTapShowAll,
         );
       },
     );
