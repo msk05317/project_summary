@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from dotenv import load_dotenv
 from openai import OpenAI
+from rag import vector_store as _vs
 
 from project_templates import (
     PROJECT_LABELS,
@@ -5618,3 +5619,83 @@ function renderNotePreview(cards) {
 
 </html>
 """
+
+@app.post("/chat")
+async def chat(payload: dict):
+    """
+    RAG 챗봇 엔드포인트
+    입력: {"message": "질문 텍스트", "top_k": 5}
+    출력: {"answer": "...", "sources": [{project_label, division_id, ...}]}
+    """
+    message = (payload or {}).get("message", "").strip()
+    top_k = int((payload or {}).get("top_k", 5))
+    if not message:
+        return {"answer": "", "sources": [], "error": "empty message"}
+
+    if not _vs.is_ready():
+        return {
+            "answer": "챗봇 인덱스가 준비되지 않았어요. 관리자에게 문의해주세요.",
+            "sources": [],
+            "error": "index_not_ready",
+        }
+
+    try:
+        hits = _vs.search(message, top_k=top_k)
+    except Exception as e:
+        return {"answer": "", "sources": [], "error": f"search_failed: {e}"}
+
+    if not hits:
+        return {
+            "answer": "관련된 프로젝트 정보를 찾지 못했어요.",
+            "sources": [],
+        }
+
+    context_parts = []
+    for i, h in enumerate(hits):
+        context_parts.append(
+            f"[문서 {i+1}] 사업부: {h.get('division_id')} / "
+            f"프로젝트: {h.get('project_label')} / "
+            f"보고일: {h.get('report_date')}\n"
+            f"{h.get('text','')}"
+        )
+    context = "\n\n".join(context_parts)
+
+    system_prompt = (
+        "너는 반도체 사업부의 프로젝트 보고 어시스턴트다. "
+        "주어진 [문서] 내용만을 근거로 사용자의 질문에 한국어로 간결하게 답한다. "
+        "규칙: 1) 문서에 없는 내용은 추측하지 말 것 2) 숫자·일정·모델명은 원문 그대로 유지 "
+        "3) 3~5문장 이내 4) 마지막에 '(근거: 프로젝트명)' 형태로 인용 표시 "
+        "5) 여러 문서를 종합해야 하면 각 문서별 사실만 언급."
+    )
+    user_prompt = f"[문서]\n{context}\n\n[질문]\n{message}"
+
+    try:
+        if client is None:
+            return {"answer": "OpenAI 키가 설정되지 않았어요.", "sources": hits}
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=500,
+        )
+        answer = (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        return {"answer": "", "sources": hits, "error": f"llm_failed: {e}"}
+
+    return {
+        "answer": answer,
+        "sources": [
+            {
+                "division_id": h.get("division_id"),
+                "project_label": h.get("project_label"),
+                "project_key": h.get("project_key"),
+                "report_date": h.get("report_date"),
+                "score": round(h.get("score", 0.0), 3),
+            }
+            for h in hits
+        ],
+    }
+
