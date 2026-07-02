@@ -25,6 +25,7 @@ import '../services/dashboard_service.dart';
 import 'division_projects_screen.dart';
 import 'overall_status_screen.dart';
 import 'immediate_check_screen.dart';
+import 'calendar_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
 
@@ -528,6 +529,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                     break;
                   case AppNavTab.calendar:
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CalendarScreen(),
+                      ),
+                    ).then((_) {
+                      if (!mounted) return;
+                      setState(() => _currentTab = AppNavTab.home);
+                    });
+                    break;
                   case AppNavTab.settings:
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('${_labelOf(tab)} 화면 준비 중입니다.')),

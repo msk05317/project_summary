@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../components/components.dart';
-import '../components/base/deadline_pill.dart';
 import '../design/design.dart';
 import '../models/report_note.dart';
 import '../services/report_service.dart';
@@ -426,32 +425,54 @@ class _ErrorView extends StatelessWidget {
     required this.onRetry,
   });
 
+  bool get _isNotFound => message.contains('404');
+
   @override
   Widget build(BuildContext context) {
+    final title = _isNotFound ? '등록된 보고서가 없습니다' : '데이터를 불러오지 못했어요.';
+    final subtitle = _isNotFound
+        ? '해당 프로젝트에 대한 상세 보고서가 아직 등록되지 않았어요.'
+        : message;
+
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.x5),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline_rounded, size: 40),
+          Icon(
+            _isNotFound
+                ? Icons.description_outlined
+                : Icons.error_outline_rounded,
+            size: 40,
+            color: _isNotFound
+                ? AppColors.reportBody
+                : AppColors.reportHeading,
+          ),
           const SizedBox(height: AppSpacing.x3),
           Text(
-            '데이터를 불러오지 못했어요.',
+            title,
             style: AppText.h2.copyWith(color: AppColors.reportHeading),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.x2),
           Text(
-            message,
+            subtitle,
             style: AppText.caption.copyWith(color: AppColors.reportBody),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.x4),
-          ElevatedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('다시 시도'),
-          ),
+          if (_isNotFound)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: const Text('뒤로 가기'),
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('다시 시도'),
+            ),
         ],
       ),
     );

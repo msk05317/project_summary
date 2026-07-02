@@ -13,6 +13,7 @@ import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_projects_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
+import 'calendar_screen.dart';
 
 enum _Period { today, week, month }
 
@@ -207,6 +208,12 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
         );
         break;
       case AppNavTab.calendar:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const CalendarScreen(),
+          ),
+        );
+        break;
       case AppNavTab.settings:
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('준비 중입니다.')),

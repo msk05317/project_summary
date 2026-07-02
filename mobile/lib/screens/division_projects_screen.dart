@@ -19,6 +19,7 @@ import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'immediate_check_screen.dart';
 import 'report_detail_screen.dart';
+import 'calendar_screen.dart';
 
 class DivisionProjectsScreen extends StatefulWidget {
   final Division division;
@@ -335,8 +336,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         );
         break;
       case AppNavTab.calendar:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('캘린더 화면은 준비 중입니다.')),
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const CalendarScreen(),
+          ),
         );
         break;
       case AppNavTab.settings:

@@ -9,6 +9,7 @@ import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
+import 'calendar_screen.dart';
 
 enum _IssueFilter { all, delayed, warning }
 
@@ -255,6 +256,12 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
         );
         break;
       case AppNavTab.calendar:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const CalendarScreen(),
+          ),
+        );
+        break;
       case AppNavTab.settings:
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('준비 중입니다.')),
