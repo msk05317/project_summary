@@ -10,6 +10,7 @@ import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
 import 'calendar_screen.dart';
+import 'chat_screen.dart';
 
 enum _IssueFilter { all, delayed, warning }
 
@@ -470,7 +471,15 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const BottomPromptBar(),
+          BottomPromptBar(
+              onSubmit: (text) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(initialQuestion: text),
+                  ),
+                );
+              },
+            ),
           AppBottomNav(
             current: AppNavTab.home,
             onChanged: _handleBottomNav,

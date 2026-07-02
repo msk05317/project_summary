@@ -9,6 +9,7 @@ import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_projects_screen.dart';
 import 'calendar_screen.dart';
+import 'chat_screen.dart';
 
 class DivisionSelectScreen extends StatefulWidget {
   const DivisionSelectScreen({super.key});
@@ -280,7 +281,15 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const BottomPromptBar(),
+          BottomPromptBar(
+              onSubmit: (text) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(initialQuestion: text),
+                  ),
+                );
+              },
+            ),
           AppBottomNav(
             current: AppNavTab.list,
             onChanged: _handleBottomNav,

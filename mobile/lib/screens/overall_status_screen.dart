@@ -14,6 +14,7 @@ import '../components/home/app_bottom_nav.dart';
 import 'division_projects_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'calendar_screen.dart';
+import 'chat_screen.dart';
 
 enum _Period { today, week, month }
 
@@ -512,7 +513,15 @@ String _periodLabel() {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const BottomPromptBar(),
+          BottomPromptBar(
+              onSubmit: (text) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(initialQuestion: text),
+                  ),
+                );
+              },
+            ),
           AppBottomNav(
             current: AppNavTab.home,
             onChanged: _handleBottomNav,

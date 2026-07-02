@@ -20,6 +20,7 @@ import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'immediate_check_screen.dart';
 import 'report_detail_screen.dart';
 import 'calendar_screen.dart';
+import 'chat_screen.dart';
 
 class DivisionProjectsScreen extends StatefulWidget {
   final Division division;
@@ -561,7 +562,15 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const BottomPromptBar(),
+          BottomPromptBar(
+              onSubmit: (text) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(initialQuestion: text),
+                  ),
+                );
+              },
+            ),
           AppBottomNav(
             current: AppNavTab.list,
             onChanged: _handleBottomNav,

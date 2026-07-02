@@ -28,6 +28,7 @@ import 'immediate_check_screen.dart';
 import 'calendar_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -508,7 +509,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // 하단 LLM 입력바 (UI 만)
-            const BottomPromptBar(),
+            BottomPromptBar(
+              onSubmit: (text) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(initialQuestion: text),
+                  ),
+                );
+              },
+            ),
 
             // 하단 글로벌 네비 (첫 탭 '홈')
             AppBottomNav(
