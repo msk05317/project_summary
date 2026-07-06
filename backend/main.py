@@ -5717,7 +5717,8 @@ def _build_major_module_kpi_card() -> dict:
     """메이저모듈 월별/주차별 예상 이익 카드."""
     ASP = {"EFEM": 130000, "VTM": 240000}
     MAT = {"EFEM": 107900, "VTM": 196800}
-    PROFIT = {k: ASP[k] - MAT[k] for k in ASP}  # EFEM 22100, VTM 43200
+    # 판가 기준 매출 계산
+    UNIT = ASP
 
     june_actual = {"EFEM": 5, "VTM": 8}
     july_weekly = {
@@ -5730,8 +5731,8 @@ def _build_major_module_kpi_card() -> dict:
     aug_plan = {"EFEM": 17, "VTM": 18}
 
     def money_10k(qty: dict) -> dict:
-        efem = qty.get("EFEM", 0) * PROFIT["EFEM"] / 10000
-        vtm = qty.get("VTM", 0) * PROFIT["VTM"] / 10000
+        efem = qty.get("EFEM", 0) * UNIT["EFEM"] / 10000
+        vtm = qty.get("VTM", 0) * UNIT["VTM"] / 10000
         return {
             "efem": round(efem, 2),
             "vtm": round(vtm, 2),
@@ -5757,19 +5758,19 @@ def _build_major_module_kpi_card() -> dict:
         weeks.append(row)
 
     return {
-        "title": "월별/주차별 예상 이익",
-        "metric_mode": "gross_profit",
-        "metric_note": "판가 − 재료비 기준",
+        "title": "월별/주차별 매출",
+        "metric_mode": "revenue",
+        "metric_note": "판가 기준 매출",
         "unit_label": "만불",
         "unit_economics": {
-            "EFEM": {"asp": ASP["EFEM"], "material": MAT["EFEM"], "profit_per_unit": PROFIT["EFEM"]},
-            "VTM": {"asp": ASP["VTM"], "material": MAT["VTM"], "profit_per_unit": PROFIT["VTM"]},
+            "EFEM": {"asp": ASP["EFEM"], "material": MAT["EFEM"], "profit_per_unit": ASP["EFEM"] - MAT["EFEM"]},
+            "VTM": {"asp": ASP["VTM"], "material": MAT["VTM"], "profit_per_unit": ASP["VTM"] - MAT["VTM"]},
         },
         "months": months,
         "weeks": weeks,
         "footnotes": [
             "※ 단위: 만불 (USD 10K)",
-            "※ 예상 이익 = 판가 − 재료비 (판관비/고정비 미반영)",
+            "※ 매출 = 수량 × 판가 (ASP 기준)",
         ],
     }
 
