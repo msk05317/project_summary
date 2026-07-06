@@ -2989,6 +2989,15 @@ def get_project_detail(project_key: str):
     # 🟢 프로젝트 상세 enrichment (기존 필드 변경 없음)
     detail = enrich_project_detail(detail)
 
+    # KPI 카드 자동 첨부 (project_key 별 화이트리스트)
+    try:
+        if project_key == "major_module":
+            detail["kpi_card"] = _build_major_module_kpi_card()
+            detail["issue_lines"] = _build_major_module_issue_lines()
+    except Exception as _e:
+        # KPI 계산 실패해도 기본 상세는 정상 반환되어야 함
+        pass
+
     return detail
 
 
@@ -5699,3 +5708,90 @@ async def chat(payload: dict):
         ],
     }
 
+
+
+# =========================================================
+# KPI 카드: 메이저모듈 예상 이익 (판가 - 재료비 기준)
+# =========================================================
+def _build_major_module_kpi_card() -> dict:
+    """메이저모듈 월별/주차별 예상 이익 카드."""
+    ASP = {"EFEM": 130000, "VTM": 240000}
+    MAT = {"EFEM": 107900, "VTM": 196800}
+    PROFIT = {k: ASP[k] - MAT[k] for k in ASP}  # EFEM 22100, VTM 43200
+
+    june_actual = {"EFEM": 5, "VTM": 8}
+    july_weekly = {
+        "W27": {"EFEM": 2, "VTM": 2, "type": "actual"},
+        "W28": {"EFEM": 5, "VTM": 6, "type": "plan"},
+        "W29": {"EFEM": 5, "VTM": 4, "type": "plan"},
+        "W30": {"EFEM": 5, "VTM": 1, "type": "plan"},
+        "W31": {"EFEM": 0, "VTM": 5, "type": "plan"},
+    }
+    aug_plan = {"EFEM": 17, "VTM": 18}
+
+    def money_10k(qty: dict) -> dict:
+        efem = qty.get("EFEM", 0) * PROFIT["EFEM"] / 10000
+        vtm = qty.get("VTM", 0) * PROFIT["VTM"] / 10000
+        return {
+            "efem": round(efem, 2),
+            "vtm": round(vtm, 2),
+            "total": round(efem + vtm, 2),
+        }
+
+    july_totals_qty = {
+        "EFEM": sum(w["EFEM"] for w in july_weekly.values()),
+        "VTM": sum(w["VTM"] for w in july_weekly.values()),
+    }
+
+    months = [
+        {"month": "6월", "type": "actual", **money_10k(june_actual)},
+        {"month": "7월", "type": "plan", **money_10k(july_totals_qty)},
+        {"month": "8월", "type": "plan", **money_10k(aug_plan)},
+    ]
+
+    weeks = []
+    for w, q in july_weekly.items():
+        row = money_10k(q)
+        row["week"] = w
+        row["type"] = q["type"]
+        weeks.append(row)
+
+    return {
+        "title": "월별/주차별 예상 이익",
+        "metric_mode": "gross_profit",
+        "metric_note": "판가 − 재료비 기준",
+        "unit_label": "만불",
+        "unit_economics": {
+            "EFEM": {"asp": ASP["EFEM"], "material": MAT["EFEM"], "profit_per_unit": PROFIT["EFEM"]},
+            "VTM": {"asp": ASP["VTM"], "material": MAT["VTM"], "profit_per_unit": PROFIT["VTM"]},
+        },
+        "months": months,
+        "weeks": weeks,
+        "footnotes": [
+            "※ 단위: 만불 (USD 10K)",
+            "※ 예상 이익 = 판가 − 재료비 (판관비/고정비 미반영)",
+        ],
+    }
+
+
+def _build_major_module_issue_lines() -> list:
+    """메이저모듈 이슈/참고 라인 (KPI 카드 하단 표시용)."""
+    return [
+        {
+            "text": "W28 FE 1대 고객 사급자재(엔드이펙터) 지연",
+            "due_date": "2026-07-06",
+            "severity": "high",
+            "show_dday": True,
+        },
+        {
+            "text": "MACH I VTM 추가 승인 예정 · 10월 양산 승인 목표",
+            "due_date": "2026-10-31",
+            "severity": "mid",
+            "show_dday": True,
+        },
+        {
+            "text": "VN 내재화 프레임 진행 · FE 19/11, BE 25/14",
+            "severity": "info",
+            "show_dday": False,
+        },
+    ]
