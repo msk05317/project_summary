@@ -5711,51 +5711,137 @@ async def chat(payload: dict):
 
 
 # =========================================================
-# KPI 카드: 메이저모듈 예상 이익 (판가 - 재료비 기준)
+# KPI 카드: 히스토리 파일 기반 (프로젝트별 월/주차 누적)
 # =========================================================
+from datetime import datetime, date, timedelta
+import calendar as _calendar
+
+KPI_HISTORY_FILE = BASE_DIR / "kpi_history.json" if "BASE_DIR" in globals() else Path("kpi_history.json")
+
+
+def _load_kpi_history() -> dict:
+    """kpi_history.json 로드. 없으면 빈 구조."""
+    try:
+        with open(KPI_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"version": 1, "projects": {}}
+
+
+def _save_kpi_history(data: dict) -> None:
+    data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    with open(KPI_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _iso_week_of(dt: date) -> str:
+    """date -> 'YYYY-Wnn'."""
+    y, w, _ = dt.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+def _month_key(dt: date) -> str:
+    return f"{dt.year:04d}-{dt.month:02d}"
+
+
+def _month_label(month_key: str) -> str:
+    """'2026-07' -> '7월'."""
+    try:
+        _, m = month_key.split("-")
+        return f"{int(m)}월"
+    except Exception:
+        return month_key
+
+
+def _week_label(week_key: str) -> str:
+    """'2026-W28' -> 'W28'."""
+    try:
+        return week_key.split("-")[1]
+    except Exception:
+        return week_key
+
+
+def _slice_window(items: dict, key_fn_today, past: int, future: int) -> list:
+    """
+    items: dict[key -> row], key는 정렬 가능한 문자열
+    key_fn_today: 오늘의 기준 key
+    past 개 이전 ~ future 개 이후까지 반환. 실제 있는 것만.
+    """
+    today_key = key_fn_today()
+    all_keys = sorted(items.keys())
+    if not all_keys:
+        return []
+    # 오늘 key 앞뒤로 잘라내기 (없으면 가장 가까운 이전 key 기준)
+    if today_key in all_keys:
+        idx = all_keys.index(today_key)
+    else:
+        # today_key보다 작거나 같은 가장 마지막 key
+        idx = 0
+        for i, k in enumerate(all_keys):
+            if k <= today_key:
+                idx = i
+    lo = max(0, idx - past)
+    hi = min(len(all_keys), idx + future + 1)
+    return [(k, items[k]) for k in all_keys[lo:hi]]
+
+
 def _build_major_module_kpi_card() -> dict:
-    """메이저모듈 월별/주차별 예상 이익 카드."""
-    ASP = {"EFEM": 130000, "VTM": 240000}
-    MAT = {"EFEM": 107900, "VTM": 196800}
-    # 판가 기준 매출 계산
-    UNIT = ASP
-
-    june_actual = {"EFEM": 5, "VTM": 8}
-    july_weekly = {
-        "W27": {"EFEM": 2, "VTM": 2, "type": "actual"},
-        "W28": {"EFEM": 5, "VTM": 6, "type": "plan"},
-        "W29": {"EFEM": 5, "VTM": 4, "type": "plan"},
-        "W30": {"EFEM": 5, "VTM": 1, "type": "plan"},
-        "W31": {"EFEM": 0, "VTM": 5, "type": "plan"},
+    """
+    kpi_history.json 기반으로 메이저모듈 KPI 카드 생성.
+    - 판가 기준 매출 계산
+    - 월: 오늘 기준 직전 1개월(실적) + 향후 2개월 = 최대 3개
+    - 주: 오늘 기준 직전 0주 + 향후 4주 = 최대 5개
+    """
+    hist = _load_kpi_history()
+    proj = (hist.get("projects") or {}).get("major_module") or {}
+    ue = proj.get("unit_economics") or {
+        "EFEM": {"asp": 130000, "material": 107900},
+        "VTM":  {"asp": 240000, "material": 196800},
     }
-    aug_plan = {"EFEM": 17, "VTM": 18}
+    asp_e = ue.get("EFEM", {}).get("asp", 130000)
+    asp_v = ue.get("VTM",  {}).get("asp", 240000)
 
-    def money_10k(qty: dict) -> dict:
-        efem = qty.get("EFEM", 0) * UNIT["EFEM"] / 10000
-        vtm = qty.get("VTM", 0) * UNIT["VTM"] / 10000
-        return {
-            "efem": round(efem, 2),
-            "vtm": round(vtm, 2),
-            "total": round(efem + vtm, 2),
-        }
+    def money_10k(efem_qty: float, vtm_qty: float) -> dict:
+        efem = efem_qty * asp_e / 10000
+        vtm  = vtm_qty  * asp_v / 10000
+        return {"efem": round(efem, 2), "vtm": round(vtm, 2), "total": round(efem + vtm, 2)}
 
-    july_totals_qty = {
-        "EFEM": sum(w["EFEM"] for w in july_weekly.values()),
-        "VTM": sum(w["VTM"] for w in july_weekly.values()),
-    }
+    today = date.today()
 
-    months = [
-        {"month": "6월", "type": "actual", **money_10k(june_actual)},
-        {"month": "7월", "type": "plan", **money_10k(july_totals_qty)},
-        {"month": "8월", "type": "plan", **money_10k(aug_plan)},
-    ]
+    months_raw = proj.get("months") or {}
+    weeks_raw  = proj.get("weeks")  or {}
+
+    m_slice = _slice_window(months_raw, lambda: _month_key(today), past=1, future=2)
+    w_slice = _slice_window(weeks_raw,  lambda: _iso_week_of(today), past=1, future=4)
+
+    months = []
+    for mk, row in m_slice:
+        e = row.get("efem", 0); v = row.get("vtm", 0)
+        months.append({
+            "month": _month_label(mk),
+            "type": row.get("type", "plan"),
+            **money_10k(e, v),
+        })
 
     weeks = []
-    for w, q in july_weekly.items():
-        row = money_10k(q)
-        row["week"] = w
-        row["type"] = q["type"]
-        weeks.append(row)
+    for wk, row in w_slice:
+        e = row.get("efem", 0); v = row.get("vtm", 0)
+        weeks.append({
+            "week": _week_label(wk),
+            "type": row.get("type", "plan"),
+            **money_10k(e, v),
+        })
+
+    # 주차별 타이틀 (가장 이른 주가 속한 달 표시)
+    week_group_label = ""
+    if w_slice:
+        first_wk = w_slice[0][0]
+        try:
+            y, wn = first_wk.split("-W")
+            monday = datetime.strptime(f"{y} {int(wn)} 1", "%G %V %u").date()
+            week_group_label = f"{monday.month}월 주차별"
+        except Exception:
+            week_group_label = "주차별"
 
     return {
         "title": "월별/주차별 매출",
@@ -5763,9 +5849,10 @@ def _build_major_module_kpi_card() -> dict:
         "metric_note": "판가 기준 매출",
         "unit_label": "만불",
         "unit_economics": {
-            "EFEM": {"asp": ASP["EFEM"], "material": MAT["EFEM"], "profit_per_unit": ASP["EFEM"] - MAT["EFEM"]},
-            "VTM": {"asp": ASP["VTM"], "material": MAT["VTM"], "profit_per_unit": ASP["VTM"] - MAT["VTM"]},
+            "EFEM": {"asp": asp_e, "material": ue.get("EFEM", {}).get("material", 0)},
+            "VTM":  {"asp": asp_v, "material": ue.get("VTM",  {}).get("material", 0)},
         },
+        "week_group_label": week_group_label,
         "months": months,
         "weeks": weeks,
         "footnotes": [
@@ -5776,23 +5863,7 @@ def _build_major_module_kpi_card() -> dict:
 
 
 def _build_major_module_issue_lines() -> list:
-    """메이저모듈 이슈/참고 라인 (KPI 카드 하단 표시용)."""
-    return [
-        {
-            "text": "W28 FE 1대 고객 사급자재(엔드이펙터) 지연",
-            "due_date": "2026-07-06",
-            "severity": "high",
-            "show_dday": True,
-        },
-        {
-            "text": "MACH I VTM 추가 승인 예정 · 10월 양산 승인 목표",
-            "due_date": "2026-10-31",
-            "severity": "mid",
-            "show_dday": True,
-        },
-        {
-            "text": "VN 내재화 프레임 진행 · FE 19/11, BE 25/14",
-            "severity": "info",
-            "show_dday": False,
-        },
-    ]
+    """kpi_history.json 에서 이슈 라인 로드. 없으면 빈 리스트."""
+    hist = _load_kpi_history()
+    proj = (hist.get("projects") or {}).get("major_module") or {}
+    return proj.get("issue_lines") or []

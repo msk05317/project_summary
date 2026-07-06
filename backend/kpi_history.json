@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "updated_at": "2026-07-03T00:00:00Z",
+  "projects": {
+    "major_module": {
+      "unit_economics": {
+        "EFEM": {"asp": 130000, "material": 107900},
+        "VTM":  {"asp": 240000, "material": 196800}
+      },
+      "months": {
+        "2026-06": {"efem": 5,  "vtm": 8,  "type": "actual", "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
+        "2026-07": {"efem": 17, "vtm": 18, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
+        "2026-08": {"efem": 17, "vtm": 18, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"}
+      },
+      "weeks": {
+        "2026-W27": {"efem": 2, "vtm": 2, "type": "actual", "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
+        "2026-W28": {"efem": 5, "vtm": 6, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
+        "2026-W29": {"efem": 5, "vtm": 4, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
+        "2026-W30": {"efem": 5, "vtm": 1, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
+        "2026-W31": {"efem": 0, "vtm": 5, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"}
+      },
+      "issue_lines": [
+        {"text": "W28 FE 1대 고객 사급자재(엔드이펙터) 지연", "due_date": "2026-07-06", "severity": "high", "show_dday": true},
+        {"text": "MACH I VTM 추가 승인 예정 · 10월 양산 승인 목표", "due_date": "2026-10-31", "severity": "mid", "show_dday": true},
+        {"text": "VN 내재화 프레임 진행 · FE 19/11, BE 25/14", "severity": "info", "show_dday": false}
+      ]
+    }
+  }
+}
