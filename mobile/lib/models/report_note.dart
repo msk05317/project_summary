@@ -1,3 +1,4 @@
+import 'profit_kpi_card.dart';
 class ReportItem {
   final String type;
   final String text;
@@ -63,6 +64,8 @@ class ReportNote {
   final String? updatedAt;
   final bool noteOnly;
   final List<ReportSection> sections;
+  final ProfitKpiCard? kpiCard;
+  final List<IssueLine> issueLines;
 
   const ReportNote({
     required this.projectKey,
@@ -75,6 +78,8 @@ class ReportNote {
     this.projectLabel,
     this.updatedAt,
     this.noteOnly = false,
+    this.kpiCard,
+    this.issueLines = const [],
   });
 
   factory ReportNote.fromJson(Map<String, dynamic> j) {
@@ -100,6 +105,13 @@ class ReportNote {
       projectLabel: (j['project_label'] ?? root['project_label'])?.toString(),
       updatedAt: (j['updated_at'] ?? root['updated_at'])?.toString(),
       noteOnly: (j['note_only'] == true),
+      kpiCard: (j['kpi_card'] is Map<String, dynamic>)
+          ? ProfitKpiCard.fromJson(Map<String, dynamic>.from(j['kpi_card']))
+          : null,
+      issueLines: (j['issue_lines'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => IssueLine.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 

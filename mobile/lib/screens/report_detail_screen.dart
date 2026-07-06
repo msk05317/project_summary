@@ -5,6 +5,7 @@ import '../design/design.dart';
 import '../models/report_note.dart';
 import '../services/report_service.dart';
 import '../services/favorites_service.dart';
+import '../components/kpi/profit_kpi_section.dart';
 
 class ReportDetailScreen extends StatefulWidget {
   final String projectKey;
@@ -139,7 +140,16 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                             status: note.status ?? 'GRAY',
                           ),
                         const SizedBox(height: AppSpacing.x3),
-                        for (final section in note.bodySections) ...[
+                        if (note.kpiCard != null) ...[
+                          ProfitKpiSection(
+                            card: note.kpiCard!,
+                            issues: note.issueLines,
+                          ),
+                          const SizedBox(height: AppSpacing.x3),
+                        ],
+                        // KPI 카드가 있으면 하단 노트 섹션은 숨김 (중복/데이터 정합성 이슈)
+                        if (note.kpiCard == null)
+                          for (final section in note.bodySections) ...[
                           _ReportSectionCard(
                             section: section,
                             projectStatus: note.status ?? 'GRAY',
