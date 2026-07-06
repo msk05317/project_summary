@@ -3592,6 +3592,7 @@ _ADMIN_UPLOAD_HTML = """
   <button class="tab-btn active" data-tab="ppt">📤 PPT 업로드</button>
   <button class="tab-btn" data-tab="notes">📝 주간 보고 업로드</button>
   <button class="tab-btn" data-tab="mapping">⚙️ 매핑 관리</button>
+  <button class="tab-btn" data-tab="kpi">📊 KPI 관리</button>
 </nav>
 
 <main>
@@ -5620,6 +5621,345 @@ function renderNotePreview(cards) {
 
 <!-- 숨김 사진 업로드 input -->
 <input type="file" id="notePhotoFileInput" accept="image/*" style="display:none;" />
+
+
+  <!-- ============================== 탭 4: KPI 관리 ============================== -->
+  <div class="tab-content" id="tab-kpi" style="display:none;">
+    <div class="section">
+      <h2>📊 KPI 카드 관리</h2>
+      <p style="color:#666;font-size:13px;margin-top:-8px;">
+        앱 프로젝트 상세 화면의 KPI 카드 데이터를 편집합니다. 저장 즉시 앱에 반영됩니다.
+      </p>
+
+      <div style="margin:12px 0;">
+        <label style="font-weight:600;">프로젝트 선택:</label>
+        <select id="kpi-project-select" style="padding:6px 10px;font-size:14px;margin-left:8px;">
+          <option value="major_module">메이저모듈</option>
+        </select>
+        <button id="kpi-reload-btn" style="margin-left:8px;padding:6px 14px;">🔄 새로고침</button>
+      </div>
+
+      <div id="kpi-editor" style="margin-top:16px;">
+        <!-- 월별 데이터 -->
+        <div class="kpi-block" style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;">
+          <h3 style="margin:0 0 12px 0;">📅 월별 데이터</h3>
+          <table id="kpi-months-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f3f4f6;">
+                <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;">월 (YYYY-MM)</th>
+                <th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">EFEM</th>
+                <th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">VTM</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb;">타입</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb;">작업</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div style="margin-top:10px;display:flex;gap:6px;align-items:center;">
+            <input id="kpi-new-month" placeholder="2026-09" style="padding:5px 8px;font-size:13px;width:100px;">
+            <input id="kpi-new-month-efem" type="number" placeholder="EFEM" style="padding:5px 8px;font-size:13px;width:80px;">
+            <input id="kpi-new-month-vtm" type="number" placeholder="VTM" style="padding:5px 8px;font-size:13px;width:80px;">
+            <select id="kpi-new-month-type" style="padding:5px 8px;font-size:13px;">
+              <option value="plan">계획</option>
+              <option value="actual">실적</option>
+            </select>
+            <button id="kpi-add-month-btn" style="padding:5px 14px;font-size:13px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer;">+ 월 추가/갱신</button>
+          </div>
+        </div>
+
+        <!-- 주차별 데이터 -->
+        <div class="kpi-block" style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;">
+          <h3 style="margin:0 0 12px 0;">📆 주차별 데이터</h3>
+          <table id="kpi-weeks-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f3f4f6;">
+                <th style="padding:8px;text-align:left;border-bottom:1px solid #e5e7eb;">주차 (YYYY-Wnn)</th>
+                <th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">EFEM</th>
+                <th style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">VTM</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb;">타입</th>
+                <th style="padding:8px;text-align:center;border-bottom:1px solid #e5e7eb;">작업</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div style="margin-top:10px;display:flex;gap:6px;align-items:center;">
+            <input id="kpi-new-week" placeholder="2026-W32" style="padding:5px 8px;font-size:13px;width:100px;">
+            <input id="kpi-new-week-efem" type="number" placeholder="EFEM" style="padding:5px 8px;font-size:13px;width:80px;">
+            <input id="kpi-new-week-vtm" type="number" placeholder="VTM" style="padding:5px 8px;font-size:13px;width:80px;">
+            <select id="kpi-new-week-type" style="padding:5px 8px;font-size:13px;">
+              <option value="plan">계획</option>
+              <option value="actual">실적</option>
+            </select>
+            <button id="kpi-add-week-btn" style="padding:5px 14px;font-size:13px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer;">+ 주차 추가/갱신</button>
+          </div>
+        </div>
+
+        <!-- 주요 내용 -->
+        <div class="kpi-block" style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;">
+          <h3 style="margin:0 0 12px 0;">📝 주요 내용 (앱 카드 하단)</h3>
+          <div id="kpi-issues-container"></div>
+          <div style="margin-top:10px;display:flex;gap:8px;">
+            <button id="kpi-add-issue-btn" style="padding:6px 14px;font-size:13px;background:#e5e7eb;border:none;border-radius:4px;cursor:pointer;">+ 줄 추가</button>
+            <button id="kpi-save-issues-btn" style="padding:6px 14px;font-size:13px;background:#10b981;color:#fff;border:none;border-radius:4px;cursor:pointer;">💾 주요 내용 전체 저장</button>
+          </div>
+        </div>
+
+        <!-- 상태 표시 -->
+        <div id="kpi-status" style="padding:8px 12px;font-size:13px;border-radius:4px;display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const API_BASE = "";
+  let currentProjectKey = "major_module";
+  let currentData = null;
+
+  function statusMsg(msg, ok){
+    const el = document.getElementById('kpi-status');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.background = ok ? '#d1fae5' : '#fee2e2';
+    el.style.color = ok ? '#065f46' : '#991b1b';
+    el.textContent = msg;
+    setTimeout(function(){ el.style.display = 'none'; }, 3500);
+  }
+
+  async function fetchKpi(){
+    const key = document.getElementById('kpi-project-select').value;
+    currentProjectKey = key;
+    const res = await fetch(API_BASE + '/admin/kpi/' + encodeURIComponent(key), {credentials:'include'});
+    if (!res.ok) { statusMsg('조회 실패: ' + res.status, false); return; }
+    const data = await res.json();
+    currentData = data;
+    renderMonths(data.months || {});
+    renderWeeks(data.weeks || {});
+    renderIssues(data.issue_lines || []);
+    statusMsg('데이터 로드 완료', true);
+  }
+
+  function renderMonths(months){
+    const tbody = document.querySelector('#kpi-months-table tbody');
+    tbody.innerHTML = '';
+    const keys = Object.keys(months).sort();
+    keys.forEach(function(k){
+      const row = months[k];
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="padding:6px 8px;">' + k + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;"><input type="number" value="' + (row.efem||0) + '" data-k="' + k + '" data-f="efem" style="width:70px;text-align:right;"></td>' +
+        '<td style="padding:6px 8px;text-align:right;"><input type="number" value="' + (row.vtm||0) + '" data-k="' + k + '" data-f="vtm" style="width:70px;text-align:right;"></td>' +
+        '<td style="padding:6px 8px;text-align:center;">' +
+          '<select data-k="' + k + '" data-f="type">' +
+            '<option value="plan"' + (row.type==='plan'?' selected':'') + '>계획</option>' +
+            '<option value="actual"' + (row.type==='actual'?' selected':'') + '>실적</option>' +
+          '</select>' +
+        '</td>' +
+        '<td style="padding:6px 8px;text-align:center;">' +
+          '<button data-action="save-month" data-k="' + k + '" style="padding:4px 10px;font-size:12px;background:#10b981;color:#fff;border:none;border-radius:3px;cursor:pointer;">저장</button>' +
+        '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderWeeks(weeks){
+    const tbody = document.querySelector('#kpi-weeks-table tbody');
+    tbody.innerHTML = '';
+    const keys = Object.keys(weeks).sort();
+    keys.forEach(function(k){
+      const row = weeks[k];
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="padding:6px 8px;">' + k + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;"><input type="number" value="' + (row.efem||0) + '" data-k="' + k + '" data-f="efem" style="width:70px;text-align:right;"></td>' +
+        '<td style="padding:6px 8px;text-align:right;"><input type="number" value="' + (row.vtm||0) + '" data-k="' + k + '" data-f="vtm" style="width:70px;text-align:right;"></td>' +
+        '<td style="padding:6px 8px;text-align:center;">' +
+          '<select data-k="' + k + '" data-f="type">' +
+            '<option value="plan"' + (row.type==='plan'?' selected':'') + '>계획</option>' +
+            '<option value="actual"' + (row.type==='actual'?' selected':'') + '>실적</option>' +
+          '</select>' +
+        '</td>' +
+        '<td style="padding:6px 8px;text-align:center;">' +
+          '<button data-action="save-week" data-k="' + k + '" style="padding:4px 10px;font-size:12px;background:#10b981;color:#fff;border:none;border-radius:3px;cursor:pointer;">저장</button>' +
+        '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderIssues(list){
+    const container = document.getElementById('kpi-issues-container');
+    container.innerHTML = '';
+    list.forEach(function(it, i){ appendIssueRow(it, i+1); });
+  }
+
+  function appendIssueRow(it, idx){
+    const container = document.getElementById('kpi-issues-container');
+    const row = document.createElement('div');
+    row.className = 'kpi-issue-row';
+    row.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:10px;background:#f9fafb;border-radius:6px;margin-bottom:8px;';
+    row.innerHTML =
+      '<div style="display:flex;gap:6px;align-items:center;">' +
+        '<span style="font-weight:600;color:#6b7280;">' + idx + ')</span>' +
+        '<input class="kpi-issue-text" placeholder="주요 내용 문장" value="' + escapeAttr(it.text||'') + '" style="flex:1;padding:6px 8px;font-size:13px;">' +
+        '<button data-action="remove-issue" style="padding:4px 10px;font-size:12px;background:#ef4444;color:#fff;border:none;border-radius:3px;cursor:pointer;">삭제</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;align-items:center;font-size:12px;color:#6b7280;padding-left:24px;">' +
+        '<label>마감일 <input type="date" class="kpi-issue-date" value="' + (it.due_date||'') + '" style="padding:3px 6px;font-size:12px;"></label>' +
+        '<label><input type="checkbox" class="kpi-issue-showdday"' + (it.show_dday?' checked':'') + '> D-day 표시</label>' +
+        '<label>심각도 <select class="kpi-issue-severity" style="padding:3px 6px;font-size:12px;">' +
+          '<option value="high"' + (it.severity==='high'?' selected':'') + '>high (빨강)</option>' +
+          '<option value="mid"' + (it.severity==='mid'?' selected':'') + '>mid (노랑)</option>' +
+          '<option value="info"' + (!it.severity||it.severity==='info'?' selected':'') + '>info (회색)</option>' +
+        '</select></label>' +
+      '</div>';
+    container.appendChild(row);
+  }
+
+  function escapeAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+  function reindexIssues(){
+    const rows = document.querySelectorAll('.kpi-issue-row');
+    rows.forEach(function(r, i){
+      const span = r.querySelector('span');
+      if (span) span.textContent = (i+1) + ')';
+    });
+  }
+
+  async function saveMonth(k){
+    const row = document.querySelector('#kpi-months-table tbody tr:has(button[data-k="' + k + '"])');
+    if (!row) return;
+    const payload = {
+      month: k,
+      efem: parseFloat(row.querySelector('input[data-f="efem"]').value) || 0,
+      vtm: parseFloat(row.querySelector('input[data-f="vtm"]').value) || 0,
+      type: row.querySelector('select[data-f="type"]').value,
+      source: 'admin manual edit',
+    };
+    const res = await fetch(API_BASE + '/admin/kpi/' + encodeURIComponent(currentProjectKey) + '/months', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    statusMsg(res.ok ? ('월 저장: ' + k + ' (' + (data.status||'ok') + ')') : ('저장 실패: ' + JSON.stringify(data)), res.ok);
+  }
+
+  async function saveWeek(k){
+    const row = document.querySelector('#kpi-weeks-table tbody tr:has(button[data-k="' + k + '"])');
+    if (!row) return;
+    const payload = {
+      week: k,
+      efem: parseFloat(row.querySelector('input[data-f="efem"]').value) || 0,
+      vtm: parseFloat(row.querySelector('input[data-f="vtm"]').value) || 0,
+      type: row.querySelector('select[data-f="type"]').value,
+      source: 'admin manual edit',
+    };
+    const res = await fetch(API_BASE + '/admin/kpi/' + encodeURIComponent(currentProjectKey) + '/weeks', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    statusMsg(res.ok ? ('주차 저장: ' + k + ' (' + (data.status||'ok') + ')') : ('저장 실패: ' + JSON.stringify(data)), res.ok);
+  }
+
+  async function addOrUpdateMonth(){
+    const k = (document.getElementById('kpi-new-month').value||'').trim();
+    if (!/^\d{4}-\d{2}$/.test(k)) { statusMsg('월 형식: YYYY-MM', false); return; }
+    const payload = {
+      month: k,
+      efem: parseFloat(document.getElementById('kpi-new-month-efem').value) || 0,
+      vtm: parseFloat(document.getElementById('kpi-new-month-vtm').value) || 0,
+      type: document.getElementById('kpi-new-month-type').value,
+      source: 'admin manual add',
+    };
+    const res = await fetch(API_BASE + '/admin/kpi/' + encodeURIComponent(currentProjectKey) + '/months', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) { statusMsg('월 추가/갱신 완료: ' + k, true); await fetchKpi(); }
+    else { const d = await res.json(); statusMsg('실패: ' + JSON.stringify(d), false); }
+  }
+
+  async function addOrUpdateWeek(){
+    const k = (document.getElementById('kpi-new-week').value||'').trim();
+    if (!/^\d{4}-W\d{2}$/.test(k)) { statusMsg('주차 형식: YYYY-Wnn', false); return; }
+    const payload = {
+      week: k,
+      efem: parseFloat(document.getElementById('kpi-new-week-efem').value) || 0,
+      vtm: parseFloat(document.getElementById('kpi-new-week-vtm').value) || 0,
+      type: document.getElementById('kpi-new-week-type').value,
+      source: 'admin manual add',
+    };
+    const res = await fetch(API_BASE + '/admin/kpi/' + encodeURIComponent(currentProjectKey) + '/weeks', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) { statusMsg('주차 추가/갱신 완료: ' + k, true); await fetchKpi(); }
+    else { const d = await res.json(); statusMsg('실패: ' + JSON.stringify(d), false); }
+  }
+
+  async function saveIssues(){
+    const rows = document.querySelectorAll('.kpi-issue-row');
+    const issues = [];
+    rows.forEach(function(r){
+      const text = (r.querySelector('.kpi-issue-text').value||'').trim();
+      if (!text) return;
+      const due = (r.querySelector('.kpi-issue-date').value||'').trim();
+      const showDday = r.querySelector('.kpi-issue-showdday').checked;
+      const severity = r.querySelector('.kpi-issue-severity').value;
+      const obj = { text: text, severity: severity, show_dday: showDday };
+      if (due) obj.due_date = due;
+      issues.push(obj);
+    });
+    const res = await fetch(API_BASE + '/admin/kpi/' + encodeURIComponent(currentProjectKey) + '/issue_lines', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify({issue_lines: issues}),
+    });
+    if (res.ok) { statusMsg('주요 내용 저장 완료 (' + issues.length + '건)', true); }
+    else { const d = await res.json(); statusMsg('실패: ' + JSON.stringify(d), false); }
+  }
+
+  document.addEventListener('click', function(e){
+    const t = e.target;
+    if (!t || !t.dataset) return;
+    if (t.dataset.action === 'save-month') { saveMonth(t.dataset.k); }
+    else if (t.dataset.action === 'save-week') { saveWeek(t.dataset.k); }
+    else if (t.dataset.action === 'remove-issue') { t.closest('.kpi-issue-row').remove(); reindexIssues(); }
+  });
+
+  document.addEventListener('DOMContentLoaded', function(){
+    const reloadBtn = document.getElementById('kpi-reload-btn');
+    if (reloadBtn) reloadBtn.addEventListener('click', fetchKpi);
+    const addMonthBtn = document.getElementById('kpi-add-month-btn');
+    if (addMonthBtn) addMonthBtn.addEventListener('click', addOrUpdateMonth);
+    const addWeekBtn = document.getElementById('kpi-add-week-btn');
+    if (addWeekBtn) addWeekBtn.addEventListener('click', addOrUpdateWeek);
+    const addIssueBtn = document.getElementById('kpi-add-issue-btn');
+    if (addIssueBtn) addIssueBtn.addEventListener('click', function(){
+      appendIssueRow({text:'', severity:'info', show_dday:false}, document.querySelectorAll('.kpi-issue-row').length + 1);
+    });
+    const saveIssuesBtn = document.getElementById('kpi-save-issues-btn');
+    if (saveIssuesBtn) saveIssuesBtn.addEventListener('click', saveIssues);
+
+    // KPI 탭 클릭 시 자동 로드
+    const kpiTabBtn = document.querySelector('button.tab-btn[data-tab="kpi"]');
+    if (kpiTabBtn) kpiTabBtn.addEventListener('click', function(){
+      setTimeout(fetchKpi, 100);
+    });
+  });
+})();
+</script>
+
 
 <script src="/static/note_loader.js"></script>
 <script src="/static/excel_drop.js"></script>
