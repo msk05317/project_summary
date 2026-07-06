@@ -5867,3 +5867,126 @@ def _build_major_module_issue_lines() -> list:
     hist = _load_kpi_history()
     proj = (hist.get("projects") or {}).get("major_module") or {}
     return proj.get("issue_lines") or []
+
+
+# =========================================================
+# KPI 관리 API (Phase 2): 월/주차/이슈 라인 upsert
+# =========================================================
+from pydantic import BaseModel
+
+
+class KpiMonthPayload(BaseModel):
+    month: str            # "2026-07"
+    efem: float
+    vtm: float
+    type: str = "plan"    # "actual" | "plan"
+    source: str = ""
+
+
+class KpiWeekPayload(BaseModel):
+    week: str             # "2026-W28"
+    efem: float
+    vtm: float
+    type: str = "plan"
+    source: str = ""
+
+
+class KpiIssueLinesPayload(BaseModel):
+    issue_lines: list
+
+
+def _ensure_project(hist: dict, project_key: str) -> dict:
+    hist.setdefault("projects", {})
+    proj = hist["projects"].setdefault(project_key, {
+        "unit_economics": {},
+        "months": {},
+        "weeks": {},
+        "issue_lines": [],
+    })
+    proj.setdefault("months", {})
+    proj.setdefault("weeks", {})
+    proj.setdefault("issue_lines", [])
+    return proj
+
+
+def _should_overwrite(existing: dict, incoming_type: str) -> bool:
+    """
+    같은 key가 이미 있을 때 덮어쓸지 판단.
+    - existing이 없으면 True
+    - actual > plan (actual이 들어오면 무조건 덮음)
+    - 같은 type이면 최신 upload가 덮음 (True)
+    """
+    if not existing:
+        return True
+    et = existing.get("type", "plan")
+    if incoming_type == "actual" and et == "plan":
+        return True
+    if incoming_type == "plan" and et == "actual":
+        return False
+    return True  # 같은 type이면 최신이 덮음
+
+
+@app.get("/admin/kpi/{project_key}")
+def admin_kpi_get(project_key: str, _exp: int = Depends(get_admin_session)):
+    hist = _load_kpi_history()
+    proj = (hist.get("projects") or {}).get(project_key)
+    if not proj:
+        return {"project_key": project_key, "months": {}, "weeks": {}, "issue_lines": []}
+    return {"project_key": project_key, **proj}
+
+
+@app.post("/admin/kpi/{project_key}/months")
+def admin_kpi_upsert_month(
+    project_key: str,
+    payload: KpiMonthPayload,
+    _exp: int = Depends(get_admin_session),
+):
+    hist = _load_kpi_history()
+    proj = _ensure_project(hist, project_key)
+    existing = proj["months"].get(payload.month)
+    if not _should_overwrite(existing, payload.type):
+        return {"status": "skipped", "reason": "existing actual not overwritten by plan", "month": payload.month}
+    proj["months"][payload.month] = {
+        "efem": payload.efem,
+        "vtm": payload.vtm,
+        "type": payload.type,
+        "source": payload.source,
+        "uploaded_at": datetime.utcnow().isoformat() + "Z",
+    }
+    _save_kpi_history(hist)
+    return {"status": "ok", "month": payload.month, "row": proj["months"][payload.month]}
+
+
+@app.post("/admin/kpi/{project_key}/weeks")
+def admin_kpi_upsert_week(
+    project_key: str,
+    payload: KpiWeekPayload,
+    _exp: int = Depends(get_admin_session),
+):
+    hist = _load_kpi_history()
+    proj = _ensure_project(hist, project_key)
+    existing = proj["weeks"].get(payload.week)
+    if not _should_overwrite(existing, payload.type):
+        return {"status": "skipped", "reason": "existing actual not overwritten by plan", "week": payload.week}
+    proj["weeks"][payload.week] = {
+        "efem": payload.efem,
+        "vtm": payload.vtm,
+        "type": payload.type,
+        "source": payload.source,
+        "uploaded_at": datetime.utcnow().isoformat() + "Z",
+    }
+    _save_kpi_history(hist)
+    return {"status": "ok", "week": payload.week, "row": proj["weeks"][payload.week]}
+
+
+@app.post("/admin/kpi/{project_key}/issue_lines")
+def admin_kpi_replace_issue_lines(
+    project_key: str,
+    payload: KpiIssueLinesPayload,
+    _exp: int = Depends(get_admin_session),
+):
+    hist = _load_kpi_history()
+    proj = _ensure_project(hist, project_key)
+    proj["issue_lines"] = payload.issue_lines
+    _save_kpi_history(hist)
+    return {"status": "ok", "count": len(payload.issue_lines)}
