@@ -3765,136 +3765,283 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
   // ============================================================
   window._currentEditContext = { divisionId: '', cardTitle: '' };
 
-  window.renderEditPageHTML = function(){
+  window.renderEditPageHTML = function(ctx){
+    ctx = ctx || {};
+    const projectLabel = ctx.projectLabel || '보고';
+    const statusLabel = ctx.statusLabel || '';
+    const statusClass = ctx.statusClass || 'green';
+    const subLine = ctx.subLine || '';
     return ''
       + '<style>'
       + '.ov-edit-topbar{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E6EBF2;border-radius:20px;padding:14px 18px;margin-bottom:20px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
       + '.ov-back-btn{border:1px solid #DCE4EF;background:#fff;color:#35527C;border-radius:12px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;}'
-      + '.ov-edit-title{font-size:18px;color:#12325F;font-weight:800;}'
+      + '.ov-edit-title{font-size:16px;color:#12325F;font-weight:800;}'
       + '.ov-save-btn{border:0;background:#0F2C59;color:#fff;border-radius:12px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;}'
-      + '.ov-edit-card{background:#fff;border:1px solid #E6EBF2;border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
-      + '.ov-field-label{font-size:13px;color:#6E7785;font-weight:700;margin-bottom:8px;}'
-      + '.ov-field-value{font-size:15px;color:#12325F;font-weight:700;margin-bottom:14px;}'
-      + '.ov-select,.ov-textarea{width:100%;box-sizing:border-box;border:1px solid #D9E0EA;border-radius:12px;padding:12px 14px;font-size:14px;color:#12325F;background:#fff;font-family:inherit;}'
-      + '.ov-textarea{min-height:340px;resize:vertical;line-height:1.55;}'
-      + '.ov-edit-status{font-size:13px;font-weight:600;margin-top:12px;}'
+      + '.ov-header-card{background:#fff;border:1px solid #E6EBF2;border-radius:22px;padding:22px 24px;margin-bottom:18px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
+      + '.ov-header-title{display:flex;align-items:center;gap:12px;font-size:26px;font-weight:800;color:#0F2C59;letter-spacing:-0.3px;margin-bottom:8px;}'
+      + '.ov-header-sub{font-size:14px;color:#6E7785;font-weight:600;}'
+      + '.ov-tabs{display:inline-flex;gap:6px;background:#F1F5FB;border-radius:14px;padding:4px;margin-bottom:20px;}'
+      + '.ov-tab{border:0;background:transparent;color:#6E7785;padding:8px 16px;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer;}'
+      + '.ov-tab.active{background:#0F2C59;color:#fff;}'
+      + '.ov-section{background:#fff;border:1px solid #E6EBF2;border-radius:22px;padding:20px;margin-bottom:18px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
+      + '.ov-section-title{font-size:18px;font-weight:800;color:#0F2C59;margin-bottom:14px;display:flex;align-items:center;gap:10px;}'
+      + '.ov-section-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#0F2C59;color:#fff;font-size:13px;font-weight:800;}'
+      + '.ov-placeholder{border:2px dashed #D9E3F1;background:#F8FBFF;border-radius:16px;padding:22px;text-align:center;color:#8593A6;font-size:14px;font-weight:600;}'
+      + '.ov-kpi-slot-wrap{margin-top:16px;}'
+      + '.ov-kpi-slot-label{font-size:13px;color:#6E7785;font-weight:700;margin-bottom:10px;padding-left:4px;}'
+      + '.ov-kpi-slot{background:#F8FBFF;border:1px solid #E6EBF2;border-radius:18px;padding:18px;}'
+      + '.ov-badge-inline{display:inline-flex;align-items:center;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:800;}'
+      + '.ov-badge-inline.green{background:#E7F8F0;color:#117A52;}'
+      + '.ov-badge-inline.amber{background:#FFF3D9;color:#9A6700;}'
+      + '.ov-badge-inline.blue{background:#E7F0FB;color:#23538C;}'
+      + '.ov-badge-inline.red{background:#FEE7E7;color:#B8302E;}'
+      + '.ov-kpi-grid-months{display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:12px;margin-bottom:12px;}'
+      + '.ov-kpi-grid-weeks{display:grid;grid-template-columns:repeat(5, minmax(0,1fr));gap:10px;}'
+      + '.ov-kpi-cell{background:#fff;border:1px solid #E6EBF2;border-radius:14px;padding:14px;}'
+      + '.ov-kpi-cell.actual{border-color:#B9E1CE;}'
+      + '.ov-kpi-cell.plan{border-color:#D9E3F1;}'
+      + '.ov-kpi-cell-label{font-size:12px;color:#6E7785;font-weight:700;margin-bottom:4px;}'
+      + '.ov-kpi-cell-value{font-size:20px;color:#0F2C59;font-weight:800;line-height:1.1;}'
+      + '.ov-kpi-cell-unit{font-size:12px;color:#7A8595;font-weight:600;margin-left:4px;}'
+      + '.ov-kpi-cell-sub{font-size:11px;color:#8593A6;font-weight:600;margin-top:4px;}'
+      + '.ov-kpi-cell-badge{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle;}'
+      + '.ov-kpi-cell-badge.actual{background:#E7F8F0;color:#117A52;}'
+      + '.ov-kpi-cell-badge.plan{background:#EAF0FB;color:#2E5B94;}'
+      + '.ov-issue-list{display:flex;flex-direction:column;gap:10px;}'
+      + '.ov-issue-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:14px;}'
+      + '.ov-issue-text{font-size:14px;color:#12325F;font-weight:700;line-height:1.45;flex:1;}'
+      + '.ov-issue-dday{font-size:12px;font-weight:800;color:#B8302E;white-space:nowrap;}'
       + '</style>'
       + '<div class="ov-edit-topbar">'
       + '  <button class="ov-back-btn" type="button" id="ov-back-btn">← 목록으로</button>'
-      + '  <div class="ov-edit-title" id="ov-edit-title">편집</div>'
-      + '  <button class="ov-save-btn" type="button" id="ov-save-btn">저장</button>'
+      + '  <div class="ov-edit-title" id="ov-edit-title">' + (ctx.fileName || '편집') + '</div>'
+      + '  <button class="ov-save-btn" type="button" id="ov-save-btn" disabled style="opacity:0.4;cursor:not-allowed;">저장</button>'
       + '</div>'
-      + '<div class="ov-edit-card">'
-      + '  <div class="ov-field-label">파일</div>'
-      + '  <div class="ov-field-value" id="ov-edit-file">-</div>'
-      + '  <div class="ov-field-label">사업부</div>'
-      + '  <div class="ov-field-value" id="ov-edit-division">-</div>'
-      + '  <div class="ov-field-label">편집할 카드</div>'
-      + '  <select class="ov-select" id="ov-edit-card-select" style="margin-bottom:14px;"></select>'
-      + '  <div class="ov-field-label">원본 텍스트 (raw_text)</div>'
-      + '  <textarea class="ov-textarea" id="ov-edit-rawtext" placeholder="편집할 카드를 선택하면 원본 텍스트가 표시됩니다."></textarea>'
-      + '  <div class="ov-edit-status" id="ov-edit-status"></div>'
+      + '<div class="ov-header-card">'
+      + '  <div class="ov-header-title">'
+      + '    <span>' + projectLabel + '</span>'
+      + (statusLabel ? '<span class="ov-badge-inline ' + statusClass + '">' + statusLabel + '</span>' : '')
+      + '  </div>'
+      + '  <div class="ov-header-sub">' + subLine + '</div>'
+      + '</div>'
+      + '<div class="ov-tabs">'
+      + '  <button class="ov-tab active" type="button">① 현황</button>'
+      + '  <button class="ov-tab" type="button">② 주차별 출하실적</button>'
+      + '  <button class="ov-tab" type="button">③ 주요내용</button>'
+      + '</div>'
+      + '<div class="ov-section">'
+      + '  <div class="ov-section-title"><span class="ov-section-num">1</span>현황</div>'
+      + '  <div id="ov-current-status" class="ov-placeholder">현황 요약 (headline) 이 여기에 표시됩니다.</div>'
+      + '</div>'
+      + '<div class="ov-section">'
+      + '  <div class="ov-section-title"><span class="ov-section-num">2</span>주차별 출하실적</div>'
+      + '  <div class="ov-placeholder" style="margin-bottom:14px;">📥 출하실적 엑셀 업로드 · 개발 중</div>'
+      + '  <div class="ov-placeholder" style="margin-bottom:14px;">📊 주차별 출하실적 표 · 개발 중</div>'
+      + '  <div class="ov-kpi-slot-wrap">'
+      + '    <div class="ov-kpi-slot-label">↓ 표에서 파생 · KPI 카드 (자동 계산)</div>'
+      + '    <div class="ov-kpi-slot" id="ov-kpi-slot">'
+      + '      <div style="color:#8593A6;font-size:13px;text-align:center;padding:12px;">KPI 데이터 로드 중...</div>'
+      + '    </div>'
+      + '  </div>'
+      + '</div>'
+      + '<div class="ov-section">'
+      + '  <div class="ov-section-title"><span class="ov-section-num">3</span>주요내용</div>'
+      + '  <div id="ov-issues-slot">'
+      + '    <div class="ov-placeholder">주요내용 블록 · 개발 중</div>'
+      + '  </div>'
       + '</div>';
+  };
+
+  // KPI 카드 렌더 헬퍼
+  window.renderKpiCardInline = function(card, issues){
+    if (!card) {
+      return '<div style="color:#8593A6;font-size:13px;text-align:center;padding:12px;">이 프로젝트는 KPI 데이터가 없습니다.</div>';
+    }
+    const months = Array.isArray(card.months) ? card.months : [];
+    const weeks = Array.isArray(card.weeks) ? card.weeks : [];
+    const unit = card.unit_label || '만불';
+
+    let html = '';
+
+    if (months.length > 0) {
+      html += '<div class="ov-kpi-grid-months">';
+      months.forEach(function(m){
+        const typeClass = m.type === 'actual' ? 'actual' : 'plan';
+        const badgeText = m.type === 'actual' ? '실적' : '계획';
+        const monthKey = m.month_key || m.key || '';
+        html += ''
+          + '<div class="ov-kpi-cell ' + typeClass + '">'
+          + '  <div class="ov-kpi-cell-label">' + (m.month || '') + '<span class="ov-kpi-cell-badge ' + typeClass + '">' + badgeText + '</span></div>'
+          + '  <div class="ov-kpi-cell-value">' + (m.total != null ? Number(m.total).toFixed(2) : '-') + '<span class="ov-kpi-cell-unit">' + unit + '</span></div>'
+          + '  <div class="ov-kpi-cell-sub">EFEM ' + (m.efem != null ? Number(m.efem).toFixed(2) : '-') + ' · VTM ' + (m.vtm != null ? Number(m.vtm).toFixed(2) : '-') + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+    }
+
+    if (weeks.length > 0) {
+      html += '<div class="ov-kpi-grid-weeks">';
+      weeks.forEach(function(w){
+        const typeClass = w.type === 'actual' ? 'actual' : 'plan';
+        const badgeText = w.type === 'actual' ? '실적' : '계획';
+        const weekKey = w.week_key || w.key || w.week || '';
+        html += ''
+          + '<div class="ov-kpi-cell ' + typeClass + '">'
+          + '  <div class="ov-kpi-cell-label">' + (w.week || '') + '<span class="ov-kpi-cell-badge ' + typeClass + '">' + badgeText + '</span></div>'
+          + '  <div class="ov-kpi-cell-value">' + (w.total != null ? Number(w.total).toFixed(2) : '-') + '<span class="ov-kpi-cell-unit">' + unit + '</span></div>'
+          + '  <div class="ov-kpi-cell-sub">EFEM ' + (w.efem != null ? Number(w.efem).toFixed(2) : '-') + ' · VTM ' + (w.vtm != null ? Number(w.vtm).toFixed(2) : '-') + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+    }
+
+    if (Array.isArray(issues) && issues.length > 0) {
+      html += '<div style="margin-top:14px;padding-top:14px;border-top:1px dashed #D9E3F1;">';
+      html += '<div style="font-size:12px;color:#6E7785;font-weight:700;margin-bottom:8px;">이슈 라인 (참고)</div>';
+      html += '<div class="ov-issue-list">';
+      issues.forEach(function(ii){
+        const text = ii.text || '';
+        const dueDate = ii.due_date || '';
+        let ddayText = '';
+        if (dueDate && ii.show_dday !== false) {
+          try {
+            const d = new Date(dueDate);
+            const today = new Date();
+            const diff = Math.round((d - today) / (1000*60*60*24));
+            const mmdd = (d.getMonth()+1) + '/' + d.getDate();
+            if (diff === 0) ddayText = 'D-day · ' + mmdd;
+            else if (diff > 0) ddayText = 'D-' + diff + ' · ' + mmdd;
+            else ddayText = 'D+' + Math.abs(diff) + ' 지남 · ' + mmdd;
+          } catch(_){}
+        }
+        html += ''
+          + '<div class="ov-issue-row">'
+          + '  <div class="ov-issue-text">' + text + '</div>'
+          + (ddayText ? '<div class="ov-issue-dday">' + ddayText + '</div>' : '')
+          + '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    return html;
   };
 
   window.openReportEdit = async function(docId, productName){
     const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
     if (!c) return;
-    c.innerHTML = window.renderEditPageHTML();
 
-    // 상단 버튼 바인딩
-    const backBtn = document.getElementById('ov-back-btn');
-    const saveBtn = document.getElementById('ov-save-btn');
-    if (backBtn) backBtn.addEventListener('click', window.backToReportList);
-    if (saveBtn) saveBtn.addEventListener('click', window.saveReportEdit);
-
-    const titleEl = document.getElementById('ov-edit-title');
-    const fileEl = document.getElementById('ov-edit-file');
-    const divEl = document.getElementById('ov-edit-division');
-    const selEl = document.getElementById('ov-edit-card-select');
-    const txtEl = document.getElementById('ov-edit-rawtext');
-    const statusEl = document.getElementById('ov-edit-status');
-
-    // 1) 리포트 메타 조회
-    let fileName = '';
-    let divisionId = 'semiconductor';
+    // 1) 보고 메타 조회
+    let target = null;
     try {
       const res = await fetch('/reports');
       const data = await res.json();
       const reports = Array.isArray(data.reports) ? data.reports : [];
-      const target = reports.find(function(r){ return r.doc_id === docId; }) || reports[0];
-      if (target) {
-        fileName = target.file_name || '';
-        if (target.report_meta && target.report_meta.division_id) {
-          divisionId = target.report_meta.division_id;
-        }
-      }
+      target = reports.find(function(r){ return r.doc_id === docId; }) || reports[0];
     } catch(e){ console.error(e); }
 
-    fileEl.textContent = fileName || '-';
-    divEl.textContent = divisionId;
-    titleEl.textContent = '편집 · ' + (fileName || '');
+    // 2) 헤더 컨텍스트 구성
+    const parsed = (target && target.parsed) || {};
+    const projects = parsed.projects || [];
+    const projectLabel = projects.length ? projects.join(', ') : (target && target.file_name) || '보고';
+    const week = parsed.week || '';
+    const date = parsed.date || (target && (target.report_meta || {}).date) || '';
+    const firstProduct = (target && target.products && target.products[0]) || {};
+    const headline = firstProduct.headline || '';
 
-    // 2) 노트 카드 목록 로드
-    try {
-      const nres = await fetch('/notes?division_id=' + encodeURIComponent(divisionId));
-      const ndata = await nres.json();
-      const cards = Array.isArray(ndata.cards) ? ndata.cards : [];
-      selEl.innerHTML = cards.map(function(cc, idx){
-        return '<option value="' + idx + '">' + (cc.title || '(제목 없음)') + '</option>';
-      }).join('');
+    let statusLabel = '발행 완료';
+    let statusClass = 'green';
+    if (target && target.report_status === 'ai_processing') { statusLabel = 'AI 처리 중'; statusClass = 'amber'; }
+    else if (target && target.report_status === 'review_pending') { statusLabel = '검토 대기'; statusClass = 'red'; }
 
-      function loadCard(idx){
-        const card = cards[idx];
-        if (!card) return;
-        txtEl.value = card.raw_text || '';
-        window._currentEditContext = {
-          divisionId: divisionId,
-          cardTitle: card.title || '',
-          allCards: cards,
-          selectedIndex: idx
-        };
-        statusEl.textContent = '';
+    const subParts = [];
+    if (date) subParts.push('보고일자 ' + date);
+    if (week) subParts.push('W' + week);
+    if (headline) subParts.push(headline);
+    const subLine = subParts.join(' · ');
+
+    // 3) 스켈레톤 렌더
+    c.innerHTML = window.renderEditPageHTML({
+      fileName: (target && target.file_name) || '편집',
+      projectLabel: projectLabel,
+      statusLabel: statusLabel,
+      statusClass: statusClass,
+      subLine: subLine
+    });
+
+    // 4) 상단 버튼 바인딩
+    const backBtn = document.getElementById('ov-back-btn');
+    if (backBtn) backBtn.addEventListener('click', window.backToReportList);
+
+    // 5) 현황 (headline) 채우기
+    const cs = document.getElementById('ov-current-status');
+    if (cs) {
+      if (headline) {
+        cs.className = '';
+        cs.innerHTML = ''
+          + '<div style="background:#F8FBFF;border:1px solid #E6EBF2;border-radius:14px;padding:16px 18px;">'
+          + '  <div style="font-size:13px;color:#6E7785;font-weight:700;margin-bottom:6px;">헤드라인</div>'
+          + '  <div style="font-size:15px;color:#12325F;font-weight:700;">' + headline + '</div>'
+          + '</div>';
       }
+    }
 
-      selEl.addEventListener('change', function(){
-        loadCard(parseInt(selEl.value || '0', 10));
-      });
+    // 6) KPI 카드 렌더 (프로젝트가 KPI 지원하는 경우만)
+    const slot = document.getElementById('ov-kpi-slot');
+    const issuesSlot = document.getElementById('ov-issues-slot');
+    let projectKey = '';
+    if (projects.length) {
+      const first = (projects[0] || '').toLowerCase();
+      if (first.indexOf('메이저') >= 0 || first.indexOf('major') >= 0) projectKey = 'major_module';
+    }
 
-      // parsed.projects 기반 자동 매칭 (productName 은 fallback)
-      let bestIdx = 0;
-      let matchKeywords = [];
-      try {
-        const rres = await fetch('/reports');
-        const rdata = await rres.json();
-        const rlist = Array.isArray(rdata.reports) ? rdata.reports : [];
-        const target = rlist.find(function(rr){ return rr.doc_id === docId; });
-        if (target && target.parsed && Array.isArray(target.parsed.projects)) {
-          matchKeywords = target.parsed.projects.slice();
+    if (slot) {
+      if (projectKey) {
+        try {
+          const pres = await fetch('/projects/' + projectKey);
+          const pdata = await pres.json();
+          const kpi = pdata.kpi_card;
+          const issues = pdata.issue_lines || [];
+          slot.innerHTML = window.renderKpiCardInline(kpi, issues);
+          window._currentKpiContext = { projectKey: projectKey, card: kpi, issues: issues };
+          // 편집은 엑셀 업로드 방식으로 전환 예정 (Phase 2)
+
+          if (issuesSlot && Array.isArray(issues) && issues.length > 0) {
+            let ih = '<div class="ov-issue-list">';
+            issues.forEach(function(ii, i){
+              const text = ii.text || '';
+              const dueDate = ii.due_date || '';
+              let ddayText = '';
+              if (dueDate && ii.show_dday !== false) {
+                try {
+                  const d = new Date(dueDate);
+                  const today = new Date();
+                  const diff = Math.round((d - today) / (1000*60*60*24));
+                  const mmdd = (d.getMonth()+1) + '/' + d.getDate();
+                  if (diff === 0) ddayText = 'D-day · ' + mmdd;
+                  else if (diff > 0) ddayText = 'D-' + diff + ' · ' + mmdd;
+                  else ddayText = 'D+' + Math.abs(diff) + ' 지남 · ' + mmdd;
+                } catch(_){}
+              }
+              ih += ''
+                + '<div class="ov-issue-row">'
+                + '  <div class="ov-issue-text">' + (i+1) + ') ' + text + '</div>'
+                + (ddayText ? '<div class="ov-issue-dday">' + ddayText + '</div>' : '')
+                + '</div>';
+            });
+            ih += '</div>';
+            issuesSlot.innerHTML = ih;
+          }
+        } catch(e){
+          console.error(e);
+          slot.innerHTML = '<div style="color:#B8302E;font-size:13px;text-align:center;padding:12px;">KPI 데이터 로드 실패</div>';
         }
-      } catch(_){}
-      if (productName) matchKeywords.push(productName);
-
-      for (let i = 0; i < cards.length && matchKeywords.length; i++) {
-        const t = cards[i].title || '';
-        let matched = false;
-        for (let k = 0; k < matchKeywords.length; k++) {
-          const kw = matchKeywords[k] || '';
-          if (!kw) continue;
-          if (t.indexOf(kw) >= 0 || kw.indexOf(t) >= 0) { matched = true; break; }
-        }
-        if (matched) { bestIdx = i; break; }
+      } else {
+        slot.innerHTML = '<div style="color:#8593A6;font-size:13px;text-align:center;padding:12px;">이 프로젝트는 KPI 데이터가 아직 없습니다.</div>';
       }
-      selEl.value = String(bestIdx);
-      loadCard(bestIdx);
-    } catch(e){
-      console.error(e);
-      statusEl.style.color = '#C1272D';
-      statusEl.textContent = '❌ 노트 카드 로드 실패';
     }
   };
 
-  window.backToReportList = function(){
+    window.backToReportList = function(){
     const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
     if (!c) return;
     c.innerHTML = window.renderReportPageHTML();
@@ -3902,48 +4049,141 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     window.bindAdminV2Upload();
   };
 
-  window.saveReportEdit = async function(){
-    const ctx = window._currentEditContext;
-    if (!ctx || !ctx.divisionId || !Array.isArray(ctx.allCards)) return;
 
-    const txtEl = document.getElementById('ov-edit-rawtext');
-    const statusEl = document.getElementById('ov-edit-status');
-    if (!txtEl || !statusEl) return;
+  // ============================================================
+  // Admin v2 · KPI 셀 편집 (모달 팝업)
+  // ============================================================
+  window._currentKpiContext = { projectKey: '', card: null, issues: [] };
 
-    const idx = ctx.selectedIndex || 0;
-    const card = Object.assign({}, ctx.allCards[idx]);
-    card.raw_text = txtEl.value;
-
-    const newCards = ctx.allCards.slice();
-    newCards[idx] = card;
-
-    const payload = { division_id: ctx.divisionId, cards: newCards };
-
-    statusEl.style.color = '#2E5B94';
-    statusEl.textContent = '⏳ 저장 중...';
-
-    try {
-      const res = await fetch('/admin/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(payload)
+  window.bindKpiCellEditors = function(){
+    document.querySelectorAll('.ov-kpi-editable').forEach(function(cell){
+      cell.addEventListener('click', function(){
+        const kind = cell.getAttribute('data-kpi-kind');
+        const key = cell.getAttribute('data-kpi-key');
+        const label = cell.getAttribute('data-kpi-label');
+        const type = cell.getAttribute('data-kpi-type');
+        window.openKpiEditModal(kind, key, label, type);
       });
-      const data = await res.json().catch(function(){ return {}; });
-      if (res.ok) {
-        statusEl.style.color = '#117A52';
-        statusEl.textContent = '✅ 저장 완료 (카드 ' + (data.card_count || newCards.length) + '개)';
-      } else if (res.status === 401) {
-        statusEl.style.color = '#C1272D';
-        statusEl.textContent = '❌ 인증이 필요합니다. 다시 로그인해주세요.';
-      } else {
-        statusEl.style.color = '#C1272D';
-        statusEl.textContent = '❌ 저장 실패: ' + (data.detail || res.status);
-      }
-    } catch(e){
-      statusEl.style.color = '#C1272D';
-      statusEl.textContent = '❌ 네트워크 오류: ' + e.message;
+    });
+  };
+
+  window.openKpiEditModal = function(kind, key, label, type){
+    const ctx = window._currentKpiContext || {};
+    const card = ctx.card || {};
+
+    // 현재 값 찾기
+    let cur = null;
+    const list = kind === 'month' ? (card.months || []) : (card.weeks || []);
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      const itKey = kind === 'month' ? (it.month_key || it.key || it.month) : (it.week_key || it.key || it.week);
+      if (itKey === key || it.month === label || it.week === label) { cur = it; break; }
     }
+
+    const efemCur = cur && cur.raw_efem != null ? cur.raw_efem : (cur && cur.efem_qty != null ? cur.efem_qty : '');
+    const vtmCur = cur && cur.raw_vtm != null ? cur.raw_vtm : (cur && cur.vtm_qty != null ? cur.vtm_qty : '');
+
+    // 모달 생성
+    const backdrop = document.createElement('div');
+    backdrop.id = 'ov-kpi-modal-backdrop';
+    backdrop.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,44,89,0.35);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:22px;padding:26px 28px;min-width:360px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);';
+    modal.innerHTML = ''
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'
+      + '  <div style="font-size:18px;font-weight:800;color:#0F2C59;">' + label + ' 편집</div>'
+      + '  <button type="button" id="ov-kpi-modal-close" style="border:0;background:transparent;font-size:20px;cursor:pointer;color:#8593A6;">×</button>'
+      + '</div>'
+      + '<div style="font-size:13px;color:#6E7785;margin-bottom:16px;">' + (kind === 'month' ? '월별' : '주차별') + ' KPI 수량을 입력하세요 (판가 자동 계산)</div>'
+      + '<div style="margin-bottom:14px;">'
+      + '  <label style="display:block;font-size:12px;color:#6E7785;font-weight:700;margin-bottom:6px;">타입</label>'
+      + '  <select id="ov-kpi-type" style="width:100%;padding:10px;border:1px solid #D9E0EA;border-radius:10px;font-size:14px;">'
+      + '    <option value="plan"' + (type === 'plan' ? ' selected' : '') + '>계획 (plan)</option>'
+      + '    <option value="actual"' + (type === 'actual' ? ' selected' : '') + '>실적 (actual)</option>'
+      + '  </select>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+      + '  <div>'
+      + '    <label style="display:block;font-size:12px;color:#6E7785;font-weight:700;margin-bottom:6px;">EFEM 수량</label>'
+      + '    <input type="number" id="ov-kpi-efem" value="' + efemCur + '" style="width:100%;padding:10px;border:1px solid #D9E0EA;border-radius:10px;font-size:14px;box-sizing:border-box;" />'
+      + '  </div>'
+      + '  <div>'
+      + '    <label style="display:block;font-size:12px;color:#6E7785;font-weight:700;margin-bottom:6px;">VTM 수량</label>'
+      + '    <input type="number" id="ov-kpi-vtm" value="' + vtmCur + '" style="width:100%;padding:10px;border:1px solid #D9E0EA;border-radius:10px;font-size:14px;box-sizing:border-box;" />'
+      + '  </div>'
+      + '</div>'
+      + '<div id="ov-kpi-modal-status" style="font-size:13px;font-weight:600;margin-bottom:12px;min-height:18px;"></div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      + '  <button type="button" id="ov-kpi-modal-cancel" style="border:1px solid #DCE4EF;background:#fff;color:#35527C;border-radius:12px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;">취소</button>'
+      + '  <button type="button" id="ov-kpi-modal-save" style="border:0;background:#0F2C59;color:#fff;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:800;cursor:pointer;">저장</button>'
+      + '</div>';
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+
+    function closeModal(){ document.body.removeChild(backdrop); }
+
+    document.getElementById('ov-kpi-modal-close').addEventListener('click', closeModal);
+    document.getElementById('ov-kpi-modal-cancel').addEventListener('click', closeModal);
+    backdrop.addEventListener('click', function(e){ if (e.target === backdrop) closeModal(); });
+
+    document.getElementById('ov-kpi-modal-save').addEventListener('click', async function(){
+      const efem = parseFloat(document.getElementById('ov-kpi-efem').value || '0');
+      const vtm = parseFloat(document.getElementById('ov-kpi-vtm').value || '0');
+      const newType = document.getElementById('ov-kpi-type').value || 'plan';
+      const statusEl = document.getElementById('ov-kpi-modal-status');
+      statusEl.style.color = '#2E5B94';
+      statusEl.textContent = '⏳ 저장 중...';
+
+      const endpoint = '/admin/kpi/' + ctx.projectKey + (kind === 'month' ? '/months' : '/weeks');
+      const payload = kind === 'month'
+        ? { month: key, efem: efem, vtm: vtm, type: newType, source: 'admin_v2_edit' }
+        : { week: key, efem: efem, vtm: vtm, type: newType, source: 'admin_v2_edit' };
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(function(){ return {}; });
+        if (res.ok) {
+          statusEl.style.color = '#117A52';
+          statusEl.textContent = '✅ 저장 완료';
+          setTimeout(function(){
+            closeModal();
+            window.reloadKpiSlot();
+          }, 500);
+        } else if (res.status === 401) {
+          statusEl.style.color = '#C1272D';
+          statusEl.textContent = '❌ 인증 필요';
+        } else {
+          statusEl.style.color = '#C1272D';
+          statusEl.textContent = '❌ 저장 실패: ' + (data.detail || res.status);
+        }
+      } catch(e){
+        statusEl.style.color = '#C1272D';
+        statusEl.textContent = '❌ 네트워크 오류';
+      }
+    });
+  };
+
+  window.reloadKpiSlot = async function(){
+    const ctx = window._currentKpiContext || {};
+    if (!ctx.projectKey) return;
+    const slot = document.getElementById('ov-kpi-slot');
+    if (!slot) return;
+    try {
+      const res = await fetch('/projects/' + ctx.projectKey);
+      const data = await res.json();
+      const kpi = data.kpi_card;
+      const issues = data.issue_lines || [];
+      slot.innerHTML = window.renderKpiCardInline(kpi, issues);
+      window._currentKpiContext = { projectKey: ctx.projectKey, card: kpi, issues: issues };
+      window.bindKpiCellEditors();
+    } catch(e){ console.error(e); }
   };
 
   // ============================================================
