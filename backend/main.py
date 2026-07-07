@@ -3282,6 +3282,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     if (pg === 'report') {
       c.innerHTML = renderReportPageHTML();
       loadAdminV2Reports();
+      bindAdminV2Upload();
     } else {
       const icons = { home:'🏠', production:'🏭', inbound:'📥', outbound:'📤' };
       c.innerHTML = '<div class="placeholder"><div class="big">'+(icons[pg]||'✦')+'</div><div class="title">'+(PAGE_LABEL[pg]||pg)+'</div><div class="sub">개발 중 — 곧 오픈됩니다</div></div>';
@@ -3424,12 +3425,14 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         </div>
 
         <div class="ov-upload-card">
-          <div class="ov-upload-drop">
+          <div class="ov-upload-drop" id="ov-upload-drop">
             <div class="ov-upload-icon">📤</div>
             <div class="ov-upload-title">보고 PPT를 여기로 끌어다 놓으세요</div>
             <div class="ov-upload-desc">또는 버튼으로 파일 선택 · .pptx / .ppt · 최대 50MB</div>
-            <button class="btn-primary" type="button">파일 선택</button>
+            <input type="file" id="ov-upload-input" accept=".pptx,.ppt" style="display:none;" />
+            <button class="btn-primary" type="button" id="ov-upload-btn">파일 선택</button>
             <div class="ov-upload-meta">✨ 표 · 목록 · 이미지 자동 파싱</div>
+            <div id="ov-upload-status" style="margin-top:14px;font-size:13px;font-weight:600;"></div>
           </div>
         </div>
 
@@ -3522,6 +3525,113 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     }
   };
 
+  // ============================================================
+  // Admin v2 · PPT 업로드 처리
+  // ============================================================
+  window.bindAdminV2Upload = function(){
+    const drop = document.getElementById('ov-upload-drop');
+    const input = document.getElementById('ov-upload-input');
+    const btn = document.getElementById('ov-upload-btn');
+    const statusEl = document.getElementById('ov-upload-status');
+    if (!drop || !input || !btn || !statusEl) return;
+
+    function setStatus(msg, color){
+      statusEl.textContent = msg || '';
+      statusEl.style.color = color || '#415064';
+    }
+
+    function highlight(on){
+      drop.style.background = on ? '#EAF3FF' : '#F7FBFF';
+      drop.style.borderColor = on ? '#2E5B94' : '#BFD2EA';
+    }
+
+    async function doUpload(file){
+      if (!file) return;
+      const name = (file.name || '').toLowerCase();
+      if (!name.endsWith('.pptx') && !name.endsWith('.ppt')) {
+        setStatus('❌ .pptx / .ppt 파일만 업로드 가능합니다.', '#C1272D');
+        return;
+      }
+      const sizeMB = file.size / (1024 * 1024);
+      if (sizeMB > 50) {
+        setStatus('❌ 파일 크기가 50MB 를 초과합니다.', '#C1272D');
+        return;
+      }
+
+      setStatus('⏳ 업로드 중... ' + file.name + ' (' + sizeMB.toFixed(1) + 'MB)', '#2E5B94');
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('report_family', 'default');
+      fd.append('allow_duplicate', 'false');
+
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
+        let data = {};
+        try { data = await res.json(); } catch(_) {}
+
+        if (res.status === 409) {
+          const ok = confirm('이미 업로드된 파일과 동일합니다. 그래도 계속 업로드할까요?');
+          if (ok) {
+            const fd2 = new FormData();
+            fd2.append('file', file);
+            fd2.append('report_family', 'default');
+            fd2.append('allow_duplicate', 'true');
+            const res2 = await fetch('/upload', { method: 'POST', body: fd2, credentials: 'same-origin' });
+            const data2 = await res2.json().catch(function(){ return {}; });
+            if (res2.ok) {
+              setStatus('✅ 업로드 완료 (중복 허용): ' + (data2.filename || file.name), '#117A52');
+              window.loadAdminV2Reports && window.loadAdminV2Reports();
+            } else {
+              setStatus('❌ 업로드 실패: ' + (data2.detail || res2.status), '#C1272D');
+            }
+          } else {
+            setStatus('취소됨 (중복 파일)', '#7A8595');
+          }
+        } else if (res.ok) {
+          setStatus('✅ 업로드 완료: ' + (data.filename || file.name), '#117A52');
+          window.loadAdminV2Reports && window.loadAdminV2Reports();
+        } else if (res.status === 401) {
+          setStatus('❌ 인증이 필요합니다. 다시 로그인해주세요.', '#C1272D');
+        } else {
+          setStatus('❌ 업로드 실패: ' + (data.detail || res.status), '#C1272D');
+        }
+      } catch (e) {
+        setStatus('❌ 네트워크 오류: ' + e.message, '#C1272D');
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        input.value = '';
+      }
+    }
+
+    btn.addEventListener('click', function(){ input.click(); });
+    input.addEventListener('change', function(e){
+      const f = e.target.files && e.target.files[0];
+      if (f) doUpload(f);
+    });
+
+    ['dragenter','dragover'].forEach(function(evt){
+      drop.addEventListener(evt, function(e){
+        e.preventDefault(); e.stopPropagation();
+        highlight(true);
+      });
+    });
+    ['dragleave','drop'].forEach(function(evt){
+      drop.addEventListener(evt, function(e){
+        e.preventDefault(); e.stopPropagation();
+        highlight(false);
+      });
+    });
+    drop.addEventListener('drop', function(e){
+      const dt = e.dataTransfer;
+      const f = dt && dt.files && dt.files[0];
+      if (f) doUpload(f);
+    });
+  };
+
   // 최초 진입 시 report 페이지 즉시 렌더
   document.addEventListener('DOMContentLoaded', function(){
     const root = document.getElementById('ov-report-root');
@@ -3531,6 +3641,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       if (inner) {
         inner.innerHTML = window.renderReportPageHTML();
         window.loadAdminV2Reports();
+        window.bindAdminV2Upload();
       }
     }
   });
