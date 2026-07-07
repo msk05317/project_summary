@@ -129,33 +129,36 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                           },
                         ),
                         const SizedBox(height: AppSpacing.x4),
-                        ReportTitleCard(
-                          title: note.title,
-                          subtitle: _buildSubtitle(note.reportDate),
-                        ),
-                        const SizedBox(height: AppSpacing.x3),
-                        if ((note.summaryText ?? '').isNotEmpty)
-                          StatusSummaryCard(
-                            text: note.summaryText!,
-                            status: note.status ?? 'GRAY',
-                          ),
-                        const SizedBox(height: AppSpacing.x3),
-                        if (note.kpiCard != null) ...[
-                          ProfitKpiSection(
-                            card: note.kpiCard!,
-                            issues: note.issueLines,
+                        if (_currentTab == ReportTab.report) ...[
+                          ReportTitleCard(
+                            title: note.title,
+                            subtitle: _buildSubtitle(note.reportDate),
                           ),
                           const SizedBox(height: AppSpacing.x3),
-                        ],
-                        // KPI 카드가 있으면 하단 노트 섹션은 숨김 (중복/데이터 정합성 이슈)
-                        if (note.kpiCard == null)
-                          for (final section in note.bodySections) ...[
-                          _ReportSectionCard(
-                            section: section,
-                            projectStatus: note.status ?? 'GRAY',
-                          ),
+                          if ((note.summaryText ?? '').isNotEmpty)
+                            StatusSummaryCard(
+                              text: note.summaryText!,
+                              status: note.status ?? 'GRAY',
+                            ),
                           const SizedBox(height: AppSpacing.x3),
-                        ],
+                          if (note.kpiCard != null) ...[
+                            ProfitKpiSection(
+                              card: note.kpiCard!,
+                              issues: note.issueLines,
+                            ),
+                            const SizedBox(height: AppSpacing.x3),
+                          ],
+                          // KPI 카드가 있으면 하단 노트 섹션은 숨김
+                          if (note.kpiCard == null)
+                            for (final section in note.bodySections) ...[
+                              _ReportSectionCard(
+                                section: section,
+                                projectStatus: note.status ?? 'GRAY',
+                              ),
+                              const SizedBox(height: AppSpacing.x3),
+                            ],
+                        ] else
+                          _ComingSoonView(tab: _currentTab),
                       ],
                     ),
                   ),
@@ -488,3 +491,50 @@ class _ErrorView extends StatelessWidget {
     );
   }
 }
+
+class _ComingSoonView extends StatelessWidget {
+  final ReportTab tab;
+  const _ComingSoonView({required this.tab});
+
+  IconData get _icon {
+    switch (tab) {
+      case ReportTab.production: return Icons.precision_manufacturing_outlined;
+      case ReportTab.inbound:    return Icons.download_outlined;
+      case ReportTab.outbound:   return Icons.upload_outlined;
+      case ReportTab.report:     return Icons.description_outlined;
+    }
+  }
+
+  String get _label {
+    switch (tab) {
+      case ReportTab.production: return '생산';
+      case ReportTab.inbound:    return '입고';
+      case ReportTab.outbound:   return '출하';
+      case ReportTab.report:     return '보고';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_icon, size: 56, color: AppColors.textMute),
+          const SizedBox(height: 14),
+          Text('$_label 화면',
+              style: AppText.h2.copyWith(color: AppColors.textSub)),
+          const SizedBox(height: 6),
+          Text('개발 중인 화면입니다',
+              style: AppText.body.copyWith(color: AppColors.textMute)),
+          const SizedBox(height: 2),
+          Text('추후 업데이트 예정',
+              style: AppText.caption.copyWith(color: AppColors.textMute)),
+        ],
+      ),
+    );
+  }
+}
+
