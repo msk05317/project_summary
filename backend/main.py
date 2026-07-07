@@ -7040,8 +7040,11 @@ def _pick_primary_shipping_table(tables: list, project_key: str) -> dict | None:
         # 조건 1: 첫 셀 '구분'
         if "구분" not in r1_first:
             continue
-        # 조건 2: 누적 합계 존재
-        if "누적" not in r1_txt.replace(" ", ""):
+        # 조건 2: 누적 합계 OR (PO + 실적/출하) 조합 존재
+        r1_norm = r1_txt.replace(" ", "").replace("\n", "")
+        has_cumulative = "누적" in r1_norm
+        has_po_group = ("PO수량" in r1_norm or "PO" in r1_norm) and ("실적" in r1_norm or "출하" in r1_norm)
+        if not (has_cumulative or has_po_group):
             continue
         # 조건 3: 데이터 행 첫 컬럼에 프로파일 모델 존재
         data_models = set()
@@ -7118,11 +7121,29 @@ def _parse_shipping_table_header(rows: list) -> dict:
         if not top:
             continue
 
-        is_month = top.endswith("월") and "누적" not in top
-        is_cumulative = "누적" in top.replace(" ", "")
+        top_norm = top.replace(" ", "").replace("\n", "")
+        is_month = top.endswith("월") and "누적" not in top and top_norm not in ("PO수량", "출하실적", "잔량")
+        is_cumulative = "누적" in top_norm
+        is_direct_po = top_norm in ("PO수량", "PO",)
+        is_direct_shipped = top_norm in ("출하실적", "출하",)
+        is_direct_remaining = top_norm in ("잔량",)
+        is_yearly = ("년실적" in top_norm) or ("년도실적" in top_norm)
 
         if is_month and top not in detected_months:
             detected_months.append(top)
+
+        if is_direct_po:
+            columns.append({"index": i, "kind": "cumulative_po"})
+            continue
+        if is_direct_shipped:
+            columns.append({"index": i, "kind": "cumulative_shipped"})
+            continue
+        if is_direct_remaining:
+            columns.append({"index": i, "kind": "cumulative_remaining"})
+            continue
+        if is_yearly:
+            columns.append({"index": i, "kind": "yearly_actual", "label": top})
+            continue
 
         if is_cumulative:
             if "PO" in sub.upper():
@@ -7310,6 +7331,10 @@ def _shipping_table_to_kpi_data(table: dict, project_key: str, file_name: str = 
                 cumulative["po"] = v
             elif kind == "cumulative_shipped":
                 cumulative["shipped"] = v
+            elif kind == "cumulative_remaining":
+                cumulative["remaining"] = v
+            elif kind == "yearly_actual":
+                cumulative["yearly_actual"] = v
 
         # === 주차 실적/계획을 월별로 합산해서 월 데이터 보정 ===
         # 규칙: 표 헤더에서 이미 "이 W##이 어느 월 컬럼 아래 있는지" 알고 있으므로,

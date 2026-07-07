@@ -4,6 +4,7 @@
       "project_key": "major_module",
       "display_name": "메이저모듈",
       "has_total_row": true,
+      "metric_mode": "revenue",
       "models": [
         {
           "model_id": "major_module::EFEM",
@@ -16,6 +17,33 @@
           "display_name": "VTM",
           "unit_price": 240,
           "unit_price_unit": "천불"
+        }
+      ],
+      "updated_at": null
+    },
+    "powerbox": {
+      "project_key": "powerbox",
+      "display_name": "파워박스",
+      "has_total_row": true,
+      "metric_mode": "quantity",
+      "models": [
+        {
+          "model_id": "powerbox::AetherGDX",
+          "display_name": "AetherGDX",
+          "unit_price": null,
+          "unit_price_unit": null
+        },
+        {
+          "model_id": "powerbox::양산17종",
+          "display_name": "양산17종",
+          "unit_price": null,
+          "unit_price_unit": null
+        },
+        {
+          "model_id": "powerbox::개발16종",
+          "display_name": "개발16종",
+          "unit_price": null,
+          "unit_price_unit": null
         }
       ],
       "updated_at": null
