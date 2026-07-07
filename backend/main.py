@@ -1080,11 +1080,25 @@ async def upload_ppt(
     }
     _update_latest(summary)
 
+    # ============================================================
+    # KPI 자동 추출 훅 (신규)
+    # - 프로파일 등록된 프로젝트만 자동 반영
+    # - 실패해도 업로드는 성공
+    # ============================================================
+    _kpi_extract_result = _auto_extract_kpi_from_pptx(
+        saved_pptx_path,
+        file.filename,
+        doc_id,
+        project_id_hint=project_id,
+        products=products,
+    )
+
     return {
         "ok": True,
         "doc_id": doc_id,
         "product_count": len(products),
         "slide_count": len(slide_texts),
+        "kpi_auto_extract": _kpi_extract_result,
     }
 
 
@@ -6895,6 +6909,791 @@ from datetime import datetime, date, timedelta
 import calendar as _calendar
 
 KPI_HISTORY_FILE = BASE_DIR / "kpi_history.json" if "BASE_DIR" in globals() else Path("kpi_history.json")
+PROJECT_PROFILES_FILE = BASE_DIR / "project_profiles.json" if "BASE_DIR" in globals() else Path("project_profiles.json")
+
+
+def _extract_tables_from_pptx(file_path) -> list:
+    """PPT 파일에서 모든 표를 추출.
+
+    반환 형식: [
+      {
+        "slide_index": int,   # 1부터 시작
+        "slide_title": str,   # 첫 번째 텍스트 도형(있으면)
+        "nearby_text": str,   # 슬라이드의 모든 텍스트를 이어붙인 것
+        "rows": [[cell, cell, ...], ...]
+      },
+      ...
+    ]
+    """
+    from pptx import Presentation as _Presentation
+    tables = []
+    try:
+        prs = _Presentation(str(file_path))
+    except Exception as e:
+        return []
+
+    for s_idx, slide in enumerate(prs.slides, start=1):
+        # 슬라이드 전체 텍스트 수집
+        slide_texts = []
+        slide_title = ""
+        for shape in slide.shapes:
+            try:
+                if shape.has_text_frame:
+                    tf_text = "\n".join(
+                        p.text for p in shape.text_frame.paragraphs if p.text
+                    ).strip()
+                    if tf_text:
+                        slide_texts.append(tf_text)
+                        if not slide_title:
+                            slide_title = tf_text.split("\n")[0]
+            except Exception:
+                continue
+
+        nearby_text = "\n".join(slide_texts)
+
+        # 슬라이드 안의 표 추출
+        for shape in slide.shapes:
+            try:
+                if not shape.has_table:
+                    continue
+                tbl = shape.table
+                rows = []
+                for row in tbl.rows:
+                    cells = []
+                    for cell in row.cells:
+                        try:
+                            txt = cell.text_frame.text if cell.text_frame else ""
+                        except Exception:
+                            txt = ""
+                        cells.append((txt or "").strip())
+                    rows.append(cells)
+                tables.append({
+                    "slide_index": s_idx,
+                    "slide_title": slide_title,
+                    "nearby_text": nearby_text,
+                    "rows": rows,
+                })
+            except Exception:
+                continue
+
+    return tables
+
+
+def _is_shipping_plan_table(table_dict: dict) -> bool:
+    """표가 '출하 계획 및 실적' 관련인지 판정."""
+    if not isinstance(table_dict, dict):
+        return False
+    keywords = [
+        "모델 별 출하 계획 및 실적",
+        "모델별 출하 계획 및 실적",
+        "출하 계획 및 실적",
+        "주차별 출하실적",
+        "주차별 출하 실적",
+    ]
+    # 슬라이드 주변 텍스트에서 키워드 탐지
+    nearby = (table_dict.get("nearby_text") or "").replace(" ", "")
+    for kw in keywords:
+        if kw.replace(" ", "") in nearby:
+            return True
+    # 표 헤더에서도 탐지 (첫 3행)
+    rows = table_dict.get("rows") or []
+    header_text = " ".join(
+        " ".join(r) for r in rows[:3] if isinstance(r, list)
+    ).replace(" ", "")
+    for kw in ["W27", "W28", "PO", "누적합계", "누적 합계"]:
+        if kw.replace(" ", "") in header_text:
+            # 주차 헤더가 있는 표면 후보로 인정
+            return True
+    return False
+
+
+def _find_shipping_plan_tables(file_path) -> list:
+    """PPT에서 출하 계획 관련 표만 추출."""
+    all_tables = _extract_tables_from_pptx(file_path)
+    return [t for t in all_tables if _is_shipping_plan_table(t)]
+
+
+def _pick_primary_shipping_table(tables: list, project_key: str) -> dict | None:
+    """여러 표 중 진짜 출하 계획 표를 하나만 선택.
+
+    판별 기준:
+    1. R1 첫 셀에 '구분' 포함
+    2. R1에 '누적 합계' 또는 '누적합계' 포함
+    3. 데이터 행 첫 컬럼에 프로파일 등록 모델명 존재
+    """
+    if not tables:
+        return None
+    profile = _get_project_profile(project_key) or {}
+    profile_models = {
+        (m.get("display_name") or "").strip()
+        for m in (profile.get("models") or [])
+    }
+
+    candidates = []
+    for t in tables:
+        rows = t.get("rows") or []
+        if len(rows) < 3:
+            continue
+        r1 = rows[0]
+        r1_txt = " ".join(r1)
+        r1_first = (r1[0] or "").strip() if r1 else ""
+        # 조건 1: 첫 셀 '구분'
+        if "구분" not in r1_first:
+            continue
+        # 조건 2: 누적 합계 존재
+        if "누적" not in r1_txt.replace(" ", ""):
+            continue
+        # 조건 3: 데이터 행 첫 컬럼에 프로파일 모델 존재
+        data_models = set()
+        for row in rows[2:]:
+            if not row:
+                continue
+            first = (row[0] or "").strip()
+            if first:
+                data_models.add(first)
+        if profile_models and not (profile_models & data_models):
+            # 프로파일 모델과 하나도 매칭 안 됨
+            continue
+        candidates.append(t)
+
+    if not candidates:
+        return None
+    # 여러 개면 데이터 행이 가장 많은 것 선택
+    candidates.sort(key=lambda x: len(x.get("rows") or []), reverse=True)
+    return candidates[0]
+
+
+def _parse_shipping_table_header(rows: list) -> dict:
+    """헤더 3행(R1, R2, R3)을 분석해 각 컬럼의 의미를 매핑.
+
+    처리 규칙:
+    - R1: 대분류 (월/누적합계) - forward-fill (병합 셀)
+    - R2: 서브그룹 (W27/W28.../합계) - forward-fill (계획/실적 쌍의 왼쪽 셀에만 값 있음)
+    - R3: 세부 (계획/실적/PO/출하)
+    """
+    if len(rows) < 3:
+        return {"columns": [], "detected_months": [], "current_month": None}
+
+    r1 = rows[0]
+    r2 = rows[1]
+    r3 = rows[2]
+    n_cols = max(len(r1), len(r2), len(r3))
+
+    def _fill(row, n):
+        """forward-fill: 빈 셀은 왼쪽 값으로 채움"""
+        out = []
+        last = ""
+        for i in range(n):
+            v = (row[i] if i < len(row) else "").strip()
+            if v:
+                last = v
+            out.append(last)
+        return out
+
+    r1_filled = _fill(r1, n_cols)
+    # R2는 forward-fill 하되, 다음 대분류가 바뀌면 리셋
+    r2_filled = []
+    last_r1 = ""
+    last_r2 = ""
+    for i in range(n_cols):
+        cur_r1 = r1_filled[i]
+        cur_r2 = (r2[i] if i < len(r2) else "").strip()
+        if cur_r1 != last_r1:
+            # 대분류가 바뀌면 R2 리셋
+            last_r2 = ""
+            last_r1 = cur_r1
+        if cur_r2:
+            last_r2 = cur_r2
+        r2_filled.append(last_r2)
+
+    columns = []
+    detected_months = []
+    months_with_weeks = []
+
+    for i in range(1, n_cols):  # 0번은 '구분' 열
+        top = r1_filled[i]
+        mid = r2_filled[i]
+        sub = (r3[i] if i < len(r3) else "").strip()
+
+        if not top:
+            continue
+
+        is_month = top.endswith("월") and "누적" not in top
+        is_cumulative = "누적" in top.replace(" ", "")
+
+        if is_month and top not in detected_months:
+            detected_months.append(top)
+
+        if is_cumulative:
+            if "PO" in sub.upper():
+                columns.append({"index": i, "kind": "cumulative_po"})
+            elif "출하" in sub:
+                columns.append({"index": i, "kind": "cumulative_shipped"})
+            else:
+                columns.append({"index": i, "kind": "cumulative_other"})
+            continue
+
+        if is_month:
+            # W##이 있으면 주차별
+            if mid.startswith("W") and mid[1:].isdigit():
+                if top not in months_with_weeks:
+                    months_with_weeks.append(top)
+                if sub == "계획":
+                    columns.append({"index": i, "kind": "week_plan", "month": top, "week": mid})
+                elif sub == "실적":
+                    columns.append({"index": i, "kind": "week_actual", "month": top, "week": mid})
+            elif mid == "합계":
+                if sub == "계획":
+                    columns.append({"index": i, "kind": "month_total_plan", "month": top})
+                elif sub == "실적":
+                    columns.append({"index": i, "kind": "month_total_actual", "month": top})
+            else:
+                # 완료 월 또는 다음 월 계획만
+                if sub == "계획":
+                    columns.append({"index": i, "kind": "month_plan", "month": top})
+                elif sub == "실적":
+                    columns.append({"index": i, "kind": "month_actual", "month": top})
+
+    current_month = months_with_weeks[0] if months_with_weeks else None
+
+    return {
+        "columns": columns,
+        "detected_months": detected_months,
+        "current_month": current_month,
+    }
+
+
+def _shipping_table_to_kpi_data(table: dict, project_key: str, file_name: str = "") -> dict:
+    """표 → KPI 스키마로 변환.
+
+    반환:
+    {
+      "project_key": "major_module",
+      "report_month": "2026-07",
+      "report_year": 2026,
+      "models": [
+        {
+          "model_id": "major_module::EFEM",
+          "display_name": "EFEM",
+          "months": {"2026-04": {"plan": 16, "actual": 9}, ...},
+          "weeks": {"2026-W27": {"plan": 2, "actual": 2}, ...},
+          "cumulative": {"po": 74, "shipped": 37}
+        }
+      ],
+      "warnings": [...]
+    }
+    """
+    warnings = []
+    profile = _get_project_profile(project_key) or {}
+    profile_models = {
+        (m.get("display_name") or "").strip(): m
+        for m in (profile.get("models") or [])
+    }
+
+    rows = table.get("rows") or []
+    header_info = _parse_shipping_table_header(rows)
+    columns = header_info["columns"]
+    current_month_str = header_info["current_month"]  # 예: "7월"
+
+    # 연도 판별: 파일명에서 추출
+    year = None
+    parsed = _parse_report_filename(file_name or "") if file_name else {}
+    date_str = parsed.get("date") if parsed else None
+    if date_str:
+        try:
+            year = int(date_str.split("-")[0])
+        except Exception:
+            pass
+    if not year:
+        from datetime import datetime as _dt
+        year = _dt.now().year
+
+    # 파일명 월 vs 표 현재 월 일치 확인
+    file_month = None
+    if date_str:
+        try:
+            file_month = int(date_str.split("-")[1])
+        except Exception:
+            pass
+    table_month = None
+    if current_month_str and current_month_str.endswith("월"):
+        try:
+            table_month = int(current_month_str[:-1])
+        except Exception:
+            pass
+    if file_month and table_month and file_month != table_month:
+        warnings.append(
+            f"파일명 월({file_month}월)과 표의 현재 월({table_month}월)이 다릅니다"
+        )
+
+    def _month_key(month_str):
+        if not month_str or not month_str.endswith("월"):
+            return None
+        try:
+            m = int(month_str[:-1])
+            return f"{year:04d}-{m:02d}"
+        except Exception:
+            return None
+
+    def _week_key(week_str):
+        if not week_str or not week_str.startswith("W"):
+            return None
+        num = week_str[1:]
+        if not num.isdigit():
+            return None
+        return f"{year:04d}-W{int(num):02d}"
+
+    def _to_int(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        if s in ("", "-", "·", "N/A"):
+            return None
+        try:
+            return int(float(s.replace(",", "")))
+        except Exception:
+            return None
+
+    # 데이터 행 순회 (R4부터)
+    models_data = []
+    for row in rows[2:]:
+        if not row:
+            continue
+        model_name = (row[0] or "").strip()
+        if not model_name:
+            continue
+        if model_name in ("합계", "총계", "TOTAL"):
+            continue  # 합계 행은 파싱 대상 아님 (검증용, 이번엔 스킵)
+
+        # 프로파일 매칭
+        profile_model = profile_models.get(model_name)
+        if not profile_model:
+            warnings.append(f"프로파일에 없는 모델: '{model_name}' (project={project_key})")
+            continue
+
+        model_id = profile_model.get("model_id") or f"{project_key}::{model_name}"
+
+        months_data = {}
+        weeks_data = {}
+        cumulative = {"po": None, "shipped": None}
+
+        for col in columns:
+            idx = col["index"]
+            v = _to_int(row[idx]) if idx < len(row) else None
+            kind = col["kind"]
+
+            if kind == "month_plan":
+                mk = _month_key(col["month"])
+                if mk:
+                    months_data.setdefault(mk, {})["plan"] = v
+            elif kind == "month_actual":
+                mk = _month_key(col["month"])
+                if mk:
+                    months_data.setdefault(mk, {})["actual"] = v
+            elif kind == "week_plan":
+                wk = _week_key(col["week"])
+                if wk:
+                    weeks_data.setdefault(wk, {})["plan"] = v
+            elif kind == "week_actual":
+                wk = _week_key(col["week"])
+                if wk:
+                    weeks_data.setdefault(wk, {})["actual"] = v
+            elif kind == "month_total_plan":
+                mk = _month_key(col["month"])
+                if mk:
+                    months_data.setdefault(mk, {})["plan"] = v
+            elif kind == "month_total_actual":
+                mk = _month_key(col["month"])
+                if mk:
+                    months_data.setdefault(mk, {})["actual"] = v
+            elif kind == "cumulative_po":
+                cumulative["po"] = v
+            elif kind == "cumulative_shipped":
+                cumulative["shipped"] = v
+
+        # === 주차 실적/계획을 월별로 합산해서 월 데이터 보정 ===
+        # 규칙: 표 헤더에서 이미 "이 W##이 어느 월 컬럼 아래 있는지" 알고 있으므로,
+        #       ISO 주차 계산 없이 헤더의 month 정보를 그대로 사용
+        # 필요한 매핑: week_key(2026-W27) -> month_str("7월") -> month_key("2026-07")
+        week_to_month = {}  # "2026-W27" -> "2026-07"
+        for col in columns:
+            if col.get("kind") in ("week_plan", "week_actual"):
+                w = col.get("week")  # "W27"
+                m = col.get("month")  # "7월"
+                if w and m:
+                    wk_full = _week_key(w)  # "2026-W27"
+                    mk_full = _month_key(m)  # "2026-07"
+                    if wk_full and mk_full:
+                        week_to_month[wk_full] = mk_full
+
+        # 주차 데이터를 월별로 합산
+        week_by_month = {}
+        for wk, wvals in weeks_data.items():
+            mk = week_to_month.get(wk)
+            if not mk:
+                continue
+            bucket = week_by_month.setdefault(mk, {"plan": [], "actual": []})
+            if wvals.get("plan") is not None:
+                bucket["plan"].append(wvals.get("plan"))
+            if wvals.get("actual") is not None:
+                bucket["actual"].append(wvals.get("actual"))
+
+        # 월 데이터에 반영 (기존 값 우선, 없으면 합산값 채움)
+        for mk, bucket in week_by_month.items():
+            entry = months_data.setdefault(mk, {})
+            if entry.get("actual") is None and bucket["actual"]:
+                entry["actual"] = sum(bucket["actual"])
+            if entry.get("plan") is None and bucket["plan"]:
+                entry["plan"] = sum(bucket["plan"])
+
+        models_data.append({
+            "model_id": model_id,
+            "display_name": model_name,
+            "months": months_data,
+            "weeks": weeks_data,
+            "cumulative": cumulative,
+        })
+
+    return {
+        "project_key": project_key,
+        "report_month": f"{year:04d}-{table_month:02d}" if table_month else None,
+        "report_year": year,
+        "models": models_data,
+        "warnings": warnings,
+    }
+
+
+def _load_project_profiles() -> dict:
+    """프로젝트 프로파일 전체 로드."""
+    try:
+        import json as _json
+        with open(PROJECT_PROFILES_FILE, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        if not isinstance(data, dict):
+            return {"profiles": {}}
+        if "profiles" not in data or not isinstance(data.get("profiles"), dict):
+            return {"profiles": {}}
+        return data
+    except FileNotFoundError:
+        return {"profiles": {}}
+    except Exception:
+        return {"profiles": {}}
+
+
+def _get_project_profile(project_key: str) -> dict | None:
+    """특정 프로젝트 프로파일 반환. 없으면 None."""
+    if not project_key:
+        return None
+    data = _load_project_profiles()
+    return (data.get("profiles") or {}).get(project_key)
+
+
+def _save_project_profiles(data: dict) -> None:
+    """프로젝트 프로파일 저장. updated_at 자동 갱신."""
+    import json as _json
+    from datetime import datetime as _dt
+    if not isinstance(data, dict):
+        raise ValueError("profiles data must be dict")
+    now = _dt.now().isoformat()
+    for pk, prof in (data.get("profiles") or {}).items():
+        if isinstance(prof, dict):
+            prof["updated_at"] = now
+    with open(PROJECT_PROFILES_FILE, "w", encoding="utf-8") as f:
+        _json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+
+def _auto_extract_kpi_from_pptx(
+    saved_file_path,
+    file_name: str,
+    doc_id: str,
+    project_id_hint=None,
+    products=None,
+) -> dict:
+    """PPT 업로드 후 자동 KPI 추출 훅.
+
+    실패해도 예외를 던지지 않음 (업로드는 성공 유지).
+    프로파일이 등록된 프로젝트만 파싱 시도.
+    """
+    result = {
+        "attempted": False,
+        "project_key": None,
+        "ok": False,
+        "reason": None,
+        "months_count": 0,
+        "weeks_count": 0,
+        "cumulative_updated": False,
+    }
+    try:
+        # 1. project_key 결정
+        project_key = None
+
+        # 1-a. 명시적 힌트 우선
+        if project_id_hint:
+            project_key = str(project_id_hint).strip() or None
+
+        # 1-b. products에서 자동 매칭
+        if not project_key and products:
+            try:
+                from project_templates import _match_project_key
+                for p in products:
+                    if not isinstance(p, dict):
+                        continue
+                    name = (p.get("name") or p.get("product") or "").strip()
+                    if name:
+                        pk = _match_project_key(name)
+                        if pk:
+                            project_key = pk
+                            break
+                    category = (p.get("category") or "").strip()
+                    if category:
+                        pk = _match_project_key(category)
+                        if pk:
+                            project_key = pk
+                            break
+            except Exception as e:
+                print(f"[KPI 자동 추출] products 매칭 실패: {e}")
+
+        # 1-c. 파일명에서 추론
+        if not project_key and file_name:
+            try:
+                from project_templates import _match_project_key
+                parsed = _parse_report_filename(file_name)
+                for proj_name in (parsed or {}).get("projects", []):
+                    pk = _match_project_key(proj_name)
+                    if pk:
+                        project_key = pk
+                        break
+            except Exception as e:
+                print(f"[KPI 자동 추출] 파일명 매칭 실패: {e}")
+
+        if not project_key:
+            result["reason"] = "project_key 결정 실패"
+            print(f"[KPI 자동 추출] 스킵: {result['reason']} (file={file_name})")
+            return result
+
+        result["project_key"] = project_key
+
+        # 2. 프로파일 조회
+        profile = _get_project_profile(project_key)
+        if not profile:
+            result["reason"] = f"프로파일 없음: {project_key}"
+            print(f"[KPI 자동 추출] 스킵: {result['reason']}")
+            return result
+
+        result["attempted"] = True
+
+        # 3. 표 감지
+        plan_tables = _find_shipping_plan_tables(saved_file_path)
+        if not plan_tables:
+            result["reason"] = "출하 계획 표를 찾지 못함"
+            print(f"[KPI 자동 추출] 스킵: {result['reason']}")
+            return result
+
+        # 4. 진짜 출하 표 선택
+        primary = _pick_primary_shipping_table(plan_tables, project_key)
+        if not primary:
+            result["reason"] = "출하 표 후보 없음 (프로파일 모델 미매칭)"
+            print(f"[KPI 자동 추출] 스킵: {result['reason']}")
+            return result
+
+        # 5. KPI 스키마 변환
+        kpi_data = _shipping_table_to_kpi_data(primary, project_key, file_name or "")
+        if not kpi_data.get("models"):
+            result["reason"] = "모델 데이터가 비어있음"
+            print(f"[KPI 자동 추출] 스킵: {result['reason']}")
+            return result
+
+        # 6. 저장
+        source_label = f"pptx:{doc_id}" if doc_id else f"pptx:{file_name}"
+        apply_result = _apply_kpi_from_pptx(
+            project_key,
+            kpi_data,
+            source_info={"label": source_label},
+            dry_run=False,
+        )
+        result["ok"] = True
+        result["months_count"] = apply_result.get("months_count", 0)
+        result["weeks_count"] = apply_result.get("weeks_count", 0)
+        result["cumulative_updated"] = apply_result.get("cumulative_updated", False)
+
+        warnings = kpi_data.get("warnings") or []
+        warn_str = f", warnings={len(warnings)}" if warnings else ""
+        print(
+            f"[KPI 자동 추출 성공] project={project_key}, "
+            f"months={result['months_count']}, weeks={result['weeks_count']}, "
+            f"cumulative={result['cumulative_updated']}{warn_str}"
+        )
+        return result
+    except Exception as e:
+        result["reason"] = f"예외 발생: {e}"
+        print(f"[KPI 자동 추출 실패] {e}")
+        import traceback
+        traceback.print_exc()
+        return result
+
+
+def _apply_kpi_from_pptx(
+    project_key: str,
+    kpi_data: dict,
+    source_info: dict = None,
+    dry_run: bool = True,
+) -> dict:
+    """PPT에서 추출한 KPI 데이터를 kpi_history.json에 병합.
+
+    - 기존 필드(efem, vtm, type, source, updated_at) 유지
+    - 신규 필드(models, cumulative) 추가
+    - dry_run=True: 실제 저장 안 하고 변경 예정 결과만 반환
+    - dry_run=False: 실제 저장
+    """
+    from datetime import datetime as _dt
+    source_info = source_info or {}
+    now = _dt.now().isoformat()
+
+    def _pick_value(model_dict, key_type):
+        """수량 값 결정: actual 우선, 없으면 plan"""
+        v = (model_dict or {}).get(key_type)
+        return v
+
+    def _pick_efem_vtm_and_type(period_dict):
+        """월/주차 데이터에서 efem, vtm, type 결정.
+
+        period_dict: {"major_module::EFEM": {"plan": x, "actual": y}, ...}
+        """
+        efem_val = None
+        vtm_val = None
+        chosen_type = None
+        for mid, vals in period_dict.items():
+            if not isinstance(vals, dict):
+                continue
+            actual = vals.get("actual")
+            plan = vals.get("plan")
+            # actual 있으면 actual, 없으면 plan
+            if actual is not None:
+                v = actual
+                t = "actual"
+            elif plan is not None:
+                v = plan
+                t = "plan"
+            else:
+                continue
+            display = mid.split("::")[-1] if "::" in mid else mid
+            if display == "EFEM":
+                efem_val = v
+                chosen_type = t if chosen_type is None else chosen_type
+            elif display == "VTM":
+                vtm_val = v
+                chosen_type = t if chosen_type is None else chosen_type
+        # 둘 다 actual이면 actual, 하나라도 plan이면 plan 우선? -> 우선 actual 우선
+        # 위 로직은 먼저 나온 것 채택. 명시적으로:
+        # 두 모델 중 하나라도 actual 있으면 -> actual
+        actual_found = any(
+            (period_dict.get(k) or {}).get("actual") is not None
+            for k in period_dict
+        )
+        chosen_type = "actual" if actual_found else "plan"
+        return efem_val, vtm_val, chosen_type
+
+    # 로드
+    data = _load_kpi_history()
+    if not isinstance(data, dict):
+        data = {"version": 1, "projects": {}}
+    data.setdefault("projects", {})
+    proj = data["projects"].setdefault(project_key, {})
+    proj.setdefault("months", {})
+    proj.setdefault("weeks", {})
+
+    changes = {"months": [], "weeks": [], "cumulative": None}
+
+    # 월별 병합
+    # kpi_data["models"] 구조: [{model_id, months:{...}, weeks:{...}, cumulative:{}}]
+    all_months = {}   # month_key -> {model_id: {plan, actual}}
+    all_weeks = {}
+    cumulative = {}
+    for m in kpi_data.get("models") or []:
+        mid = m.get("model_id")
+        for mk, vals in (m.get("months") or {}).items():
+            all_months.setdefault(mk, {})[mid] = vals
+        for wk, vals in (m.get("weeks") or {}).items():
+            all_weeks.setdefault(wk, {})[mid] = vals
+        cum = m.get("cumulative") or {}
+        if cum:
+            cumulative[mid] = cum
+
+    src_label = source_info.get("label") or "pptx"
+
+    # 월 병합
+    for mk in sorted(all_months.keys()):
+        period_models = all_months[mk]
+        efem_v, vtm_v, t = _pick_efem_vtm_and_type(period_models)
+        old = proj["months"].get(mk) or {}
+        new_entry = dict(old)
+        if efem_v is not None:
+            new_entry["efem"] = efem_v
+        if vtm_v is not None:
+            new_entry["vtm"] = vtm_v
+        new_entry["type"] = t
+        new_entry["source"] = src_label
+        new_entry["updated_at"] = now
+        new_entry["month"] = mk
+        # 신규 필드
+        new_entry["models"] = {
+            mid: {"plan": v.get("plan"), "actual": v.get("actual")}
+            for mid, v in period_models.items()
+        }
+        changes["months"].append({
+            "key": mk, "before": old, "after": new_entry
+        })
+        proj["months"][mk] = new_entry
+
+    # 주 병합
+    for wk in sorted(all_weeks.keys()):
+        period_models = all_weeks[wk]
+        efem_v, vtm_v, t = _pick_efem_vtm_and_type(period_models)
+        old = proj["weeks"].get(wk) or {}
+        new_entry = dict(old)
+        if efem_v is not None:
+            new_entry["efem"] = efem_v
+        if vtm_v is not None:
+            new_entry["vtm"] = vtm_v
+        new_entry["type"] = t
+        new_entry["source"] = src_label
+        new_entry["updated_at"] = now
+        new_entry["week"] = wk
+        new_entry["models"] = {
+            mid: {"plan": v.get("plan"), "actual": v.get("actual")}
+            for mid, v in period_models.items()
+        }
+        changes["weeks"].append({
+            "key": wk, "before": old, "after": new_entry
+        })
+        proj["weeks"][wk] = new_entry
+
+    # 누적 병합
+    if cumulative:
+        proj["cumulative"] = {
+            "models": {
+                mid: {"po": c.get("po"), "shipped": c.get("shipped")}
+                for mid, c in cumulative.items()
+            },
+            "source": src_label,
+            "updated_at": now,
+        }
+        changes["cumulative"] = proj["cumulative"]
+
+    data["updated_at"] = now + "Z"
+
+    if not dry_run:
+        _save_kpi_history(data)
+
+    return {
+        "dry_run": dry_run,
+        "project_key": project_key,
+        "months_count": len(changes["months"]),
+        "weeks_count": len(changes["weeks"]),
+        "cumulative_updated": changes["cumulative"] is not None,
+        "changes": changes,
+    }
 
 
 def _load_kpi_history() -> dict:
@@ -7158,6 +7957,213 @@ def admin_kpi_upsert_week(
 
 
 @app.post("/admin/kpi/{project_key}/issue_lines")
+
+@app.post("/admin/kpi/{project_key}/upload_excel")
+async def admin_kpi_upload_excel(
+    project_key: str,
+    file: UploadFile = File(...),
+    _admin: int = Depends(get_admin_session),
+):
+    """
+    출하실적 엑셀 업로드 → 자동 파싱 → KPI 히스토리 반영.
+
+    엑셀 스키마 (major_module 기준):
+    - R1: 빈 행
+    - R2: 카테고리 헤더 (PO/실적/잔량/6월/7월/W27~W31 등)
+    - R3: 주차 헤더 (W27, W28, ...)
+    - R4: 계획/실적 서브헤더
+    - R5: EFEM 데이터
+    - R6: VTM 데이터
+    - R7: 합계 (파생, 저장 안 함)
+    """
+    import openpyxl
+    from io import BytesIO
+    from datetime import datetime as _dt
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일")
+
+    try:
+        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀 파싱 실패: {e}")
+
+    ws = wb.worksheets[0]
+
+    # 헤더 인식: 주차 헤더 행에서 W## 위치 파악
+    week_header_row = None
+    plan_actual_row = None
+    for r in range(1, min(10, ws.max_row) + 1):
+        row_vals = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+        row_str = [str(v) if v is not None else "" for v in row_vals]
+        joined = "|".join(row_str)
+        if "W27" in joined or "W28" in joined:
+            week_header_row = r
+        if ("계획" in joined and "실적" in joined) and week_header_row and r > week_header_row:
+            plan_actual_row = r
+            break
+
+    if not week_header_row or not plan_actual_row:
+        raise HTTPException(status_code=400, detail="주차/계획/실적 헤더를 찾을 수 없습니다")
+
+    # 주차 컬럼 매핑 (W## → (plan_col, actual_col))
+    week_cols = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=week_header_row, column=c).value
+        if v and isinstance(v, str) and v.strip().startswith("W"):
+            wk = v.strip()
+            # 오른쪽으로 스캔해서 계획/실적 위치 찾기
+            plan_c = actual_c = None
+            for cc in [c, c+1]:
+                sub = ws.cell(row=plan_actual_row, column=cc).value
+                if sub == "계획":
+                    plan_c = cc
+                elif sub == "실적":
+                    actual_c = cc
+            if plan_c is None or actual_c is None:
+                continue
+            week_cols[wk] = (plan_c, actual_c)
+
+    # 월 컬럼 (6월/7월/8월) 파싱 - 카테고리 헤더 기준
+    month_cols = {}
+    if week_header_row > 2:
+        cat_row = week_header_row - 1
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(row=cat_row, column=c).value
+            if v and isinstance(v, str):
+                sv = v.strip()
+                if sv in ("6월", "7월", "8월"):
+                    # 서브헤더에서 계획/실적 찾기
+                    plan_c = actual_c = None
+                    for cc in range(c, min(c + 3, ws.max_column + 1)):
+                        sub = ws.cell(row=plan_actual_row, column=cc).value
+                        if sub == "계획" and plan_c is None:
+                            plan_c = cc
+                        elif sub == "실적" and actual_c is None:
+                            actual_c = cc
+                    if plan_c is not None:
+                        month_cols[sv] = (plan_c, actual_c)
+
+    # 모델 데이터 행 찾기 (EFEM, VTM)
+    data_rows = {}
+    for r in range(plan_actual_row + 1, ws.max_row + 1):
+        model = ws.cell(row=r, column=2).value  # B열
+        if model and isinstance(model, str):
+            key = model.strip().upper()
+            if key in ("EFEM", "VTM"):
+                data_rows[key] = r
+
+    if not data_rows:
+        raise HTTPException(status_code=400, detail="EFEM/VTM 데이터 행을 찾을 수 없습니다")
+
+    def _to_num(v):
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    # 파싱 결과
+    result = {"project_key": project_key, "months": [], "weeks": [], "raw_summary": {}}
+
+    # 현재 연도 (report_date 파일명 기준으로 나중에 개선 가능)
+    year = _dt.now().year
+
+    # 월 데이터
+    month_num_map = {"6월": 6, "7월": 7, "8월": 8}
+    for month_label, (plan_c, actual_c) in month_cols.items():
+        mnum = month_num_map.get(month_label)
+        if not mnum:
+            continue
+        month_key = f"{year}-{mnum:02d}"
+
+        # 실적이 있으면 actual, 없으면 plan
+        efem_actual = _to_num(ws.cell(row=data_rows["EFEM"], column=actual_c).value) if actual_c else None
+        vtm_actual = _to_num(ws.cell(row=data_rows["VTM"], column=actual_c).value) if actual_c else None
+        efem_plan = _to_num(ws.cell(row=data_rows["EFEM"], column=plan_c).value)
+        vtm_plan = _to_num(ws.cell(row=data_rows["VTM"], column=plan_c).value)
+
+        # 실적/계획 둘 다 저장 (실적이 있으면 actual 타입, 아니면 plan 타입)
+        if efem_actual is not None or vtm_actual is not None:
+            result["months"].append({
+                "month": month_key,
+                "type": "actual",
+                "efem": efem_actual if efem_actual is not None else 0,
+                "vtm": vtm_actual if vtm_actual is not None else 0,
+            })
+        if efem_plan is not None or vtm_plan is not None:
+            result["months"].append({
+                "month": month_key,
+                "type": "plan",
+                "efem": efem_plan if efem_plan is not None else 0,
+                "vtm": vtm_plan if vtm_plan is not None else 0,
+            })
+
+    # 주차 데이터
+    for wk, (plan_c, actual_c) in week_cols.items():
+        try:
+            wnum = int(wk.lstrip("W"))
+        except Exception:
+            continue
+        week_key = f"{year}-W{wnum:02d}"
+
+        efem_actual = _to_num(ws.cell(row=data_rows["EFEM"], column=actual_c).value)
+        vtm_actual = _to_num(ws.cell(row=data_rows["VTM"], column=actual_c).value)
+        efem_plan = _to_num(ws.cell(row=data_rows["EFEM"], column=plan_c).value)
+        vtm_plan = _to_num(ws.cell(row=data_rows["VTM"], column=plan_c).value)
+
+        if efem_actual is not None or vtm_actual is not None:
+            result["weeks"].append({
+                "week": week_key,
+                "type": "actual",
+                "efem": efem_actual if efem_actual is not None else 0,
+                "vtm": vtm_actual if vtm_actual is not None else 0,
+            })
+        if efem_plan is not None or vtm_plan is not None:
+            result["weeks"].append({
+                "week": week_key,
+                "type": "plan",
+                "efem": efem_plan if efem_plan is not None else 0,
+                "vtm": vtm_plan if vtm_plan is not None else 0,
+            })
+
+    # kpi_history.json 반영
+    hist = _load_kpi_history()
+    proj = hist.setdefault("projects", {}).setdefault(project_key, {
+        "months": {}, "weeks": {}, "issue_lines": []
+    })
+
+    # 병합 규칙: actual > plan (같은 키에서 actual 우선), source 기록
+    now_iso = _dt.now().isoformat()
+
+    def _upsert(dst_map, key, entry):
+        cur = dst_map.get(key)
+        # actual 은 plan 을 덮어씀. 같은 type 이면 항상 최신 upload 로 교체.
+        if cur is None:
+            dst_map[key] = {**entry, "source": "excel_upload", "updated_at": now_iso}
+        else:
+            cur_type = cur.get("type", "plan")
+            new_type = entry.get("type", "plan")
+            if new_type == "actual" or cur_type == new_type:
+                dst_map[key] = {**entry, "source": "excel_upload", "updated_at": now_iso}
+
+    for m in result["months"]:
+        _upsert(proj.setdefault("months", {}), m["month"], m)
+    for w in result["weeks"]:
+        _upsert(proj.setdefault("weeks", {}), w["week"], w)
+
+    _save_kpi_history(hist)
+
+    return {
+        "status": "ok",
+        "project_key": project_key,
+        "months_parsed": len(result["months"]),
+        "weeks_parsed": len(result["weeks"]),
+        "detail": result,
+    }
+
 def admin_kpi_replace_issue_lines(
     project_key: str,
     payload: KpiIssueLinesPayload,

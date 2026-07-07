@@ -1,0 +1,24 @@
+{
+  "profiles": {
+    "major_module": {
+      "project_key": "major_module",
+      "display_name": "메이저모듈",
+      "has_total_row": true,
+      "models": [
+        {
+          "model_id": "major_module::EFEM",
+          "display_name": "EFEM",
+          "unit_price": 130,
+          "unit_price_unit": "천불"
+        },
+        {
+          "model_id": "major_module::VTM",
+          "display_name": "VTM",
+          "unit_price": 240,
+          "unit_price_unit": "천불"
+        }
+      ],
+      "updated_at": null
+    }
+  }
+}
