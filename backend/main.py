@@ -1252,9 +1252,145 @@ def dashboard():
 
     return {"cards": cards, "grouped_cards": grouped_cards}
 
+
+def _parse_report_filename(file_name: str, fallback_date: str = "") -> dict:
+    """
+    파일명에서 프로젝트명 / 날짜 / 주차 추출.
+
+    Examples:
+        "260703_파워박스 진행현황.pptx"
+            -> {"projects": ["파워박스"], "date": "2026-07-03", "week": 27, "display_title": "파워박스 · W27 주간보고"}
+        "260528_내재화프레임, 메이져모듈 진행현황.pptx"
+            -> {"projects": ["내재화프레임", "메이져모듈"], "date": "2026-05-28", "week": 22, "display_title": "내재화프레임, 메이져모듈 · W22 주간보고"}
+        "Chamber_W26_20260706.pptx"
+            -> {"projects": ["Chamber"], "date": "2026-07-06", "week": 26, "display_title": "Chamber · W26 주간보고"}
+    """
+    import re as _re
+    import unicodedata as _ud
+    from datetime import datetime as _dt, date as _date
+
+    # macOS 파일명은 NFD(자모 분리) 로 저장되어 있을 수 있음 → NFC 로 정규화
+    file_name = _ud.normalize("NFC", file_name or "")
+    name = file_name.rsplit(".", 1)[0]  # 확장자 제거
+
+    projects: list = []
+    date_str = ""
+    week_num: int = 0
+
+    # 패턴 A: YYMMDD_프로젝트명(,프로젝트명) 진행현황
+    m = _re.match(r"^(\d{6})[_\s]+(.+)$", name)
+    if m:
+        yymmdd = m.group(1)
+        rest = m.group(2).strip()
+        # " 진행현황", "_진행현황", "진행 현황" 등 trailing 제거
+        rest = _re.sub(r"[\s_]*진행\s*현황.*$", "", rest).strip()
+        rest = rest.rstrip("_ .").strip()
+        try:
+            dt = _dt.strptime(yymmdd, "%y%m%d").date()
+            date_str = dt.isoformat()
+            week_num = dt.isocalendar()[1]
+        except Exception:
+            pass
+        # 콤마 분리
+        projects = [x.strip() for x in _re.split(r"[,、/]", rest) if x.strip()]
+
+    # 패턴 B: 프로젝트명_W##_YYYYMMDD
+    if not projects:
+        m2 = _re.match(r"^(.+?)_W(\d{1,2})_(\d{8})$", name)
+        if m2:
+            projects = [m2.group(1).strip()]
+            try:
+                week_num = int(m2.group(2))
+                dt = _dt.strptime(m2.group(3), "%Y%m%d").date()
+                date_str = dt.isoformat()
+            except Exception:
+                pass
+
+    # fallback: 파일명 전체를 프로젝트명 취급
+    if not projects:
+        projects = [name]
+
+    # fallback date
+    if not date_str and fallback_date:
+        try:
+            dt = _dt.strptime(fallback_date, "%Y-%m-%d").date()
+            date_str = fallback_date
+            if not week_num:
+                week_num = dt.isocalendar()[1]
+        except Exception:
+            pass
+
+    display_title = ", ".join(projects)
+    if week_num:
+        display_title += " · W" + str(week_num) + " 주간보고"
+
+    return {
+        "projects": projects,
+        "date": date_str,
+        "week": week_num,
+        "display_title": display_title,
+    }
+
+
+def _classify_report_status(upload_timestamp: str, report_date: str) -> dict:
+    """업로드 후 경과 시간과 report_date 기준 상태 분류.
+
+    - 업로드 후 5분 이내: ai_processing (Chamber D-2 예시처럼)
+    - report_date가 미래 or 오늘: review_pending (검토 대기)
+    - 그 외: published (발행 완료)
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    now = _dt.now()
+
+    status = "published"
+    d_day = None
+
+    try:
+        if upload_timestamp:
+            ts = _dt.fromisoformat(upload_timestamp)
+            if now - ts < _td(minutes=5):
+                status = "ai_processing"
+    except Exception:
+        pass
+
+    try:
+        if report_date and status != "ai_processing":
+            rd = _dt.strptime(report_date, "%Y-%m-%d").date()
+            today = now.date()
+            delta = (rd - today).days
+            d_day = delta
+            if delta >= 0:
+                status = "review_pending"
+            else:
+                status = "published"
+    except Exception:
+        pass
+
+    return {"status": status, "d_day": d_day}
+
+
 @app.get("/reports")
 def list_reports():
-    return {"reports": _read_json(LATEST_FILE, [])}
+    raw = _read_json(LATEST_FILE, [])
+    enriched = []
+    for r in (raw or []):
+        try:
+            meta = (r or {}).get("report_meta") or {}
+            fname = (r or {}).get("file_name") or ""
+            parsed = _parse_report_filename(fname, meta.get("date", ""))
+            classified = _classify_report_status(
+                (r or {}).get("upload_timestamp", ""),
+                parsed.get("date") or meta.get("date", "")
+            )
+            r_enriched = dict(r or {})
+            r_enriched["parsed"] = parsed
+            r_enriched["display_title"] = parsed.get("display_title", "")
+            r_enriched["report_status"] = classified.get("status", "published")
+            r_enriched["d_day"] = classified.get("d_day")
+            enriched.append(r_enriched)
+        except Exception:
+            enriched.append(r)
+    return {"reports": enriched}
 
 
 @app.get("/reports/{doc_id}/{product_name}")
@@ -3352,39 +3488,82 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         .ov-report-list { display: flex; flex-direction: column; gap: 14px; }
         .ov-report-item {
           display: grid;
-          grid-template-columns: 6px 1fr auto;
-          gap: 14px;
-          align-items: stretch;
+          grid-template-columns: 6px minmax(0, 1fr) 180px;
+          gap: 18px;
+          align-items: center;
           border: 1px solid #E8EDF4;
-          border-radius: 18px;
+          border-radius: 22px;
           overflow: hidden;
-          background: #FCFDFE;
+          background: #FFFFFF;
+          min-height: 112px;
+        }
+        .ov-report-bar {
+          align-self: stretch;
+          min-height: 100%;
+          width: 6px;
         }
         .ov-report-bar.orange { background: #F59E0B; }
         .ov-report-bar.red { background: #EF4444; }
         .ov-report-bar.green { background: #10B981; }
-        .ov-report-main { padding: 16px 0; }
-        .ov-report-project { font-size: 18px; color: #12325F; font-weight: 800; margin-bottom: 4px; }
-        .ov-report-file { font-size: 13px; color: #738094; margin-bottom: 10px; }
-        .ov-report-preview { font-size: 14px; color: #415064; font-weight: 600; }
+        .ov-report-main {
+          padding: 18px 0;
+          min-width: 0;
+        }
+        .ov-report-project {
+          font-size: 20px;
+          line-height: 1.2;
+          color: #12325F;
+          font-weight: 800;
+          margin-bottom: 8px;
+          letter-spacing: -0.2px;
+        }
+        .ov-report-file {
+          font-size: 14px;
+          line-height: 1.35;
+          color: #7A8595;
+          margin-bottom: 8px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ov-report-preview {
+          font-size: 14px;
+          line-height: 1.4;
+          color: #667085;
+          font-weight: 500;
+        }
         .ov-report-side {
-          display: flex; flex-direction: column;
-          justify-content: center; align-items: flex-end;
-          gap: 10px; padding: 16px 16px 16px 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: flex-end;
+          gap: 14px;
+          padding: 18px 18px 18px 0;
         }
         .ov-badge {
-          display:inline-flex; align-items:center;
-          border-radius: 999px; padding: 8px 12px;
-          font-size: 12px; font-weight: 800;
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          border-radius: 999px;
+          padding: 9px 16px;
+          font-size: 13px;
+          font-weight: 800;
+          min-width: 108px;
         }
         .ov-badge.blue { background: #E7F0FB; color: #23538C; }
         .ov-badge.amber { background: #FFF3D9; color: #9A6700; }
         .ov-badge.green { background: #E7F8F0; color: #117A52; }
         .ov-open-btn {
-          border: 0; border-radius: 12px;
-          background: #0F2C59; color: #fff;
-          padding: 10px 14px; font-size: 13px; font-weight: 800;
+          border: 0;
+          border-radius: 12px;
+          background: #163A70;
+          color: #fff;
+          padding: 11px 18px;
+          font-size: 15px;
+          font-weight: 800;
           cursor: pointer;
+          width: 118px;
+          height: 44px;
         }
         .ov-load-more { display:flex; justify-content:center; margin-top: 16px; }
         .ov-load-more button {
@@ -3458,70 +3637,290 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     try {
       const res = await fetch('/reports');
       const data = await res.json();
-      const reports = Array.isArray(data.reports) ? data.reports : [];
+      let reports = Array.isArray(data.reports) ? data.reports : [];
+
+      // 최신순 정렬 (upload_timestamp desc)
+      reports.sort(function(a, b){
+        return (b.upload_timestamp || '').localeCompare(a.upload_timestamp || '');
+      });
 
       const listEl = document.getElementById('ov-report-list');
       if (!listEl) return;
 
-      const recent = reports.slice(0, 3);
+      const recent = reports.slice(0, 5);
       if (recent.length === 0) {
         listEl.innerHTML = '<div style="color:#9CA3AF;font-size:14px;padding:20px;text-align:center;">등록된 보고가 없습니다.</div>';
       } else {
         listEl.innerHTML = recent.map(function(r){
-          const title = r.title || r.product_name || r.project_name || '제목 없음';
-          const fileName = r.file_name || r.filename || '보고 파일';
-          const size = r.file_size || '-';
-          const preview = r.summary_text || r.summary || '보고 미리보기 내용이 여기에 표시됩니다.';
-          const status = (r.status || 'published').toString().toLowerCase();
+          const title = r.display_title || r.file_name || '제목 없음';
+          const fileName = r.file_name || '보고 파일';
+          const size = r.file_size || '';
+          const firstProduct = (r.products && r.products[0]) || {};
+          const preview = firstProduct.headline || '';
+          const status = (r.report_status || 'published').toString();
+          const dDay = r.d_day;
 
           let badgeClass = 'green';
-          let badgeText = 'Published';
+          let badgeText = '발행 완료';
           let barClass = 'green';
+          let dDayText = '';
+          let dDayColor = '#7A8595';
 
-          if (status.indexOf('processing') >= 0 || status.indexOf('ai') >= 0) {
-            badgeClass = 'blue'; badgeText = 'AI processing'; barClass = 'orange';
-          } else if (status.indexOf('review') >= 0 || status.indexOf('pending') >= 0) {
-            badgeClass = 'amber'; badgeText = 'Review pending'; barClass = 'red';
+          if (status === 'ai_processing') {
+            badgeClass = 'blue'; badgeText = 'AI 처리 중'; barClass = 'orange';
+          } else if (status === 'review_pending') {
+            badgeClass = 'amber'; badgeText = '검토 대기'; barClass = 'red';
           }
 
+          if (dDay === null || dDay === undefined) {
+            dDayText = '';
+          } else if (dDay === 0) {
+            dDayText = 'D-day';
+            dDayColor = '#C1272D';
+          } else if (dDay > 0) {
+            dDayText = 'D-' + dDay;
+            dDayColor = '#C1272D';
+          } else {
+            dDayText = '완료';
+            dDayColor = '#7A8595';
+          }
+
+          const sizeText = size ? ' · ' + size : '';
           return ''
             + '<div class="ov-report-item">'
             +   '<div class="ov-report-bar ' + barClass + '"></div>'
             +   '<div class="ov-report-main">'
             +     '<div class="ov-report-project">' + title + '</div>'
-            +     '<div class="ov-report-file">' + fileName + ' · ' + size + '</div>'
-            +     '<div class="ov-report-preview">' + preview + '</div>'
+            +     '<div class="ov-report-file">📎 ' + fileName + sizeText + '</div>'
+            +     (preview ? '<div class="ov-report-preview">' + preview + '</div>' : '')
             +   '</div>'
             +   '<div class="ov-report-side">'
-            +     '<div class="ov-badge ' + badgeClass + '">' + badgeText + '</div>'
-            +     '<button class="ov-open-btn" type="button">열기</button>'
+            +     '<div style="display:flex;align-items:center;gap:14px;">'
+            +       '<div class="ov-badge ' + badgeClass + '">' + badgeText + '</div>'
+            +       (dDayText ? '<div style="font-size:15px;font-weight:800;color:' + dDayColor + ';min-width:46px;text-align:right;">' + dDayText + '</div>' : '')
+            +     '</div>'
+            +     '<button class="ov-open-btn ov-open-report" type="button" data-doc="' + (r.doc_id || '') + '" data-product="' + (((r.products && r.products[0] && r.products[0].name) || '')).replace(/"/g, '') + '">열기</button>'
             +   '</div>'
             + '</div>';
         }).join('');
       }
 
-      const published = reports.filter(function(r){
-        return ((r.status || 'published') + '').toLowerCase().indexOf('published') >= 0;
-      }).length;
-      const review = reports.filter(function(r){
-        const st = ((r.status || '') + '').toLowerCase();
-        return st.indexOf('review') >= 0 || st.indexOf('pending') >= 0;
-      }).length;
-      const ai = reports.filter(function(r){
-        const st = ((r.status || '') + '').toLowerCase();
-        return st.indexOf('processing') >= 0 || st.indexOf('ai') >= 0;
+      const published = reports.filter(function(r){ return (r.report_status || 'published') === 'published'; }).length;
+      const review = reports.filter(function(r){ return (r.report_status || '') === 'review_pending'; }).length;
+      const ai = reports.filter(function(r){ return (r.report_status || '') === 'ai_processing'; }).length;
+
+      // 이번 주 = 오늘 기준 지난 7일 이내 업로드
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const thisWeek = reports.filter(function(r){
+        try { return new Date(r.upload_timestamp) >= sevenDaysAgo; } catch(_){ return false; }
       }).length;
 
       const wkEl = document.getElementById('ov-kpi-week');
       const aiEl = document.getElementById('ov-kpi-ai');
       const rvEl = document.getElementById('ov-kpi-review');
       const pbEl = document.getElementById('ov-kpi-published');
-      if (wkEl) wkEl.textContent = String(recent.length || 0);
+      if (wkEl) wkEl.textContent = String(thisWeek);
       if (aiEl) aiEl.textContent = String(ai);
       if (rvEl) rvEl.textContent = String(review);
-      if (pbEl) pbEl.textContent = String(published || reports.length || 0);
+      if (pbEl) pbEl.textContent = String(published);
+
+      // 열기 버튼 이벤트 바인딩
+      document.querySelectorAll('.ov-open-report').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          const doc = btn.getAttribute('data-doc') || '';
+          const prod = btn.getAttribute('data-product') || '';
+          if (window.openReportEdit) window.openReportEdit(doc, prod);
+        });
+      });
     } catch (e) {
       console.error('loadAdminV2Reports failed', e);
+    }
+  };
+
+  // ============================================================
+  // Admin v2 · 보고 편집 (raw_text)
+  // ============================================================
+  window._currentEditContext = { divisionId: '', cardTitle: '' };
+
+  window.renderEditPageHTML = function(){
+    return ''
+      + '<style>'
+      + '.ov-edit-topbar{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E6EBF2;border-radius:20px;padding:14px 18px;margin-bottom:20px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
+      + '.ov-back-btn{border:1px solid #DCE4EF;background:#fff;color:#35527C;border-radius:12px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;}'
+      + '.ov-edit-title{font-size:18px;color:#12325F;font-weight:800;}'
+      + '.ov-save-btn{border:0;background:#0F2C59;color:#fff;border-radius:12px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;}'
+      + '.ov-edit-card{background:#fff;border:1px solid #E6EBF2;border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
+      + '.ov-field-label{font-size:13px;color:#6E7785;font-weight:700;margin-bottom:8px;}'
+      + '.ov-field-value{font-size:15px;color:#12325F;font-weight:700;margin-bottom:14px;}'
+      + '.ov-select,.ov-textarea{width:100%;box-sizing:border-box;border:1px solid #D9E0EA;border-radius:12px;padding:12px 14px;font-size:14px;color:#12325F;background:#fff;font-family:inherit;}'
+      + '.ov-textarea{min-height:340px;resize:vertical;line-height:1.55;}'
+      + '.ov-edit-status{font-size:13px;font-weight:600;margin-top:12px;}'
+      + '</style>'
+      + '<div class="ov-edit-topbar">'
+      + '  <button class="ov-back-btn" type="button" id="ov-back-btn">← 목록으로</button>'
+      + '  <div class="ov-edit-title" id="ov-edit-title">편집</div>'
+      + '  <button class="ov-save-btn" type="button" id="ov-save-btn">저장</button>'
+      + '</div>'
+      + '<div class="ov-edit-card">'
+      + '  <div class="ov-field-label">파일</div>'
+      + '  <div class="ov-field-value" id="ov-edit-file">-</div>'
+      + '  <div class="ov-field-label">사업부</div>'
+      + '  <div class="ov-field-value" id="ov-edit-division">-</div>'
+      + '  <div class="ov-field-label">편집할 카드</div>'
+      + '  <select class="ov-select" id="ov-edit-card-select" style="margin-bottom:14px;"></select>'
+      + '  <div class="ov-field-label">원본 텍스트 (raw_text)</div>'
+      + '  <textarea class="ov-textarea" id="ov-edit-rawtext" placeholder="편집할 카드를 선택하면 원본 텍스트가 표시됩니다."></textarea>'
+      + '  <div class="ov-edit-status" id="ov-edit-status"></div>'
+      + '</div>';
+  };
+
+  window.openReportEdit = async function(docId, productName){
+    const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
+    if (!c) return;
+    c.innerHTML = window.renderEditPageHTML();
+
+    // 상단 버튼 바인딩
+    const backBtn = document.getElementById('ov-back-btn');
+    const saveBtn = document.getElementById('ov-save-btn');
+    if (backBtn) backBtn.addEventListener('click', window.backToReportList);
+    if (saveBtn) saveBtn.addEventListener('click', window.saveReportEdit);
+
+    const titleEl = document.getElementById('ov-edit-title');
+    const fileEl = document.getElementById('ov-edit-file');
+    const divEl = document.getElementById('ov-edit-division');
+    const selEl = document.getElementById('ov-edit-card-select');
+    const txtEl = document.getElementById('ov-edit-rawtext');
+    const statusEl = document.getElementById('ov-edit-status');
+
+    // 1) 리포트 메타 조회
+    let fileName = '';
+    let divisionId = 'semiconductor';
+    try {
+      const res = await fetch('/reports');
+      const data = await res.json();
+      const reports = Array.isArray(data.reports) ? data.reports : [];
+      const target = reports.find(function(r){ return r.doc_id === docId; }) || reports[0];
+      if (target) {
+        fileName = target.file_name || '';
+        if (target.report_meta && target.report_meta.division_id) {
+          divisionId = target.report_meta.division_id;
+        }
+      }
+    } catch(e){ console.error(e); }
+
+    fileEl.textContent = fileName || '-';
+    divEl.textContent = divisionId;
+    titleEl.textContent = '편집 · ' + (fileName || '');
+
+    // 2) 노트 카드 목록 로드
+    try {
+      const nres = await fetch('/notes?division_id=' + encodeURIComponent(divisionId));
+      const ndata = await nres.json();
+      const cards = Array.isArray(ndata.cards) ? ndata.cards : [];
+      selEl.innerHTML = cards.map(function(cc, idx){
+        return '<option value="' + idx + '">' + (cc.title || '(제목 없음)') + '</option>';
+      }).join('');
+
+      function loadCard(idx){
+        const card = cards[idx];
+        if (!card) return;
+        txtEl.value = card.raw_text || '';
+        window._currentEditContext = {
+          divisionId: divisionId,
+          cardTitle: card.title || '',
+          allCards: cards,
+          selectedIndex: idx
+        };
+        statusEl.textContent = '';
+      }
+
+      selEl.addEventListener('change', function(){
+        loadCard(parseInt(selEl.value || '0', 10));
+      });
+
+      // parsed.projects 기반 자동 매칭 (productName 은 fallback)
+      let bestIdx = 0;
+      let matchKeywords = [];
+      try {
+        const rres = await fetch('/reports');
+        const rdata = await rres.json();
+        const rlist = Array.isArray(rdata.reports) ? rdata.reports : [];
+        const target = rlist.find(function(rr){ return rr.doc_id === docId; });
+        if (target && target.parsed && Array.isArray(target.parsed.projects)) {
+          matchKeywords = target.parsed.projects.slice();
+        }
+      } catch(_){}
+      if (productName) matchKeywords.push(productName);
+
+      for (let i = 0; i < cards.length && matchKeywords.length; i++) {
+        const t = cards[i].title || '';
+        let matched = false;
+        for (let k = 0; k < matchKeywords.length; k++) {
+          const kw = matchKeywords[k] || '';
+          if (!kw) continue;
+          if (t.indexOf(kw) >= 0 || kw.indexOf(t) >= 0) { matched = true; break; }
+        }
+        if (matched) { bestIdx = i; break; }
+      }
+      selEl.value = String(bestIdx);
+      loadCard(bestIdx);
+    } catch(e){
+      console.error(e);
+      statusEl.style.color = '#C1272D';
+      statusEl.textContent = '❌ 노트 카드 로드 실패';
+    }
+  };
+
+  window.backToReportList = function(){
+    const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
+    if (!c) return;
+    c.innerHTML = window.renderReportPageHTML();
+    window.loadAdminV2Reports();
+    window.bindAdminV2Upload();
+  };
+
+  window.saveReportEdit = async function(){
+    const ctx = window._currentEditContext;
+    if (!ctx || !ctx.divisionId || !Array.isArray(ctx.allCards)) return;
+
+    const txtEl = document.getElementById('ov-edit-rawtext');
+    const statusEl = document.getElementById('ov-edit-status');
+    if (!txtEl || !statusEl) return;
+
+    const idx = ctx.selectedIndex || 0;
+    const card = Object.assign({}, ctx.allCards[idx]);
+    card.raw_text = txtEl.value;
+
+    const newCards = ctx.allCards.slice();
+    newCards[idx] = card;
+
+    const payload = { division_id: ctx.divisionId, cards: newCards };
+
+    statusEl.style.color = '#2E5B94';
+    statusEl.textContent = '⏳ 저장 중...';
+
+    try {
+      const res = await fetch('/admin/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(function(){ return {}; });
+      if (res.ok) {
+        statusEl.style.color = '#117A52';
+        statusEl.textContent = '✅ 저장 완료 (카드 ' + (data.card_count || newCards.length) + '개)';
+      } else if (res.status === 401) {
+        statusEl.style.color = '#C1272D';
+        statusEl.textContent = '❌ 인증이 필요합니다. 다시 로그인해주세요.';
+      } else {
+        statusEl.style.color = '#C1272D';
+        statusEl.textContent = '❌ 저장 실패: ' + (data.detail || res.status);
+      }
+    } catch(e){
+      statusEl.style.color = '#C1272D';
+      statusEl.textContent = '❌ 네트워크 오류: ' + e.message;
     }
   };
 
