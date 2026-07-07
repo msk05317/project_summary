@@ -661,17 +661,37 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 </body></html>"""
 
 @app.get("/admin/login", response_class=HTMLResponse)
-def admin_login_page(admin_auth: Optional[str] = Cookie(default=None)):
+def admin_login_page(
+    admin_auth: Optional[str] = Cookie(default=None),
+    next: Optional[str] = None,
+):
+    # next 안전성 체크: 반드시 /admin/ 하위만 허용
+    safe_next = "/admin/upload"
+    if next and next.startswith("/admin/") and "://" not in next:
+        safe_next = next
     if _verify_session(admin_auth):
-        return RedirectResponse(url="/admin/upload", status_code=302)
-    return HTMLResponse(content=_ADMIN_LOGIN_HTML)
+        return RedirectResponse(url=safe_next, status_code=302)
+    # HTML 안에 next 값을 script 로 심어서 로그인 성공 후 리다이렉트에 활용
+    html = _ADMIN_LOGIN_HTML.replace(
+        "</head>",
+        "<script>window.__LOGIN_NEXT__ = " + repr(safe_next) + ";</script></head>",
+        1,
+    )
+    return HTMLResponse(content=html)
 
 @app.post("/admin/login")
-def admin_login_submit(response: Response, password: str = Form(...)):
+def admin_login_submit(
+    response: Response,
+    password: str = Form(...),
+    next: Optional[str] = Form(default=None),
+):
     if password != UPLOAD_PASSWORD:
         raise HTTPException(status_code=401, detail="비밀번호가 올바르지 않습니다.")
     exp = _issue_session_cookie(response)
-    return {"ok": True, "expires_at": exp}
+    safe_next = "/admin/upload"
+    if next and next.startswith("/admin/") and "://" not in next:
+        safe_next = next
+    return {"ok": True, "expires_at": exp, "next": safe_next}
 
 @app.post("/admin/logout")
 def admin_logout(response: Response):
@@ -3277,7 +3297,9 @@ def admin_config_stats(_exp: int = Depends(get_admin_session)):
 
 
 @app.get("/admin/v2", response_class=HTMLResponse)
-def admin_v2_page(_exp: int = Depends(get_admin_session)):
+def admin_v2_page(admin_auth: Optional[str] = Cookie(default=None)):
+    if not _verify_session(admin_auth):
+        return RedirectResponse(url="/admin/login?next=/admin/v2", status_code=302)
     """OneView Admin v2 — 시안 기반 새 관리자 페이지."""
     return HTMLResponse(_ADMIN_V2_HTML)
 
