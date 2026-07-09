@@ -1366,6 +1366,48 @@ def _parse_report_filename(file_name: str, fallback_date: str = "") -> dict:
     }
 
 
+def _split_report_by_project(r_enriched: dict) -> list:
+    """한 리포트에 여러 프로젝트가 들어있으면 프로젝트 단위 카드로 분리.
+    project_overrides가 있으면 프로젝트명을 그걸로 대체.
+    """
+    parsed = (r_enriched or {}).get("parsed") or {}
+    projects = parsed.get("projects") or []
+    week_num = (r_enriched or {}).get("week_override") or parsed.get("week")
+    overrides = (r_enriched or {}).get("project_overrides") or {}
+    def _resolve(name):
+        return overrides.get(name, name)
+    if len(projects) <= 1:
+        # 단일 카드도 override 반영
+        if projects:
+            proj = _resolve(projects[0])
+            new_parsed = dict(parsed)
+            new_parsed["projects"] = [proj]
+            new_parsed["week"] = week_num
+            new_title = proj + (" · W" + str(week_num) + " 주간보고" if week_num else "")
+            new_parsed["display_title"] = new_title
+            r_enriched = dict(r_enriched)
+            r_enriched["parsed"] = new_parsed
+            r_enriched["display_title"] = new_title
+            r_enriched["_split_project"] = projects[0]  # 원본 이름을 키로 유지
+        return [r_enriched]
+    cards = []
+    for proj in projects:
+        clone = dict(r_enriched)
+        display_proj = _resolve(proj)
+        new_parsed = dict(parsed)
+        new_parsed["projects"] = [display_proj]
+        new_parsed["week"] = week_num
+        new_title = display_proj
+        if week_num:
+            new_title += " · W" + str(week_num) + " 주간보고"
+        new_parsed["display_title"] = new_title
+        clone["parsed"] = new_parsed
+        clone["display_title"] = new_title
+        clone["_split_project"] = proj  # 원본 이름을 키로 유지 (override 저장에 사용)
+        cards.append(clone)
+    return cards
+
+
 def _classify_report_status(upload_timestamp: str, report_date: str) -> dict:
     """업로드 후 경과 시간과 report_date 기준 상태 분류.
 
@@ -1426,7 +1468,13 @@ def list_reports():
             enriched.append(r_enriched)
         except Exception:
             enriched.append(r)
-    return {"reports": enriched}
+    split_cards = []
+    for e in enriched:
+        try:
+            split_cards.extend(_split_report_by_project(e))
+        except Exception:
+            split_cards.append(e)
+    return {"reports": split_cards}
 
 
 @app.get("/reports/{doc_id}/{product_name}")
@@ -3753,7 +3801,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             +       (dDayText ? '<div style="font-size:15px;font-weight:800;color:' + dDayColor + ';min-width:46px;text-align:right;">' + dDayText + '</div>' : '')
             +     '</div>'
             +     '<button class="ov-hide-btn ov-hide-report' + (isHidden ? ' is-active' : '') + '" type="button" data-doc="' + (r.doc_id || '') + '">' + hideLabel + '</button>'
-            +     '<button class="ov-open-btn ov-open-report" type="button" data-doc="' + (r.doc_id || '') + '" data-product="' + (((r.products && r.products[0] && r.products[0].name) || '')).replace(/"/g, '') + '">열기</button>'
+            +     '<button class="ov-open-btn ov-open-report" type="button" data-doc="' + (r.doc_id || '') + '" data-product="' + (((r.products && r.products[0] && r.products[0].name) || '')).replace(/"/g, '') + '" data-split-project="' + ((r._split_project || '')).replace(/"/g, '') + '">열기</button>'
             +   '</div>'
             + '</div>';
         }).join('');
@@ -3784,7 +3832,8 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         btn.addEventListener('click', function(){
           const doc = btn.getAttribute('data-doc') || '';
           const prod = btn.getAttribute('data-product') || '';
-          if (window.openReportEdit) window.openReportEdit(doc, prod);
+          const splitProject = btn.getAttribute('data-split-project') || '';
+          if (window.openReportEdit) window.openReportEdit(doc, prod, splitProject);
         });
       });
       document.querySelectorAll('.ov-hide-report').forEach(function(btn){
@@ -3866,7 +3915,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       + '</div>'
       + '<div class="ov-header-card">'
       + '  <div class="ov-header-title">'
-      + '    <span>' + projectLabel + '</span>'
+      + '    <span id="ov-project-label" contenteditable="true" spellcheck="false" style="outline:none;border-bottom:2px dashed transparent;padding:2px 4px;cursor:text;" title="클릭해서 프로젝트명 수정">' + projectLabel + '</span>'
       + (statusLabel ? '<span class="ov-badge-inline ' + statusClass + '">' + statusLabel + '</span>' : '')
       + '  </div>'
       + '  <div class="ov-header-sub">' + subLine + '</div>'
@@ -3973,7 +4022,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     return html;
   };
 
-  window.openReportEdit = async function(docId, productName){
+  window.openReportEdit = async function(docId, productName, splitProject){
     const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
     if (!c) return;
 
@@ -3983,13 +4032,21 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       const res = await fetch('/reports');
       const data = await res.json();
       const reports = Array.isArray(data.reports) ? data.reports : [];
-      target = reports.find(function(r){ return r.doc_id === docId; }) || reports[0];
+      target = reports.find(function(r){
+        return r.doc_id === docId && ((r._split_project || '') === (splitProject || ''));
+      }) || reports.find(function(r){
+        return r.doc_id === docId;
+      }) || reports[0];
     } catch(e){ console.error(e); }
 
     // 2) 헤더 컨텍스트 구성
     const parsed = (target && target.parsed) || {};
     const projects = parsed.projects || [];
-    const projectLabel = projects.length ? projects.join(', ') : (target && target.file_name) || '보고';
+    const _base = projects.length ? projects.join(', ') : (target && target.file_name) || '보고';
+    const _week = parsed.week || '';
+    const projectLabel = target && target.display_title
+      ? target.display_title
+      : (_week ? _base + ' · W' + _week + ' 주간보고' : _base);
     const week = parsed.week || '';
     const date = parsed.date || (target && (target.report_meta || {}).date) || '';
     const firstProduct = (target && target.products && target.products[0]) || {};
@@ -4018,6 +4075,74 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     // 4) 상단 버튼 바인딩
     const backBtn = document.getElementById('ov-back-btn');
     if (backBtn) backBtn.addEventListener('click', window.backToReportList);
+
+    // 4-b) 인라인 프로젝트명 편집 + 저장 버튼 활성화
+    const labelEl = document.getElementById('ov-project-label');
+    const saveBtn = document.getElementById('ov-save-btn');
+    const initialLabel = labelEl ? labelEl.textContent.trim() : '';
+    let dirty = false;
+    function markDirty(){
+      dirty = true;
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
+      }
+    }
+    function markClean(){
+      dirty = false;
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.4';
+        saveBtn.style.cursor = 'not-allowed';
+      }
+    }
+    if (labelEl) {
+      labelEl.addEventListener('focus', function(){ labelEl.style.borderBottom = '2px dashed #4A6FA5'; });
+      labelEl.addEventListener('blur', function(){ labelEl.style.borderBottom = '2px dashed transparent'; });
+      labelEl.addEventListener('input', function(){ if (labelEl.textContent.trim() !== initialLabel) markDirty(); });
+      labelEl.addEventListener('keydown', function(e){
+        if (e.key === 'Enter') { e.preventDefault(); labelEl.blur(); }
+      });
+    }
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async function(){
+        if (!dirty || saveBtn.disabled) return;
+        const newLabel = labelEl ? labelEl.textContent.trim() : '';
+        if (!newLabel) { alert('프로젝트명이 비어있습니다'); return; }
+        // display_title에서 프로젝트명만 추출: " · W## 주간보고" 앞까지
+        let newProjectName = newLabel;
+        let newWeek = null;
+        const m = newLabel.match(/^(.*?)(?:\s*·\s*W(\d+)\s*주간보고)?\s*$/);
+        if (m) {
+          newProjectName = (m[1] || '').trim();
+          if (m[2]) newWeek = parseInt(m[2], 10);
+        }
+        // 원본 프로젝트명(파일명 파싱값)을 키로 사용
+        const origProj = (target && target._split_project) || newProjectName;
+        const overrides = {};
+        overrides[origProj] = newProjectName;
+        saveBtn.disabled = true;
+        saveBtn.textContent = '저장 중...';
+        try {
+          const payload = { project_overrides: overrides };
+          if (newWeek) payload.week_override = newWeek;
+          const res = await fetch('/admin/reports/' + encodeURIComponent(docId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) { alert('저장 실패'); saveBtn.textContent = '저장'; markDirty(); return; }
+          saveBtn.textContent = '저장됨 ✓';
+          markClean();
+          setTimeout(function(){ saveBtn.textContent = '저장'; }, 1200);
+        } catch(e) {
+          alert('저장 오류: ' + e.message);
+          saveBtn.textContent = '저장';
+          markDirty();
+        }
+      });
+    }
 
     // 5) 현황 (headline) 채우기
     const cs = document.getElementById('ov-current-status');
@@ -4409,7 +4534,53 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
             enriched.append(r_enriched)
         except Exception:
             enriched.append(r)
-    return {"reports": enriched}
+    split_cards = []
+    for e in enriched:
+        try:
+            split_cards.extend(_split_report_by_project(e))
+        except Exception:
+            split_cards.append(e)
+    return {"reports": split_cards}
+
+
+@app.put("/admin/reports/{doc_id}")
+def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    # 수기 편집 저장
+    # payload 예: {"project_overrides": {"메이져모듈": "메이저모듈"}, "products": [...]}
+    items = _read_json(LATEST_FILE, [])
+    found = False
+    for it in items:
+        if it.get("doc_id") != doc_id:
+            continue
+        found = True
+        overrides = payload.get("project_overrides")
+        if isinstance(overrides, dict):
+            existing_ov = it.get("project_overrides") or {}
+            existing_ov.update({str(k): str(v) for k, v in overrides.items() if v})
+            it["project_overrides"] = existing_ov
+
+        week_override = payload.get("week_override")
+        if isinstance(week_override, int) and week_override > 0:
+            it["week_override"] = week_override
+        elif isinstance(week_override, str) and week_override.strip().isdigit():
+            it["week_override"] = int(week_override.strip())
+
+        new_products = payload.get("products")
+        if isinstance(new_products, list):
+            existing = it.get("products", [])
+            merged = []
+            for i, np in enumerate(new_products):
+                base = dict(existing[i]) if i < len(existing) else {}
+                for key in ("name", "headline", "category", "status", "summary_bullets", "sections"):
+                    if key in np:
+                        base[key] = np[key]
+                merged.append(base)
+            it["products"] = merged
+        break
+    if not found:
+        raise HTTPException(status_code=404, detail="doc_id not found")
+    _write_json(LATEST_FILE, items)
+    return {"ok": True, "doc_id": doc_id}
 
 
 @app.post("/admin/reports/{doc_id}/hide")
