@@ -1409,6 +1409,8 @@ def list_reports():
     enriched = []
     for r in (raw or []):
         try:
+            if (r or {}).get("hidden") is True:
+                continue
             meta = (r or {}).get("report_meta") or {}
             fname = (r or {}).get("file_name") or ""
             parsed = _parse_report_filename(fname, meta.get("date", ""))
@@ -3522,6 +3524,18 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         .ov-list-sub { font-size: 13px; color: #748092; font-weight: 600; }
 
         .ov-report-list { display: flex; flex-direction: column; gap: 14px; }
+        .ov-report-item.is-hidden { opacity: 0.45; background: #F4F6FA; }
+        .ov-report-item.is-hidden .ov-report-project::after {
+          content: " · 숨김"; color: #B4380F; font-size: 12px; font-weight: 700;
+        }
+        .ov-hide-btn {
+          background: #F4F6FA; color: #4A5568;
+          border: 1px solid #E6EBF2; border-radius: 999px;
+          padding: 6px 12px; font-size: 12px; font-weight: 700;
+          cursor: pointer; margin-right: 8px;
+        }
+        .ov-hide-btn:hover { background: #E6EBF2; }
+        .ov-hide-btn.is-active { background: #FFF4EC; color: #B4380F; border-color: #F5C9AE; }
         .ov-report-item {
           display: grid;
           grid-template-columns: 6px minmax(0, 1fr) 180px;
@@ -3671,7 +3685,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
 
   window.loadAdminV2Reports = async function(){
     try {
-      const res = await fetch('/reports');
+      const res = await fetch('/admin/reports/all');
       const data = await res.json();
       let reports = Array.isArray(data.reports) ? data.reports : [];
 
@@ -3722,8 +3736,11 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
           }
 
           const sizeText = size ? ' · ' + size : '';
+          const isHidden = !!r.hidden;
+          const hideLabel = isHidden ? '숨김 해제' : '숨기기';
+          const itemClass = 'ov-report-item' + (isHidden ? ' is-hidden' : '');
           return ''
-            + '<div class="ov-report-item">'
+            + '<div class="' + itemClass + '">'
             +   '<div class="ov-report-bar ' + barClass + '"></div>'
             +   '<div class="ov-report-main">'
             +     '<div class="ov-report-project">' + title + '</div>'
@@ -3735,6 +3752,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             +       '<div class="ov-badge ' + badgeClass + '">' + badgeText + '</div>'
             +       (dDayText ? '<div style="font-size:15px;font-weight:800;color:' + dDayColor + ';min-width:46px;text-align:right;">' + dDayText + '</div>' : '')
             +     '</div>'
+            +     '<button class="ov-hide-btn ov-hide-report' + (isHidden ? ' is-active' : '') + '" type="button" data-doc="' + (r.doc_id || '') + '">' + hideLabel + '</button>'
             +     '<button class="ov-open-btn ov-open-report" type="button" data-doc="' + (r.doc_id || '') + '" data-product="' + (((r.products && r.products[0] && r.products[0].name) || '')).replace(/"/g, '') + '">열기</button>'
             +   '</div>'
             + '</div>';
@@ -3767,6 +3785,21 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
           const doc = btn.getAttribute('data-doc') || '';
           const prod = btn.getAttribute('data-product') || '';
           if (window.openReportEdit) window.openReportEdit(doc, prod);
+        });
+      });
+      document.querySelectorAll('.ov-hide-report').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          const doc = btn.getAttribute('data-doc') || '';
+          if (!doc) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch('/admin/reports/' + encodeURIComponent(doc) + '/hide', { method: 'POST' });
+            if (!res.ok) { alert('숨김 처리 실패'); btn.disabled = false; return; }
+            if (window.loadAdminV2Reports) window.loadAdminV2Reports();
+          } catch(e) {
+            alert('숨김 처리 오류: ' + e.message);
+            btn.disabled = false;
+          }
         });
       });
     } catch (e) {
@@ -4351,6 +4384,50 @@ def admin_uploads_history(_admin: int = Depends(get_admin_session)):
     # 최신 업로드 먼저
     history.sort(key=lambda x: x.get("upload_timestamp", ""), reverse=True)
     return {"items": history}
+
+
+@app.get("/admin/reports/all")
+def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
+    # Admin 전용: hidden 항목까지 모두 반환
+    raw = _read_json(LATEST_FILE, [])
+    enriched = []
+    for r in (raw or []):
+        try:
+            meta = (r or {}).get("report_meta") or {}
+            fname = (r or {}).get("file_name") or ""
+            parsed = _parse_report_filename(fname, meta.get("date", ""))
+            classified = _classify_report_status(
+                (r or {}).get("upload_timestamp", ""),
+                parsed.get("date") or meta.get("date", "")
+            )
+            r_enriched = dict(r or {})
+            r_enriched["parsed"] = parsed
+            r_enriched["display_title"] = parsed.get("display_title", "")
+            r_enriched["report_status"] = classified.get("status", "published")
+            r_enriched["d_day"] = classified.get("d_day")
+            r_enriched["hidden"] = bool((r or {}).get("hidden", False))
+            enriched.append(r_enriched)
+        except Exception:
+            enriched.append(r)
+    return {"reports": enriched}
+
+
+@app.post("/admin/reports/{doc_id}/hide")
+def admin_toggle_hide(doc_id: str, _admin: int = Depends(get_admin_session)):
+    # 숨김/숨김해제 토글. hidden=True 이면 /reports 에서 제외됨.
+    items = _read_json(LATEST_FILE, [])
+    found = False
+    new_state = False
+    for it in items:
+        if it.get("doc_id") == doc_id:
+            new_state = not bool(it.get("hidden", False))
+            it["hidden"] = new_state
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="doc_id not found")
+    _write_json(LATEST_FILE, items)
+    return {"ok": True, "doc_id": doc_id, "hidden": new_state}
 
 
 @app.delete("/admin/doc/{doc_id}")
