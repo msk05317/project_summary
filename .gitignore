@@ -121,3 +121,6 @@ backend/note_assets/photos/semiconductor/
 
 # 임시 결과
 /tmp/bloom_*.json
+backend/tmp/
+backend/reports_latest.json.bak_*
+backend/kpi_history.json.bak_*
