@@ -1456,6 +1456,16 @@ def list_reports():
             meta = (r or {}).get("report_meta") or {}
             fname = (r or {}).get("file_name") or ""
             parsed = _parse_report_filename(fname, meta.get("date", ""))
+            manual_projs = (r or {}).get("manual_projects")
+            if manual_projs:
+                parsed = dict(parsed)
+                parsed["projects"] = list(manual_projs)
+                mw = (r or {}).get("week_override")
+                if mw:
+                    parsed["week"] = mw
+                if parsed.get("projects"):
+                    _wk = parsed.get("week")
+                    parsed["display_title"] = ", ".join(parsed["projects"]) + (" · W" + str(_wk) + " 주간보고" if _wk else "")
             classified = _classify_report_status(
                 (r or {}).get("upload_timestamp", ""),
                 parsed.get("date") or meta.get("date", "")
@@ -3469,7 +3479,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       </div>
       <div class="grow"></div>
       <div class="search"><input type="text" placeholder="검색"></div>
-      <button class="btn-primary">＋ 새 등록</button>
+      
     </div>
 
     <!-- 페이지 컨텐츠 -->
@@ -3568,6 +3578,40 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
           box-shadow: 0 6px 18px rgba(15,44,89,0.04);
         }
         .ov-list-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; }
+        .ov-new-btn {
+          background: #0F2C59; color: #fff; border: none; border-radius: 12px;
+          padding: 10px 16px; font-size: 14px; font-weight: 800; cursor: pointer;
+        }
+        .ov-new-btn:hover { background: #173B72; }
+        .ov-modal-mask {
+          position: fixed; inset: 0; background: rgba(15,44,89,0.35);
+          display: none; align-items: center; justify-content: center; z-index: 9999;
+        }
+        .ov-modal-mask.open { display: flex; }
+        .ov-modal {
+          background: #fff; border-radius: 20px; padding: 28px 26px; width: 420px; max-width: 92vw;
+          box-shadow: 0 20px 60px rgba(15,44,89,0.25);
+        }
+        .ov-modal h3 { margin: 0 0 16px 0; font-size: 20px; color: #0F2C59; font-weight: 800; }
+        .ov-modal label { display: block; font-size: 13px; color: #4A5568; font-weight: 700; margin: 10px 0 6px; }
+        .ov-modal input {
+          width: 100%; box-sizing: border-box; padding: 10px 12px;
+          border: 1px solid #D0D9E5; border-radius: 10px; font-size: 14px;
+        }
+        .ov-modal input:focus { outline: none; border-color: #4A6FA5; }
+        .ov-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+        .ov-modal-cancel {
+          background: #F4F6FA; color: #4A5568; border: 1px solid #E6EBF2;
+          border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
+        }
+        .ov-modal-confirm {
+          background: #0F2C59; color: #fff; border: none;
+          border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
+        }
+        .ov-manual-badge {
+          display: inline-block; background: #FFF4EC; color: #B4380F;
+          padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-left: 8px;
+        }
         .ov-list-title { font-size: 20px; color: #173B72; font-weight: 800; }
         .ov-list-sub { font-size: 13px; color: #748092; font-weight: 600; }
 
@@ -3719,6 +3763,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
               <div class="ov-list-title">최근 보고</div>
               <div class="ov-list-sub">가장 최근 등록된 보고를 확인하세요</div>
             </div>
+            <button class="ov-new-btn" type="button" id="ov-new-project-btn">+ 새 프로젝트</button>
           </div>
           <div class="ov-report-list" id="ov-report-list">
             <div style="color:#9CA3AF;font-size:14px;padding:20px;text-align:center;">불러오는 중...</div>
@@ -3727,8 +3772,58 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             <button type="button">이전 보고 더 보기</button>
           </div>
         </div>
+        <div class="ov-modal-mask" id="ov-newproj-mask">
+          <div class="ov-modal">
+            <h3>+ 새 프로젝트</h3>
+            <label for="ov-np-name">프로젝트명</label>
+            <input type="text" id="ov-np-name" name="np-name" placeholder="예: Chamber" />
+            <div style="font-size:12px;color:#7A8595;margin-top:8px;">주차는 현재 주차로 자동 설정됩니다.</div>
+            <div class="ov-modal-actions">
+              <button class="ov-modal-cancel" type="button" id="ov-np-cancel">취소</button>
+              <button class="ov-modal-confirm" type="button" id="ov-np-confirm">생성</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
+  };
+
+  window.openNewProjectModal = function(){
+    const mask = document.getElementById('ov-newproj-mask');
+    const nameEl = document.getElementById('ov-np-name');
+    if (!mask) return;
+    if (nameEl) nameEl.value = '';
+    mask.classList.add('open');
+    setTimeout(function(){ if (nameEl) nameEl.focus(); }, 50);
+  };
+  window.closeNewProjectModal = function(){
+    const mask = document.getElementById('ov-newproj-mask');
+    if (mask) mask.classList.remove('open');
+  };
+  window.submitNewProject = async function(){
+    const name = (document.getElementById('ov-np-name').value || '').trim();
+    if (!name) { alert('프로젝트명을 입력해주세요'); return; }
+    // 현재 ISO 주차 자동 계산
+    function getISOWeek(d){
+      const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = dt.getUTCDay() || 7;
+      dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(dt.getUTCFullYear(),0,1));
+      return Math.ceil((((dt - yearStart) / 86400000) + 1)/7);
+    }
+    const week = getISOWeek(new Date());
+    try {
+      const res = await fetch('/admin/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_name: name, week: week, headline: 'AI 검토중' })
+      });
+      if (!res.ok) { alert('생성 실패'); return; }
+      window.closeNewProjectModal();
+      if (window.loadAdminV2Reports) window.loadAdminV2Reports();
+    } catch(e) {
+      alert('오류: ' + e.message);
+    }
   };
 
   window.loadAdminV2Reports = async function(){
@@ -3826,6 +3921,30 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       if (aiEl) aiEl.textContent = String(ai);
       if (rvEl) rvEl.textContent = String(review);
       if (pbEl) pbEl.textContent = String(published);
+
+      // + 새 프로젝트 버튼 (재바인딩 안전)
+      const newBtn = document.getElementById('ov-new-project-btn');
+      if (newBtn && !newBtn._bound) {
+        newBtn._bound = true;
+        newBtn.addEventListener('click', window.openNewProjectModal);
+      }
+      const cancelBtn = document.getElementById('ov-np-cancel');
+      if (cancelBtn && !cancelBtn._bound) {
+        cancelBtn._bound = true;
+        cancelBtn.addEventListener('click', window.closeNewProjectModal);
+      }
+      const confirmBtn = document.getElementById('ov-np-confirm');
+      if (confirmBtn && !confirmBtn._bound) {
+        confirmBtn._bound = true;
+        confirmBtn.addEventListener('click', window.submitNewProject);
+      }
+      const maskEl = document.getElementById('ov-newproj-mask');
+      if (maskEl && !maskEl._bound) {
+        maskEl._bound = true;
+        maskEl.addEventListener('click', function(e){
+          if (e.target === maskEl) window.closeNewProjectModal();
+        });
+      }
 
       // 열기 버튼 이벤트 바인딩
       document.querySelectorAll('.ov-open-report').forEach(function(btn){
@@ -4521,6 +4640,16 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
             meta = (r or {}).get("report_meta") or {}
             fname = (r or {}).get("file_name") or ""
             parsed = _parse_report_filename(fname, meta.get("date", ""))
+            manual_projs = (r or {}).get("manual_projects")
+            if manual_projs:
+                parsed = dict(parsed)
+                parsed["projects"] = list(manual_projs)
+                mw = (r or {}).get("week_override")
+                if mw:
+                    parsed["week"] = mw
+                if parsed.get("projects"):
+                    _wk = parsed.get("week")
+                    parsed["display_title"] = ", ".join(parsed["projects"]) + (" · W" + str(_wk) + " 주간보고" if _wk else "")
             classified = _classify_report_status(
                 (r or {}).get("upload_timestamp", ""),
                 parsed.get("date") or meta.get("date", "")
@@ -4541,6 +4670,75 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
         except Exception:
             split_cards.append(e)
     return {"reports": split_cards}
+
+
+@app.post("/admin/reports")
+def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_session)):
+    # 수기 프로젝트 생성. PPT 없이 리포트 카드만 추가.
+    project_name = (payload.get("project_name") or "").strip()
+    week = payload.get("week")
+    headline = (payload.get("headline") or "").strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name required")
+    try:
+        week_int = int(week)
+        if week_int < 1 or week_int > 53:
+            raise ValueError
+    except Exception:
+        raise HTTPException(status_code=400, detail="valid week required (1-53)")
+
+    import uuid, datetime as _dt
+    doc_id = "manual_" + uuid.uuid4().hex[:12]
+    now_iso = _dt.datetime.utcnow().isoformat()
+    # 해당 주차의 월요일 날짜 계산 (ISO week)
+    today = _dt.date.today()
+    year = today.year
+    try:
+        report_date = _dt.date.fromisocalendar(year, week_int, 1).isoformat()
+    except Exception:
+        report_date = today.isoformat()
+
+    display_title = project_name + " · W" + str(week_int) + " 주간보고"
+    new_report = {
+        "doc_id": doc_id,
+        "file_name": "(수기 작성) " + project_name + ".manual",
+        "upload_timestamp": now_iso,
+        "is_manual": True,
+        "report_meta": {"date": report_date},
+        "products": [{
+            "name": project_name,
+            "category": "",
+            "status": "",
+            "headline": headline,
+            "summary_bullets": [],
+            "sections": []
+        }],
+        "project_overrides": {},
+        "week_override": week_int,
+        "manual_projects": [project_name],
+    }
+    items = _read_json(LATEST_FILE, [])
+    items.insert(0, new_report)
+    _write_json(LATEST_FILE, items)
+    return {"ok": True, "doc_id": doc_id, "display_title": display_title}
+
+
+@app.delete("/admin/reports/{doc_id}")
+def admin_delete_manual_report(doc_id: str, _admin: int = Depends(get_admin_session)):
+    # 수기 리포트 삭제. 안전을 위해 is_manual=True 인 것만 허용.
+    items = _read_json(LATEST_FILE, [])
+    target = None
+    for it in items:
+        if it.get("doc_id") == doc_id:
+            target = it
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="not found")
+    if not target.get("is_manual"):
+        raise HTTPException(status_code=403, detail="only manual reports can be deleted here")
+    items = [it for it in items if it.get("doc_id") != doc_id]
+    _write_json(LATEST_FILE, items)
+    return {"ok": True, "doc_id": doc_id}
 
 
 @app.put("/admin/reports/{doc_id}")
