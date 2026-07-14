@@ -1366,6 +1366,63 @@ def _parse_report_filename(file_name: str, fallback_date: str = "") -> dict:
     }
 
 
+def _normalize_project_name(name) -> str:
+    """프로젝트명 정규화: trim + 연속공백을 단일공백으로 + 자주 틀리는 표기 통일."""
+    if not name:
+        return ""
+    s = str(name).strip()
+    s = re.sub(r"\s+", " ", s)
+    # 자주 틀리는 한글 표기 통일 (dedupe 기준값만; 실제 저장/표시 값은 안 바꿈)
+    _alias = {
+        "메이져": "메이저",
+        "메이져모듈": "메이저모듈",
+        "매이저": "메이저",
+        "매이져": "메이저",
+    }
+    for k, v in _alias.items():
+        s = s.replace(k, v)
+    return s
+
+
+def _report_sort_key(r: dict):
+    """dedupe용 정렬 키. 최신이 클수록 큰 값.
+    uploaded_at -> created_at -> parsed.date 순으로 fallback."""
+    if not isinstance(r, dict):
+        return ""
+    for k in ("uploaded_at", "created_at"):
+        v = r.get(k)
+        if v:
+            return str(v)
+    parsed = r.get("parsed") or {}
+    d = parsed.get("date") or (r.get("report_meta") or {}).get("date") or ""
+    return str(d)
+
+
+def _dedupe_cards_by_project(cards: list) -> list:
+    """같은 프로젝트명이 여러 카드에 있으면 최신 것만 남긴다.
+    비교 전 이름을 정규화. 순서는 최신순으로 정렬."""
+    if not cards:
+        return []
+    best = {}
+    for c in cards:
+        if not isinstance(c, dict):
+            continue
+        parsed = c.get("parsed") or {}
+        projs = parsed.get("projects") or []
+        proj = _normalize_project_name(projs[0] if projs else "")
+        if not proj:
+            # 프로젝트명 없는 카드는 doc_id 로 유지
+            proj = "__no_project__" + str(c.get("doc_id", ""))
+        key = proj
+        prev = best.get(key)
+        if prev is None or _report_sort_key(c) > _report_sort_key(prev):
+            best[key] = c
+    # 최신순 정렬
+    out = list(best.values())
+    out.sort(key=_report_sort_key, reverse=True)
+    return out
+
+
 def _split_report_by_project(r_enriched: dict) -> list:
     """한 리포트에 여러 프로젝트가 들어있으면 프로젝트 단위 카드로 분리.
     project_overrides가 있으면 프로젝트명을 그걸로 대체.
@@ -1484,6 +1541,7 @@ def list_reports():
             split_cards.extend(_split_report_by_project(e))
         except Exception:
             split_cards.append(e)
+    split_cards = _dedupe_cards_by_project(split_cards)
     return {"reports": split_cards}
 
 
@@ -3816,7 +3874,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       const res = await fetch('/admin/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_name: name, week: week, headline: 'AI 검토중' })
+        body: JSON.stringify({ project_name: name, week: week, headline: '' })
       });
       if (!res.ok) { alert('생성 실패'); return; }
       window.closeNewProjectModal();
@@ -3846,7 +3904,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       } else {
         listEl.innerHTML = recent.map(function(r){
           const title = r.display_title || r.file_name || '제목 없음';
-          const fileName = r.file_name || '보고 파일';
+          const fileName = r.file_name || '파일 없음';
           const size = r.file_size || '';
           const firstProduct = (r.products && r.products[0]) || {};
           const preview = firstProduct.headline || '';
@@ -3878,6 +3936,11 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             dDayColor = '#7A8595';
           }
 
+          // 수기 프로젝트는 파일 없음 → 상태배지/D-day/AI 검토중 preview 다 숨김
+          const isManual = !!r.is_manual;
+          const hideStatus = isManual;
+          const showPreview = !isManual && preview && preview !== 'AI 검토중';
+
           const sizeText = size ? ' · ' + size : '';
           const isHidden = !!r.hidden;
           const hideLabel = isHidden ? '숨김 해제' : '숨기기';
@@ -3888,13 +3951,13 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             +   '<div class="ov-report-main">'
             +     '<div class="ov-report-project">' + title + '</div>'
             +     '<div class="ov-report-file">📎 ' + fileName + sizeText + '</div>'
-            +     (preview ? '<div class="ov-report-preview">' + preview + '</div>' : '')
+            +     (showPreview ? '<div class="ov-report-preview">' + preview + '</div>' : '')
             +   '</div>'
             +   '<div class="ov-report-side">'
-            +     '<div style="display:flex;align-items:center;gap:14px;">'
+            +     (hideStatus ? '' : ('<div style="display:flex;align-items:center;gap:14px;">'
             +       '<div class="ov-badge ' + badgeClass + '">' + badgeText + '</div>'
             +       (dDayText ? '<div style="font-size:15px;font-weight:800;color:' + dDayColor + ';min-width:46px;text-align:right;">' + dDayText + '</div>' : '')
-            +     '</div>'
+            +     '</div>'))
             +     '<button class="ov-hide-btn ov-hide-report' + (isHidden ? ' is-active' : '') + '" type="button" data-doc="' + (r.doc_id || '') + '">' + hideLabel + '</button>'
             +     '<button class="ov-open-btn ov-open-report" type="button" data-doc="' + (r.doc_id || '') + '" data-product="' + (((r.products && r.products[0] && r.products[0].name) || '')).replace(/"/g, '') + '" data-split-project="' + ((r._split_project || '')).replace(/"/g, '') + '">열기</button>'
             +   '</div>'
@@ -4039,32 +4102,34 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       + '  </div>'
       + '  <div class="ov-header-sub">' + subLine + '</div>'
       + '</div>'
-      + '<div class="ov-tabs">'
-      + '  <button class="ov-tab active" type="button">① 현황</button>'
-      + '  <button class="ov-tab" type="button">② 주차별 출하실적</button>'
-      + '  <button class="ov-tab" type="button">③ 주요내용</button>'
-      + '</div>'
-      + '<div class="ov-section">'
-      + '  <div class="ov-section-title"><span class="ov-section-num">1</span>현황</div>'
-      + '  <div id="ov-current-status" class="ov-placeholder">현황 요약 (headline) 이 여기에 표시됩니다.</div>'
-      + '</div>'
-      + '<div class="ov-section">'
-      + '  <div class="ov-section-title"><span class="ov-section-num">2</span>주차별 출하실적</div>'
-      + '  <div class="ov-placeholder" style="margin-bottom:14px;">📥 출하실적 엑셀 업로드 · 개발 중</div>'
-      + '  <div class="ov-placeholder" style="margin-bottom:14px;">📊 주차별 출하실적 표 · 개발 중</div>'
-      + '  <div class="ov-kpi-slot-wrap">'
-      + '    <div class="ov-kpi-slot-label">↓ 표에서 파생 · KPI 카드 (자동 계산)</div>'
-      + '    <div class="ov-kpi-slot" id="ov-kpi-slot">'
-      + '      <div style="color:#8593A6;font-size:13px;text-align:center;padding:12px;">KPI 데이터 로드 중...</div>'
-      + '    </div>'
-      + '  </div>'
-      + '</div>'
-      + '<div class="ov-section">'
-      + '  <div class="ov-section-title"><span class="ov-section-num">3</span>주요내용</div>'
-      + '  <div id="ov-issues-slot">'
-      + '    <div class="ov-placeholder">주요내용 블록 · 개발 중</div>'
-      + '  </div>'
-      + '</div>';
+      + (ctx.isManual
+          ? '<div id="ov-sections-container"></div>'
+          : ('<div class="ov-tabs" id="ov-ppt-tabs">'
+            + '  <button class="ov-tab active" type="button" data-ppt-jump="0">① 현황</button>'
+            + '  <button class="ov-tab" type="button" data-ppt-jump="1">② 주차별 출하실적</button>'
+            + '  <button class="ov-tab" type="button" data-ppt-jump="2">③ 주요내용</button>'
+            + '</div>'
+            + '<div class="ov-section">'
+            + '  <div class="ov-section-title"><span class="ov-section-num">1</span>현황</div>'
+            + '  <div id="ov-current-status" class="ov-placeholder">현황 요약 (headline) 이 여기에 표시됩니다.</div>'
+            + '</div>'
+            + '<div class="ov-section">'
+            + '  <div class="ov-section-title"><span class="ov-section-num">2</span>주차별 출하실적</div>'
+            + '  <div class="ov-placeholder" style="margin-bottom:14px;">📥 출하실적 엑셀 업로드 · 개발 중</div>'
+            + '  <div class="ov-placeholder" style="margin-bottom:14px;">📊 주차별 출하실적 표 · 개발 중</div>'
+            + '  <div class="ov-kpi-slot-wrap">'
+            + '    <div class="ov-kpi-slot-label">↓ 표에서 파생 · KPI 카드 (자동 계산)</div>'
+            + '    <div class="ov-kpi-slot" id="ov-kpi-slot">'
+            + '      <div style="color:#8593A6;font-size:13px;text-align:center;padding:12px;">KPI 데이터 로드 중...</div>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>'
+            + '<div class="ov-section">'
+            + '  <div class="ov-section-title"><span class="ov-section-num">3</span>주요내용</div>'
+            + '  <div id="ov-issues-slot">'
+            + '    <div class="ov-placeholder">주요내용 블록 · 개발 중</div>'
+            + '  </div>'
+            + '</div>'));
   };
 
   // KPI 카드 렌더 헬퍼
@@ -4145,18 +4210,28 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
     if (!c) return;
 
-    // 1) 보고 메타 조회
+    // 1) 보고 메타 조회 (admin은 숨김 포함 전체를 봐야 하므로 /admin/reports/all 사용)
     let target = null;
     try {
-      const res = await fetch('/reports');
+      const res = await fetch('/admin/reports/all');
       const data = await res.json();
       const reports = Array.isArray(data.reports) ? data.reports : [];
       target = reports.find(function(r){
         return r.doc_id === docId && ((r._split_project || '') === (splitProject || ''));
       }) || reports.find(function(r){
         return r.doc_id === docId;
-      }) || reports[0];
-    } catch(e){ console.error(e); }
+      }) || null;
+      if (!target) {
+        console.warn('열기: 해당 보고를 찾을 수 없음', docId, splitProject);
+        alert('해당 보고를 찾을 수 없습니다. 목록을 새로고침합니다.');
+        if (window.backToReportList) window.backToReportList();
+        return;
+      }
+    } catch(e){
+      console.error(e);
+      alert('보고 조회 실패: ' + e.message);
+      return;
+    }
 
     // 2) 헤더 컨텍스트 구성
     const parsed = (target && target.parsed) || {};
@@ -4183,13 +4258,225 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     const subLine = subParts.join(' · ');
 
     // 3) 스켈레톤 렌더
+    const isManual = !!(target && target.is_manual);
     c.innerHTML = window.renderEditPageHTML({
-      fileName: (target && target.file_name) || '편집',
+      fileName: (target && target.file_name) || (isManual ? '(수기 프로젝트)' : '편집'),
       projectLabel: projectLabel,
-      statusLabel: statusLabel,
+      statusLabel: isManual ? '' : statusLabel,
       statusClass: statusClass,
-      subLine: subLine
+      subLine: isManual ? '' : subLine,
+      isManual: isManual
     });
+
+    // 수기 프로젝트: sections CRUD 지원
+    let sectionsState = [];
+    let sectionsDirty = false;
+    const SECTION_ALIASES = {
+      '현황': ['현황','상황','진행현황','진행상황'],
+      '주차별 출하실적': ['주차별 출하실적','출하','출하실적','주차실적','실적','shipment'],
+      '주차별 계획': ['주차별 계획','계획','주차계획','주간계획','plan'],
+      '주요내용': ['주요내용','주요','핵심내용','핵심','main'],
+      '이슈/리스크': ['이슈/리스크','이슈','리스크','문제','특이사항','issue','risk'],
+      '요청사항': ['요청사항','요청','지원요청','request']
+    };
+    function _normSectionName(s){
+      return String(s || '').trim().toLowerCase().replace(/\s+/g,' ');
+    }
+    function _findAliasCanonical(input){
+      const n = _normSectionName(input);
+      if (!n) return null;
+      for (const canonical in SECTION_ALIASES) {
+        const list = SECTION_ALIASES[canonical];
+        for (let i=0;i<list.length;i++){
+          if (_normSectionName(list[i]) === n) return canonical;
+        }
+      }
+      return null;
+    }
+    function _genSecId(){
+      return 'sec_' + Math.random().toString(36).slice(2,10);
+    }
+    function _markSectionsDirty(){
+      sectionsDirty = true;
+      markDirty();
+    }
+
+    if (isManual) {
+      sectionsState = JSON.parse(JSON.stringify(firstProduct.sections || []));
+      const sectionsRoot = document.getElementById('ov-sections-container');
+
+      window._renderManualSections = function(){
+        if (!sectionsRoot) return;
+        let html = '';
+        // 상단 탭바 (시각적 표시 + 스크롤)
+        if (sectionsState.length) {
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap;">'
+               +   '<div class="ov-tabs" style="margin-bottom:0;flex:1;overflow-x:auto;">'
+               +     sectionsState.map(function(sec, idx){
+                       const t = (sec.title || '(제목 없음)');
+                       const nums = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+                       const numStr = idx < nums.length ? nums[idx] : (idx+1) + '.';
+                       return '<button type="button" class="ov-tab ' + (idx === 0 ? 'active' : '') + '" data-sec-jump="' + idx + '">' + numStr + ' ' + t + '</button>';
+                     }).join('')
+               +   '</div>'
+               +   '<button type="button" id="ov-sec-add-btn" style="background:#0F2C59;color:#fff;border:0;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">+ 섹션 추가</button>'
+               + '</div>';
+        } else {
+          html += '<div style="display:flex;justify-content:flex-end;margin-bottom:14px;">'
+               +   '<button type="button" id="ov-sec-add-btn" style="background:#0F2C59;color:#fff;border:0;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;">+ 섹션 추가</button>'
+               + '</div>';
+        }
+        if (!sectionsState.length) {
+          html += '<div class="ov-section"><div class="ov-placeholder">섹션이 없습니다. 위의 「+ 섹션 추가」로 추가하세요.</div></div>';
+        } else {
+          html += sectionsState.map(function(sec, idx){
+            const title = sec.title || '(제목 없음)';
+            const secId = sec.id || '';
+            const blocks = sec.blocks || [];
+            let body = '';
+            if (!blocks.length) {
+              body = '<div class="ov-placeholder">비어 있는 섹션입니다. (Phase 4: 텍스트/파일 블록 추가 예정)</div>';
+            } else {
+              body = blocks.map(function(b){
+                if (b && b.kind === 'text') return '<div style="padding:10px 4px;font-size:14px;color:#12325F;line-height:1.6;white-space:pre-wrap;">' + (b.body||'') + '</div>';
+                if (b && b.kind === 'file') return '<div style="padding:10px 12px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;font-size:13px;color:#12325F;">📎 ' + (b.file_name||'(파일)') + '</div>';
+                return '';
+              }).join('');
+            }
+            return '<div class="ov-section" data-sec-id="' + secId + '" data-sec-idx="' + idx + '">'
+              +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
+              +     '<div class="ov-section-title" style="margin:0;">'
+              +       '<span class="ov-section-num">' + (idx+1) + '</span>'
+              +       '<span class="ov-sec-title-text" data-sec-idx="' + idx + '" style="cursor:text;">' + title + '</span>'
+              +     '</div>'
+              +     '<div style="display:flex;gap:6px;">'
+              +       '<button type="button" class="ov-sec-rename-btn" data-sec-idx="' + idx + '" style="background:#EEF4FB;color:#2E5B94;border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">이름 수정</button>'
+              +       '<button type="button" class="ov-sec-del-btn" data-sec-idx="' + idx + '" style="background:#FEE7E7;color:#B8302E;border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">삭제</button>'
+              +     '</div>'
+              +   '</div>'
+              +   body
+              + '</div>';
+          }).join('');
+        }
+        sectionsRoot.innerHTML = html;
+
+        // 이벤트 바인딩
+        const addBtn = document.getElementById('ov-sec-add-btn');
+        if (addBtn) addBtn.addEventListener('click', function(){ window._addSectionFlow(); });
+        // 탭 클릭 → 해당 섹션으로 스크롤
+        sectionsRoot.querySelectorAll('[data-sec-jump]').forEach(function(tab){
+          tab.addEventListener('click', function(){
+            const i = parseInt(tab.getAttribute('data-sec-jump'), 10);
+            const targetEl = sectionsRoot.querySelector('[data-sec-idx="' + i + '"]');
+            if (targetEl) {
+              targetEl.scrollIntoView({behavior: 'smooth', block: 'start'});
+              // active 상태 갱신
+              sectionsRoot.querySelectorAll('[data-sec-jump]').forEach(function(t){ t.classList.remove('active'); });
+              tab.classList.add('active');
+            }
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-sec-rename-btn').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            window._renameSectionFlow(i);
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-sec-del-btn').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            window._deleteSectionFlow(i);
+          });
+        });
+      };
+
+      window._addSectionFlow = function(){
+        const raw = prompt('추가할 섹션명을 입력하세요\\n(예: 현황, 주차별 출하실적, 주차별 계획, 주요내용, 이슈/리스크, 요청사항)');
+        if (raw === null) return;
+        const name = String(raw || '').trim();
+        if (!name) { alert('섹션명을 입력해주세요'); return; }
+
+        // 완전 동일한 이름이 이미 있으면 차단
+        for (let i=0;i<sectionsState.length;i++){
+          if (_normSectionName(sectionsState[i].title) === _normSectionName(name)) {
+            alert('이미 같은 이름의 섹션이 있습니다: ' + sectionsState[i].title);
+            return;
+          }
+        }
+
+        // 유사 이름 alias 검사
+        const canonical = _findAliasCanonical(name);
+        if (canonical && _normSectionName(canonical) !== _normSectionName(name)) {
+          // 이미 canonical 섹션이 있는지 확인
+          const existingIdx = sectionsState.findIndex(function(s){
+            return _normSectionName(s.title) === _normSectionName(canonical);
+          });
+          if (existingIdx >= 0) {
+            const ok = confirm('이미 "' + canonical + '" 섹션이 있습니다.\\n이 섹션으로 대체하시겠습니까?\\n\\n[확인] 기존 섹션 사용 (추가 안 함)\\n[취소] 그래도 "' + name + '"으로 추가');
+            if (ok) return;
+          } else {
+            const useCanonical = confirm('"' + name + '" 은(는) 표준명 "' + canonical + '"와 유사합니다.\\n표준명으로 추가할까요?\\n\\n[확인] "' + canonical + '"로 추가\\n[취소] 입력한 그대로 "' + name + '"으로 추가');
+            if (useCanonical) {
+              sectionsState.push({id: _genSecId(), title: canonical, kind: 'mixed', blocks: []});
+              _markSectionsDirty();
+              window._renderManualSections();
+              return;
+            }
+          }
+        }
+
+        sectionsState.push({id: _genSecId(), title: name, kind: 'mixed', blocks: []});
+        _markSectionsDirty();
+        window._renderManualSections();
+      };
+
+      window._renameSectionFlow = function(idx){
+        if (idx < 0 || idx >= sectionsState.length) return;
+        const cur = sectionsState[idx].title || '';
+        const raw = prompt('새 섹션명을 입력하세요', cur);
+        if (raw === null) return;
+        const name = String(raw || '').trim();
+        if (!name) { alert('섹션명을 입력해주세요'); return; }
+        if (_normSectionName(name) === _normSectionName(cur)) return;
+        for (let i=0;i<sectionsState.length;i++){
+          if (i === idx) continue;
+          if (_normSectionName(sectionsState[i].title) === _normSectionName(name)) {
+            alert('이미 같은 이름의 섹션이 있습니다: ' + sectionsState[i].title);
+            return;
+          }
+        }
+        sectionsState[idx].title = name;
+        _markSectionsDirty();
+        window._renderManualSections();
+      };
+
+      window._deleteSectionFlow = function(idx){
+        if (idx < 0 || idx >= sectionsState.length) return;
+        const cur = sectionsState[idx].title || '';
+        if (!confirm('"' + cur + '" 섹션을 삭제하시겠습니까?')) return;
+        sectionsState.splice(idx, 1);
+        _markSectionsDirty();
+        window._renderManualSections();
+      };
+
+      window._renderManualSections();
+    } else {
+      // PPT 프로젝트: 하드코딩 3탭 스크롤 바인딩
+      const pptTabs = document.getElementById('ov-ppt-tabs');
+      if (pptTabs) {
+        pptTabs.querySelectorAll('[data-ppt-jump]').forEach(function(tab){
+          tab.addEventListener('click', function(){
+            const i = parseInt(tab.getAttribute('data-ppt-jump'), 10);
+            const allSecs = c.querySelectorAll('.ov-section');
+            if (allSecs[i]) {
+              allSecs[i].scrollIntoView({behavior: 'smooth', block: 'start'});
+              pptTabs.querySelectorAll('[data-ppt-jump]').forEach(function(t){ t.classList.remove('active'); });
+              tab.classList.add('active');
+            }
+          });
+        });
+      }
+    }
 
     // 4) 상단 버튼 바인딩
     const backBtn = document.getElementById('ov-back-btn');
@@ -4246,6 +4533,10 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         try {
           const payload = { project_overrides: overrides };
           if (newWeek) payload.week_override = newWeek;
+          // 수기 프로젝트: sections 도 함께 저장
+          if (isManual && sectionsDirty) {
+            payload.products = [{ sections: sectionsState }];
+          }
           const res = await fetch('/admin/reports/' + encodeURIComponent(docId), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -4669,6 +4960,7 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
             split_cards.extend(_split_report_by_project(e))
         except Exception:
             split_cards.append(e)
+    split_cards = _dedupe_cards_by_project(split_cards)
     return {"reports": split_cards}
 
 
@@ -4676,6 +4968,27 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
 def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_session)):
     # 수기 프로젝트 생성. PPT 없이 리포트 카드만 추가.
     project_name = (payload.get("project_name") or "").strip()
+
+    # 중복 프로젝트명 검사 (정규화 후 비교)
+    _norm_new = _normalize_project_name(project_name)
+    if _norm_new:
+        try:
+            _existing = _load_latest_reports()
+        except Exception:
+            _existing = []
+        for _r in (_existing or []):
+            # 기존 리포트가 가진 모든 프로젝트명 (override 포함)
+            _parsed = (_r or {}).get("parsed") or {}
+            _projs = list(_parsed.get("projects") or [])
+            _manual = (_r or {}).get("manual_projects") or []
+            _projs.extend(_manual)
+            _overrides = (_r or {}).get("project_overrides") or {}
+            _all_names = []
+            for _pn in _projs:
+                _all_names.append(_overrides.get(_pn, _pn))
+            for _pn in _all_names:
+                if _normalize_project_name(_pn) == _norm_new:
+                    raise HTTPException(status_code=400, detail=f"이미 존재하는 프로젝트명입니다: {project_name}")
     week = payload.get("week")
     headline = (payload.get("headline") or "").strip()
     if not project_name:
@@ -4699,9 +5012,14 @@ def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_se
         report_date = today.isoformat()
 
     display_title = project_name + " · W" + str(week_int) + " 주간보고"
+    default_sections = [
+        {"id": "sec_" + uuid.uuid4().hex[:8], "title": "현황", "kind": "text", "blocks": []},
+        {"id": "sec_" + uuid.uuid4().hex[:8], "title": "주차별 계획", "kind": "mixed", "blocks": []},
+        {"id": "sec_" + uuid.uuid4().hex[:8], "title": "주요내용", "kind": "mixed", "blocks": []},
+    ]
     new_report = {
         "doc_id": doc_id,
-        "file_name": "(수기 작성) " + project_name + ".manual",
+        "file_name": "",
         "upload_timestamp": now_iso,
         "is_manual": True,
         "report_meta": {"date": report_date},
@@ -4711,7 +5029,7 @@ def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_se
             "status": "",
             "headline": headline,
             "summary_bullets": [],
-            "sections": []
+            "sections": default_sections
         }],
         "project_overrides": {},
         "week_override": week_int,
@@ -4752,6 +5070,25 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
             continue
         found = True
         overrides = payload.get("project_overrides")
+        # 이름 변경 시 다른 리포트와 중복되는지 검사
+        if isinstance(overrides, dict) and overrides:
+            _new_names = set()
+            for _v in overrides.values():
+                _n = _normalize_project_name(_v)
+                if _n:
+                    _new_names.add(_n)
+            for _r in items:
+                if (_r or {}).get("doc_id") == doc_id:
+                    continue
+                _parsed = (_r or {}).get("parsed") or {}
+                _projs = list(_parsed.get("projects") or [])
+                _manual = (_r or {}).get("manual_projects") or []
+                _projs.extend(_manual)
+                _overrides_o = (_r or {}).get("project_overrides") or {}
+                for _pn in _projs:
+                    _final = _overrides_o.get(_pn, _pn)
+                    if _normalize_project_name(_final) in _new_names:
+                        raise HTTPException(status_code=400, detail="이미 존재하는 프로젝트명입니다: " + str(_final))
         if isinstance(overrides, dict):
             existing_ov = it.get("project_overrides") or {}
             existing_ov.update({str(k): str(v) for k, v in overrides.items() if v})
