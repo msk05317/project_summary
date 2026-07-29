@@ -10,8 +10,11 @@ import faiss
 from openai import OpenAI
 
 BASE = Path(__file__).parent.parent
-INDEX_PATH = BASE / "rag" / "vector_index.faiss"
-META_PATH = BASE / "rag" / "vector_meta.json"
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE)))
+RAG_DIR = DATA_DIR / "rag"
+RAG_DIR.mkdir(parents=True, exist_ok=True)
+INDEX_PATH = RAG_DIR / "vector_index.faiss"
+META_PATH = RAG_DIR / "vector_meta.json"
 
 EMBED_MODEL = "text-embedding-3-small"
 

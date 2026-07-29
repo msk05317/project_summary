@@ -39,7 +39,9 @@ class AppUpdater {
   /// 서버 버전 조회. 실패 시 null.
   Future<AppVersionInfo?> fetchLatest() async {
     try {
-      final res = await _dio.get('$kApiBaseUrl/app/version');
+      // GitHub Raw URL 사용 (서버 URL 변경돼도 앱 재빌드 불필요)
+      const versionCheckUrl = 'https://raw.githubusercontent.com/msk05317/project_summary/main/backend/app_version.json';
+      final res = await _dio.get(versionCheckUrl);
       if (res.statusCode != 200) return null;
       return AppVersionInfo.fromJson(
           Map<String, dynamic>.from(res.data as Map));

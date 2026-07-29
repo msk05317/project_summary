@@ -5,6 +5,7 @@ import '../models/division.dart';
 import '../services/divisions_service.dart';
 import '../components/home/search_filter_row.dart';
 import '../components/home/division_grid_card.dart';
+import '../models/dashboard.dart';
 import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_projects_screen.dart';
@@ -215,7 +216,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                         divisionId: d.id,
                         label: d.label,
                         projectCount: d.projects.length,
-                        isActive: true,
+                        status: DivisionStatus.active,
                         isFavorite: true,
                         onTap: () => _openDivision(d),
                         onToggleFavorite: () => _toggleFavorite(d.id),
@@ -266,7 +267,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                       divisionId: d.id,
                       label: d.label,
                       projectCount: d.projects.length,
-                      isActive: true,
+                      status: DivisionStatus.active,
                       isFavorite: false,
                       onTap: () => _openDivision(d),
                       onToggleFavorite: () => _toggleFavorite(d.id),

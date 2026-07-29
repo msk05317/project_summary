@@ -5,7 +5,7 @@ import '../models/chat_message.dart';
 class ChatService {
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://projectsummary-production.up.railway.app',
+    defaultValue: 'https://project-summary-mkoo.fly.dev',
   );
 
   static Future<ChatMessage> ask(String message, {int topK = 5}) async {

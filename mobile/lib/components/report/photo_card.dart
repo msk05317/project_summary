@@ -12,7 +12,7 @@ class PhotoCard extends StatelessWidget {
   // 빌드 시점에 --dart-define=API_BASE_URL=... 으로 주입된 값.
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://projectsummary-production.up.railway.app',
+    defaultValue: 'https://project-summary-mkoo.fly.dev',
   );
 
   const PhotoCard({
@@ -36,7 +36,7 @@ class PhotoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if ((fileName ?? '').isNotEmpty) ...[
+          if ((fileName ?? '').isNotEmpty && !_isFileNameOnly(fileName!)) ...[
             Text(
               fileName!,
               style: AppText.caption.copyWith(color: AppColors.reportBody),
@@ -81,4 +81,10 @@ class PhotoCard extends StatelessWidget {
       ),
     );
   }
+  // 파일명이 확장자만 있는 형태이면 표시 안 함 (예: 'foo.xlsx')
+  bool _isFileNameOnly(String name) {
+    return RegExp(r'\.(xlsx|xls|pptx|ppt|docx|doc|pdf|png|jpg|jpeg|gif|webp)$',
+        caseSensitive: false).hasMatch(name.trim());
+  }
+
 }

@@ -136,15 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // - GREEN(완료)만 있는 경우는 일단 "대기"로 둡니다(시안의 회색 톤과 일치).
   // - 데이터 소스는 /dashboard 응답 (DashboardCard 리스트).
   //   각 카드의 division_id 가 일치하는 카드 중 status 가 RED/YELLOW 면 활성.
-  bool _isDivisionActive(String divisionId, List<DashboardCard> cards) {
-    for (final c in cards) {
-      if (c.divisionId != divisionId) continue;
-      final s = c.status.toUpperCase();
-      if (s == 'RED' || s == 'YELLOW' || s == 'ORANGE') {
-        return true;
-      }
-    }
-    return false;
+  DivisionStatus _divisionStatus(String divisionId, List<DashboardCard> cards) {
+    return computeDivisionStatus(divisionId, cards);
   }
 
   // 즉시 확인 1줄용 핵심 내용 추출.
@@ -486,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTapItem: _openDivision,
                       dashboardFuture: _dashboardFuture,
                       favoriteDivisionIds: _favDivisions,
-                      isActive: _isDivisionActive,
+                      divisionStatus: _divisionStatus,
                       onToggleFavorite: _toggleDivisionFavorite,
                       // 검색/필터 (시안 v2 신규)
                       query: _query,
@@ -645,7 +638,7 @@ class _SummarySection extends StatelessWidget {
 // 이를 위해 _DivisionsSection 이 추가로 받는 정보:
 //  - dashboardFuture       : 사업부 status 계산용 /dashboard 카드 목록
 //  - favoriteDivisionIds   : 현재 즐겨찾기된 사업부 id 집합
-//  - isActive              : (divisionId, cards) → 활성 여부 판정 함수
+//  - divisionStatus        : (divisionId, cards) → 4단계 상태 판정 함수
 //                            (HomeScreen 의 _isDivisionActive 위임)
 //  - onToggleFavorite      : (divisionId) → 즐겨찾기 토글 콜백
 //
@@ -659,7 +652,7 @@ class _DivisionsSection extends StatelessWidget {
 
   final Future<List<DashboardCard>> dashboardFuture;
   final Set<String> favoriteDivisionIds;
-  final bool Function(String divisionId, List<DashboardCard> cards) isActive;
+  final DivisionStatus Function(String divisionId, List<DashboardCard> cards) divisionStatus;
   final void Function(String divisionId) onToggleFavorite;
 
   // 검색/필터
@@ -673,7 +666,7 @@ class _DivisionsSection extends StatelessWidget {
     required this.onTapItem,
     required this.dashboardFuture,
     required this.favoriteDivisionIds,
-    required this.isActive,
+    required this.divisionStatus,
     required this.onToggleFavorite,
     required this.query,
     required this.matchDivision,
@@ -806,7 +799,7 @@ class _DivisionsSection extends StatelessWidget {
                             divisionId: d.id,
                             label: d.label,
                             projectCount: d.projects.length,
-                            isActive: isActive(d.id, cards),
+                            status: divisionStatus(d.id, cards),
                             isFavorite: true,
                             onTap: () => onTapItem(d),
                             onToggleFavorite: () => onToggleFavorite(d.id),
@@ -926,7 +919,7 @@ class _DivisionsSection extends StatelessWidget {
                         divisionId: d.id,
                         label: d.label,
                         projectCount: d.projects.length,
-                        isActive: isActive(d.id, cards),
+                        status: divisionStatus(d.id, cards),
                         isFavorite: favoriteDivisionIds.contains(d.id),
                         onTap: () => onTapItem(d),
                         onToggleFavorite: () => onToggleFavorite(d.id),

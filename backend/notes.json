@@ -1,48 +1,12 @@
 {
   "version": 1,
-  "updated_at": "2026-06-19T10:52:44.489693",
+  "updated_at": "2026-07-27T14:27:04.558796",
   "notes": {
     "semiconductor": {
       "report_date": "2026-06-17",
       "updated_at": "2026-06-17T11:17:26.331388",
       "raw_text": "<스텔란티스>\n1. OIL PUMP HOUSING 공정별 생산 CAPA\n   - 일 별 생산 CAPA: 약 1,398대\n     \n2. 주요 이슈\n   1) 2027년 물량: 48만대 (1만대/주)\n   2) 원소재 부족 및 잦은 금형 수리\n      - 5월 전체 불량율: 51%\n         --> W25 공정 불량율: 41%\n",
       "cards": [
-        {
-          "title": "하바플레이트",
-          "sections": [
-            {
-              "title": "현황",
-              "items": [
-                {
-                  "type": "highlight",
-                  "text": "총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종"
-                },
-                {
-                  "type": "bullet",
-                  "text": "신규 장비 40대",
-                  "group_id": "g1"
-                },
-                {
-                  "type": "bullet",
-                  "text": "플라스틱 전용 장비 6대 (텍슨 —> B1 이동)",
-                  "group_id": "g1"
-                },
-                {
-                  "type": "group_note",
-                  "text": "6월말 고객사 승인 예정",
-                  "group_id": "g1",
-                  "due_date": "2026-06-30"
-                },
-                {
-                  "type": "photo",
-                  "text": "하바플레이트.xlsx",
-                  "photo_ref": "semiconductor/xls_2026-06-15_d4ebfe58.png"
-                }
-              ]
-            }
-          ],
-          "raw_text": "<하바플레이트>\n\n[현황]\n★ 총141개 모델 중 양산진행 14종, 개발 (양산전환) 16종, RPM 111종\n- 신규 장비 40대\n- 플라스틱 전용 장비 6대 (텍슨 —> B1 이동)\n  ↪ 6월말 고객사 승인 예정  (2026-06-30)\n- 하바플레이트.xlsx"
-        },
         {
           "title": "파워박스",
           "sections": [
@@ -298,6 +262,44 @@
             }
           ],
           "raw_text": "<프레임>\n\n[현황]\n★ 총 42개 모델 중 양산 2종, 진행중 40종\n\n[CEFEM 프레임]\n- 프레임.xlsx\n★ 출고 대기중 (우드박스 6/18 10세트 입고 → W26 출하)  (2026-06-18)\n  - CEFEM SI 리포트 리뷰 완료 (5/20) → 카말 승인 완료 → 오웬 최종승인 검토 중\n  - 내재화 TPM Lam 내부순위 협의 중 (세이버 & 백터코어), 텍슨 동시진행 요청 중\n\n[쿼로스 프레임]\n- 설계 및 전개도 협의완료\n- 출하: 업퍼 2대 6/6 출고 완료, 로워 2대 6/12 출고 완료, 2대 고객 치수 검토 후 출고예정 (6/19)  (2026-06-19)\n\n[내재화 프레임]\n  - ① 세이버 프레임 4종\n- 승인예정: 6/22 (조찬형 이사 계획수립)  (2026-06-22)\n- 4종중 1종 C4 크리티컬 등급 → Lam SE 니킬 NC로 변경예정 회신 받음 (5/22)\n  - → CEFEM과 비교자료 검토 완료 시 PRR 미진행\n- #2 프레임 제작 진행 중 (스틸 1종 / SUS 1)종 용접 진행완료 → 용접 검사 중\n  - ② 백터 코어 2종 (화성 신규 내재화 프레임) - 빌드 검증 8월 중순 예상\n- 스틸프레임 1종, 알루미늄프레임 1종\n- 원자재 ETA 단축 진행 중 (스틸: 8/1, 알루미늄: 9/15)  (2026-08-01)\n- 크로메이트 도금 (리치포트 가능) → 신규 프레임 도금라인 증설 예정 (흥옌)\n  - ③ STRIP 2종 (용인)\n- 아크스프레이 테스트 진행 완료(6/12) → 외부 인증기관 (베트남) 의뢰예정 (6/17)  (2026-06-17)\n  - ④ MACH I VTM 1종\n- 승인순위 4순위, 우선순위대로 승인예정"
+        },
+        {
+          "title": "챔버",
+          "sections": [
+            {
+              "title": "주차별 계획",
+              "items": [
+                {
+                  "type": "bullet",
+                  "text": "EFEM: 화성출고 (7/2) → 텍슨입고 (7/9) → 조립 셋업 (8/7)",
+                  "due_date": "2026-08-07",
+                  "item_id": "8f3ae7b2",
+                  "due_date_auto": "2026-08-07"
+                },
+                {
+                  "type": "bullet",
+                  "text": "금형 검수 [2026-07-30]",
+                  "due_date": "2026-07-30",
+                  "item_id": "9aec36a0",
+                  "due_date_auto": "2026-07-30"
+                },
+                {
+                  "type": "bullet",
+                  "text": "납품 검수 8/15",
+                  "due_date": "2026-08-15",
+                  "item_id": "32a41fd6",
+                  "due_date_auto": "2026-08-15"
+                },
+                {
+                  "type": "bullet",
+                  "text": "테스트 항목 9/1",
+                  "due_date": "2026-09-01",
+                  "item_id": "6e02c53b",
+                  "due_date_auto": "2026-09-01"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -308,44 +310,7 @@
       "cards": []
     },
     "automotive": {
-      "cards": [
-        {
-          "title": "스텔란티스",
-          "sections": [
-            {
-              "title": "OIL PUMP HOUSING 공정별 생산 CAPA",
-              "items": [
-                {
-                  "type": "bullet",
-                  "text": "일 별 생산 CAPA: 약 1,398대"
-                }
-              ]
-            },
-            {
-              "title": "주요 이슈",
-              "items": [
-                {
-                  "type": "sub",
-                  "text": "1) 2027년 물량: 48만대 (1만대/주)"
-                },
-                {
-                  "type": "sub",
-                  "text": "2) 원소재 부족 및 잦은 금형 수리"
-                },
-                {
-                  "type": "bullet",
-                  "text": "5월 전체 불량율: 51%"
-                },
-                {
-                  "type": "sub",
-                  "text": "→ W25 공정 불량율: 41%"
-                }
-              ]
-            }
-          ],
-          "raw_text": "<스텔란티스>\n\n[OIL PUMP HOUSING 공정별 생산 CAPA]\n- 일 별 생산 CAPA: 약 1,398대\n\n[주요 이슈]\n  - 1) 2027년 물량: 48만대 (1만대/주)\n  - 2) 원소재 부족 및 잦은 금형 수리\n- 5월 전체 불량율: 51%\n  - → W25 공정 불량율: 41%"
-        }
-      ]
+      "cards": []
     },
     "arista": {
       "cards": []
@@ -354,261 +319,7 @@
       "report_date": "2026-06-19",
       "updated_at": "2026-06-19T10:52:44.489635",
       "raw_text": "<블룸>\n\n📷 블룸.xlsx @@photo_ref=bloom/xls_2026-06-19_e4339a5c.png\n\n1. 현황\n  1) CORVA KPE\n    - 6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨\n    - 스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요\n    - 마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)\n    - 엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요\n  2) KPE EFM BP\n    - 엔더슨 자재 5종이 2026년 내 납품 불가 --> ETA 2027/03/25로 BE 통한 물량 배정 필요\n  3) BOP\n    - 출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정\n    - 장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중 ",
-      "cards": [
-        {
-          "title": "<블룸>",
-          "sections": [
-            {
-              "title": "이슈사항",
-              "items": [
-                {
-                  "type": "photo",
-                  "text": "블룸.xlsx",
-                  "photo_ref": "bloom/xls_2026-06-17_487ef836.png"
-                },
-                {
-                  "type": "sub",
-                  "text": "1) CORVA KPE"
-                },
-                {
-                  "type": "bullet",
-                  "text": "6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨",
-                  "due_date": "2026-06-15"
-                },
-                {
-                  "type": "bullet",
-                  "text": "스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요",
-                  "due_date": "2026-06-17"
-                },
-                {
-                  "type": "bullet",
-                  "text": "마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)"
-                },
-                {
-                  "type": "bullet",
-                  "text": "엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요",
-                  "due_date": "2026-12-03"
-                },
-                {
-                  "type": "sub",
-                  "text": "2) KPE EFM BP"
-                },
-                {
-                  "type": "bullet",
-                  "text": "엔더슨 자재 5종이 2026년 내 납품 불가 → ETA 2027/03/25로 BE 통한 물량 배정 필요"
-                },
-                {
-                  "type": "sub",
-                  "text": "3) BOP"
-                },
-                {
-                  "type": "bullet",
-                  "text": "출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정",
-                  "due_date": "2026-06-15"
-                },
-                {
-                  "type": "bullet",
-                  "text": "장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중"
-                },
-                {
-                  "type": "photo",
-                  "text": "블룸.xlsx",
-                  "photo_ref": "bloom/xls_2026-06-18_8888e46b.png"
-                }
-              ]
-            },
-            {
-              "title": "제품별 진행 현황",
-              "items": [
-                {
-                  "type": "sub",
-                  "text": "1) YFP"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[원자재] 자재 점검 대상 없음"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[입고]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[생산] 108 / 640 조립완료 (16.9%)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[납기] 총 PO 640 / 출하완료 108 / 잔량 532 (16.9%)"
-                },
-                {
-                  "type": "sub",
-                  "text": "2) KPE CORVA"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[원자재] �� NCT 자재 부족 103/117종 (WLDMT_KPM LITE SIDE_HINGE_RIGHT_PANEL, SM,CLAMP,FLANGE,EXHAUST,CATHODE,KPM,TOP, SM, PANEL, DOOR,OUTER, LOWER,KEEYLOCKO 외 100종)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[입고]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[생산] 405 / 10,419 조립완료 (3.9%)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[납기] 총 PO 10,419 / 출하완료 0 / 잔량 10,419 (0.0%)"
-                },
-                {
-                  "type": "sub",
-                  "text": "3) KPE EFM"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[원자재]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[입고]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[생산] 2,223 (총 PO 정보 없음)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[납기]"
-                },
-                {
-                  "type": "sub",
-                  "text": "4) BOP Assy"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[원자재] �� NCT 자재 부족 17/29종 (BOPA-P004_BRKT_FIX, RIGHT_BASE_PANEL_BOP, MIDDLE_BRACEKT_2_BOP 외 14종)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[입고]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[생산] 351 / 15,521 조립완료 (2.3%)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[납기] 총 PO 15,521 / 출하완료 21 / 잔량 15,500 (0.1%)"
-                },
-                {
-                  "type": "sub",
-                  "text": "5) SL7"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[원자재] 미발주"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[입고]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[생산] 0 / 3,621 조립완료 (0.0%)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[납기] 총 PO 3,621 / 출하완료 0 / 잔량 3,621 (0.0%)"
-                },
-                {
-                  "type": "sub",
-                  "text": "6) SS8"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[원자재] 미발주"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[입고]"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[생산] 0 / 2,071 조립완료 (0.0%)"
-                },
-                {
-                  "type": "highlight",
-                  "text": "[납기] 총 PO 2,071 / 출하완료 0 / 잔량 2,071 (0.0%)"
-                }
-              ]
-            }
-          ],
-          "raw_text": "<블룸>\n\n[이슈사항]\n📷 블룸.xlsx @@photo_ref=bloom/xls_2026-06-17_487ef836.png\n  1) CORVA KPE\n    - 6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨\n    - 스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요\n    - 마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)\n    - 엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요\n  2) KPE EFM BP\n    - 엔더슨 자재 5종이 2026년 내 납품 불가 → ETA 2027/03/25로 BE 통한 물량 배정 필요\n  3) BOP\n    - 출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정\n    - 장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중\n📷 블룸.xlsx @@photo_ref=bloom/xls_2026-06-18_8888e46b.png\n\n[제품별 진행 현황]\n1) YFP\n   [원자재] 자재 점검 대상 없음\n   [입고]   -\n   [생산]   108 / 640 조립완료 (16.9%)\n   [납기]   총 PO 640 / 출하완료 108 / 잔량 532 (16.9%)\n\n2) KPE CORVA\n   [원자재] 🔴 NCT 자재 부족 103/117종 (생산 차질 우려)\n            · WLDMT_KPM LITE SIDE_HINGE_RIGHT_PANEL : -2,080\n            · SM,CLAMP,FLANGE,EXHAUST,CATHODE,KPM,TOP : -2,080\n            · SM, PANEL, DOOR,OUTER, LOWER,KEEYLOCKO : -2,080\n            ...외 100종\n   [입고]   -\n   [생산]   405 / 10,419 조립완료 (3.9%)\n   [납기]   총 PO 10,419 / 출하완료 0 / 잔량 10,419 (0.0%)\n\n3) KPE EFM\n   [원자재] -\n   [입고]   -\n   [생산]   2,223 (총 PO 정보 없음)\n   [납기]   -\n\n4) BOP Assy\n   [원자재] 🔴 NCT 자재 부족 17/29종 (생산 차질 우려)\n            · BOPA-P004_BRKT_FIX : -8,813\n            · RIGHT_BASE_PANEL_BOP : -8,789\n            · MIDDLE_BRACEKT_2_BOP : -8,729\n            ...외 14종\n   [입고]   -\n   [생산]   351 / 15,521 조립완료 (2.3%)\n   [납기]   총 PO 15,521 / 출하완료 21 / 잔량 15,500 (0.1%)\n\n5) SL7\n   [원자재] 미발주\n   [입고]   -\n   [생산]   0 / 3,621 조립완료 (0.0%)\n   [납기]   총 PO 3,621 / 출하완료 0 / 잔량 3,621 (0.0%)\n\n6) SS8\n   [원자재] 미발주\n   [입고]   -\n   [생산]   0 / 2,071 조립완료 (0.0%)\n   [납기]   총 PO 2,071 / 출하완료 0 / 잔량 2,071 (0.0%)",
-          "status": "RED",
-          "auto_generated": true,
-          "auto_source": "excel_3files"
-        },
-        {
-          "title": "블룸",
-          "sections": [
-            {
-              "title": "현황",
-              "items": [
-                {
-                  "type": "photo",
-                  "text": "블룸.xlsx",
-                  "photo_ref": "bloom/xls_2026-06-19_e4339a5c.png"
-                },
-                {
-                  "type": "sub",
-                  "text": "1) CORVA KPE"
-                },
-                {
-                  "type": "bullet",
-                  "text": "6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨",
-                  "due_date": "2026-06-15"
-                },
-                {
-                  "type": "bullet",
-                  "text": "스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요",
-                  "due_date": "2026-06-17"
-                },
-                {
-                  "type": "bullet",
-                  "text": "마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)"
-                },
-                {
-                  "type": "bullet",
-                  "text": "엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요",
-                  "due_date": "2026-12-03"
-                },
-                {
-                  "type": "sub",
-                  "text": "2) KPE EFM BP"
-                },
-                {
-                  "type": "bullet",
-                  "text": "엔더슨 자재 5종이 2026년 내 납품 불가 → ETA 2027/03/25로 BE 통한 물량 배정 필요"
-                },
-                {
-                  "type": "sub",
-                  "text": "3) BOP"
-                },
-                {
-                  "type": "bullet",
-                  "text": "출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정",
-                  "due_date": "2026-06-15"
-                },
-                {
-                  "type": "bullet",
-                  "text": "장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중"
-                }
-              ]
-            }
-          ],
-          "raw_text": "<블룸>\n\n📷 블룸.xlsx @@photo_ref=bloom/xls_2026-06-19_e4339a5c.png\n\n1. 현황\n  1) CORVA KPE\n    - 6월 출하 계획이 6/15 930set → 6/22 450set, 6/29 450set으로 변경됨\n    - 스프링 대체 자재 666set가 6/17 입고 예정이나 개발/품질 검증 필요\n    - 마라톤/메르센 자재 3종은 납기 단축 필요 (ETA 8/30)\n    - 엔더슨 자재 4종은 납기 단축 진행 중이나 ETA가 12/3 수준으로 늦어 BE 물량 배정 필요\n  2) KPE EFM BP\n    - 엔더슨 자재 5종이 2026년 내 납품 불가 --> ETA 2027/03/25로 BE 통한 물량 배정 필요\n  3) BOP\n    - 출하 계획이 6/15 800set → 6/22 400set, 6/29 400set으로 조정\n    - 장납기 자재 제외 후 선조립해서 텍슨 미국으로 발송하는 대응 검토 중 "
-        }
-      ]
+      "cards": []
     }
   }
 }

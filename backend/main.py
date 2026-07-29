@@ -1237,10 +1237,14 @@ def dashboard():
                         if t in ("bullet", "group_note", "sub") and len(bullets) < 5:
                             bullets.append(txt)
 
-                # 카드 본문: 날짜 있는 항목만 표시. 일정 없으면 대시보드 제외
-                if not dated_bullets:
+                                # 카드 본문: 날짜 있는 항목 우선, 없으면 일반 bullets 사용
+                # 완전히 빈 카드(bullets/highlight/dated 모두 없음)만 스킵
+                if not dated_bullets and not bullets and not highlight_text:
                     continue
-                bullets = dated_bullets[:10]
+                if dated_bullets:
+                    bullets = dated_bullets[:10]
+                else:
+                    bullets = bullets[:10]
 
                 # headline: summary_bullets[0] 또는 첫 dated bullet 에서 날짜 제거
                 def _shorten(txt: str, limit: int = 20) -> str:
@@ -1606,7 +1610,7 @@ def download_app_apk():
     )
 
 
-NOTES_FILE = Path("notes.json")
+NOTES_FILE = DATA_DIR / "notes.json"
 
 
 def _load_notes() -> dict:
@@ -2183,6 +2187,28 @@ def _is_done_scope(txt: str, idx: int) -> bool:
             nearest_pos = i
             nearest_kind = "pending"
 
+    # 1-b) done 키워드 뒤에 곧바로 "예정" 이 나오면 pending 으로 재분류
+    # 예: "완료 예정", "완료예정", "출하예정 완료" 등
+    if nearest_kind == "done" and nearest_pos != -1:
+        # done 키워드 뒤 6자 이내에 예정/예상 이 있는지
+        window_end = min(len(txt), nearest_pos + 12)
+        after = txt[nearest_pos:window_end]
+        for pk in _PENDING_KEYWORDS:
+            if pk in after:
+                nearest_kind = "pending"
+                break
+
+    # 1-b) done 키워드 뒤에 곧바로 "예정" 이 나오면 pending 으로 재분류
+    # 예: "완료 예정", "완료예정", "출하예정 완료" 등
+    if nearest_kind == "done" and nearest_pos != -1:
+        # done 키워드 뒤 6자 이내에 예정/예상 이 있는지
+        window_end = min(len(txt), nearest_pos + 12)
+        after = txt[nearest_pos:window_end]
+        for pk in _PENDING_KEYWORDS:
+            if pk in after:
+                nearest_kind = "pending"
+                break
+
     # 같은 줄에서 너무 멀면 무시 (다른 절일 가능성)
     if nearest_pos != -1 and (nearest_pos - idx) <= 25:
         return nearest_kind == "done"
@@ -2198,87 +2224,133 @@ def _is_done_scope(txt: str, idx: int) -> bool:
 
 def _extract_due_date_from_text(txt: str) -> str:
     """본문 텍스트에서 due_date(YYYY-MM-DD) 추출. 못 찾으면 빈 문자열.
-    규칙:
-      - "X월말" → 해당 월 마지막 평일(일요일이면 금요일)
-      - "(M/D)", "M/D" → 2026-MM-DD
-      - "W23"~"W53" → 해당 ISO 주차의 금요일 (연도 2026 기준)
-      - "M월 D일", "M월D일" → 2026-MM-DD
-      - "YYYY-MM-DD" / "YY.M.D" → 그대로
-    여러 개 있으면 가장 빠른 날짜 채택.
+    
+    화살표 인식형 파서 (마커 없이 자동 판단):
+      1) 텍스트를 화살표(-->, ->, →, ➜, ⇒, ~>)로 split → 단계별로 나눔.
+      2) 마지막 세그먼트만 대상으로 날짜 후보 수집 (앞 단계는 완료로 간주).
+      3) 마지막 세그먼트에 날짜 없으면 전체 텍스트에서 fallback.
+      4) 후보 중 최적 선택:
+         - 오늘 이후(포함) 날짜 있으면 → 그중 가장 가까운 미래
+         - 없으면 → 지난 날짜 중 가장 최근 (지연 D+n 표시용)
+    
+    지원 패턴:
+      - [YYYY-MM-DD] / YYYY-MM-DD
+      - YY.M.D / YY-M-D
+      - M월말 (해당 월 마지막 평일)
+      - M월 D일
+      - (M/D), M/D
+      - (M/D-M/D), (M/D~M/D)  → 종료일 채택
+      - W23~W53 (해당 ISO 주차 금요일)
     """
     from datetime import date, timedelta
     import calendar
     if not txt:
         return ""
     YEAR = 2026
-    candidates = []
+    today = date.today()
 
-    # 1) YYYY-MM-DD
-    for m in re.finditer(r"(20\d{2})-(\d{1,2})-(\d{1,2})", txt):
-        try:
-            if not _is_done_scope(txt, m.start()):
-                candidates.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
-        except Exception:
-            pass
+    # ─── Step 1: 화살표로 split ───
+    arrow_pattern = r"-->|->|→|➜|⇒|~>|»"
+    segments = re.split(arrow_pattern, txt)
+    last_seg = segments[-1] if segments else txt
 
-    # 2) YY.M.D
-    for m in re.finditer(r"\b(\d{2})\.(\d{1,2})\.(\d{1,2})\b", txt):
-        try:
-            yy = 2000 + int(m.group(1))
-            if not _is_done_scope(txt, m.start()):
-                candidates.append(date(yy, int(m.group(2)), int(m.group(3))))
-        except Exception:
-            pass
+    def _collect_dates(s: str):
+        """문자열 s 에서 모든 날짜 후보를 date 리스트로 반환. done_scope 검사 없음(마커 없이 자동판단)."""
+        out = []
 
-    # 3) X월말 / X월 말 → 해당 월 마지막 평일(일요일이면 금요일)
-    for m in re.finditer(r"(\d{1,2})\s*월\s*말", txt):
-        try:
-            mo = int(m.group(1))
-            last_day = calendar.monthrange(YEAR, mo)[1]
-            d = date(YEAR, mo, last_day)
-            if d.weekday() == 6:  # 일요일이면 금요일로
-                d = d - timedelta(days=2)
-            if not _is_done_scope(txt, m.start()):
-                candidates.append(d)
-        except Exception:
-            pass
+        # 범위 (M/D-M/D) / (M/D~M/D) → 종료일
+        for m in re.finditer(r"\(?\s*(\d{1,2})/(\d{1,2})\s*[-~]\s*(\d{1,2})/(\d{1,2})\s*\)?", s):
+            try:
+                mo = int(m.group(3)); dd = int(m.group(4))
+                if 1 <= mo <= 12 and 1 <= dd <= 31:
+                    out.append(date(YEAR, mo, dd))
+            except Exception:
+                pass
 
-    # 4) M월 D일 / M월D일
-    for m in re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", txt):
-        try:
-            if not _is_done_scope(txt, m.start()):
-                candidates.append(date(YEAR, int(m.group(1)), int(m.group(2))))
-        except Exception:
-            pass
+        # YYYY-MM-DD
+        for m in re.finditer(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", s):
+            try:
+                out.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            except Exception:
+                pass
 
-    # 5) (M/D) 또는 단독 M/D (단, 분수/비율은 제외 — 양쪽에 공백/괄호/조사 등 경계 있을 때만)
-    for m in re.finditer(r"(?:^|[\s\(\[~])(\d{1,2})/(\d{1,2})(?=[\s\)\]\,\.~]|$)", txt):
-        try:
-            mo = int(m.group(1)); dd = int(m.group(2))
-            if 1 <= mo <= 12 and 1 <= dd <= 31:
-                if not _is_done_scope(txt, m.start()):
-                    candidates.append(date(YEAR, mo, dd))
-        except Exception:
-            pass
+        # YY.M.D / YY-M-D  (2자리 연도)
+        for m in re.finditer(r"(\d{2})[-./](\d{1,2})[-./](\d{1,2})", s):
+            try:
+                out.append(date(2000 + int(m.group(1)), int(m.group(2)), int(m.group(3))))
+            except Exception:
+                pass
 
-    # 6) W23 ~ W53 → 해당 ISO 주차의 금요일
-    for m in re.finditer(r"\bW\s*(\d{1,2})\b", txt, flags=re.IGNORECASE):
-        try:
-            wk = int(m.group(1))
-            if 1 <= wk <= 53:
-                d = date.fromisocalendar(YEAR, wk, 5)  # 5 = Friday
-                if not _is_done_scope(txt, m.start()):
-                    candidates.append(d)
-        except Exception:
-            pass
+        # X월말
+        for m in re.finditer(r"(\d{1,2})\s*월\s*말", s):
+            try:
+                mo = int(m.group(1))
+                last_day = calendar.monthrange(YEAR, mo)[1]
+                d = date(YEAR, mo, last_day)
+                if d.weekday() == 6:
+                    d = d - timedelta(days=2)
+                out.append(d)
+            except Exception:
+                pass
+
+        # M월 D일
+        for m in re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", s):
+            try:
+                out.append(date(YEAR, int(m.group(1)), int(m.group(2))))
+            except Exception:
+                pass
+
+        # (M/D) 또는 M/D  (분수 제외 — 경계 있을 때만)
+        for m in re.finditer(r"(?:^|[\s\(\[~])(\d{1,2})/(\d{1,2})(?=[\s\)\]\,\.~]|$)", s):
+            try:
+                mo = int(m.group(1)); dd = int(m.group(2))
+                if 1 <= mo <= 12 and 1 <= dd <= 31:
+                    out.append(date(YEAR, mo, dd))
+            except Exception:
+                pass
+
+        # W23 ~ W53
+        for m in re.finditer(r"W\s*(\d{1,2})", s, flags=re.IGNORECASE):
+            try:
+                wk = int(m.group(1))
+                if 1 <= wk <= 53:
+                    out.append(date.fromisocalendar(YEAR, wk, 5))
+            except Exception:
+                pass
+
+        return out
+
+    # ─── Step 2: 마지막 세그먼트에서 먼저 시도 ───
+    candidates = _collect_dates(last_seg)
+
+    # ─── Step 3: 없으면 전체에서 fallback ───
+    if not candidates and len(segments) == 1:
+        # split 안 됐으면 이미 전체 = last_seg, 중복 fallback 불필요
+        pass
+    elif not candidates:
+        candidates = _collect_dates(txt)
 
     if not candidates:
         return ""
-    return min(candidates).isoformat()
+
+    # ─── Step 4: 최적 선택 ───
+    future = [d for d in candidates if d >= today]
+    if future:
+        return min(future).isoformat()  # 가장 임박한 미래
+    # 전부 과거 → 가장 최근 과거 (지연 표시용)
+    return max(candidates).isoformat()
 
 
-def _normalize_note_item(it: dict) -> dict:
-    """AI 결과 아이템 후처리: 색상 태그, ※ 항목, 화살표 중복 제거."""
+
+def _normalize_note_item(it: dict, section_title: str = "") -> dict:
+    """AI 결과 아이템 후처리: 색상 태그, ※ 항목, 화살표 중복 제거.
+    
+    ★ 2026-07-27~ 스키마 확장:
+      - item_id: md5(section_title + normalized_text)[:8] 자동 생성
+      - due_date_auto: 파서가 뽑은 자동값 (매번 재계산)
+      - due_date_override: 사용자 지정값 (있으면 유지)
+      - due_date: override or auto (앱 호환용 최종값)
+    """
     if not isinstance(it, dict):
         return it
 
@@ -2313,16 +2385,40 @@ def _normalize_note_item(it: dict) -> dict:
     # bullet/highlight 도 "→ → ..." 처럼 화살표 중복 시 1개로 축약
     txt = re.sub(r"^(→\s*){2,}", "→ ", txt)
 
+    # ─── item_id 생성/갱신 (section_title + normalized_text 기반) ───
+    normalized = re.sub(r"\s+", " ", txt).strip()
+    if normalized:
+        new_id = hashlib.md5(
+            f"{section_title}||{normalized}".encode("utf-8")
+        ).hexdigest()[:8]
+        it["item_id"] = new_id
+
+    # ─── due_date_auto 재계산 (매번, 텍스트는 원문 유지) ───
+    _, auto_iso = _extract_due_date(txt)
+    it["due_date_auto"] = auto_iso or ""
+
+    # ─── due_date_override 처리 ───
+    override_raw = (it.get("due_date_override") or "").strip()
+    override = override_raw if override_raw else ""
+
+    # ─── 최종 due_date = override or auto (앱 호환) ───
+    effective = override or (auto_iso or "")
+    if effective:
+        it["due_date"] = effective
+    else:
+        # 아무 값 없으면 due_date 필드 제거 (하위 호환)
+        it.pop("due_date", None)
+
+    # override 명시 저장 (빈 값이면 삭제)
+    if override:
+        it["due_date_override"] = override
+    else:
+        it.pop("due_date_override", None)
+
     it["type"] = typ
     it["text"] = txt
     if color:
         it["color"] = color
-
-    # due_date 가 비어 있으면 본문에서 자동 추출
-    if not (it.get("due_date") or "").strip():
-        auto = _extract_due_date_from_text(txt)
-        if auto:
-            it["due_date"] = auto
 
     return it
 
@@ -2344,7 +2440,7 @@ def _normalize_note_cards(parsed: dict) -> dict:
             new_items = []
             for it in (sec.get("items") or []):
                 if isinstance(it, dict):
-                    new_items.append(_normalize_note_item(it))
+                    new_items.append(_normalize_note_item(it, sec.get('title', '')))
                 else:
                     new_items.append(it)
             sec["items"] = new_items
@@ -2638,6 +2734,16 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     if not isinstance(cards, list):
         raise HTTPException(status_code=400, detail="cards는 배열이어야 합니다")
 
+    # 저장 전 카드/아이템 정규화
+    # - text 안의 due_date 패턴 추출
+    # - item 구조 표준화
+    # - 향후 AI 정리/수기 저장/직접 API 호출 모두 동일 규칙 적용
+    try:
+        normalized = _normalize_note_cards({"cards": cards}) or {}
+        cards = normalized.get("cards") or cards
+    except Exception as _e:
+        print(f"admin_save_note normalize 실패: {_e}")
+
     from datetime import datetime
     data = _load_notes()
     notes_map = data.setdefault("notes", {})
@@ -2694,6 +2800,131 @@ def get_notes(division_id: str = ""):
             return {"division_id": division_id, "report_date": "", "cards": [], "updated_at": None}
         return {"division_id": division_id, **item}
     return {"notes": notes}
+
+
+# ─────────────────────────────────────────────
+# item 단위 due_date override (사용자 수동 지정)
+#
+# 규칙:
+#   - due_date_auto: 파서 자동값 (매번 재계산)
+#   - due_date_override: 사용자가 지정한 값 (있으면 유지)
+#   - due_date: override or auto (최종 표시값)
+#
+# POST → override 지정, DELETE → override 제거 (자동값 복귀)
+# ─────────────────────────────────────────────
+def _find_item_by_id(notes_data: dict, division_id: str, card_title: str, item_id: str):
+    """(item_ref, card_ref, section_ref) 반환. 못 찾으면 (None, None, None)."""
+    div = (notes_data.get("notes") or {}).get(division_id)
+    if not isinstance(div, dict):
+        return None, None, None
+    for card in div.get("cards", []) or []:
+        if not isinstance(card, dict):
+            continue
+        if (card.get("title") or "").strip() != (card_title or "").strip():
+            continue
+        for sec in card.get("sections", []) or []:
+            if not isinstance(sec, dict):
+                continue
+            for it in sec.get("items", []) or []:
+                if isinstance(it, dict) and it.get("item_id") == item_id:
+                    return it, card, sec
+    return None, None, None
+
+
+def _apply_effective_due_date(it: dict) -> None:
+    """it 안의 override/auto 를 보고 최종 due_date 필드를 갱신."""
+    override = (it.get("due_date_override") or "").strip()
+    auto = (it.get("due_date_auto") or "").strip()
+    effective = override or auto
+    if effective:
+        it["due_date"] = effective
+    else:
+        it.pop("due_date", None)
+    # 빈 override 는 필드 자체 제거
+    if not override:
+        it.pop("due_date_override", None)
+
+
+@app.post("/admin/notes/item/due_override")
+def admin_notes_item_due_override(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """특정 item 의 due_date_override 지정.
+    
+    Request:
+      { division_id, card_title, item_id, due_date: "YYYY-MM-DD" }
+    """
+    from datetime import date as _date
+
+    division_id = (payload or {}).get("division_id", "").strip()
+    card_title = (payload or {}).get("card_title", "").strip()
+    item_id = (payload or {}).get("item_id", "").strip()
+    due_date_raw = (payload or {}).get("due_date", "").strip()
+
+    if not division_id or not card_title or not item_id:
+        raise HTTPException(status_code=400, detail="division_id, card_title, item_id 필수")
+    if not due_date_raw:
+        raise HTTPException(status_code=400, detail="due_date 필수 (지우려면 DELETE 사용)")
+    
+    # 형식 검증 (YYYY-MM-DD)
+    try:
+        parsed = _date.fromisoformat(due_date_raw)
+        due_iso = parsed.isoformat()
+    except Exception:
+        raise HTTPException(status_code=400, detail="due_date 형식 오류 (YYYY-MM-DD 이어야 함)")
+
+    notes_data = _load_notes()
+    item, card, sec = _find_item_by_id(notes_data, division_id, card_title, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item_id={item_id} 을(를) 찾을 수 없음")
+
+    item["due_date_override"] = due_iso
+    _apply_effective_due_date(item)
+    _save_notes(notes_data)
+
+    return {
+        "ok": True,
+        "item_id": item_id,
+        "due_date": item.get("due_date"),
+        "due_date_auto": item.get("due_date_auto"),
+        "due_date_override": item.get("due_date_override"),
+    }
+
+
+@app.delete("/admin/notes/item/due_override")
+def admin_notes_item_due_override_reset(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """item 의 due_date_override 제거 → 자동값(due_date_auto) 복귀.
+    
+    Request:
+      { division_id, card_title, item_id }
+    """
+    division_id = (payload or {}).get("division_id", "").strip()
+    card_title = (payload or {}).get("card_title", "").strip()
+    item_id = (payload or {}).get("item_id", "").strip()
+
+    if not division_id or not card_title or not item_id:
+        raise HTTPException(status_code=400, detail="division_id, card_title, item_id 필수")
+
+    notes_data = _load_notes()
+    item, card, sec = _find_item_by_id(notes_data, division_id, card_title, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item_id={item_id} 을(를) 찾을 수 없음")
+
+    item.pop("due_date_override", None)
+    _apply_effective_due_date(item)
+    _save_notes(notes_data)
+
+    return {
+        "ok": True,
+        "item_id": item_id,
+        "due_date": item.get("due_date"),
+        "due_date_auto": item.get("due_date_auto"),
+        "due_date_override": item.get("due_date_override"),
+    }
 
 
 @app.delete("/admin/notes/{division_id}")
@@ -3274,6 +3505,49 @@ def get_project_detail(project_key: str):
         if not detail:
             raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다.")
     
+    # === notes.json 매칭 sections 우선 사용 + str items → obj items 변환 ===
+    try:
+        _notes_data = _read_json(NOTES_FILE, {})
+        _project_label = (detail.get("label") or detail.get("project_label") or "").strip()
+        _notes_card = None
+        for _div_id, _div_obj in (_notes_data.get("notes") or {}).items():
+            for _card in (_div_obj.get("cards") or []):
+                if (_card.get("title") or "").strip() == _project_label:
+                    _notes_card = _card
+                    break
+            if _notes_card:
+                break
+
+        if _notes_card and _notes_card.get("sections"):
+            detail["sections"] = _notes_card["sections"]
+        else:
+            for _sec in detail.get("sections") or []:
+                _raw_items = _sec.get("items", []) or []
+                _raw_notes = _sec.get("notes", []) or []
+                _new_items = []
+                for _txt in _raw_items:
+                    if isinstance(_txt, dict):
+                        _new_items.append(_txt)
+                        continue
+                    _s = str(_txt).strip()
+                    if _s:
+                        _new_items.append({"type": "bullet", "text": _s})
+                for _txt in _raw_notes:
+                    if isinstance(_txt, dict):
+                        _new_items.append(_txt)
+                        continue
+                    _s = str(_txt).strip()
+                    if not _s:
+                        continue
+                    if _s.startswith("※"):
+                        _new_items.append({"type": "highlight", "text": _s.lstrip("※ ").strip()})
+                    else:
+                        _new_items.append({"type": "sub", "text": _s})
+                _sec["items"] = _new_items
+                _sec.pop("notes", None)
+    except Exception as _e:
+        pass
+
     # 🟢 프로젝트 상세 enrichment (기존 필드 변경 없음)
     detail = enrich_project_detail(detail)
 
@@ -3320,6 +3594,444 @@ def admin_config_divisions(_exp: int = Depends(get_admin_session)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"divisions load error: {e}")
+
+
+# === Learned Aliases (사용자 승인 오타 -> 프로젝트 매핑) ===
+LEARNED_ALIASES_FILE = Path("learned_aliases.json")
+
+def _load_learned_aliases() -> dict:
+    try:
+        with open(LEARNED_ALIASES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"version": 1, "updated_at": None, "aliases": {}}
+
+def _save_learned_aliases(data: dict) -> None:
+    from datetime import datetime
+    data["updated_at"] = datetime.now().isoformat()
+    with open(LEARNED_ALIASES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _find_project_by_learned_alias(query: str) -> Optional[dict]:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    data = _load_learned_aliases()
+    for project_id, alias_list in (data.get("aliases") or {}).items():
+        for a in alias_list:
+            if str(a).strip().lower() == q:
+                try:
+                    all_projects = _cl.get_projects(visible_only=True)
+                    for p in all_projects:
+                        if p.get("id") == project_id:
+                            return {
+                                "id": p.get("id"),
+                                "label": (p.get("label") or "").strip(),
+                                "division_id": p.get("division_id"),
+                                "matched_on": a,
+                                "source": "learned_alias",
+                            }
+                except Exception:
+                    pass
+    return None
+
+
+@app.post("/admin/projects/resolve")
+def admin_projects_resolve(payload: dict, _admin: int = Depends(get_admin_session)):
+    """
+    fuzzy로 못 잡은 오타를 AI로 판정.
+    payload: {"query": "참바", "division_id": "semiconductor" (optional)}
+    """
+    if client is None:
+        return {"resolved": None, "reason": "OPENAI_API_KEY not configured"}
+
+    query = str((payload or {}).get("query") or "").strip()
+    division_id = (payload or {}).get("division_id") or None
+    if not query:
+        return {"resolved": None, "reason": "empty query"}
+
+    # 먼저 learned aliases 체크 (AI 호출 안 하고)
+    learned = _find_project_by_learned_alias(query)
+    if learned:
+        return {"resolved": learned, "source": "learned_alias", "confidence": 1.0}
+
+    try:
+        all_projects = _cl.get_projects(division_id=division_id, visible_only=True)
+    except Exception:
+        all_projects = []
+
+    if not all_projects:
+        return {"resolved": None, "reason": "no candidates"}
+
+    # 후보 목록 문자열 생성
+    candidates_desc = []
+    for p in all_projects:
+        label = (p.get("label") or "").strip()
+        aliases = p.get("aliases") or []
+        candidates_desc.append(f"- id={p.get('id')}, label={label}, aliases={aliases}")
+    candidates_text = "\n".join(candidates_desc)
+
+    system_msg = "너는 한국어/영어 프로젝트명 오타 판정 어시스턴트다. 사용자가 입력한 이름이 후보 목록 중 어느 프로젝트를 의미하는지 판단한다. 반드시 JSON만 응답한다."
+
+    user_msg = f"""사용자 입력: "{query}"
+
+후보 프로젝트 목록:
+{candidates_text}
+
+응답 형식 (JSON only, no markdown):
+{{
+  "matched_id": "chamber" 또는 null,
+  "confidence": 0.0~1.0,
+  "reason": "짧은 설명"
+}}
+
+규칙:
+- 명백히 오타/약어/유사어면 matched_id 반환
+- 완전히 다른 이름이면 matched_id: null
+- confidence 0.6 미만이면 matched_id: null
+- 후보에 없는 새로운 프로젝트로 보이면 matched_id: null
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content or "{}"
+        result = json.loads(raw)
+    except Exception as e:
+        return {"resolved": None, "reason": f"ai error: {e}"}
+
+    matched_id = result.get("matched_id")
+    confidence = float(result.get("confidence") or 0.0)
+    reason = result.get("reason") or ""
+
+    if not matched_id or confidence < 0.6:
+        return {"resolved": None, "reason": reason, "confidence": confidence}
+
+    # matched_id로 프로젝트 정보 찾기
+    for p in all_projects:
+        if p.get("id") == matched_id:
+            return {
+                "resolved": {
+                    "id": p.get("id"),
+                    "label": (p.get("label") or "").strip(),
+                    "division_id": p.get("division_id"),
+                    "matched_on": query,
+                    "source": "ai",
+                },
+                "confidence": confidence,
+                "reason": reason,
+            }
+
+    return {"resolved": None, "reason": "matched_id not found in candidates"}
+
+
+@app.post("/admin/projects/alias")
+def admin_projects_add_alias(payload: dict, _admin: int = Depends(get_admin_session)):
+    """
+    사용자 승인 alias를 learned_aliases.json에 저장.
+    payload: {"project_id": "chamber", "alias": "참바"}
+    """
+    project_id = str((payload or {}).get("project_id") or "").strip()
+    alias = str((payload or {}).get("alias") or "").strip()
+
+    if not project_id or not alias:
+        raise HTTPException(status_code=400, detail="project_id and alias required")
+
+    # 프로젝트 존재 확인
+    try:
+        all_projects = _cl.get_projects(visible_only=True)
+        found = any(p.get("id") == project_id for p in all_projects)
+        if not found:
+            raise HTTPException(status_code=404, detail=f"project_id not found: {project_id}")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    data = _load_learned_aliases()
+    aliases = data.setdefault("aliases", {})
+    lst = aliases.setdefault(project_id, [])
+
+    # 중복 방지 (case insensitive)
+    alias_lower = alias.lower()
+    if not any(str(a).lower() == alias_lower for a in lst):
+        lst.append(alias)
+        _save_learned_aliases(data)
+        return {"ok": True, "added": True, "project_id": project_id, "alias": alias, "total_aliases": len(lst)}
+    else:
+        return {"ok": True, "added": False, "reason": "alias already exists"}
+
+
+# === 한/영 자판 변환 유틸 ===
+_EN_TO_KO_JAMO = {
+    "q":"ㅂ","w":"ㅈ","e":"ㄷ","r":"ㄱ","t":"ㅅ","y":"ㅛ","u":"ㅕ","i":"ㅑ","o":"ㅐ","p":"ㅔ",
+    "a":"ㅁ","s":"ㄴ","d":"ㅇ","f":"ㄹ","g":"ㅎ","h":"ㅗ","j":"ㅓ","k":"ㅏ","l":"ㅣ",
+    "z":"ㅋ","x":"ㅌ","c":"ㅊ","v":"ㅍ","b":"ㅠ","n":"ㅜ","m":"ㅡ",
+    "Q":"ㅃ","W":"ㅉ","E":"ㄸ","R":"ㄲ","T":"ㅆ","O":"ㅒ","P":"ㅖ",
+}
+_KO_JAMO_TO_EN = {v: k for k, v in _EN_TO_KO_JAMO.items()}
+
+_CHOSEONG = list("ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ")
+_JUNGSEONG = list("ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ")
+_JONGSEONG = [""] + list("ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ")
+
+_JUNG_COMBINE = {
+    ("ㅗ","ㅏ"):"ㅘ",("ㅗ","ㅐ"):"ㅙ",("ㅗ","ㅣ"):"ㅚ",
+    ("ㅜ","ㅓ"):"ㅝ",("ㅜ","ㅔ"):"ㅞ",("ㅜ","ㅣ"):"ㅟ",
+    ("ㅡ","ㅣ"):"ㅢ",
+}
+_JONG_COMBINE = {
+    ("ㄱ","ㅅ"):"ㄳ",("ㄴ","ㅈ"):"ㄵ",("ㄴ","ㅎ"):"ㄶ",
+    ("ㄹ","ㄱ"):"ㄺ",("ㄹ","ㅁ"):"ㄻ",("ㄹ","ㅂ"):"ㄼ",
+    ("ㄹ","ㅅ"):"ㄽ",("ㄹ","ㅌ"):"ㄾ",("ㄹ","ㅍ"):"ㄿ",
+    ("ㄹ","ㅎ"):"ㅀ",("ㅂ","ㅅ"):"ㅄ",
+}
+
+def _en_to_ko(text: str) -> str:
+    if not text:
+        return text
+    jamos = []
+    for ch in text:
+        if ch in _EN_TO_KO_JAMO:
+            jamos.append(_EN_TO_KO_JAMO[ch])
+        else:
+            jamos.append(ch)
+    result = []
+    i = 0
+    n = len(jamos)
+    while i < n:
+        j = jamos[i]
+        if j not in _CHOSEONG and j not in _JUNGSEONG:
+            result.append(j)
+            i += 1
+            continue
+        if j not in _CHOSEONG:
+            result.append(j)
+            i += 1
+            continue
+        cho = _CHOSEONG.index(j)
+        if i + 1 >= n or jamos[i+1] not in _JUNGSEONG:
+            result.append(j)
+            i += 1
+            continue
+        jung_char = jamos[i+1]
+        i += 2
+        if i < n and jamos[i] in _JUNGSEONG:
+            combined = _JUNG_COMBINE.get((jung_char, jamos[i]))
+            if combined:
+                jung_char = combined
+                i += 1
+        jung = _JUNGSEONG.index(jung_char)
+        jong = 0
+        if i < n and jamos[i] in _CHOSEONG:
+            if i + 1 >= n or jamos[i+1] not in _JUNGSEONG:
+                jong_char = jamos[i]
+                if jong_char in _JONGSEONG:
+                    if i + 1 < n and jamos[i+1] in _CHOSEONG:
+                        if i + 2 >= n or jamos[i+2] not in _JUNGSEONG:
+                            combined = _JONG_COMBINE.get((jong_char, jamos[i+1]))
+                            if combined and combined in _JONGSEONG:
+                                jong = _JONGSEONG.index(combined)
+                                i += 2
+                            else:
+                                jong = _JONGSEONG.index(jong_char)
+                                i += 1
+                        else:
+                            jong = _JONGSEONG.index(jong_char)
+                            i += 1
+                    else:
+                        jong = _JONGSEONG.index(jong_char)
+                        i += 1
+        code = 0xAC00 + (cho * 21 + jung) * 28 + jong
+        result.append(chr(code))
+    return "".join(result)
+
+def _ko_to_en(text: str) -> str:
+    if not text:
+        return text
+    result = []
+    for ch in text:
+        code = ord(ch)
+        if 0xAC00 <= code <= 0xD7A3:
+            base = code - 0xAC00
+            cho_i = base // (21 * 28)
+            jung_i = (base % (21 * 28)) // 28
+            jong_i = base % 28
+            cho = _CHOSEONG[cho_i]
+            jung = _JUNGSEONG[jung_i]
+            jong = _JONGSEONG[jong_i]
+            for jamo in [cho, jung, jong]:
+                if not jamo:
+                    continue
+                if jamo in ["ㅘ","ㅙ","ㅚ","ㅝ","ㅞ","ㅟ","ㅢ"]:
+                    for k, v in _JUNG_COMBINE.items():
+                        if v == jamo:
+                            for j2 in k:
+                                if j2 in _KO_JAMO_TO_EN:
+                                    result.append(_KO_JAMO_TO_EN[j2])
+                            break
+                elif jamo in ["ㄳ","ㄵ","ㄶ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅄ"]:
+                    for k, v in _JONG_COMBINE.items():
+                        if v == jamo:
+                            for j2 in k:
+                                if j2 in _KO_JAMO_TO_EN:
+                                    result.append(_KO_JAMO_TO_EN[j2])
+                            break
+                elif jamo in _KO_JAMO_TO_EN:
+                    result.append(_KO_JAMO_TO_EN[jamo])
+        elif ch in _KO_JAMO_TO_EN:
+            result.append(_KO_JAMO_TO_EN[ch])
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
+@app.get("/admin/projects/suggest")
+def admin_projects_suggest(query: str = "", limit: int = 5):
+    """
+    프로젝트명 fuzzy match.
+    - learned_aliases.json 우선 체크
+    - 한글 자모 단위 유사도 (챕버 <-> 챔버)
+    - 한/영 자판 변환 (xhffhs -> 톨론, coaqj -> 챔버)
+    """
+    from difflib import SequenceMatcher
+    import unicodedata
+
+    def to_jamo(s: str) -> str:
+        return unicodedata.normalize("NFKD", s or "")
+
+    def get_choseong(s: str) -> str:
+        # 한글 완성형에서 초성만 추출
+        result = []
+        for ch in s:
+            code = ord(ch)
+            if 0xAC00 <= code <= 0xD7A3:
+                base = code - 0xAC00
+                cho_i = base // (21 * 28)
+                result.append(_CHOSEONG[cho_i])
+            else:
+                result.append(ch)
+        return "".join(result)
+
+    def sim_ratio(a: str, b: str) -> float:
+        char_sim = SequenceMatcher(None, a, b).ratio()
+        jamo_a, jamo_b = to_jamo(a), to_jamo(b)
+        jamo_sim = SequenceMatcher(None, jamo_a, jamo_b).ratio() if jamo_a and jamo_b else 0.0
+        base_sim = max(char_sim, jamo_sim)
+        # 초성 일치 보너스 (한글 오타 특성)
+        cho_a = get_choseong(a)
+        cho_b = get_choseong(b)
+        if cho_a and cho_b and len(cho_a) == len(cho_b):
+            cho_sim = SequenceMatcher(None, cho_a, cho_b).ratio()
+            if cho_sim >= 0.99:  # 초성 완전 일치
+                base_sim = min(1.0, base_sim + 0.15)
+            elif cho_sim >= 0.7:  # 초성 대부분 일치
+                base_sim = min(1.0, base_sim + 0.08)
+        return base_sim
+
+    q_raw = (query or "").strip()
+    q = q_raw.lower()
+    if not q:
+        return {"suggestions": [], "exact_match": None}
+
+    learned = _find_project_by_learned_alias(q)
+    if learned:
+        return {
+            "suggestions": [{
+                "id": learned["id"],
+                "label": learned["label"],
+                "division_id": learned["division_id"],
+                "similarity": 1.0,
+                "matched_on": learned["matched_on"],
+                "exact": True,
+                "source": "learned_alias",
+            }],
+            "exact_match": learned,
+        }
+
+    q_variants = [q]
+    has_en = any(("a" <= c <= "z") or ("A" <= c <= "Z") for c in q_raw)
+    has_ko = any((0xAC00 <= ord(c) <= 0xD7A3) or (0x3131 <= ord(c) <= 0x318E) for c in q_raw)
+    if has_en and not has_ko:
+        converted = _en_to_ko(q_raw).lower()
+        if converted and converted != q:
+            q_variants.append(converted)
+    elif has_ko and not has_en:
+        converted = _ko_to_en(q_raw).lower()
+        if converted and converted != q:
+            q_variants.append(converted)
+
+    try:
+        all_projects = _cl.get_projects(visible_only=True)
+    except Exception:
+        all_projects = []
+
+    scored = []
+    exact = None
+
+    for p in all_projects:
+        candidates = []
+        label = (p.get("label") or "").strip()
+        if label:
+            candidates.append(label)
+        for a in (p.get("aliases") or []):
+            if a: candidates.append(str(a))
+        for k in (p.get("keywords") or []):
+            if k: candidates.append(str(k))
+
+        best_sim = 0.0
+        best_matched = ""
+        found_exact_here = False
+        for c in candidates:
+            cl = c.lower().strip()
+            for qv in q_variants:
+                if cl == qv:
+                    exact = {
+                        "id": p.get("id"),
+                        "label": label,
+                        "division_id": p.get("division_id"),
+                        "matched_on": c,
+                    }
+                    best_sim = 1.0
+                    best_matched = c
+                    found_exact_here = True
+                    break
+                sim = sim_ratio(qv, cl)
+                # 부분 포함 보정: alias가 label보다 짧으면 페널티
+                if qv in cl or cl in qv:
+                    # cl이 매우 짧으면(2자 이하) 부분 매칭 보너스 낮춤
+                    if len(cl) <= 2 and c != label:
+                        sim = max(sim, 0.5)
+                    else:
+                        sim = max(sim, 0.75)
+                if sim > best_sim:
+                    best_sim = sim
+                    best_matched = c
+            if found_exact_here:
+                break
+
+        if best_sim >= 0.55:
+            scored.append({
+                "id": p.get("id"),
+                "label": label,
+                "division_id": p.get("division_id"),
+                "similarity": round(best_sim, 3),
+                "matched_on": best_matched,
+                "exact": best_sim >= 0.999,
+            })
+
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    return {
+        "suggestions": scored[:limit],
+        "exact_match": exact,
+    }
 
 
 @app.get("/admin/config/projects")
@@ -3548,6 +4260,641 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+window._normalizeAiNumberedHtml = function(html){
+  if (!html) return html;
+  var s = String(html);
+  // <br> 기준으로 라인 분리 (대소문자 무시)
+  var lines = s.split(/<br\s*\/?>/i);
+  // 각 라인의 &nbsp; 정규화
+  lines = lines.map(function(l){ return l.replace(/&nbsp;/g, ' '); });
+  // stripTag 함수: 태그 벗겨서 텍스트만 봤을 때 번호로 시작하는지 확인
+  function stripTag(x){ return x.replace(/<[^>]+>/g, ''); }
+  // 각 라인이 새 항목 시작인지 판별
+  var items = [];
+  var current = null;
+  for (var i = 0; i < lines.length; i++){
+    var raw = lines[i];
+    var text = stripTag(raw).replace(/\u00A0/g, ' ').trim();
+    if (!text) {
+      // 빈 라인은 현재 항목에 <br> 로 유지
+      if (current !== null) current += '<br>';
+      continue;
+    }
+    // "1)" "2." 등 새 항목 시작
+    var m = text.match(/^(\d+)[)\.]\s+(.*)$/);
+    if (m) {
+      // 새 항목 시작 - raw에서 "숫자)" 또는 "숫자." 부분 제거
+      var stripped = raw.replace(/^(\s|&nbsp;|\u00A0)*\d+[)\.]\s*/, '');
+      if (current !== null) items.push(current);
+      current = stripped;
+    } else {
+      // 이어붙임
+      if (current === null) {
+        current = raw;
+      } else {
+        current += '<br>' + raw;
+      }
+    }
+  }
+  if (current !== null) items.push(current);
+  // 항목이 2개 이상일 때만 <ol> 로 감싸기
+  if (items.length < 2) return html;
+  var out = '<ol class="ov-num ov-num-paren" data-start="1">';
+  for (var j = 0; j < items.length; j++){
+    out += '<li>' + items[j] + '</li>';
+  }
+  out += '</ol>';
+  return out;
+};
+
+window._attachAutoListBehavior = function(el){
+  // === AI 리스트 헬퍼 (depth/style/tab 관리) ===
+  if (!window._aiListHelpersReady) {
+    window._aiListHelpersReady = true;
+
+    window._circledNumber = function(n){
+      var map = {1:'①',2:'②',3:'③',4:'④',5:'⑤',6:'⑥',7:'⑦',8:'⑧',9:'⑨',10:'⑩',11:'⑪',12:'⑫',13:'⑬',14:'⑭',15:'⑮',16:'⑯',17:'⑰',18:'⑱',19:'⑲',20:'⑳'};
+      return map[n] || (n + '.');
+    };
+
+    window._aiStyleForDepth = function(depth){
+      // Word식 반복 순환: dot → paren → circled → dot → paren → circled ...
+      if (depth <= 0) return 'dot';
+      var styles = ['dot', 'paren', 'circled'];
+      return styles[depth % 3];
+    };
+
+    window._aiGetClosestLi = function(node, root){
+      var cur = node;
+      while (cur && cur !== root) {
+        if (cur.nodeType === 1 && cur.tagName === 'LI') return cur;
+        cur = cur.parentNode;
+      }
+      return null;
+    };
+
+    window._aiGetCurrentLi = function(editor){
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return null;
+      return window._aiGetClosestLi(sel.getRangeAt(0).startContainer, editor);
+    };
+
+    window._aiGetCurrentOl = function(editor){
+      var li = window._aiGetCurrentLi(editor);
+      if (!li) return null;
+      return (li.parentNode && li.parentNode.tagName === 'OL') ? li.parentNode : null;
+    };
+
+    window._aiGetListDepth = function(ol, editor){
+      var depth = 0;
+      var cur = ol.parentNode;
+      while (cur && cur !== editor) {
+        if (cur.nodeType === 1 && cur.tagName === 'OL') {
+          var ovr = cur.dataset.depthOverride;
+          if (ovr != null && ovr !== '') {
+            var od = parseInt(ovr, 10);
+            if (!isNaN(od) && od >= 0) {
+              // 조상 ol에 depthOverride가 있으면 그걸 base로 사용
+              // 자식 depth = 조상의 effective depth + (그 사이 ol 개수) + 1
+              return od + depth + 1;
+            }
+          }
+          depth++;
+        }
+        cur = cur.parentNode;
+      }
+      return depth;
+    };
+
+    window._aiRefreshList = function(ol){
+      if (!ol) return;
+      var start = parseInt(ol.dataset.start || '1', 10);
+      if (!start || start < 1) start = 1;
+      if (ol.classList.contains('ov-num-circled')) {
+        var lis = Array.prototype.filter.call(ol.children, function(x){ return x.tagName === 'LI'; });
+        lis.forEach(function(li, idx){
+          li.setAttribute('data-marker', window._circledNumber(start + idx));
+        });
+      } else {
+        ol.style.counterReset = 'aiitem ' + (start - 1);
+      }
+    };
+
+    window._aiApplyStart = function(ol, start){
+      start = parseInt(start, 10);
+      if (!start || start < 1) start = 1;
+      ol.dataset.start = String(start);
+      window._aiRefreshList(ol);
+    };
+
+    window._aiSetOlStyleByDepth = function(ol, depth){
+      ol.classList.remove('ov-num-dot', 'ov-num-paren', 'ov-num-circled');
+      var effectiveDepth = depth;
+      var override = ol.dataset.depthOverride;
+      if (override != null && override !== '') {
+        var od = parseInt(override, 10);
+        if (!isNaN(od) && od >= 0) effectiveDepth = od;
+      }
+      var style = window._aiStyleForDepth(effectiveDepth);
+      ol.classList.add('ov-num', 'ov-num-' + style);
+      // depth-override 있으면 margin-left CSS도 반영
+      if (override != null && override !== '') {
+        ol.style.marginLeft = (effectiveDepth * 24) + 'px';
+      } else {
+        ol.style.marginLeft = '';
+      }
+      if (!ol.dataset.start) ol.dataset.start = '1';
+      window._aiRefreshList(ol);
+    };
+
+    // 지정 li가 ol의 첫 번째면 원본 ol 반환, 아니면 그 li부터 분할한 새 ol 반환
+    window._aiSplitOlAtLi = function(ol, li){
+      var lis = Array.prototype.filter.call(ol.children, function(x){ return x.tagName === 'LI'; });
+      var idx = lis.indexOf(li);
+      if (idx <= 0) return ol; // 첫번째 li거나 li 못찾음 → 분할 불필요
+      var newOl = document.createElement('ol');
+      newOl.className = ol.className;
+      newOl.dataset.start = '1';
+      newOl.dataset.manualSplit = '1';
+      ol.dataset.manualSplit = '1';
+      for (var i = idx; i < lis.length; i++) {
+        newOl.appendChild(lis[i]);
+      }
+      if (ol.nextSibling) ol.parentNode.insertBefore(newOl, ol.nextSibling);
+      else ol.parentNode.appendChild(newOl);
+      return newOl;
+    };
+
+    // 편집기 안에서 지정 li보다 앞에 있는 마지막 ol 찾기 (li의 자기 ol 제외)
+    window._aiFindPrevOl = function(editor, targetOl){
+      var ols = Array.prototype.slice.call(editor.querySelectorAll('ol.ov-num'));
+      var myIdx = ols.indexOf(targetOl);
+      if (myIdx <= 0) return null;
+      return ols[myIdx - 1];
+    };
+
+    // li를 리스트에서 빼서 일반 텍스트 div로 변환, 뒤 li들은 새 ol로 분리
+    window._aiUnlistCurrentLi = function(editor, targetLi){
+      if (!targetLi || targetLi.tagName !== 'LI') return;
+      var srcOl = targetLi.parentNode;
+      if (!srcOl || srcOl.tagName !== 'OL') return;
+
+      var lis = Array.prototype.filter.call(srcOl.children, function(x){ return x.tagName === 'LI'; });
+      var idx = lis.indexOf(targetLi);
+      if (idx < 0) return;
+
+      // 새 div 만들어 li 내용 옮김
+      var block = document.createElement('div');
+      block.innerHTML = targetLi.innerHTML || '<br>';
+
+      // 뒤에 남은 li들을 새 ol로 분리
+      var afterOl = null;
+      if (idx < lis.length - 1) {
+        afterOl = document.createElement('ol');
+        afterOl.className = srcOl.className;
+        afterOl.dataset.start = '1';
+        afterOl.dataset.manualSplit = '1';
+        srcOl.dataset.manualSplit = '1';
+        for (var i = idx + 1; i < lis.length; i++) {
+          afterOl.appendChild(lis[i]);
+        }
+      }
+
+      // 원본 li 제거
+      targetLi.remove();
+
+      // 원본 ol 뒤에 block, afterOl 순서로 삽입
+      var insertAfter = srcOl.nextSibling;
+      var parent = srcOl.parentNode;
+      parent.insertBefore(block, insertAfter);
+      if (afterOl) parent.insertBefore(afterOl, insertAfter);
+
+      // 원본 ol이 비었으면 제거
+      if (!srcOl.querySelector('li')) srcOl.remove();
+
+      // 스타일/번호 재계산
+      if (window._aiRefreshAllLists) window._aiRefreshAllLists(editor);
+
+      // 커서를 block 안으로
+      var r = document.createRange();
+      r.selectNodeContents(block);
+      r.collapse(true);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    };
+
+    // 일반 텍스트 block의 indent를 조정
+    window._aiFindTextBlock = function(node, editor){
+      var cur = node;
+      while (cur && cur !== editor) {
+        if (cur.nodeType === 1) {
+          var tag = cur.tagName;
+          // li 안이면 텍스트 블록 아님 (리스트 처리)
+          if (tag === 'LI') return null;
+          if (tag === 'OL' || tag === 'UL') return null;
+          // 편집박스 직계 텍스트 블록
+          if (cur.parentNode === editor && (tag === 'DIV' || tag === 'P')) return cur;
+        }
+        cur = cur.parentNode;
+      }
+      return null;
+    };
+
+    window._aiGetTextBlockAtCursor = function(editor){
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return null;
+      var node = sel.getRangeAt(0).startContainer;
+      // 텍스트 노드면 부모부터 탐색
+      if (node.nodeType === 3) node = node.parentNode;
+      // 편집박스 직계 자식 찾기
+      var cur = node;
+      while (cur && cur.parentNode !== editor) {
+        if (cur === editor) return null;
+        cur = cur.parentNode;
+      }
+      if (!cur) return null;
+      if (cur.tagName === 'OL' || cur.tagName === 'UL') return null;
+      return cur;
+    };
+
+    window._aiIndentTextBlock = function(editor){
+      var block = window._aiGetTextBlockAtCursor(editor);
+      if (!block) return false;
+      var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+      if (cur >= 5) return true;
+      block.dataset.indent = String(cur + 1);
+      return true;
+    };
+
+    window._aiOutdentTextBlock = function(editor){
+      var block = window._aiGetTextBlockAtCursor(editor);
+      if (!block) return false;
+      var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+      if (cur <= 0) {
+        if (block.dataset.indent) delete block.dataset.indent;
+        return true;
+      }
+      block.dataset.indent = String(cur - 1);
+      if (block.dataset.indent === '0') delete block.dataset.indent;
+      return true;
+    };
+
+    // 커서 컨테이너에서 편집박스 직계 텍스트 블록 또는 li 찾기
+    window._aiFindNodeForRange = function(node, editor){
+      var cur = node;
+      if (cur && cur.nodeType === 3) cur = cur.parentNode;
+      while (cur && cur !== editor) {
+        if (cur.nodeType === 1) {
+          if (cur.tagName === 'LI') return { type: 'li', node: cur };
+          if (cur.parentNode === editor && (cur.tagName === 'DIV' || cur.tagName === 'P')) {
+            return { type: 'block', node: cur };
+          }
+        }
+        cur = cur.parentNode;
+      }
+      return null;
+    };
+
+    // 현재 selection이 걸친 모든 li와 텍스트 블록 수집
+    window._aiCollectSelectedNodes = function(editor){
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return { lis: [], blocks: [], single: true };
+      var range = sel.getRangeAt(0);
+      if (range.collapsed) {
+        // 단일 커서: 한 노드만 반환
+        var one = window._aiFindNodeForRange(range.startContainer, editor);
+        return {
+          lis: one && one.type === 'li' ? [one.node] : [],
+          blocks: one && one.type === 'block' ? [one.node] : [],
+          single: true
+        };
+      }
+
+      var lis = [];
+      var blocks = [];
+      var seen = new Set();
+
+      // range 시작과 끝의 노드부터 감지
+      var startInfo = window._aiFindNodeForRange(range.startContainer, editor);
+      var endInfo = window._aiFindNodeForRange(range.endContainer, editor);
+
+      function addNode(info){
+        if (!info) return;
+        if (seen.has(info.node)) return;
+        seen.add(info.node);
+        if (info.type === 'li') lis.push(info.node);
+        else blocks.push(info.node);
+      }
+
+      // 편집박스 안의 모든 li, 편집박스 직계 텍스트 블록 순회하며 range와 교차하는지 확인
+      var allLis = Array.prototype.slice.call(editor.querySelectorAll('li'));
+      var allBlocks = Array.prototype.filter.call(editor.children, function(x){
+        return x.nodeType === 1 && (x.tagName === 'DIV' || x.tagName === 'P');
+      });
+
+      function intersects(el){
+        try {
+          var r = document.createRange();
+          r.selectNodeContents(el);
+          // range 시작이 el 끝 이후이거나 range 끝이 el 시작 이전이면 교차 없음
+          if (range.compareBoundaryPoints(Range.START_TO_END, r) < 0) return false;
+          if (range.compareBoundaryPoints(Range.END_TO_START, r) > 0) return false;
+          return true;
+        } catch(e) { return false; }
+      }
+
+      allLis.forEach(function(li){ if (intersects(li)) addNode({ type: 'li', node: li }); });
+      allBlocks.forEach(function(b){ if (intersects(b)) addNode({ type: 'block', node: b }); });
+
+      // 시작/끝 노드도 안전하게 추가
+      addNode(startInfo);
+      addNode(endInfo);
+
+      return { lis: lis, blocks: blocks, single: false };
+    };
+
+    window._aiSplitTextByNewlines = function(editor){
+      if (!editor) return;
+      if (editor.__aiLineSplit) return;
+      editor.__aiLineSplit = true;
+      var LF = String.fromCharCode(10);
+      var children = Array.prototype.slice.call(editor.children);
+      children.forEach(function(child){
+        var skipTags = ['OL', 'UL', 'TABLE', 'BLOCKQUOTE', 'PRE'];
+        if (skipTags.indexOf(child.tagName) >= 0) return;
+        if (child.tagName !== 'DIV' && child.tagName !== 'P') return;
+        var text = child.textContent || '';
+        if (text.indexOf(LF) < 0) return;
+        var html = child.innerHTML;
+        var parts = html.split(LF);
+        if (parts.length <= 1) return;
+        var origIndent = child.dataset.indent || '';
+        var origStyle = child.getAttribute('style') || '';
+        var frag = document.createDocumentFragment();
+        parts.forEach(function(part){
+          var newDiv = document.createElement('div');
+          newDiv.innerHTML = part;
+          if (!newDiv.textContent.trim() && !newDiv.querySelector('br')) {
+            newDiv.innerHTML = '<br>';
+          }
+          if (origIndent) newDiv.dataset.indent = origIndent;
+          if (origStyle) newDiv.setAttribute('style', origStyle);
+          frag.appendChild(newDiv);
+        });
+        child.parentNode.insertBefore(frag, child);
+        child.remove();
+      });
+    };
+
+    window._aiRefreshAllLists = function(root){
+      // legacy 클래스(ov-list-paren) 흡수
+      root.querySelectorAll('ol.ov-list-paren').forEach(function(ol){
+        ol.classList.remove('ov-list-paren');
+        if (!ol.classList.contains('ov-num')) ol.classList.add('ov-num');
+        if (!ol.dataset.start) ol.dataset.start = '1';
+      });
+      root.querySelectorAll('ol.ov-num').forEach(function(ol){
+        var depth = window._aiGetListDepth(ol, root);
+        window._aiSetOlStyleByDepth(ol, depth);
+      });
+    };
+
+    window._aiEnsureChildOl = function(parentLi, style){
+      var child = null;
+      for (var i = 0; i < parentLi.children.length; i++) {
+        if (parentLi.children[i].tagName === 'OL') { child = parentLi.children[i]; break; }
+      }
+      if (!child) {
+        child = document.createElement('ol');
+        child.className = 'ov-num ov-num-' + style;
+        child.dataset.start = '1';
+        parentLi.appendChild(child);
+      }
+      return child;
+    };
+
+    window._aiIndentCurrentLi = function(editor){
+      var li = window._aiGetCurrentLi(editor);
+      if (!li) return false;
+      var parentOl = li.parentNode;
+      var prevLi = li.previousElementSibling;
+      if (prevLi && prevLi.tagName === 'LI') {
+        // 형제 li 있음 → 자식 ol로 이동
+        var nextDepth = window._aiGetListDepth(parentOl, editor) + 1;
+        var childOl = window._aiEnsureChildOl(prevLi, window._aiStyleForDepth(nextDepth));
+        childOl.appendChild(li);
+        if (!parentOl.querySelector('li')) parentOl.remove();
+      } else {
+        // 형제 li 없음 → 자기 ol depth override 증가
+        var siblings = Array.prototype.filter.call(parentOl.children, function(x){ return x.tagName === 'LI'; });
+        var targetOl = parentOl;
+        if (siblings.length > 1) {
+          var isolatedOl = document.createElement('ol');
+          isolatedOl.className = parentOl.className;
+          isolatedOl.dataset.start = '1';
+          isolatedOl.dataset.manualSplit = '1';
+          parentOl.dataset.manualSplit = '1';
+          isolatedOl.appendChild(li);
+          if (parentOl.nextSibling) parentOl.parentNode.insertBefore(isolatedOl, parentOl.nextSibling);
+          else parentOl.parentNode.appendChild(isolatedOl);
+          targetOl = isolatedOl;
+        }
+        var currentDepth = window._aiGetListDepth(targetOl, editor);
+        var override = targetOl.dataset.depthOverride;
+        var currentEffective = (override != null && override !== '') ? parseInt(override, 10) : currentDepth;
+        var newDepth = currentEffective + 1;
+        if (newDepth <= 5) targetOl.dataset.depthOverride = String(newDepth);
+      }
+      window._aiRefreshAllLists(editor);
+      var r = document.createRange();
+      r.selectNodeContents(li);
+      r.collapse(false);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      return true;
+    };
+
+    window._aiOutdentCurrentLi = function(editor){
+      var li = window._aiGetCurrentLi(editor);
+      if (!li) return false;
+      var parentOl = li.parentNode;
+      if (!parentOl) return false;
+
+      // depth-override가 있으면 그것부터 감소
+      var override = parentOl.dataset.depthOverride;
+      if (override != null && override !== '') {
+        var currentOverride = parseInt(override, 10);
+        var currentDepth = window._aiGetListDepth(parentOl, editor);
+        if (currentOverride > currentDepth) {
+          // override 감소
+          var newOverride = currentOverride - 1;
+          if (newOverride <= currentDepth) {
+            delete parentOl.dataset.depthOverride;
+          } else {
+            parentOl.dataset.depthOverride = String(newOverride);
+          }
+          window._aiRefreshAllLists(editor);
+          return true;
+        }
+      }
+
+      // 일반 outdent (nesting 기반)
+      var hostLi = parentOl.parentNode;
+      if (!hostLi || hostLi.tagName !== 'LI') return false;
+      var grandOl = hostLi.parentNode;
+      if (!grandOl || grandOl.tagName !== 'OL') return false;
+      if (hostLi.nextSibling) grandOl.insertBefore(li, hostLi.nextSibling);
+      else grandOl.appendChild(li);
+      if (!parentOl.querySelector('li')) parentOl.remove();
+      window._aiRefreshAllLists(editor);
+      var r = document.createRange();
+      r.selectNodeContents(li);
+      r.collapse(false);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      return true;
+    };
+
+    window._aiContinueOl = function(editor, targetLi){
+      if (!targetLi || targetLi.tagName !== 'LI') return;
+      var srcOl = targetLi.parentNode;
+      if (!srcOl || srcOl.tagName !== 'OL') return;
+      var workOl = window._aiSplitOlAtLi(srcOl, targetLi);
+      var prev = window._aiFindPrevOl(editor, workOl);
+      if (!prev) { alert('앞에 이어붙일 리스트가 없어'); if (window._aiRefreshAllLists) window._aiRefreshAllLists(editor); return; }
+      var prevStart = parseInt(prev.dataset.start || '1', 10) || 1;
+      var prevCount = Array.prototype.filter.call(prev.children, function(x){ return x.tagName === 'LI'; }).length;
+      window._aiApplyStart(workOl, prevStart + prevCount);
+      if (window._aiRefreshAllLists) window._aiRefreshAllLists(editor);
+    };
+
+    window._aiRestartOl = function(editor, targetLi){
+      if (!targetLi || targetLi.tagName !== 'LI') return;
+      var srcOl = targetLi.parentNode;
+      if (!srcOl || srcOl.tagName !== 'OL') return;
+      var workOl = window._aiSplitOlAtLi(srcOl, targetLi);
+      window._aiApplyStart(workOl, 1);
+      if (window._aiRefreshAllLists) window._aiRefreshAllLists(editor);
+    };
+
+    window._aiSetStartOl = function(editor, targetLi){
+      if (!targetLi || targetLi.tagName !== 'LI') return;
+      var srcOl = targetLi.parentNode;
+      if (!srcOl || srcOl.tagName !== 'OL') return;
+      // 현재 li의 실제 번호 (data-start + index)
+      var lis = Array.prototype.filter.call(srcOl.children, function(x){ return x.tagName === 'LI'; });
+      var idx = lis.indexOf(targetLi);
+      var srcStart = parseInt(srcOl.dataset.start || '1', 10) || 1;
+      var current = srcStart + idx;
+      var v = prompt('이 항목의 번호', String(current));
+      if (v == null) return;
+      var n = parseInt(String(v).trim(), 10);
+      if (!n || n < 1) { alert('1 이상의 숫자를 입력해'); return; }
+      var workOl = window._aiSplitOlAtLi(srcOl, targetLi);
+      window._aiApplyStart(workOl, n);
+      if (window._aiRefreshAllLists) window._aiRefreshAllLists(editor);
+    };
+  }
+
+  if (!el) return;
+
+  // observer는 attached 플래그와 독립적으로 항상 부착 시도
+  if (!el.__aiListObserver) {
+    function _mergeAdjacentAiListsGlobal(root){
+      if (!root) return;
+      var ols = root.querySelectorAll('ol.ov-num');
+      for (var i = 0; i < ols.length; i++){
+        var ol = ols[i];
+        var prev = ol.previousElementSibling;
+        while (prev && prev.tagName === 'OL' && prev.classList.contains('ov-num') && prev.dataset.manualSplit !== '1' && ol.dataset.manualSplit !== '1') {
+          while (ol.firstChild) prev.appendChild(ol.firstChild);
+          ol.remove();
+          ol = prev;
+          prev = ol.previousElementSibling;
+        }
+        var next = ol.nextElementSibling;
+        while (next && next.tagName === 'OL' && next.classList.contains('ov-num') && next.dataset.manualSplit !== '1' && ol.dataset.manualSplit !== '1') {
+          while (next.firstChild) ol.appendChild(next.firstChild);
+          next.remove();
+          next = ol.nextElementSibling;
+        }
+        ol.style.counterReset = '';
+      }
+    }
+    var _mergeTimer = null;
+    el.__aiListObserver = new MutationObserver(function(){
+      if (_mergeTimer) return;
+      _mergeTimer = setTimeout(function(){
+        _mergeTimer = null;
+        _mergeAdjacentAiListsGlobal(el);
+      }, 50);
+    });
+    el.__aiListObserver.observe(el, { childList: true, subtree: true });
+  }
+
+  if (el.__autoListAttached) return;
+  el.__autoListAttached = true;
+
+  var NL = String.fromCharCode(10);
+
+  function _getCurrentLineText(){
+    var sel = window.getSelection();
+    if (!sel.rangeCount) return { line: '', range: null };
+    var range = sel.getRangeAt(0);
+    var node = range.startContainer;
+    if (node.nodeType !== 3) return { line: '', range: range };
+    var text = node.textContent || '';
+    var leftText = text.substring(0, range.startOffset);
+    var lastBr = leftText.lastIndexOf(NL);
+    var lineStart = lastBr === -1 ? 0 : lastBr + 1;
+    var line = leftText.substring(lineStart);
+    return { line: line, range: range, node: node, lineStart: lineStart };
+  }
+
+  function _detectExistingListLine(line){
+    var m = line.match(/^(\s*)(\d+)([\)\.])\s+(.*)$/);
+    if (m) return { type: 'num', indent: m[1], num: parseInt(m[2],10), sep: m[3], content: m[4] };
+    m = line.match(/^(\s*)([-*\u00B7])\s+(.*)$/);
+    if (m) return { type: 'bullet', indent: m[1], bullet: m[2], content: m[3] };
+    return null;
+  }
+
+  el.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    var info = _getCurrentLineText();
+    var existing = _detectExistingListLine(info.line);
+    if (!existing) return;
+
+    if (!existing.content.trim()) {
+      e.preventDefault();
+      var sel = window.getSelection();
+      if (sel.rangeCount && info.node) {
+        var range = document.createRange();
+        range.setStart(info.node, info.lineStart);
+        range.setEnd(info.node, sel.getRangeAt(0).startOffset);
+        range.deleteContents();
+      }
+      document.execCommand('insertLineBreak');
+      return;
+    }
+
+    e.preventDefault();
+    var nextPrefix;
+    if (existing.type === 'num') {
+      nextPrefix = existing.indent + (existing.num + 1) + existing.sep + ' ';
+    } else {
+      nextPrefix = existing.indent + existing.bullet + ' ';
+    }
+    document.execCommand('insertLineBreak');
+    document.execCommand('insertText', false, nextPrefix);
+  });
+};
+</script>
+
+<script>
 (function(){
   const PAGE_LABEL = {
     home: '홈 대시보드',
@@ -3686,6 +5033,14 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         }
         .ov-hide-btn:hover { background: #E6EBF2; }
         .ov-hide-btn.is-active { background: #FFF4EC; color: #B4380F; border-color: #F5C9AE; }
+        .ov-del-btn {
+          background: #FEE2E2; color: #DC2626;
+          border: 1px solid #FCA5A5; border-radius: 999px;
+          padding: 6px 12px; font-size: 12px; font-weight: 700;
+          cursor: pointer;
+        }
+        .ov-del-btn:hover { background: #FCA5A5; color: #ffffff; border-color: #DC2626; }
+        .ov-side-top-actions { display: flex; gap: 8px; align-items: center; }
         .ov-report-item {
           display: grid;
           grid-template-columns: 6px minmax(0, 1fr) 180px;
@@ -3831,10 +5186,19 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
           </div>
         </div>
         <div class="ov-modal-mask" id="ov-newproj-mask">
-          <div class="ov-modal">
+          <div class="ov-modal" style="max-width:640px;width:90vw;">
             <h3>+ 새 프로젝트</h3>
-            <label for="ov-np-name">프로젝트명</label>
-            <input type="text" id="ov-np-name" name="np-name" placeholder="예: Chamber" />
+            <div style="margin-top:8px;font-size:13px;color:#374151;font-weight:600;">등록된 프로젝트 <span id="ov-np-current-div" style="color:#6B7280;font-weight:400;font-size:12px;"></span></div>
+            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">클릭하면 바로 생성됩니다</div>
+            <div id="ov-np-project-buttons" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;min-height:44px;padding:8px;background:#F9FAFB;border-radius:8px;"></div>
+            <div style="margin-top:16px;display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;height:1px;background:#E5E7EB;"></div>
+              <span style="color:#9CA3AF;font-size:12px;">또는 새 이름으로</span>
+              <div style="flex:1;height:1px;background:#E5E7EB;"></div>
+            </div>
+            <label for="ov-np-name" style="margin-top:8px;">프로젝트명</label>
+            <input type="text" id="ov-np-name" name="np-name" placeholder="예: Chamber" autocomplete="off" />
+            <div id="ov-np-suggest" style="margin-top:8px;min-height:0;"></div>
             <div style="font-size:12px;color:#7A8595;margin-top:8px;">주차는 현재 주차로 자동 설정됩니다.</div>
             <div class="ov-modal-actions">
               <button class="ov-modal-cancel" type="button" id="ov-np-cancel">취소</button>
@@ -3842,17 +5206,372 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             </div>
           </div>
         </div>
+        <div class="ov-modal-mask" id="ov-delconf-mask">
+          <div class="ov-modal" style="max-width:480px;width:90vw;">
+            <h3 style="color:#DC2626;">프로젝트 삭제</h3>
+            <div id="ov-delconf-body" style="margin-top:12px;font-size:14px;color:#374151;line-height:1.6;"></div>
+            <div style="margin-top:12px;padding:10px 12px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:6px;font-size:13px;color:#991B1B;">⚠️ 되돌릴 수 없습니다. 관련 카드와 PPT 파일 모두 제거됩니다.</div>
+            <div id="ov-delconf-status" style="margin-top:8px;font-size:13px;min-height:18px;"></div>
+            <div class="ov-modal-actions">
+              <button class="ov-modal-cancel" type="button" id="ov-delconf-cancel">취소</button>
+              <button class="ov-modal-confirm" type="button" id="ov-delconf-confirm" style="background:#DC2626;color:#fff;">삭제</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   };
 
-  window.openNewProjectModal = function(){
-    const mask = document.getElementById('ov-newproj-mask');
-    const nameEl = document.getElementById('ov-np-name');
+  window.openNewProjectModal = async function(){
+    var mask = document.getElementById('ov-newproj-mask');
+    var nameEl = document.getElementById('ov-np-name');
+    var sidebarSel = document.getElementById('v2-division-select');
+    var divisionId = sidebarSel ? sidebarSel.value : 'semiconductor';
     if (!mask) return;
     if (nameEl) nameEl.value = '';
+    if (window._npClearSuggest) window._npClearSuggest();
     mask.classList.add('open');
+    var divLabel = '';
+    if (sidebarSel) {
+      var opt = sidebarSel.options[sidebarSel.selectedIndex];
+      if (opt) divLabel = opt.textContent || '';
+    }
+    var curDivEl = document.getElementById('ov-np-current-div');
+    if (curDivEl) curDivEl.textContent = divLabel ? '(' + divLabel + ')' : '';
+    await window._npLoadProjectButtons(divisionId);
     setTimeout(function(){ if (nameEl) nameEl.focus(); }, 50);
+  };
+
+  window._npLoadProjectButtons = async function(divisionId){
+    var box = document.getElementById('ov-np-project-buttons');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    if (!divisionId) {
+      var hint = document.createElement('div');
+      hint.style.color = '#9CA3AF';
+      hint.style.fontSize = '13px';
+      hint.textContent = '사업부를 선택하세요';
+      box.appendChild(hint);
+      return;
+    }
+    var loading = document.createElement('div');
+    loading.style.color = '#9CA3AF';
+    loading.style.fontSize = '13px';
+    loading.textContent = '불러오는 중...';
+    box.appendChild(loading);
+    try {
+      var r = await fetch('/admin/config/projects?division_id=' + encodeURIComponent(divisionId), { credentials: 'same-origin' });
+      var d = await r.json();
+      var items = (d && d.projects) || [];
+      while (box.firstChild) box.removeChild(box.firstChild);
+      if (!items.length) {
+        var empty = document.createElement('div');
+        empty.style.color = '#9CA3AF';
+        empty.style.fontSize = '13px';
+        empty.textContent = '등록된 프로젝트가 없습니다';
+        box.appendChild(empty);
+        return;
+      }
+      items.forEach(function(p){
+        var label = p.label || p.id;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        btn.style.padding = '8px 14px';
+        btn.style.border = '1px solid #D1D5DB';
+        btn.style.borderRadius = '6px';
+        btn.style.background = '#ffffff';
+        btn.style.fontSize = '13px';
+        btn.style.cursor = 'pointer';
+        btn.addEventListener('mouseenter', function(){ btn.style.background = '#F3F4F6'; btn.style.borderColor = '#2563EB'; });
+        btn.addEventListener('mouseleave', function(){ btn.style.background = '#ffffff'; btn.style.borderColor = '#D1D5DB'; });
+        btn.addEventListener('click', function(){
+          var nameEl = document.getElementById('ov-np-name');
+          if (nameEl) nameEl.value = label;
+          window.submitNewProject();
+        });
+        box.appendChild(btn);
+      });
+    } catch(e) {
+      while (box.firstChild) box.removeChild(box.firstChild);
+      var err = document.createElement('div');
+      err.style.color = '#EF4444';
+      err.style.fontSize = '13px';
+      err.textContent = '로드 실패';
+      box.appendChild(err);
+    }
+  };
+
+  window._pendingDeleteDocId = null;
+  window.openDeleteConfirm = function(docId, title){
+    var mask = document.getElementById('ov-delconf-mask');
+    var body = document.getElementById('ov-delconf-body');
+    var status = document.getElementById('ov-delconf-status');
+    if (!mask) return;
+    window._pendingDeleteDocId = docId;
+    if (body) {
+      while (body.firstChild) body.removeChild(body.firstChild);
+      var p1 = document.createElement('div');
+      p1.textContent = '다음 항목을 삭제하시겠습니까?';
+      var p2 = document.createElement('div');
+      p2.style.marginTop = '6px';
+      p2.style.fontWeight = '600';
+      p2.style.color = '#1F2937';
+      p2.textContent = title || docId;
+      body.appendChild(p1);
+      body.appendChild(p2);
+    }
+    if (status) { status.textContent = ''; status.style.color = ''; }
+    mask.classList.add('open');
+  };
+  window.closeDeleteConfirm = function(){
+    var mask = document.getElementById('ov-delconf-mask');
+    if (mask) mask.classList.remove('open');
+    window._pendingDeleteDocId = null;
+  };
+  window.executeDelete = async function(){
+    var docId = window._pendingDeleteDocId;
+    var status = document.getElementById('ov-delconf-status');
+    var confirmBtn = document.getElementById('ov-delconf-confirm');
+    if (!docId) return;
+    if (status) { status.textContent = '삭제 중...'; status.style.color = '#6B7280'; }
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.6'; }
+    try {
+      var res = await fetch('/admin/doc/' + encodeURIComponent(docId), {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        var detail = 'HTTP ' + res.status;
+        try {
+          var err = await res.json();
+          if (err && err.detail) detail = err.detail;
+        } catch(_) {}
+        if (status) { status.textContent = '❌ 삭제 실패: ' + detail; status.style.color = '#DC2626'; }
+        return;
+      }
+      if (status) { status.textContent = '✅ 삭제 완료'; status.style.color = '#059669'; }
+      setTimeout(function(){
+        window.closeDeleteConfirm();
+        if (window.loadAdminV2Reports) window.loadAdminV2Reports();
+      }, 500);
+    } catch(e) {
+      if (status) { status.textContent = '❌ 네트워크 오류: ' + (e.message || e); status.style.color = '#DC2626'; }
+    } finally {
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.style.opacity = '1'; }
+    }
+  };
+
+    var _npSuggestTimer = null;
+  window._npClearSuggest = function(){
+    var box = document.getElementById('ov-np-suggest');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+  };
+  window._npBuildSuggestBox = function(kind, msg, btnLabel, onAccept, onReject){
+    var box = document.getElementById('ov-np-suggest');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    var wrap = document.createElement('div');
+    wrap.style.padding = '10px 12px';
+    wrap.style.borderRadius = '6px';
+    wrap.style.fontSize = '13px';
+    wrap.style.display = 'flex';
+    wrap.style.flexWrap = 'wrap';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '8px';
+    if (kind === 'warn') {
+      wrap.style.background = '#FEF3C7';
+      wrap.style.border = '1px solid #F59E0B';
+    } else {
+      wrap.style.background = '#DBEAFE';
+      wrap.style.border = '1px solid #3B82F6';
+    }
+    var txt = document.createElement('span');
+    txt.textContent = msg;
+    txt.style.flex = '1';
+    wrap.appendChild(txt);
+    var acceptBtn = document.createElement('button');
+    acceptBtn.type = 'button';
+    acceptBtn.textContent = btnLabel;
+    acceptBtn.style.padding = '4px 10px';
+    acceptBtn.style.border = 'none';
+    acceptBtn.style.borderRadius = '4px';
+    acceptBtn.style.fontSize = '12px';
+    acceptBtn.style.cursor = 'pointer';
+    acceptBtn.style.color = '#ffffff';
+    acceptBtn.style.background = (kind === 'warn') ? '#F59E0B' : '#3B82F6';
+    acceptBtn.addEventListener('click', onAccept);
+    wrap.appendChild(acceptBtn);
+    if (onReject) {
+      var rejectBtn = document.createElement('button');
+      rejectBtn.type = 'button';
+      rejectBtn.textContent = '아니오';
+      rejectBtn.style.padding = '4px 10px';
+      rejectBtn.style.border = '1px solid #D1D5DB';
+      rejectBtn.style.borderRadius = '4px';
+      rejectBtn.style.fontSize = '12px';
+      rejectBtn.style.cursor = 'pointer';
+      rejectBtn.style.background = '#ffffff';
+      rejectBtn.style.color = '#374151';
+      rejectBtn.addEventListener('click', onReject);
+      wrap.appendChild(rejectBtn);
+    }
+    box.appendChild(wrap);
+  };
+  window._npBuildLoadingBox = function(msg){
+    var box = document.getElementById('ov-np-suggest');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    var wrap = document.createElement('div');
+    wrap.style.padding = '10px 12px';
+    wrap.style.borderRadius = '6px';
+    wrap.style.fontSize = '13px';
+    wrap.style.background = '#F3F4F6';
+    wrap.style.border = '1px solid #D1D5DB';
+    wrap.style.color = '#6B7280';
+    wrap.textContent = msg || 'AI로 확인 중...';
+    box.appendChild(wrap);
+  };
+
+  window._npBuildAiSuggestBox = function(resolved, confidence, query, sidebarDivId){
+    var box = document.getElementById('ov-np-suggest');
+    if (!box) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    var wrap = document.createElement('div');
+    wrap.style.padding = '10px 12px';
+    wrap.style.borderRadius = '6px';
+    wrap.style.fontSize = '13px';
+    wrap.style.display = 'flex';
+    wrap.style.flexWrap = 'wrap';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '8px';
+    wrap.style.background = '#EDE9FE';
+    wrap.style.border = '1px solid #8B5CF6';
+    var badge = document.createElement('span');
+    badge.textContent = '🤖 AI';
+    badge.style.fontSize = '11px';
+    badge.style.padding = '2px 6px';
+    badge.style.background = '#8B5CF6';
+    badge.style.color = '#ffffff';
+    badge.style.borderRadius = '4px';
+    badge.style.fontWeight = '700';
+    wrap.appendChild(badge);
+    var txt = document.createElement('span');
+    txt.textContent = '혹시 ' + resolved.label + ' 프로젝트인가요? (신뢰도 ' + Math.round(confidence * 100) + '%)';
+    txt.style.flex = '1';
+    wrap.appendChild(txt);
+    var acceptBtn = document.createElement('button');
+    acceptBtn.type = 'button';
+    acceptBtn.textContent = '네, ' + resolved.label;
+    acceptBtn.style.padding = '4px 10px';
+    acceptBtn.style.border = 'none';
+    acceptBtn.style.borderRadius = '4px';
+    acceptBtn.style.fontSize = '12px';
+    acceptBtn.style.cursor = 'pointer';
+    acceptBtn.style.color = '#ffffff';
+    acceptBtn.style.background = '#8B5CF6';
+    acceptBtn.addEventListener('click', async function(){
+      // alias 저장 (백그라운드, 실패해도 진행)
+      try {
+        await fetch('/admin/projects/alias', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ project_id: resolved.id, alias: query })
+        });
+      } catch(_) {}
+      var nameEl = document.getElementById('ov-np-name');
+      if (nameEl) nameEl.value = resolved.label;
+      window.submitNewProject();
+    });
+    wrap.appendChild(acceptBtn);
+    var rejectBtn = document.createElement('button');
+    rejectBtn.type = 'button';
+    rejectBtn.textContent = '아니오';
+    rejectBtn.style.padding = '4px 10px';
+    rejectBtn.style.border = '1px solid #D1D5DB';
+    rejectBtn.style.borderRadius = '4px';
+    rejectBtn.style.fontSize = '12px';
+    rejectBtn.style.cursor = 'pointer';
+    rejectBtn.style.background = '#ffffff';
+    rejectBtn.style.color = '#374151';
+    rejectBtn.addEventListener('click', function(){
+      window._npClearSuggest();
+    });
+    wrap.appendChild(rejectBtn);
+    box.appendChild(wrap);
+  };
+
+  window._onNewProjectNameInput = function(){
+    var nameEl = document.getElementById('ov-np-name');
+    if (!nameEl) return;
+    var q = (nameEl.value || '').trim();
+    if (_npSuggestTimer) clearTimeout(_npSuggestTimer);
+    if (!q) { window._npClearSuggest(); return; }
+    _npSuggestTimer = setTimeout(async function(){
+      try {
+        var r = await fetch('/admin/projects/suggest?query=' + encodeURIComponent(q) + '&limit=3', { credentials: 'same-origin' });
+        var d = await r.json();
+        var exact = d.exact_match;
+        var sug = d.suggestions || [];
+        if (exact) {
+          window._npBuildSuggestBox(
+            'warn',
+            '이미 등록된 프로젝트입니다: ' + exact.label,
+            '이 프로젝트로 진행',
+            function(){
+              nameEl.value = exact.label;
+              window.submitNewProject();
+            },
+            null
+          );
+          return;
+        }
+        if (sug.length > 0 && sug[0].similarity >= 0.6) {
+          var top = sug[0];
+          window._npBuildSuggestBox(
+            'info',
+            '혹시 ' + top.label + ' 프로젝트인가요?',
+            '네, ' + top.label,
+            function(){
+              nameEl.value = top.label;
+              window.submitNewProject();
+            },
+            function(){
+              window._npClearSuggest();
+            }
+          );
+          return;
+        }
+        // fuzzy 실패 -> AI resolver 호출 (최소 2자)
+        if (q.length < 2) {
+          window._npClearSuggest();
+          return;
+        }
+        var sidebarSel = document.getElementById('v2-division-select');
+        var divisionId = sidebarSel ? sidebarSel.value : '';
+        window._npBuildLoadingBox('🤖 AI로 확인 중...');
+        try {
+          var ar = await fetch('/admin/projects/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ query: q, division_id: divisionId })
+          });
+          var ad = await ar.json();
+          if (ad && ad.resolved && ad.confidence >= 0.6) {
+            window._npBuildAiSuggestBox(ad.resolved, ad.confidence, q, divisionId);
+          } else {
+            window._npClearSuggest();
+          }
+        } catch(_) {
+          window._npClearSuggest();
+        }
+      } catch(e) {
+        window._npClearSuggest();
+      }
+    }, 500);
   };
   window.closeNewProjectModal = function(){
     const mask = document.getElementById('ov-newproj-mask');
@@ -3958,7 +5677,10 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             +       '<div class="ov-badge ' + badgeClass + '">' + badgeText + '</div>'
             +       (dDayText ? '<div style="font-size:15px;font-weight:800;color:' + dDayColor + ';min-width:46px;text-align:right;">' + dDayText + '</div>' : '')
             +     '</div>'))
-            +     '<button class="ov-hide-btn ov-hide-report' + (isHidden ? ' is-active' : '') + '" type="button" data-doc="' + (r.doc_id || '') + '">' + hideLabel + '</button>'
+            +     '<div class="ov-side-top-actions">'
+            +       '<button class="ov-hide-btn ov-hide-report' + (isHidden ? ' is-active' : '') + '" type="button" data-doc="' + (r.doc_id || '') + '">' + hideLabel + '</button>'
+            +       '<button class="ov-del-btn ov-del-report" type="button" data-doc="' + (r.doc_id || '') + '" data-title="' + ((r.display_title || r.doc_id || '')).replace(/"/g, '&quot;') + '">삭제</button>'
+            +     '</div>'
             +     '<button class="ov-open-btn ov-open-report" type="button" data-doc="' + (r.doc_id || '') + '" data-product="' + (((r.products && r.products[0] && r.products[0].name) || '')).replace(/"/g, '') + '" data-split-project="' + ((r._split_project || '')).replace(/"/g, '') + '">열기</button>'
             +   '</div>'
             + '</div>';
@@ -4008,6 +5730,29 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
           if (e.target === maskEl) window.closeNewProjectModal();
         });
       }
+      const delCancel = document.getElementById('ov-delconf-cancel');
+      if (delCancel && !delCancel._bound) {
+        delCancel._bound = true;
+        delCancel.addEventListener('click', window.closeDeleteConfirm);
+      }
+      const delConfirm = document.getElementById('ov-delconf-confirm');
+      if (delConfirm && !delConfirm._bound) {
+        delConfirm._bound = true;
+        delConfirm.addEventListener('click', window.executeDelete);
+      }
+      const delMask = document.getElementById('ov-delconf-mask');
+      if (delMask && !delMask._bound) {
+        delMask._bound = true;
+        delMask.addEventListener('click', function(e){
+          if (e.target === delMask) window.closeDeleteConfirm();
+        });
+      }
+      // 모달 사업부 드롭다운은 제거됨 - 사이드바 v2-division-select 값 자동 참조
+      const nameInputBind = document.getElementById('ov-np-name');
+      if (nameInputBind && !nameInputBind._suggestBound) {
+        nameInputBind._suggestBound = true;
+        nameInputBind.addEventListener('input', window._onNewProjectNameInput);
+      }
 
       // 열기 버튼 이벤트 바인딩
       document.querySelectorAll('.ov-open-report').forEach(function(btn){
@@ -4016,6 +5761,13 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
           const prod = btn.getAttribute('data-product') || '';
           const splitProject = btn.getAttribute('data-split-project') || '';
           if (window.openReportEdit) window.openReportEdit(doc, prod, splitProject);
+        });
+      });
+      document.querySelectorAll('.ov-del-report').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var doc = btn.getAttribute('data-doc') || '';
+          var title = btn.getAttribute('data-title') || '';
+          if (doc) window.openDeleteConfirm(doc, title);
         });
       });
       document.querySelectorAll('.ov-hide-report').forEach(function(btn){
@@ -4089,18 +5841,20 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       + '.ov-issue-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:14px;}'
       + '.ov-issue-text{font-size:14px;color:#12325F;font-weight:700;line-height:1.45;flex:1;}'
       + '.ov-issue-dday{font-size:12px;font-weight:800;color:#B8302E;white-space:nowrap;}'
+      + '.ov-list-dash{padding-left:20px;} .ov-list-dash li{position:relative;list-style:none;} .ov-list-dash li::before{content:"－";position:absolute;left:-16px;color:#6E7785;}'
+      + '.ov-list-triangle{padding-left:22px;} .ov-list-triangle li{position:relative;list-style:none;} .ov-list-triangle li::before{content:"▶";position:absolute;left:-18px;color:#2E5B94;font-size:0.85em;top:0.15em;}'
+      + '.ov-list-check{padding-left:22px;} .ov-list-check li{position:relative;list-style:none;} .ov-list-check li::before{content:"✓";position:absolute;left:-18px;color:#117A52;font-weight:800;}'
+      + '.ov-list-star{padding-left:22px;} .ov-list-star li{position:relative;list-style:none;} .ov-list-star li::before{content:"★";position:absolute;left:-20px;color:#D9A400;}'
+      + '.ov-list-arrow{padding-left:24px;} .ov-list-arrow li{position:relative;list-style:none;} .ov-list-arrow li::before{content:"➜";position:absolute;left:-20px;color:#2E5B94;}'
+      + '.ov-list-diamond{padding-left:22px;} .ov-list-diamond li{position:relative;list-style:none;} .ov-list-diamond li::before{content:"◆";position:absolute;left:-18px;color:#8B5CF6;}'
+      + '.ov-list-dot{padding-left:18px;} .ov-list-dot li{position:relative;list-style:none;} .ov-list-dot li::before{content:"·";position:absolute;left:-12px;color:#6E7785;font-weight:800;}'
+      + '.ov-list-circled{padding-left:26px;counter-reset:ov-circled;} .ov-list-circled li{position:relative;list-style:none;counter-increment:ov-circled;} .ov-list-circled li::before{content:counter(ov-circled,decimal);position:absolute;left:-22px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1.5px solid #12325F;border-radius:50%;font-size:10px;font-weight:800;color:#12325F;top:0.2em;}'
+      + '.ov-list-paren{padding-left:22px;counter-reset:ov-paren;} .ov-list-paren li{position:relative;list-style:none;counter-increment:ov-paren;} .ov-list-paren li::before{content:counter(ov-paren) ")";position:absolute;left:-18px;color:#12325F;font-weight:700;}'
       + '</style>'
-      + '<div class="ov-edit-topbar">'
-      + '  <button class="ov-back-btn" type="button" id="ov-back-btn">← 목록으로</button>'
-      + '  <div class="ov-edit-title" id="ov-edit-title">' + (ctx.fileName || '편집') + '</div>'
-      + '  <button class="ov-save-btn" type="button" id="ov-save-btn" disabled style="opacity:0.4;cursor:not-allowed;">저장</button>'
-      + '</div>'
-      + '<div class="ov-header-card">'
-      + '  <div class="ov-header-title">'
-      + '    <span id="ov-project-label" contenteditable="true" spellcheck="false" style="outline:none;border-bottom:2px dashed transparent;padding:2px 4px;cursor:text;" title="클릭해서 프로젝트명 수정">' + projectLabel + '</span>'
-      + (statusLabel ? '<span class="ov-badge-inline ' + statusClass + '">' + statusLabel + '</span>' : '')
-      + '  </div>'
-      + '  <div class="ov-header-sub">' + subLine + '</div>'
+      + '<div class="ov-edit-topbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
+      + '  <button class="ov-back-btn" type="button" id="ov-back-btn" style="flex-shrink:0;">← 목록으로</button>'
+      + '  <div class="ov-edit-title" id="ov-edit-title" style="flex:1;text-align:center;font-size:16px;font-weight:800;color:#12325F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + projectLabel + '</div>'
+      + '  <div style="flex-shrink:0;width:100px;"></div>'
       + '</div>'
       + (ctx.isManual
           ? '<div id="ov-sections-container"></div>'
@@ -4303,9 +6057,388 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
 
     if (isManual) {
       sectionsState = JSON.parse(JSON.stringify(firstProduct.sections || []));
+
+      // ─── 편집 컨텍스트 설정 (일정 관리 패널용) ───
+      try {
+        // divisionId 우선순위: target.division_id → 사이드바 선택값
+        let divIdFromTarget = (target && (target.division_id || target.divisionId)) || '';
+        if (!divIdFromTarget) {
+          const sidebarSel = document.getElementById('v2-division-select')
+                          || document.getElementById('sidebarDivisionSelect')
+                          || document.querySelector('select[name="division"]')
+                          || document.querySelector('[data-role="division-select"]');
+          if (sidebarSel) divIdFromTarget = sidebarSel.value || '';
+        }
+        // 마지막 fallback: URL/hash에서 division 추출
+        if (!divIdFromTarget) {
+          const m = location.hash.match(/division[=/]([\w-]+)/);
+          if (m) divIdFromTarget = m[1];
+        }
+
+        // cardTitle 우선순위: manual_projects[0] → firstProduct.name → projectLabel 앞부분
+        let cardTitleClean = '';
+        const mp = (target && target.manual_projects) || [];
+        if (mp.length > 0) cardTitleClean = String(mp[0]).trim();
+        if (!cardTitleClean && firstProduct && firstProduct.name) {
+          cardTitleClean = String(firstProduct.name).trim();
+        }
+        if (!cardTitleClean && projectLabel) {
+          // "챔버 · W30 주간보고" 같은 형태에서 "챔버" 부분만
+          cardTitleClean = String(projectLabel).split('·')[0].trim();
+        }
+
+        window._currentEditContext = {
+          divisionId: divIdFromTarget,
+          cardTitle: cardTitleClean
+        };
+        console.log('[일정 패널] 컨텍스트:', window._currentEditContext);
+      } catch(e) { console.error('컨텍스트 설정 실패', e); }
+
+      // ─── 일정 관리 패널용 items 캐시 로드 ───
+      window._notesItemsCache = {};
+      (async function _loadNotesForSchedule(){
+        try {
+          let divId = (window._currentEditContext || {}).divisionId || '';
+          const cardTitle = (window._currentEditContext || {}).cardTitle || '';
+          if (!divId) {
+            const sel = document.getElementById('v2-division-select');
+            if (sel) divId = sel.value || '';
+          }
+          if (!divId || !cardTitle) return;
+          const r = await fetch('/notes?division_id=' + encodeURIComponent(divId), { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const j = await r.json();
+          const cards = (j.cards) || ((j.notes || {}).cards) || [];
+          const card = cards.find(function(c){ return (c.title || '').trim() === cardTitle.trim(); });
+          if (!card) return;
+          const map = {};
+          (card.sections || []).forEach(function(sec){
+            map[sec.title || ''] = sec.items || [];
+          });
+          window._notesItemsCache = map;
+          if (window._renderManualSections) window._renderManualSections();
+        } catch(e) { console.error('notes items 로드 실패', e); }
+      })();
       const sectionsRoot = document.getElementById('ov-sections-container');
 
-      window._renderManualSections = function(){
+      // === Tab/Shift+Tab/Backspace/Ctrl+Z Document-level Delegation ===
+      // 재렌더링돼도 리스너 안 죽게 document에 1회만 등록.
+      // 기존 editBox 개별 리스너(5349,5370,5511,5661,5964,5980)는
+      // stopImmediatePropagation()으로 무력화됨.
+      if (!document.__aiTabDelegationInstalled) {
+        document.__aiTabDelegationInstalled = true;
+
+        document.addEventListener('keydown', function(ev){
+          var target = ev.target;
+          if (!target || !target.closest) return;
+
+          var aiBox = target.closest('.ov-ai-diff-edit');
+          var origBox = target.closest('.ov-block-text-body');
+          var editBox = aiBox || origBox;
+          if (!editBox) return;
+
+          var isAi = !!aiBox;
+          var isMod = ev.metaKey || ev.ctrlKey;
+
+          // undo API 분기
+          var pushUndo = isAi ? editBox._aiPushUndo : editBox._origPushUndo;
+          var undoFn = isAi ? editBox._aiUndo : editBox._origUndo;
+          var redoFn = isAi ? editBox._aiRedo : editBox._origRedo;
+          var getCur = isAi ? editBox._aiGetCursorOffset : editBox._origGetCursorOffset;
+          var setCur = isAi ? editBox._aiSetCursorOffset : editBox._origSetCursorOffset;
+
+          // ─────────────────────────────────
+          // Ctrl+Z / Cmd+Z / Ctrl+Shift+Z / Ctrl+Y
+          // ─────────────────────────────────
+          if (isMod && (ev.key === 'z' || ev.key === 'Z')) {
+            if (!undoFn || !redoFn) return;
+            ev.preventDefault();
+            if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+            if (ev.shiftKey) redoFn();
+            else undoFn();
+            return;
+          }
+          if (isMod && (ev.key === 'y' || ev.key === 'Y')) {
+            if (!redoFn) return;
+            ev.preventDefault();
+            if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+            redoFn();
+            return;
+          }
+
+          // ─────────────────────────────────
+          // Tab / Shift+Tab
+          // ─────────────────────────────────
+          if (ev.key === 'Tab') {
+            if (!window._aiCollectSelectedNodes) return;
+            // 자동 마이그레이션 + selection 복원
+            // 개행 문자로 뭉친 텍스트를 개별 div로 분리하고 커서를 새 div로 재설정
+            if (window._aiSplitTextByNewlines && !editBox.__aiLineSplit) {
+              var _savedSel = window.getSelection();
+              var _savedAnchor = _savedSel && _savedSel.anchorNode;
+              var _savedOffset = _savedSel && _savedSel.anchorOffset;
+              var _savedText = null;
+              if (_savedAnchor && _savedAnchor.nodeType === 3) {
+                _savedText = _savedAnchor.nodeValue;
+              }
+              window._aiSplitTextByNewlines(editBox);
+              if (_savedText) {
+                try {
+                  var walker = document.createTreeWalker(editBox, NodeFilter.SHOW_TEXT, null, false);
+                  var found = null;
+                  while (walker.nextNode()) {
+                    var n = walker.currentNode;
+                    if (n.nodeValue === _savedText ||
+                        (_savedText.length > 5 && n.nodeValue.indexOf(_savedText.substring(0, 20)) >= 0)) {
+                      found = n;
+                      break;
+                    }
+                  }
+                  if (found) {
+                    var range = document.createRange();
+                    var newOffset = Math.min(_savedOffset || 0, found.nodeValue.length);
+                    range.setStart(found, newOffset);
+                    range.collapse(true);
+                    var s = window.getSelection();
+                    s.removeAllRanges();
+                    s.addRange(range);
+                  }
+                } catch(e) {}
+              }
+            }
+            var collected = window._aiCollectSelectedNodes(editBox);
+            if (collected.lis.length === 0 && collected.blocks.length === 0) return;
+
+            ev.preventDefault();
+            if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+            if (pushUndo) pushUndo();
+
+            var savedOffset = getCur ? getCur() : -1;
+            var lis = collected.lis.slice();
+            var blocks = collected.blocks.slice();
+
+            if (ev.shiftKey) {
+              // Shift+Tab: outdent / unlist (아래부터 처리)
+              var sortedLisOut = lis.slice().sort(function(a, b){
+                var pos = a.compareDocumentPosition(b);
+                if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return 1;
+                if (pos & Node.DOCUMENT_POSITION_PRECEDING) return -1;
+                return 0;
+              });
+              sortedLisOut.forEach(function(li){
+                if (!li.parentNode) return;
+                var parentOl = li.parentNode;
+                var ovr = parentOl.dataset.depthOverride;
+                if (ovr != null && ovr !== '') {
+                  var currentOvr = parseInt(ovr, 10);
+                  var currentDep = window._aiGetListDepth(parentOl, editBox);
+                  if (currentOvr > currentDep) {
+                    var newOvr = currentOvr - 1;
+                    if (newOvr <= currentDep) delete parentOl.dataset.depthOverride;
+                    else parentOl.dataset.depthOverride = String(newOvr);
+                    return;
+                  }
+                }
+                var hostLi = parentOl ? parentOl.parentNode : null;
+                var isTopLevel = !hostLi || hostLi.tagName !== 'LI';
+                if (isTopLevel) {
+                  if (window._aiUnlistCurrentLi) window._aiUnlistCurrentLi(editBox, li);
+                } else {
+                  var grandOl = hostLi.parentNode;
+                  if (grandOl && grandOl.tagName === 'OL') {
+                    if (hostLi.nextSibling) grandOl.insertBefore(li, hostLi.nextSibling);
+                    else grandOl.appendChild(li);
+                    if (!parentOl.querySelector('li')) parentOl.remove();
+                  }
+                }
+              });
+              blocks.forEach(function(block){
+                var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+                if (cur > 0) {
+                  block.dataset.indent = String(cur - 1);
+                  if (block.dataset.indent === '0') delete block.dataset.indent;
+                } else if (block.dataset.indent) {
+                  delete block.dataset.indent;
+                }
+              });
+            } else {
+              // Tab: indent (옵션 3 - selection 모든 li depth 증가)
+              var sortedLis = lis.slice().sort(function(a, b){
+                var pos = a.compareDocumentPosition(b);
+                if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+                if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+                return 0;
+              });
+              sortedLis.forEach(function(li, i){
+                if (!li.parentNode) return;
+                var parentOl = li.parentNode;
+                var prevLi = li.previousElementSibling;
+                var hasPrevLi = prevLi && prevLi.tagName === 'LI' && sortedLis.indexOf(prevLi) < 0;
+
+                if (hasPrevLi) {
+                  var childOl = window._aiEnsureChildOl(prevLi, window._aiStyleForDepth(window._aiGetListDepth(parentOl, editBox) + 1));
+                  childOl.appendChild(li);
+                  if (!parentOl.querySelector('li')) parentOl.remove();
+                } else {
+                  // 이전 li가 없어도 자리는 유지: 원래 ol을 li 위치에서 분할
+                  // [앞 li들이 있던 원래 ol] [분리된 li의 새 ol] [뒤 li들의 새 ol]
+                  var siblings = Array.prototype.filter.call(parentOl.children, function(x){ return x.tagName === 'LI'; });
+                  var targetOl = parentOl;
+                  if (siblings.length > 1) {
+                    // li 뒤에 남는 li들 수집
+                    var trailingLis = [];
+                    var cur = li.nextElementSibling;
+                    while (cur) {
+                      var next = cur.nextElementSibling;
+                      if (cur.tagName === 'LI') trailingLis.push(cur);
+                      cur = next;
+                    }
+
+                    // 새 ol 생성 (분리된 li용)
+                    var isolatedOl = document.createElement('ol');
+                    isolatedOl.className = parentOl.className;
+                    isolatedOl.dataset.start = '1';
+                    isolatedOl.dataset.manualSplit = '1';
+                    parentOl.dataset.manualSplit = '1';
+
+                    // 뒤 li가 있으면 별도 ol로 감쌈 (parentOl 뒤에)
+                    var trailingOl = null;
+                    if (trailingLis.length > 0) {
+                      trailingOl = document.createElement('ol');
+                      trailingOl.className = parentOl.className;
+                      trailingOl.dataset.manualSplit = '1';
+                      // parentOl의 start 값 계산: 원래 start + 지금까지 남은 li 개수
+                      var origStart = parseInt(parentOl.dataset.start || parentOl.getAttribute('start') || '1', 10) || 1;
+                      var remainingCount = siblings.indexOf(li); // li 앞의 li 개수
+                      trailingOl.dataset.start = String(origStart + remainingCount + 1);
+                      trailingLis.forEach(function(tli){ trailingOl.appendChild(tli); });
+                    }
+
+                    // 순서: parentOl(앞 li들) → isolatedOl(분리 li) → trailingOl(뒤 li들)
+                    // li를 isolatedOl로 이동
+                    isolatedOl.appendChild(li);
+
+                    // isolatedOl을 parentOl 바로 뒤에 삽입
+                    if (parentOl.nextSibling) parentOl.parentNode.insertBefore(isolatedOl, parentOl.nextSibling);
+                    else parentOl.parentNode.appendChild(isolatedOl);
+
+                    // trailingOl을 isolatedOl 바로 뒤에 삽입
+                    if (trailingOl) {
+                      if (isolatedOl.nextSibling) isolatedOl.parentNode.insertBefore(trailingOl, isolatedOl.nextSibling);
+                      else isolatedOl.parentNode.appendChild(trailingOl);
+                    }
+
+                    // parentOl이 비었으면 제거 (li가 첫 번째였을 때)
+                    if (!parentOl.querySelector('li')) parentOl.remove();
+
+                    targetOl = isolatedOl;
+                  }
+                  var currentDepth = window._aiGetListDepth(targetOl, editBox);
+                  var override = targetOl.dataset.depthOverride;
+                  var currentEffective = (override != null && override !== '') ? parseInt(override, 10) : currentDepth;
+                  var newDepth = currentEffective + 1;
+                  if (newDepth <= 5) targetOl.dataset.depthOverride = String(newDepth);
+                }
+              });
+              blocks.forEach(function(block){
+                var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+                if (cur < 5) block.dataset.indent = String(cur + 1);
+              });
+            }
+
+            if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+            if (savedOffset >= 0 && setCur) setCur(savedOffset);
+
+            // body 동기화 + dirty
+            try {
+              var si2 = parseInt(editBox.getAttribute('data-sec-idx'), 10);
+              var bi2 = parseInt(editBox.getAttribute('data-blk-idx'), 10);
+              if (sectionsState[si2] && sectionsState[si2].blocks && sectionsState[si2].blocks[bi2]) {
+                sectionsState[si2].blocks[bi2].body = editBox.innerHTML;
+                _markSectionsDirty();
+              }
+            } catch(e) {}
+            return;
+          }
+
+          // ─────────────────────────────────
+          // Backspace at line start (outdent/unlist)
+          // ─────────────────────────────────
+          if (ev.key === 'Backspace') {
+            if (!window._aiIsAtLineStart) return;
+            var check = window._aiIsAtLineStart(editBox);
+            if (!check || !check.atStart) return;
+            var info = check.info;
+            if (!info || info.type !== 'li') return;
+
+            var li = info.node;
+            var parentOl = li.parentNode;
+            var hostLi = parentOl ? parentOl.parentNode : null;
+            var isTopLevel = !hostLi || hostLi.tagName !== 'LI';
+
+            ev.preventDefault();
+            if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+            if (pushUndo) pushUndo();
+
+            if (isTopLevel) {
+              if (window._aiUnlistCurrentLi) window._aiUnlistCurrentLi(editBox, li);
+            } else {
+              var grandOl = hostLi.parentNode;
+              if (grandOl && grandOl.tagName === 'OL') {
+                if (hostLi.nextSibling) grandOl.insertBefore(li, hostLi.nextSibling);
+                else grandOl.appendChild(li);
+                if (!parentOl.querySelector('li')) parentOl.remove();
+                if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+                var r = document.createRange();
+                r.selectNodeContents(li);
+                r.collapse(true);
+                var s = window.getSelection();
+                if (s) { s.removeAllRanges(); s.addRange(r); }
+              }
+            }
+
+            try {
+              var si3 = parseInt(editBox.getAttribute('data-sec-idx'), 10);
+              var bi3 = parseInt(editBox.getAttribute('data-blk-idx'), 10);
+              if (sectionsState[si3] && sectionsState[si3].blocks && sectionsState[si3].blocks[bi3]) {
+                sectionsState[si3].blocks[bi3].body = editBox.innerHTML;
+                _markSectionsDirty();
+              }
+            } catch(e) {}
+            return;
+          }
+        }, true); // ← capture phase
+      }
+      // === /Document-level Delegation ===
+
+      // 섹션별 편집 모드 상태 (기본 표시 모드)
+      if (!window._sectionEditMode) window._sectionEditMode = {};
+
+      async function _reloadNotesCache(){
+        try {
+          let divId = (window._currentEditContext || {}).divisionId || '';
+          const cardTitle = (window._currentEditContext || {}).cardTitle || '';
+          if (!divId) {
+            const sel = document.getElementById('v2-division-select');
+            if (sel) divId = sel.value || '';
+          }
+          if (!divId || !cardTitle) return;
+          const r = await fetch('/notes?division_id=' + encodeURIComponent(divId), { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const j = await r.json();
+          const cards = (j.cards) || ((j.notes || {}).cards) || [];
+          const card = cards.find(function(c){ return (c.title || '').trim() === cardTitle.trim(); });
+          const map = {};
+          if (card) {
+            (card.sections || []).forEach(function(sec){
+              map[sec.title || ''] = sec.items || [];
+            });
+          }
+          window._notesItemsCache = map;
+        } catch(e) { console.error('notes cache reload 실패', e); }
+      }
+
+            window._renderManualSections = function(){
         if (!sectionsRoot) return;
         let html = '';
         // 상단 탭바 (시각적 표시 + 스크롤)
@@ -4337,28 +6470,345 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             if (!blocks.length) {
               body = '<div class="ov-placeholder">비어 있는 섹션입니다. (Phase 4: 텍스트/파일 블록 추가 예정)</div>';
             } else {
-              body = blocks.map(function(b){
-                if (b && b.kind === 'text') return '<div style="padding:10px 4px;font-size:14px;color:#12325F;line-height:1.6;white-space:pre-wrap;">' + (b.body||'') + '</div>';
-                if (b && b.kind === 'file') return '<div style="padding:10px 12px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;font-size:13px;color:#12325F;">📎 ' + (b.file_name||'(파일)') + '</div>';
+              const editing = !!window._sectionEditMode[idx];
+              body = blocks.map(function(b, bIdx){
+                if (b && b.kind === 'text') {
+                  const txt = (b.body || '');
+                  if (editing) {
+                    const editorId = 'txt-' + idx + '-' + bIdx;
+                    const toolbar = ''
+                      + '<div class="ov-rt-toolbar" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;background:#EEF4FB;border:1px solid #D9E3F1;border-bottom:0;border-radius:10px 10px 0 0;font-size:12px;" data-editor="' + editorId + '">'
+                      +   '<select data-cmd="formatBlock" title="크기" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
+                      +     '<option value="div">본문</option>'
+                      +     '<option value="h2">제목</option>'
+                      +     '<option value="h3">소제목</option>'
+                      +   '</select>'
+                      +   '<button type="button" data-cmd="bold" title="굵게" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;font-weight:800;">B</button>'
+                      +   '<button type="button" data-cmd="italic" title="기울임" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;font-style:italic;">I</button>'
+                      +   '<button type="button" data-cmd="underline" title="밑줄" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;text-decoration:underline;">U</button>'
+                      +   '<button type="button" data-cmd="strikeThrough" title="취소선" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;text-decoration:line-through;">S</button>'
+                      +   '<label style="display:inline-flex;align-items:center;gap:2px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;padding:0 4px;height:26px;cursor:pointer;" title="글자색">'
+                      +     '<span style="font-weight:700;color:#B8302E;">A</span>'
+                      +     '<input type="color" data-cmd="foreColor" style="width:16px;height:16px;border:0;background:transparent;padding:0;cursor:pointer;">'
+                      +   '</label>'
+                      +   '<label style="display:inline-flex;align-items:center;gap:2px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;padding:0 4px;height:26px;cursor:pointer;" title="형광펜">'
+                      +     '<span style="background:#FFF3B0;font-weight:700;padding:0 3px;">H</span>'
+                      +     '<input type="color" data-cmd="hiliteColor" value="#FFF3B0" style="width:16px;height:16px;border:0;background:transparent;padding:0;cursor:pointer;">'
+                      +   '</label>'
+                      +   '<button type="button" data-cmd="justifyLeft" title="왼쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"17\" y1=\"10\" x2=\"3\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"17\" y1=\"18\" x2=\"3\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="justifyCenter" title="가운데 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"10\" x2=\"6\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"18\" y1=\"18\" x2=\"6\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="justifyRight" title="오른쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"21\" y1=\"10\" x2=\"7\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"21\" y1=\"18\" x2=\"7\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="outdent" title="내어쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"7 8 3 12 7 16\"></polyline><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"></line><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"></line><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="indent" title="들여쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"3 8 7 12 3 16\"></polyline><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"></line><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"></line><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="insertUnorderedList" title="글머리 기호" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"></line><circle cx=\"4\" cy=\"6\" r=\"1.5\" fill=\"#4b5563\"></circle><circle cx=\"4\" cy=\"12\" r=\"1.5\" fill=\"#4b5563\"></circle><circle cx=\"4\" cy=\"18\" r=\"1.5\" fill=\"#4b5563\"></circle></svg></button>'
+                      +   '<select data-list-style="ul" title="불릿 종류" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
+                      +     '<option value="disc">●</option>'
+                      +     '<option value="circle">○</option>'
+                      +     '<option value="square">■</option>'
+                      +     '<option value="ov-dash">－</option>'
+                      +     '<option value="ov-triangle">▶</option>'
+                      +     '<option value="ov-check">✓</option>'
+                      +     '<option value="ov-star">★</option>'
+                      +     '<option value="ov-arrow">➜</option>'
+                      +     '<option value="ov-diamond">◆</option>'
+                      +     '<option value="ov-dot">·</option>'
+                      +   '</select>'
+                      +   '<button type="button" data-cmd="insertOrderedList" title="번호 매기기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"10\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"10\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"10\" y1=\"18\" x2=\"21\" y2=\"18\"></line><text x=\"2\" y=\"8\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">1</text><text x=\"2\" y=\"14\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">2</text><text x=\"2\" y=\"20\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">3</text></svg></button>'
+                      +   '<select data-list-style="ol" title="번호 종류 (오른쪽 클릭으로 이어/재시작)" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
+                      +     '<option value="decimal">1.</option>'
+                      +     '<option value="ov-circled">①</option>'
+                      +     '<option value="ov-paren">1)</option>'
+                      +     '<option value="lower-alpha">a.</option>'
+                      +     '<option value="upper-alpha">A.</option>'
+                      +     '<option value="lower-roman">i.</option>'
+                      +     '<option value="upper-roman">I.</option>'
+                      +   '</select>'
+                                            + '</div>';
+                    return '<div class="ov-block ov-block-text" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="position:relative;margin-bottom:10px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;">'
+                      +   toolbar
+                      +   '<div contenteditable="true" spellcheck="false" class="ov-block-text-body" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" id="' + editorId + '" style="outline:none;font-size:14px;color:#12325F;line-height:1.6;white-space:pre-wrap;min-height:60px;padding:12px 14px;border-top:0;">' + txt + '</div>'
+                      +   '<div style="position:absolute;top:6px;right:6px;display:flex;gap:2px;z-index:2;">'
+                      +     '<button type="button" class="ov-block-up" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" ' + (bIdx === 0 ? 'disabled' : '') + ' style="background:transparent;color:' + (bIdx === 0 ? '#CBD5E1' : '#5B7BB0') + ';border:0;font-size:14px;cursor:' + (bIdx === 0 ? 'not-allowed' : 'pointer') + ';padding:2px 6px;" title="위로">▲</button>'
+                      +     '<button type="button" class="ov-block-down" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" ' + (bIdx === blocks.length - 1 ? 'disabled' : '') + ' style="background:transparent;color:' + (bIdx === blocks.length - 1 ? '#CBD5E1' : '#5B7BB0') + ';border:0;font-size:14px;cursor:' + (bIdx === blocks.length - 1 ? 'not-allowed' : 'pointer') + ';padding:2px 6px;" title="아래로">▼</button>'
+                      +     '<button type="button" class="ov-block-ai" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="background:#F3EEFB;color:#7C3AED;border:1px solid #DDD6FE;font-size:11px;cursor:pointer;padding:3px 8px;font-weight:700;border-radius:6px;margin-right:2px;" title="AI 정리">🤖 AI 정리</button>'
+                      +     '<button type="button" class="ov-block-del" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="background:transparent;color:#B8302E;border:0;font-size:16px;cursor:pointer;padding:2px 6px;" title="삭제">✕</button>'
+                      +   '</div>'
+                      + '</div>';
+                  }
+                  // 표시 모드: 그냥 예쁘게 + 일정 관리 패널
+                  const secTitle = sec.title || '';
+                  const itemsForSec = (window._notesItemsCache || {})[secTitle] || [];
+                  const visibleItems = itemsForSec.filter(function(it){
+                    return it && it.text && it.text.trim() && it.type !== 'photo';
+                  });
+                  let panelHtml = '';
+                  if (visibleItems.length > 0) {
+                    const rows = visibleItems.map(function(it){
+                      const auto = it.due_date_auto || '';
+                      const override = it.due_date_override || '';
+                      const isOverride = !!override;
+                      const effective = override || auto;
+                      const mmdd = effective ? (effective.slice(5,7) + '/' + effective.slice(8,10)) : '';
+                      const chipLabel = effective
+                        ? (isOverride ? ('수동 ' + mmdd) : ('자동 ' + mmdd))
+                        : '+ 날짜 지정';
+                      const chipStyle = effective
+                        ? (isOverride
+                            ? 'background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;'
+                            : 'background:#F1F3F5;color:#6B7280;border:1px solid #E5E7EB;')
+                        : 'background:transparent;color:#9CA3AF;border:1px dashed #D1D5DB;';
+                      const resetBtn = isOverride
+                        ? '<button type="button" class="ov-due-reset" data-item-id="' + (it.item_id || '') + '" data-auto="' + auto + '" title="자동값(' + (auto ? auto.slice(5).replace('-','/') : '') + ')으로 되돌리기" style="background:transparent;border:0;color:#1E40AF;cursor:pointer;padding:0 4px;font-size:14px;line-height:1;margin-left:2px;">↺</button>'
+                        : '';
+                      const textEsc = (it.text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                      return '<div class="ov-schedule-row" style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #F0F4F9;">'
+                        +   '<div style="flex:1;font-size:13px;color:#12325F;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + textEsc + '</div>'
+                        +   '<button type="button" class="ov-due-chip" data-item-id="' + (it.item_id || '') + '" data-auto="' + auto + '" data-override="' + override + '" data-section-title="' + secTitle.replace(/"/g,'&quot;') + '" title="자동: ' + (auto || '없음') + (override ? (' / 수동: ' + override) : '') + ' | 클릭하여 날짜 변경" style="' + chipStyle + 'border-radius:12px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">' + chipLabel + '</button>'
+                        +   resetBtn
+                        + '</div>';
+                    }).join('');
+                    panelHtml = '<div class="ov-schedule-panel" data-sec-idx="' + idx + '" style="margin-top:8px;padding:8px 12px 4px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:10px;">'
+                      +   '<div style="font-size:12px;font-weight:700;color:#5B7BB0;margin-bottom:6px;">📅 이 섹션의 일정</div>'
+                      +   rows
+                      + '</div>';
+                  }
+                  return '<div class="ov-rt-view" style="padding:6px 4px;font-size:14px;color:#12325F;line-height:1.65;">' + txt + '</div>' + panelHtml;
+                }
+                if (b && b.kind === 'file') {
+                  const fname = b.file_name || '(파일)';
+                  const url = b.url || '';
+                  const isImage = /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(fname);
+                  const isExcel = /\.(xlsx|xls)$/i.test(fname);
+                  const previewHtml = (isImage && url)
+                    ? '<div style="margin:8px 0;text-align:center;"><img src="' + url + '" alt="' + fname + '" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid #E6EBF2;"></div>'
+                    : (isExcel && url)
+                      ? '<div class="ov-xlsx-preview" data-doc="' + docId + '" data-file="' + fname + '" style="margin:8px 0;padding:10px;background:#fff;border:1px dashed #D9E3F1;border-radius:8px;font-size:12px;color:#8593A6;">엑셀 미리보기 로드 중...</div>'
+                      : '';
+                  if (editing) {
+                    return '<div class="ov-block ov-block-file" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="position:relative;padding:10px 14px;margin-bottom:10px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;font-size:13px;color:#12325F;">'
+                      +   '<div style="display:flex;align-items:center;gap:8px;padding-right:26px;">'
+                      +     '<span>📎</span>'
+                      +     (url ? '<a href="' + url + '" target="_blank" style="color:#2E5B94;text-decoration:none;font-weight:700;">' + fname + '</a>' : '<span style="font-weight:700;">' + fname + '</span>')
+                      +   '</div>'
+                      +   previewHtml
+                      +   '<div style="position:absolute;top:6px;right:6px;display:flex;gap:2px;z-index:2;">'
+                      +     '<button type="button" class="ov-block-up" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" ' + (bIdx === 0 ? 'disabled' : '') + ' style="background:transparent;color:' + (bIdx === 0 ? '#CBD5E1' : '#5B7BB0') + ';border:0;font-size:14px;cursor:' + (bIdx === 0 ? 'not-allowed' : 'pointer') + ';padding:2px 6px;" title="위로">▲</button>'
+                      +     '<button type="button" class="ov-block-down" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" ' + (bIdx === blocks.length - 1 ? 'disabled' : '') + ' style="background:transparent;color:' + (bIdx === blocks.length - 1 ? '#CBD5E1' : '#5B7BB0') + ';border:0;font-size:14px;cursor:' + (bIdx === blocks.length - 1 ? 'not-allowed' : 'pointer') + ';padding:2px 6px;" title="아래로">▼</button>'
+                      +     '<button type="button" class="ov-block-del" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="background:transparent;color:#B8302E;border:0;font-size:16px;cursor:pointer;padding:2px 6px;" title="삭제">✕</button>'
+                      +   '</div>'
+                      + '</div>';
+                  }
+                  // 표시 모드
+                  return '<div style="padding:8px 12px;margin-bottom:6px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:10px;font-size:13px;color:#12325F;">'
+                    +   '<div style="display:flex;align-items:center;gap:8px;">'
+                    +     '<span>📎</span>'
+                    +     (url ? '<a href="' + url + '" target="_blank" style="color:#2E5B94;text-decoration:none;font-weight:700;">' + fname + '</a>' : '<span style="font-weight:700;">' + fname + '</span>')
+                    +   '</div>'
+                    +   previewHtml
+                    + '</div>';
+                }
                 return '';
               }).join('');
+              // 편집 모드일 때만 블록 추가 버튼 표시
+              if (editing) {
+                body += '<div style="display:flex;gap:8px;margin-top:10px;">'
+                  +      '<button type="button" class="ov-block-add-text" data-sec-idx="' + idx + '" style="background:#EEF4FB;color:#2E5B94;border:0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">+ 텍스트</button>'
+                  +      '<label class="ov-block-add-file-label" style="background:#EEF4FB;color:#2E5B94;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">+ 파일<input type="file" data-sec-idx="' + idx + '" class="ov-block-add-file" style="display:none;"></label>'
+                  +    '</div>';
+              }
             }
-            return '<div class="ov-section" data-sec-id="' + secId + '" data-sec-idx="' + idx + '">'
+            // 빈 섹션이면서 편집 모드라면 블록 추가 버튼 노출
+            if (!blocks.length && !!window._sectionEditMode[idx]) {
+              body = '<div class="ov-placeholder">비어 있는 섹션입니다. 아래 「+ 텍스트」 「+ 파일」 로 추가하세요.</div>'
+                +    '<div style="display:flex;gap:8px;margin-top:10px;">'
+                +      '<button type="button" class="ov-block-add-text" data-sec-idx="' + idx + '" style="background:#EEF4FB;color:#2E5B94;border:0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">+ 텍스트</button>'
+                +      '<label class="ov-block-add-file-label" style="background:#EEF4FB;color:#2E5B94;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">+ 파일<input type="file" data-sec-idx="' + idx + '" class="ov-block-add-file" style="display:none;"></label>'
+                +    '</div>';
+            }
+            const isEditing = !!window._sectionEditMode[idx];
+            const headBtns = isEditing
+              ? ('<button type="button" class="ov-sec-done-btn" data-sec-idx="' + idx + '" style="background:#0F2C59;color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">완료</button>'
+                + '<button type="button" class="ov-sec-rename-btn" data-sec-idx="' + idx + '" style="background:#EEF4FB;color:#2E5B94;border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">이름 수정</button>'
+                + '<button type="button" class="ov-sec-del-btn" data-sec-idx="' + idx + '" style="background:#FEE7E7;color:#B8302E;border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">삭제</button>')
+              : ('<button type="button" class="ov-sec-edit-btn" data-sec-idx="' + idx + '" style="background:#EEF4FB;color:#2E5B94;border:0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">✏ 수정</button>');
+
+            // 매출 계산 박스 (주차별 계획 섹션 + 편집 모드 전용)
+            var salesBoxHtml = '';
+            var _secT = (sec.title || '').trim();
+            var _isWeeklyPlan = (_secT === '주차별 계획' || _secT === '주차별계획' || _secT === '주차계획' || _secT === '주간계획');
+            if (_isWeeklyPlan && isEditing) {
+              var _sd = sec.sales_data || {};
+              var _prices = _sd.prices || {};
+              var _weeks = Array.isArray(_sd.weeks) ? _sd.weeks : [];
+              var _ss = String(sec.sales_summary || '(완료 버튼을 누르면 자동 계산됩니다)').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+              var _sc = String(sec.sales_computed_at || '');
+              var _open = (Object.keys(_prices).length || _weeks.length) ? '▼' : '▶';
+              var _display = (Object.keys(_prices).length || _weeks.length) ? 'block' : 'none';
+              
+              // 판가 행 렌더
+              var _pricesHtml = '';
+              Object.keys(_prices).forEach(function(mname){
+                _pricesHtml += ''
+                  + '<div class="ov-sales-price-row" data-model="' + mname + '" style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+                  +   '<input type="text" class="ov-sales-price-name" value="' + mname + '" style="width:100px;padding:4px 8px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;" placeholder="모델명">'
+                  +   '<input type="number" class="ov-sales-price-val" value="' + (_prices[mname] || 0) + '" step="0.1" style="width:80px;padding:4px 8px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;text-align:right;">'
+                  +   '<span style="font-size:11px;color:#7C8594;">만불</span>'
+                  +   '<button type="button" class="ov-sales-price-del" style="margin-left:auto;background:#FEE7E7;color:#B8302E;border:0;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">삭제</button>'
+                  + '</div>';
+              });
+              if (!Object.keys(_prices).length) {
+                _pricesHtml = '<div style="color:#7C8594;font-size:11px;padding:4px 0;">모델을 추가하세요.</div>';
+              }
+              
+              // 주차별 렌더
+              var _weeksHtml = '';
+              _weeks.forEach(function(w, wi){
+                var _wnum = w.week || '';
+                var _wmodels = w.models || {};
+                var _rowsHtml = '';
+                Object.keys(_prices).forEach(function(mname){
+                  var _mv = _wmodels[mname] || {plan: 0, actual: 0};
+                  _rowsHtml += ''
+                    + '<div style="display:flex;align-items:center;gap:6px;margin:3px 0 3px 20px;">'
+                    +   '<span style="width:80px;font-size:12px;color:#12325F;">' + mname + '</span>'
+                    +   '<span style="font-size:11px;color:#7C8594;">계</span>'
+                    +   '<input type="number" class="ov-sales-plan" data-week="' + _wnum + '" data-model="' + mname + '" value="' + (_mv.plan || 0) + '" style="width:56px;padding:3px 6px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;text-align:right;">'
+                    +   '<span style="font-size:11px;color:#7C8594;">실</span>'
+                    +   '<input type="number" class="ov-sales-actual" data-week="' + _wnum + '" data-model="' + mname + '" value="' + (_mv.actual || 0) + '" style="width:56px;padding:3px 6px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;text-align:right;">'
+                    + '</div>';
+                });
+                if (!Object.keys(_prices).length) {
+                  _rowsHtml = '<div style="color:#7C8594;font-size:11px;padding:4px 0 4px 20px;">먼저 모델을 추가하세요.</div>';
+                }
+                _weeksHtml += ''
+                  + '<div class="ov-sales-week-box" data-week-idx="' + wi + '" style="padding:8px;margin-bottom:6px;background:#fff;border:1px solid #E5EAF0;border-radius:6px;">'
+                  +   '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+                  +     '<span style="font-size:12px;font-weight:700;color:#12325F;">주차 W</span>'
+                  +     '<input type="number" class="ov-sales-week-num" value="' + _wnum + '" style="width:60px;padding:4px 8px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;text-align:center;">'
+                  +     '<button type="button" class="ov-sales-week-del" style="margin-left:auto;background:#FEE7E7;color:#B8302E;border:0;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">삭제</button>'
+                  +   '</div>'
+                  +   _rowsHtml
+                  + '</div>';
+              });
+              if (!_weeks.length) {
+                _weeksHtml = '<div style="color:#7C8594;font-size:11px;padding:4px 0;">주차를 추가하세요.</div>';
+              }
+              
+              salesBoxHtml = ''
+                + '<div class="ov-sales-box" data-sec-idx="' + idx + '" style="margin-top:12px;padding:10px;background:#F7F9FC;border:1px dashed #C5D0E0;border-radius:8px;">'
+                +   '<button type="button" class="ov-sales-toggle" data-sec-idx="' + idx + '" style="background:none;border:0;color:#12325F;font-weight:700;font-size:13px;cursor:pointer;padding:4px 0;">'
+                +     _open + ' 💰 매출 계산'
+                +   '</button>'
+                +   '<div class="ov-sales-body" style="display:' + _display + ';margin-top:8px;">'
+                +     '<div class="ov-sales-info" data-sec-idx="' + idx + '" style="font-size:11px;color:#7C8594;margin-bottom:8px;padding:6px 8px;background:#EEF3FB;border-radius:6px;">엑셀 파일 인식 중...</div>'
+                +     '<div style="font-size:11px;font-weight:700;color:#12325F;margin-bottom:6px;">💵 판가 입력 (만불)</div>'
+                +     '<div class="ov-sales-prices" data-sec-idx="' + idx + '" style="padding:4px 0;"><div style="color:#7C8594;font-size:11px;">엑셀을 먼저 첨부해 주세요.</div></div>'
+                +     '<div style="margin-top:10px;padding:8px 10px;background:#EEF3FB;border-radius:6px;font-size:13px;color:#12325F;">'
+                +       '<span style="opacity:0.6;">계산 결과:</span>'
+                +       '<div style="margin-top:4px;font-weight:700;">' + _ss + '</div>'
+                +       (_sc ? '<div style="margin-top:4px;font-size:11px;color:#7C8594;">계산 시각: ' + _sc + '</div>' : '')
+                +     '</div>'
+                +     '<div style="margin-top:6px;font-size:11px;color:#7C8594;">완료 버튼을 누르면 자동 저장되고 매출이 계산됩니다.</div>'
+                +   '</div>'
+                + '</div>';
+            }
+            
+                        return '<div class="ov-section" data-sec-id="' + secId + '" data-sec-idx="' + idx + '">'
               +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
               +     '<div class="ov-section-title" style="margin:0;">'
               +       '<span class="ov-section-num">' + (idx+1) + '</span>'
               +       '<span class="ov-sec-title-text" data-sec-idx="' + idx + '" style="cursor:text;">' + title + '</span>'
               +     '</div>'
-              +     '<div style="display:flex;gap:6px;">'
-              +       '<button type="button" class="ov-sec-rename-btn" data-sec-idx="' + idx + '" style="background:#EEF4FB;color:#2E5B94;border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">이름 수정</button>'
-              +       '<button type="button" class="ov-sec-del-btn" data-sec-idx="' + idx + '" style="background:#FEE7E7;color:#B8302E;border:0;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">삭제</button>'
-              +     '</div>'
+              +     '<div style="display:flex;gap:6px;">' + headBtns + '</div>'
               +   '</div>'
               +   body
+              +   salesBoxHtml
               + '</div>';
           }).join('');
         }
         sectionsRoot.innerHTML = html;
+
+        // ─── 일정 칩 이벤트 바인딩 ───
+        sectionsRoot.querySelectorAll('.ov-due-chip').forEach(function(chip){
+          chip.addEventListener('click', function(ev){
+            ev.stopPropagation();
+            const itemId = chip.getAttribute('data-item-id');
+            const auto = chip.getAttribute('data-auto') || '';
+            const override = chip.getAttribute('data-override') || '';
+            if (!itemId) { alert('item_id 없음 — 저장 후 다시 시도'); return; }
+
+            // 임시 date input 을 만들어 팝업
+            const inp = document.createElement('input');
+            inp.type = 'date';
+            inp.value = override || auto || '';
+            inp.style.position = 'fixed';
+            const rect = chip.getBoundingClientRect();
+            inp.style.left = rect.left + 'px';
+            inp.style.top = (rect.bottom + 4) + 'px';
+            inp.style.zIndex = 9999;
+            document.body.appendChild(inp);
+            inp.focus();
+            try { inp.showPicker && inp.showPicker(); } catch(e) {}
+
+            inp.addEventListener('change', async function(){
+              const val = inp.value;
+              document.body.removeChild(inp);
+              if (!val) return;
+              try {
+                const divId = (window._currentEditContext || {}).divisionId || '';
+                const cardTitle = (window._currentEditContext || {}).cardTitle || '';
+                const r = await fetch('/admin/notes/item/due_override', {
+                  method: 'POST',
+                  headers: {'Content-Type':'application/json'},
+                  credentials: 'same-origin',
+                  body: JSON.stringify({
+                    division_id: divId,
+                    card_title: cardTitle,
+                    item_id: itemId,
+                    due_date: val
+                  })
+                });
+                const j = await r.json();
+                if (!r.ok) { alert('저장 실패: ' + (j.detail || r.status)); return; }
+                // 캐시 갱신
+                await _reloadNotesCache();
+                if (window._renderManualSections) window._renderManualSections();
+              } catch(e) { alert('오류: ' + e.message); }
+            });
+            inp.addEventListener('blur', function(){
+              setTimeout(function(){ if (inp.parentNode) document.body.removeChild(inp); }, 200);
+            });
+          });
+        });
+
+        sectionsRoot.querySelectorAll('.ov-due-reset').forEach(function(btn){
+          btn.addEventListener('click', async function(ev){
+            ev.stopPropagation();
+            const itemId = btn.getAttribute('data-item-id');
+            if (!itemId) return;
+            const autoVal = btn.getAttribute('data-auto') || '';
+            const autoLabel = autoVal ? autoVal.slice(5).replace('-','/') : '자동값';
+            if (!confirm('수동 지정을 취소하고 자동값(' + autoLabel + ')으로 되돌릴까요?')) return;
+            try {
+              const divId = (window._currentEditContext || {}).divisionId || '';
+              const cardTitle = (window._currentEditContext || {}).cardTitle || '';
+              const r = await fetch('/admin/notes/item/due_override', {
+                method: 'DELETE',
+                headers: {'Content-Type':'application/json'},
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                  division_id: divId,
+                  card_title: cardTitle,
+                  item_id: itemId
+                })
+              });
+              const j = await r.json();
+              if (!r.ok) { alert('리셋 실패: ' + (j.detail || r.status)); return; }
+              await _reloadNotesCache();
+              if (window._renderManualSections) window._renderManualSections();
+            } catch(e) { alert('오류: ' + e.message); }
+          });
+        });
 
         // 이벤트 바인딩
         const addBtn = document.getElementById('ov-sec-add-btn');
@@ -4376,6 +6826,1403 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
             }
           });
         });
+        // 수정/완료 버튼 바인딩
+        sectionsRoot.querySelectorAll('.ov-sec-edit-btn').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            window._sectionEditMode[i] = true;
+            window._renderManualSections();
+          });
+        });
+        // 매출 계산 박스 토글 + 입력 → sectionsState 동기화
+        // ===== 매출 계산 박스 (폼 UI) =====
+        // ============================================================
+        // [SALES v3] xlsx 자동 파싱 + 판가만 입력
+        // ============================================================
+        function _findSectionXlsx(secIdx){
+          // sectionsState[secIdx] 안에서 xlsx 파일 참조 찾기
+          // reports_latest.json 구조: section.blocks[].kind='file', file_name, url
+          // notes.json fallback: section.items[].photo_ref
+          var sec = sectionsState[secIdx];
+          if (!sec) return null;
+          
+          function extractFilename(raw){
+            if (!raw) return null;
+            var s = String(raw);
+            var lo = s.toLowerCase();
+            if (lo.indexOf('.xlsx') < 0 && lo.indexOf('.xlsm') < 0) return null;
+            // /admin/manual-files/{doc_id}/{filename} 패턴
+            var m = s.match(/\/admin\/manual-files\/[^\/]+\/([^\/?#]+)/);
+            if (m) return decodeURIComponent(m[1]);
+            // 그냥 파일명일 수도
+            return s.split('/').pop().split('?')[0];
+          }
+          
+          // 1) blocks[] 탐색 (편집 화면 기본 구조)
+          var blocks = sec.blocks || [];
+          for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i] || {};
+            if (b.kind === 'file' || b.kind === 'xlsx') {
+              var fn = extractFilename(b.url) || extractFilename(b.file_url) || extractFilename(b.file_name) || extractFilename(b.href);
+              if (fn) return fn;
+            }
+            // kind 상관없이 URL 필드 훑기
+            var candidates = [b.url, b.file_url, b.file_name, b.href, b.text, b.photo_ref];
+            for (var k = 0; k < candidates.length; k++) {
+              var fn2 = extractFilename(candidates[k]);
+              if (fn2) return fn2;
+            }
+          }
+          
+          // 2) items[] 탐색 (notes.json fallback)
+          var items = sec.items || [];
+          for (var j = 0; j < items.length; j++) {
+            var it = items[j] || {};
+            var refs = [it.url, it.file_url, it.file_name, it.href, it.text, it.photo_ref];
+            for (var m2 = 0; m2 < refs.length; m2++) {
+              var fn3 = extractFilename(refs[m2]);
+              if (fn3) return fn3;
+            }
+          }
+          
+          return null;
+        }
+        
+        function _renderSalesPrices(secIdx, parsed, existingPrices){
+          var box = sectionsRoot.querySelector('.ov-sales-box[data-sec-idx="' + secIdx + '"]');
+          if (!box) return;
+          var infoEl = box.querySelector('.ov-sales-info');
+          var pricesEl = box.querySelector('.ov-sales-prices');
+          if (!pricesEl) return;
+          
+          var models = (parsed && parsed.models) || [];
+          var weeks = (parsed && parsed.weeks) || [];
+          
+          if (!models.length) {
+            if (infoEl) infoEl.textContent = '⚠️ 엑셀에서 모델을 인식하지 못했습니다.';
+            pricesEl.innerHTML = '<div style="color:#7C8594;font-size:11px;">엑셀 형식을 확인해 주세요.</div>';
+            return;
+          }
+          
+          var weekLabels = weeks.map(function(w){ return 'W' + w.week; }).join(', ');
+          if (infoEl) {
+            infoEl.innerHTML = '📊 인식된 모델: <b>' + models.join(', ') + '</b><br>📅 인식된 주차: ' + weekLabels;
+          }
+          
+          var prices = existingPrices || {};
+          var html = models.map(function(m){
+            var v = (prices[m] !== undefined && prices[m] !== null) ? prices[m] : '';
+            return '<div class="ov-sales-price-row" data-model="' + m + '" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+              +   '<div style="min-width:120px;font-size:12px;font-weight:600;color:#12325F;">' + m + '</div>'
+              +   '<input type="number" step="0.1" class="ov-sales-price-input" data-sec-idx="' + secIdx + '" data-model="' + m + '" value="' + v + '" placeholder="판가" style="flex:1;padding:4px 8px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;" />'
+              +   '<span style="font-size:11px;color:#7C8594;">만불</span>'
+              + '</div>';
+          }).join('');
+          pricesEl.innerHTML = html;
+          
+          // 입력 이벤트 바인딩
+          pricesEl.querySelectorAll('.ov-sales-price-input').forEach(function(inp){
+            if (inp._bound) return;
+            inp._bound = true;
+            inp.addEventListener('input', function(){
+              var idx = parseInt(inp.dataset.secIdx, 10);
+              var name = inp.dataset.model;
+              if (!sectionsState[idx]) return;
+              sectionsState[idx].sales_prices = sectionsState[idx].sales_prices || {};
+              sectionsState[idx].sales_prices[name] = parseFloat(inp.value || '0') || 0;
+              if (typeof _markSectionsDirty === 'function') _markSectionsDirty();
+            });
+          });
+        }
+        
+        async function _loadSalesForSection(secIdx){
+          var box = sectionsRoot.querySelector('.ov-sales-box[data-sec-idx="' + secIdx + '"]');
+          if (!box) return;
+          var infoEl = box.querySelector('.ov-sales-info');
+          var pricesEl = box.querySelector('.ov-sales-prices');
+          
+          var xlsxName = _findSectionXlsx(secIdx);
+          if (!xlsxName) {
+            if (infoEl) infoEl.textContent = '📎 엑셀 파일이 아직 첨부되지 않았습니다.';
+            if (pricesEl) pricesEl.innerHTML = '<div style="color:#7C8594;font-size:11px;">주차별 계획 섹션에 엑셀을 첨부하세요.</div>';
+            return;
+          }
+          
+          if (infoEl) infoEl.textContent = '⏳ 엑셀 파싱 중: ' + xlsxName;
+          
+          try {
+            var res = await fetch('/admin/reports/' + encodeURIComponent(docId) + '/section-parse-xlsx', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({filename: xlsxName})
+            });
+            if (!res.ok) {
+              var t = await res.text();
+              throw new Error('HTTP ' + res.status + ': ' + t);
+            }
+            var data = await res.json();
+            var existingPrices = (sectionsState[secIdx] && sectionsState[secIdx].sales_prices) || {};
+            _renderSalesPrices(secIdx, data.parsed, existingPrices);
+          } catch(e) {
+            if (infoEl) infoEl.textContent = '❌ 파싱 실패: ' + e.message;
+            if (pricesEl) pricesEl.innerHTML = '';
+          }
+        }
+        
+        // toggle 이벤트 (열릴 때 xlsx 자동 파싱)
+        sectionsRoot.querySelectorAll('.ov-sales-toggle').forEach(function(btn){
+          if (btn._bound) return;
+          btn._bound = true;
+          btn.addEventListener('click', function(){
+            var body = btn.parentElement.querySelector('.ov-sales-body');
+            if (!body) return;
+            var isHidden = body.style.display === 'none' || !body.style.display;
+            body.style.display = isHidden ? 'block' : 'none';
+            btn.textContent = (isHidden ? '▼' : '▶') + ' 💰 매출 계산';
+            if (isHidden) {
+              var secIdx = parseInt(btn.dataset.secIdx, 10);
+              _loadSalesForSection(secIdx);
+            }
+          });
+        });
+        
+        // 이미 펼쳐진 박스가 있으면 자동 로드
+        sectionsRoot.querySelectorAll('.ov-sales-box').forEach(function(box){
+          var body = box.querySelector('.ov-sales-body');
+          if (body && body.style.display === 'block') {
+            var secIdx = parseInt(box.dataset.secIdx, 10);
+            _loadSalesForSection(secIdx);
+          }
+        });
+        
+                sectionsRoot.querySelectorAll('.ov-sec-done-btn').forEach(function(btn){
+          btn.addEventListener('click', async function(){
+            const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            // 1) 서버 저장 (수기 프로젝트만)
+            if (typeof isManual !== 'undefined' && isManual && typeof docId !== 'undefined') {
+              const origLabel = btn.textContent;
+              btn.disabled = true;
+              btn.textContent = '💾 저장 중...';
+              try {
+                const payload = { products: [{ sections: sectionsState }] };
+                const res = await fetch('/admin/reports/' + encodeURIComponent(docId), {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                  alert('저장 실패: HTTP ' + res.status);
+                  btn.textContent = origLabel;
+                  btn.disabled = false;
+                  return;
+                }
+                btn.textContent = '✓ 저장됨';
+                // ── P3: 저장 후 캐시 리로드 (auto값이 바뀌었을 수 있음) ──
+                try {
+                  if (typeof _reloadNotesCache === 'function') {
+                    await _reloadNotesCache();
+                  }
+                } catch(e) { console.warn('cache reload skipped:', e); }
+                setTimeout(function(){
+                  window._sectionEditMode[i] = false;
+                  window._renderManualSections();
+                }, 400);
+              } catch(e) {
+                alert('저장 오류: ' + e.message);
+                btn.textContent = origLabel;
+                btn.disabled = false;
+                return;
+              }
+            } else {
+              // 비수기 프로젝트: 편집 모드만 종료
+              window._sectionEditMode[i] = false;
+              window._renderManualSections();
+            }
+          });
+        });
+        // 블록 이벤트 바인딩
+        sectionsRoot.querySelectorAll('.ov-block-add-text').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            if (!sectionsState[i]) return;
+            if (!Array.isArray(sectionsState[i].blocks)) sectionsState[i].blocks = [];
+            sectionsState[i].blocks.push({ kind: 'text', body: '' });
+            _markSectionsDirty();
+            window._renderManualSections();
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-block-add-file').forEach(function(input){
+          input.addEventListener('change', async function(){
+            const i = parseInt(input.getAttribute('data-sec-idx'), 10);
+            const f = input.files && input.files[0];
+            if (!f) return;
+            const fd = new FormData();
+            fd.append('file', f);
+            try {
+              const res = await fetch('/admin/reports/' + encodeURIComponent(docId) + '/section-file', {
+                method: 'POST', body: fd
+              });
+              if (!res.ok) { alert('파일 업로드 실패'); return; }
+              const j = await res.json();
+              if (!sectionsState[i]) return;
+              if (!Array.isArray(sectionsState[i].blocks)) sectionsState[i].blocks = [];
+              sectionsState[i].blocks.push({ kind: 'file', file_name: j.file_name, url: j.url, size: j.size });
+              _markSectionsDirty();
+              window._renderManualSections();
+            } catch(e){ alert('업로드 오류: ' + e.message); }
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-block-up').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            if (btn.hasAttribute('disabled')) return;
+            const si = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            const bi = parseInt(btn.getAttribute('data-blk-idx'), 10);
+            const sec = sectionsState[si];
+            if (!sec || !Array.isArray(sec.blocks)) return;
+            if (bi <= 0) return;
+            const tmp = sec.blocks[bi - 1];
+            sec.blocks[bi - 1] = sec.blocks[bi];
+            sec.blocks[bi] = tmp;
+            _markSectionsDirty();
+            window._renderManualSections();
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-block-down').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            if (btn.hasAttribute('disabled')) return;
+            const si = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            const bi = parseInt(btn.getAttribute('data-blk-idx'), 10);
+            const sec = sectionsState[si];
+            if (!sec || !Array.isArray(sec.blocks)) return;
+            if (bi >= sec.blocks.length - 1) return;
+            const tmp = sec.blocks[bi + 1];
+            sec.blocks[bi + 1] = sec.blocks[bi];
+            sec.blocks[bi] = tmp;
+            _markSectionsDirty();
+            window._renderManualSections();
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-block-ai').forEach(function(btn){
+          btn.addEventListener('click', async function(){
+            const si = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            const bi = parseInt(btn.getAttribute('data-blk-idx'), 10);
+            const sec = sectionsState[si];
+            const blk = sec && Array.isArray(sec.blocks) ? sec.blocks[bi] : null;
+            if (!sec || !blk) return;
+            const _kind = blk.kind || blk.type;
+            if (_kind !== 'text') return;
+
+            const original = String(blk.body || '').trim();
+            if (!original) {
+              alert('비어 있는 텍스트는 다듬을 수 없습니다.');
+              return;
+            }
+
+            const oldText = btn.textContent;
+            btn.textContent = '…';
+            btn.disabled = true;
+
+            try {
+              const r = await fetch('/admin/reports/' + encodeURIComponent(docId) + '/polish-text', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  text: original,
+                  section_title: String(sec.title || '')
+                })
+              });
+
+              let j = {};
+              try { j = await r.json(); } catch(_) {}
+
+              if (!r.ok) {
+                throw new Error((j && j.detail) ? String(j.detail) : ('HTTP ' + r.status));
+              }
+
+              const polished = String((j && j.polished) || '').trim();
+              if (!polished) {
+                throw new Error('빈 응답');
+              }
+
+              const diffHtmlRaw = String((j && j.diff_html) || '');
+              const diffHtml = (window._normalizeAiNumberedHtml ? window._normalizeAiNumberedHtml(diffHtmlRaw) : diffHtmlRaw);
+
+              // 블록에 diff overlay 삽입 + 적용/취소 버튼
+              const blockEl = btn.closest('.ov-block');
+              const target = blockEl ? blockEl.querySelector('.ov-block-text-body') : null;
+              if (!target) {
+                if (!confirm('결과를 적용할까요?')) return;
+                blk.body = polished;
+                _markSectionsDirty();
+                window._renderManualSections();
+                return;
+              }
+
+              const originalHtml = target.innerHTML;
+              target.setAttribute('contenteditable', 'false');
+              target.innerHTML = ''
+                + '<div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:8px;display:flex;align-items:center;gap:6px;">'
+                +   '<span>🤖 AI 정리 결과 (빨강=삭제, 초록=추가, 클릭해서 직접 수정 가능)</span>'
+                + '</div>'
+                + '<style>'
+                +   '.ov-ai-diff-edit ol.ov-num{margin:0;padding-left:1.8em;list-style:none;}'
+                +   '.ov-ai-diff-edit ol.ov-num > li{position:relative;margin:0 0 6px 0;line-height:1.8;}'
+                +   '.ov-ai-diff-edit ol.ov-num-dot{counter-reset:aiitem 0;}'
+                +   '.ov-ai-diff-edit ol.ov-num-dot > li{counter-increment:aiitem;}'
+                +   '.ov-ai-diff-edit ol.ov-num-dot > li::before{content:counter(aiitem) ". ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#12325F;}'
+                +   '.ov-ai-diff-edit ol.ov-num-paren{counter-reset:aiitem 0;}'
+                +   '.ov-ai-diff-edit ol.ov-num-paren > li{counter-increment:aiitem;}'
+                +   '.ov-ai-diff-edit ol.ov-num-paren > li::before{content:counter(aiitem) ") ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#12325F;}'
+                +   '.ov-ai-diff-edit ol.ov-num-circled > li::before{content:attr(data-marker) " ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#12325F;}'
+                +   '.ov-ai-diff-edit [data-indent="1"]{margin-left:24px;}'
+                +   '.ov-ai-diff-edit [data-indent="2"]{margin-left:48px;}'
+                +   '.ov-ai-diff-edit [data-indent="3"]{margin-left:72px;}'
+                +   '.ov-ai-diff-edit [data-indent="4"]{margin-left:96px;}'
+                +   '.ov-ai-diff-edit [data-indent="5"]{margin-left:120px;}'
+                +   '.ov-ai-diff-edit ol.ov-num ol.ov-num{margin-top:6px;}'
+                +   '.ov-ai-diff-edit ol.ov-list-paren{counter-reset:none !important;padding-left:1.8em !important;}'
+                +   '.ov-ai-diff-edit ol.ov-list-paren > li{counter-increment:unset !important;}'
+                +   '.ov-ai-diff-edit ol.ov-list-paren > li::before{content:none !important;}'
+                + '</style>'
+                + '<div class="ov-ai-diff-edit" contenteditable="true" spellcheck="false" style="outline:none;padding:12px 14px;background:#FFFFFF;border:1px solid #DDD6FE;border-radius:8px;line-height:1.9;min-height:80px;">'
+                + diffHtml
+                + '</div>'
+                + '<div style="font-size:11px;color:#8593A6;margin-top:6px;">💡 팁: 빨강(삭제 예정)을 지우고 초록(추가)만 남기려면 <b>[적용]</b>을 누르세요. 원본 유지하려면 삭제선 텍스트를 그대로 두면 됩니다.</div>';
+
+              const editBox = target.querySelector('.ov-ai-diff-edit');
+              // === AI edit box: Tab / Shift+Tab + 우클릭 메뉴 ===
+              if (editBox && !editBox.__aiAttachContextMenu) {
+                editBox.__aiAttachContextMenu = true;
+
+                // === undo/redo 스택 ===
+                editBox._aiUndoStack = [];
+                editBox._aiRedoStack = [];
+                editBox._aiUndoDebounce = null;
+                editBox._aiUndoMax = 50;
+
+                editBox._aiGetCursorOffset = function(){
+                  var sel = window.getSelection();
+                  if (!sel.rangeCount) return -1;
+                  var range = sel.getRangeAt(0);
+                  if (!editBox.contains(range.startContainer)) return -1;
+                  var pre = range.cloneRange();
+                  pre.selectNodeContents(editBox);
+                  pre.setEnd(range.startContainer, range.startOffset);
+                  return pre.toString().length;
+                };
+
+                editBox._aiSetCursorOffset = function(offset){
+                  if (offset < 0) return;
+                  var walker = document.createTreeWalker(editBox, NodeFilter.SHOW_TEXT, null, false);
+                  var node, count = 0;
+                  while ((node = walker.nextNode())) {
+                    var len = node.textContent.length;
+                    if (count + len >= offset) {
+                      var range = document.createRange();
+                      range.setStart(node, Math.max(0, offset - count));
+                      range.collapse(true);
+                      var sel = window.getSelection();
+                      sel.removeAllRanges();
+                      sel.addRange(range);
+                      return;
+                    }
+                    count += len;
+                  }
+                };
+
+                editBox._aiPushUndo = function(){
+                  var snap = { html: editBox.innerHTML, offset: editBox._aiGetCursorOffset() };
+                  var top = editBox._aiUndoStack[editBox._aiUndoStack.length - 1];
+                  if (top && top.html === snap.html) return;
+                  editBox._aiUndoStack.push(snap);
+                  if (editBox._aiUndoStack.length > editBox._aiUndoMax) editBox._aiUndoStack.shift();
+                  editBox._aiRedoStack = [];
+                };
+
+                editBox._aiPushUndoDebounced = function(){
+                  if (editBox._aiUndoDebounce) clearTimeout(editBox._aiUndoDebounce);
+                  editBox._aiUndoDebounce = setTimeout(function(){
+                    editBox._aiPushUndo();
+                    editBox._aiUndoDebounce = null;
+                  }, 500);
+                };
+
+                editBox._aiUndo = function(){
+                  if (editBox._aiUndoStack.length === 0) return;
+                  var current = { html: editBox.innerHTML, offset: editBox._aiGetCursorOffset() };
+                  var prev = editBox._aiUndoStack.pop();
+                  editBox._aiRedoStack.push(current);
+                  editBox.innerHTML = prev.html;
+                  if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+                  editBox._aiSetCursorOffset(prev.offset);
+                };
+
+                editBox._aiRedo = function(){
+                  if (editBox._aiRedoStack.length === 0) return;
+                  var current = { html: editBox.innerHTML, offset: editBox._aiGetCursorOffset() };
+                  var next = editBox._aiRedoStack.pop();
+                  editBox._aiUndoStack.push(current);
+                  editBox.innerHTML = next.html;
+                  if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+                  editBox._aiSetCursorOffset(next.offset);
+                };
+
+                // 초기 스냅샷
+                setTimeout(function(){ editBox._aiPushUndo(); }, 10);
+
+                // 타이핑 시 debounced 스냅샷
+                editBox.addEventListener('input', function(){
+                  editBox._aiPushUndoDebounced();
+                });
+
+                // Ctrl+Z / Cmd+Z 인터셉트
+                editBox.addEventListener('keydown', function(ev){
+                  var isMod = ev.metaKey || ev.ctrlKey;
+                  if (!isMod) return;
+                  if (ev.key === 'z' || ev.key === 'Z') {
+                    ev.preventDefault();
+                    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+                    if (ev.shiftKey) editBox._aiRedo();
+                    else editBox._aiUndo();
+                  } else if (ev.key === 'y' || ev.key === 'Y') {
+                    ev.preventDefault();
+                    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+                    editBox._aiRedo();
+                  }
+                }, true);
+
+                // 렌더 직후 모든 ol에 depth 기반 style 적용
+                setTimeout(function(){
+                  if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+                }, 0);
+
+                // Tab / Shift+Tab keydown
+                editBox.addEventListener('keydown', function(ev){
+                  if (ev.key !== 'Tab') return;
+                  if (!window._aiCollectSelectedNodes) return;
+                  var collected = window._aiCollectSelectedNodes(editBox);
+                  if (collected.lis.length === 0 && collected.blocks.length === 0) return;
+
+                  ev.preventDefault();
+                  if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+                  if (editBox._aiPushUndo) editBox._aiPushUndo();
+
+                  // 커서 위치 저장 (텍스트 오프셋)
+                  var savedOffset = editBox._aiGetCursorOffset ? editBox._aiGetCursorOffset() : -1;
+
+                  // li 처리: outdent는 상위부터, indent는 하위부터 (안전한 순회)
+                  var lis = collected.lis.slice();
+                  var blocks = collected.blocks.slice();
+
+                  if (ev.shiftKey) {
+                    // Shift+Tab: outdent / unlist
+                    // 역순 정렬 (아래부터 처리해야 위 li 위치가 안 밀림)
+                    var sortedLisOut = lis.slice().sort(function(a, b){
+                      var pos = a.compareDocumentPosition(b);
+                      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return 1;
+                      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return -1;
+                      return 0;
+                    });
+                    sortedLisOut.forEach(function(li){
+                      if (!li.parentNode) return;
+                      var parentOl = li.parentNode;
+
+                      // depth-override 감소 먼저
+                      var ovr = parentOl.dataset.depthOverride;
+                      if (ovr != null && ovr !== '') {
+                        var currentOvr = parseInt(ovr, 10);
+                        var currentDep = window._aiGetListDepth(parentOl, editBox);
+                        if (currentOvr > currentDep) {
+                          var newOvr = currentOvr - 1;
+                          if (newOvr <= currentDep) delete parentOl.dataset.depthOverride;
+                          else parentOl.dataset.depthOverride = String(newOvr);
+                          return;
+                        }
+                      }
+
+                      var hostLi = parentOl ? parentOl.parentNode : null;
+                      var isTopLevel = !hostLi || hostLi.tagName !== 'LI';
+                      if (isTopLevel) {
+                        window._aiUnlistCurrentLi(editBox, li);
+                      } else {
+                        var grandOl = hostLi.parentNode;
+                        if (grandOl && grandOl.tagName === 'OL') {
+                          if (hostLi.nextSibling) grandOl.insertBefore(li, hostLi.nextSibling);
+                          else grandOl.appendChild(li);
+                          if (!parentOl.querySelector('li')) parentOl.remove();
+                        }
+                      }
+                    });
+                    blocks.forEach(function(block){
+                      var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+                      if (cur > 0) {
+                        block.dataset.indent = String(cur - 1);
+                        if (block.dataset.indent === '0') delete block.dataset.indent;
+                      } else if (block.dataset.indent) {
+                        delete block.dataset.indent;
+                      }
+                    });
+                  } else {
+                    // Tab: indent (옵션 3: selection 모든 li의 depth 무조건 증가)
+                    var sortedLis = lis.slice().sort(function(a, b){
+                      var pos = a.compareDocumentPosition(b);
+                      if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+                      if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+                      return 0;
+                    });
+                    sortedLis.forEach(function(li, i){
+                      if (!li.parentNode) return;
+                      var parentOl = li.parentNode;
+                      var prevLi = li.previousElementSibling;
+                      var hasPrevLi = prevLi && prevLi.tagName === 'LI' && sortedLis.indexOf(prevLi) < 0;
+
+                      if (hasPrevLi) {
+                        // 앞에 selection 아닌 형제 li 있음 → 그 자식 ol로 이동
+                        var childOl = window._aiEnsureChildOl(prevLi, window._aiStyleForDepth(window._aiGetListDepth(parentOl, editBox) + 1));
+                        childOl.appendChild(li);
+                        if (!parentOl.querySelector('li')) parentOl.remove();
+                      } else {
+                        // 앞에 형제 li 없음 → 자기 ol 자체의 depth 증가
+                        // 자기 ol에 다른 li 있으면 분리
+                        var siblings = Array.prototype.filter.call(parentOl.children, function(x){ return x.tagName === 'LI'; });
+                        var targetOl = parentOl;
+                        if (siblings.length > 1) {
+                          // 이 li만 새 ol로 분리
+                          var isolatedOl = document.createElement('ol');
+                          isolatedOl.className = parentOl.className;
+                          isolatedOl.dataset.start = '1';
+                          isolatedOl.dataset.manualSplit = '1';
+                          parentOl.dataset.manualSplit = '1';
+                          isolatedOl.appendChild(li);
+                          // parentOl 뒤에 삽입 (li가 원래 첫이면 앞에, 아니면 뒤에)
+                          if (parentOl.nextSibling) parentOl.parentNode.insertBefore(isolatedOl, parentOl.nextSibling);
+                          else parentOl.parentNode.appendChild(isolatedOl);
+                          targetOl = isolatedOl;
+                        }
+                        // targetOl의 depth override 증가
+                        var currentDepth = window._aiGetListDepth(targetOl, editBox);
+                        var override = targetOl.dataset.depthOverride;
+                        var currentEffective = (override != null && override !== '') ? parseInt(override, 10) : currentDepth;
+                        var newDepth = currentEffective + 1;
+                        if (newDepth <= 5) {
+                          targetOl.dataset.depthOverride = String(newDepth);
+                        }
+                      }
+                    });
+                    blocks.forEach(function(block){
+                      var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+                      if (cur < 5) block.dataset.indent = String(cur + 1);
+                    });
+                  }
+
+                  if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+                  if (savedOffset >= 0 && editBox._aiSetCursorOffset) editBox._aiSetCursorOffset(savedOffset);
+                }, true);
+
+                // Backspace outdent: 라인 맨 앞에서 Backspace 누르면 indent 해제
+                window._aiIsAtLineStart = function(editor){
+                  var sel = window.getSelection();
+                  if (!sel || !sel.rangeCount) return false;
+                  var range = sel.getRangeAt(0);
+                  if (!range.collapsed) return false;
+
+                  // 시작 컨테이너로부터 부모 li/block 찾기
+                  var info = window._aiFindNodeForRange(range.startContainer, editor);
+                  if (!info) return false;
+
+                  // 노드 시작 지점부터 커서까지 텍스트가 모두 비어있는지 확인
+                  var testRange = document.createRange();
+                  testRange.selectNodeContents(info.node);
+                  testRange.setEnd(range.startContainer, range.startOffset);
+                  var text = testRange.toString();
+                  return { atStart: text.length === 0, info: info };
+                };
+
+                editBox.addEventListener('keydown', function(ev){
+                  if (ev.key !== 'Backspace') return;
+                  var check = window._aiIsAtLineStart(editBox);
+                  if (!check || !check.atStart) return;
+
+                  var info = check.info;
+                  if (info.type === 'li') {
+                    var li = info.node;
+                    var parentOl = li.parentNode;
+                    var hostLi = parentOl ? parentOl.parentNode : null;
+                    var isTopLevel = !hostLi || hostLi.tagName !== 'LI';
+
+                    ev.preventDefault();
+                    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+                    if (editBox._aiPushUndo) editBox._aiPushUndo();
+
+                    if (isTopLevel) {
+                      window._aiUnlistCurrentLi(editBox, li);
+                    } else {
+                      // outdent
+                      var grandOl = hostLi.parentNode;
+                      if (grandOl && grandOl.tagName === 'OL') {
+                        if (hostLi.nextSibling) grandOl.insertBefore(li, hostLi.nextSibling);
+                        else grandOl.appendChild(li);
+                        if (!parentOl.querySelector('li')) parentOl.remove();
+                        if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+                        var r = document.createRange();
+                        r.selectNodeContents(li);
+                        r.collapse(true);
+                        var s = window.getSelection();
+                        s.removeAllRanges();
+                        s.addRange(r);
+                      }
+                    }
+                    return;
+                  }
+
+                  if (info.type === 'block') {
+                    var block = info.node;
+                    var curIndent = parseInt(block.dataset.indent || '0', 10) || 0;
+                    if (curIndent > 0) {
+                      ev.preventDefault();
+                      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+                      if (editBox._aiPushUndo) editBox._aiPushUndo();
+                      block.dataset.indent = String(curIndent - 1);
+                      if (block.dataset.indent === '0') delete block.dataset.indent;
+                    }
+                    // indent 0이면 기본 동작 (앞 라인과 병합)
+                  }
+                }, true);
+
+                // 우클릭 메뉴
+                editBox.addEventListener('contextmenu', function(ev){
+                  var node = ev.target;
+                  var inLi = null;
+                  var inOl = null;
+                  while (node && node !== editBox) {
+                    if (node.nodeType === 1) {
+                      if (!inLi && node.tagName === 'LI') inLi = node;
+                      if (node.tagName === 'OL') { inOl = node; break; }
+                    }
+                    node = node.parentNode;
+                  }
+                  if (!inOl) return;
+
+                  // li가 아직 확정 안 됐거나 이 ol의 직계가 아니면 재감지
+                  if (!inLi || inLi.parentNode !== inOl) {
+                    var lis = Array.prototype.filter.call(inOl.children, function(x){ return x.tagName === 'LI'; });
+
+                    // 1) 좌표 기반: 클릭한 Y와 각 li rect를 비교
+                    var candidate = null;
+                    var cy = ev.clientY;
+                    for (var i = 0; i < lis.length; i++) {
+                      var r = lis[i].getBoundingClientRect();
+                      if (cy >= r.top && cy <= r.bottom) { candidate = lis[i]; break; }
+                    }
+                    // 2) 좌표가 li 사이 gap이면 가장 가까운 li
+                    if (!candidate && lis.length) {
+                      var minDist = Infinity;
+                      for (var j = 0; j < lis.length; j++) {
+                        var rr = lis[j].getBoundingClientRect();
+                        var mid = (rr.top + rr.bottom) / 2;
+                        var d = Math.abs(cy - mid);
+                        if (d < minDist) { minDist = d; candidate = lis[j]; }
+                      }
+                    }
+                    // 3) selection fallback
+                    if (!candidate) {
+                      var sel = window.getSelection();
+                      if (sel && sel.rangeCount) {
+                        var cur = sel.getRangeAt(0).startContainer;
+                        while (cur && cur !== inOl) {
+                          if (cur.nodeType === 1 && cur.tagName === 'LI' && cur.parentNode === inOl) { candidate = cur; break; }
+                          cur = cur.parentNode;
+                        }
+                      }
+                    }
+                    // 4) 그래도 없으면 첫 li
+                    if (!candidate) candidate = lis[0] || null;
+
+                    inLi = candidate;
+                  }
+                  ev.preventDefault();
+                  if (ev.stopPropagation) ev.stopPropagation();
+                  if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+
+                  var legacy = document.getElementById('ov-ol-ctxmenu');
+                  if (legacy) legacy.remove();
+
+                  var prev = document.getElementById('ov-ai-ol-ctxmenu');
+                  if (prev) prev.remove();
+                  var menu = document.createElement('div');
+                  menu.id = 'ov-ai-ol-ctxmenu';
+                  menu.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1px solid #D9E3F1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.12);padding:4px;min-width:180px;font-size:13px;';
+                  menu.style.left = ev.clientX + 'px';
+                  menu.style.top = ev.clientY + 'px';
+                  menu.innerHTML = ''
+                    + '<div class="ov-ai-ctx-item" data-action="continue" style="padding:8px 12px;cursor:pointer;border-radius:4px;">이전 번호에서 이어쓰기</div>'
+                    + '<div class="ov-ai-ctx-item" data-action="restart" style="padding:8px 12px;cursor:pointer;border-radius:4px;">번호 다시 시작</div>'
+                    + '<div class="ov-ai-ctx-item" data-action="set-start" style="padding:8px 12px;cursor:pointer;border-radius:4px;">번호 설정...</div>'
+                    + '<div style="height:1px;background:#E5EAF2;margin:4px 0;"></div>'
+                    + '<div class="ov-ai-ctx-item" data-action="unlist" style="padding:8px 12px;cursor:pointer;border-radius:4px;">리스트에서 빼기</div>';
+                  document.body.appendChild(menu);
+                  menu.querySelectorAll('.ov-ai-ctx-item').forEach(function(item){
+                    item.addEventListener('mouseenter', function(){ item.style.background = '#EEF4FB'; });
+                    item.addEventListener('mouseleave', function(){ item.style.background = 'transparent'; });
+                    item.addEventListener('click', function(){
+                      var action = item.getAttribute('data-action');
+                      if (editBox._aiPushUndo) editBox._aiPushUndo();
+                      if (action === 'continue') window._aiContinueOl(editBox, inLi);
+                      else if (action === 'restart') window._aiRestartOl(editBox, inLi);
+                      else if (action === 'set-start') window._aiSetStartOl(editBox, inLi);
+                      else if (action === 'unlist') window._aiUnlistCurrentLi(editBox, inLi);
+                      menu.remove();
+                    });
+                  });
+                  setTimeout(function(){
+                    document.addEventListener('click', function _closeOnce(){
+                      var m = document.getElementById('ov-ai-ol-ctxmenu');
+                      if (m) m.remove();
+                      document.removeEventListener('click', _closeOnce);
+                    }, { once: true });
+                  }, 0);
+                });
+              }
+              if (editBox) {
+                if (window._aiSplitTextByNewlines) window._aiSplitTextByNewlines(editBox);
+                window._attachAutoListBehavior(editBox);
+              }
+              if (editBox) {
+                // 자동 리스트 변환 방지
+                editBox.addEventListener('keydown', function(e){
+                  if (e.key === 'Enter') {
+                    var sel = window.getSelection();
+                    var node = sel && sel.rangeCount ? sel.getRangeAt(0).startContainer : null;
+                    var cur = node;
+                    var insideAiList = false;
+                    while (cur && cur !== editBox) {
+                      if (cur.nodeType === 1 && cur.tagName === 'LI' && cur.parentNode && cur.parentNode.classList && cur.parentNode.classList.contains('ov-num')) {
+                        insideAiList = true;
+                        break;
+                      }
+                      cur = cur.parentNode;
+                    }
+                    if (insideAiList) {
+                      e.preventDefault();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+                      var li = cur;
+                      var ol = li && li.parentNode;
+                      if (!li || !ol || !sel || !sel.rangeCount) return;
+
+                      function _htmlOfRange(r){
+                        var wrap = document.createElement('div');
+                        wrap.appendChild(r.cloneContents());
+                        return wrap.innerHTML;
+                      }
+
+                      function _cleanStartBr(html){
+                        return String(html || '').replace(/^(\s|&nbsp;|<br\s*\/?>)+/ig, '');
+                      }
+
+                      function _cleanEndBr(html){
+                        return String(html || '').replace(/(<br\s*\/?>|\s|&nbsp;)+$/ig, '');
+                      }
+
+                      var rangeNow = sel.getRangeAt(0);
+                      var liText = (li.textContent || '').replace(/\u00A0/g, ' ').trim();
+
+                      // 빈 항목에서 Enter → 그 자리에서 번호만 제거하고 plain 빈 줄로 전환
+                      if (!liText) {
+                        var parent = ol.parentNode;
+                        var lis = Array.from(ol.children).filter(function(x){ return x.tagName === 'LI'; });
+                        var idx = lis.indexOf(li);
+                        var afterLis = lis.slice(idx + 1);
+
+                        var afterOl = null;
+                        if (afterLis.length) {
+                          afterOl = document.createElement('ol');
+                          afterOl.className = ol.className;
+                          afterOl.style.cssText = ol.style.cssText || '';
+                          // counterReset 안 함 (자동 병합 observer가 처리)
+                          afterLis.forEach(function(x){ afterOl.appendChild(x); });
+                        }
+
+                        var plain = document.createElement('div');
+                        plain.innerHTML = '<br>';
+
+                        li.remove();
+
+                        if (!ol.querySelector('li')) {
+                          if (afterOl) {
+                            parent.insertBefore(plain, ol.nextSibling);
+                            parent.insertBefore(afterOl, plain.nextSibling);
+                          } else {
+                            parent.insertBefore(plain, ol.nextSibling);
+                          }
+                          ol.remove();
+                        } else {
+                          parent.insertBefore(plain, ol.nextSibling);
+                          if (afterOl) parent.insertBefore(afterOl, plain.nextSibling);
+                        }
+
+                        var exitRange = document.createRange();
+                        exitRange.selectNodeContents(plain);
+                        exitRange.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(exitRange);
+                        return;
+                      }
+
+                      // 일반 항목에서 Enter → caret 위치 기준으로 현재 li를 둘로 분할
+                      var beforeRange = document.createRange();
+                      beforeRange.selectNodeContents(li);
+                      beforeRange.setEnd(rangeNow.startContainer, rangeNow.startOffset);
+
+                      var afterRange = document.createRange();
+                      afterRange.selectNodeContents(li);
+                      afterRange.setStart(rangeNow.startContainer, rangeNow.startOffset);
+
+                      var beforeHtml = _cleanEndBr(_htmlOfRange(beforeRange));
+                      var afterHtml = _cleanStartBr(_htmlOfRange(afterRange));
+
+                      li.innerHTML = beforeHtml || '<br>';
+
+                      var newLi = document.createElement('li');
+                      newLi.innerHTML = afterHtml || '<br>';
+
+                      if (li.nextSibling) {
+                        ol.insertBefore(newLi, li.nextSibling);
+                      } else {
+                        ol.appendChild(newLi);
+                      }
+
+                      var newRange = document.createRange();
+                      newRange.selectNodeContents(newLi);
+                      newRange.collapse(true);
+                      sel.removeAllRanges();
+                      sel.addRange(newRange);
+                      return;
+                    }
+                                        // Enter는 <br> 삽입으로 강제 (자동 <li> 생성 방지)
+                    e.preventDefault();
+                    document.execCommand('insertLineBreak');
+                  }
+                });
+                // 붙여넣기 시 서식 제거 옵션 (선택적)
+                editBox.addEventListener('paste', function(e){
+                  // 브라우저 기본 붙여넣기 유지
+                });
+              }
+
+              const bar = document.createElement('div');
+              bar.className = 'ov-diff-bar';
+              bar.style.cssText = 'display:flex;gap:8px;margin-top:8px;justify-content:flex-end;';
+              bar.innerHTML = '<button type="button" class="ov-diff-cancel" style="background:#fff;color:#475467;border:1px solid #D0D5DD;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">취소</button>'
+                + '<button type="button" class="ov-diff-apply" style="background:#7C3AED;color:#fff;border:0;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">적용</button>';
+
+              blockEl.querySelectorAll('.ov-diff-bar').forEach(function(b){ b.remove(); });
+              blockEl.appendChild(bar);
+
+              bar.querySelector('.ov-diff-apply').addEventListener('click', function(){
+                if (!editBox) { blk.body = polished; _markSectionsDirty(); window._renderManualSections(); return; }
+                // diff 태그 벗기기: <del>(삭제) 제거, <ins>(추가) 는 내용만 남김
+                const clone = editBox.cloneNode(true);
+                clone.querySelectorAll('del').forEach(function(el){ el.remove(); });
+                clone.querySelectorAll('ins').forEach(function(el){
+                  const span = document.createElement('span');
+                  span.innerHTML = el.innerHTML;
+                  el.replaceWith(...span.childNodes);
+                });
+                // 오염 제거: <style> 태그, AI 안내 div 제거
+                clone.querySelectorAll('style').forEach(function(el){ el.remove(); });
+                clone.querySelectorAll('div').forEach(function(el){
+                  var txt = (el.textContent || '').trim();
+                  if (txt.indexOf('🤖 AI 정리 결과') === 0 || txt.indexOf('AI 정리 결과 (빨강=삭제') !== -1) {
+                    el.remove();
+                  }
+                });
+                const finalHtml = String(clone.innerHTML || '').trim();
+                blk.body = finalHtml || polished;
+                _markSectionsDirty();
+                window._renderManualSections();
+              });
+              bar.querySelector('.ov-diff-cancel').addEventListener('click', function(){
+                target.innerHTML = originalHtml;
+                target.setAttribute('contenteditable', 'true');
+                bar.remove();
+              });
+            } catch (e) {
+              alert('AI 다듬기 실패: ' + String((e && e.message) || e));
+            } finally {
+              btn.textContent = oldText;
+              btn.disabled = false;
+            }
+          });
+        });
+        sectionsRoot.querySelectorAll('.ov-block-del').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            const si = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            const bi = parseInt(btn.getAttribute('data-blk-idx'), 10);
+            if (!sectionsState[si] || !sectionsState[si].blocks) return;
+            if (!confirm('이 블록을 삭제하시겠습니까?')) return;
+            sectionsState[si].blocks.splice(bi, 1);
+            _markSectionsDirty();
+            window._renderManualSections();
+          });
+        });
+        // 원본 편집박스에 Tab + undo/redo 이식 (idempotent, 재렌더 안전)
+        window._attachOriginalTextBehavior = function(editBox){
+          if (!editBox || editBox.__originalAttached) return;
+          editBox.__originalAttached = true;
+          if (window._aiSplitTextByNewlines) window._aiSplitTextByNewlines(editBox);
+
+          // 기존 오염 body 청소 (한 번만)
+          if (!editBox.__origBodyCleaned) {
+            editBox.__origBodyCleaned = true;
+            var changed = false;
+            editBox.querySelectorAll('style').forEach(function(el){ el.remove(); changed = true; });
+            editBox.querySelectorAll('div').forEach(function(el){
+              var txt = (el.textContent || '').trim();
+              if (txt.indexOf('🤖 AI 정리 결과') === 0 || txt.indexOf('AI 정리 결과 (빨강=삭제') !== -1) {
+                el.remove();
+                changed = true;
+              }
+            });
+            if (changed) {
+              try {
+                var si = parseInt(editBox.getAttribute('data-sec-idx'), 10);
+                var bi = parseInt(editBox.getAttribute('data-blk-idx'), 10);
+                if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
+                  sectionsState[si].blocks[bi].body = editBox.innerHTML;
+                  _markSectionsDirty();
+                }
+              } catch(e) {}
+            }
+          }
+
+          // === undo/redo 스택 (AI 편집박스와 동일 로직) ===
+          editBox._origUndoStack = [];
+          editBox._origRedoStack = [];
+          editBox._origUndoDebounce = null;
+          editBox._origUndoMax = 50;
+
+          editBox._origGetCursorOffset = function(){
+            var sel = window.getSelection();
+            if (!sel.rangeCount) return -1;
+            var range = sel.getRangeAt(0);
+            if (!editBox.contains(range.startContainer)) return -1;
+            var pre = range.cloneRange();
+            pre.selectNodeContents(editBox);
+            pre.setEnd(range.startContainer, range.startOffset);
+            return pre.toString().length;
+          };
+
+          editBox._origSetCursorOffset = function(offset){
+            if (offset < 0) return;
+            var walker = document.createTreeWalker(editBox, NodeFilter.SHOW_TEXT, null, false);
+            var node, count = 0;
+            while ((node = walker.nextNode())) {
+              var len = node.textContent.length;
+              if (count + len >= offset) {
+                var range = document.createRange();
+                range.setStart(node, Math.max(0, offset - count));
+                range.collapse(true);
+                var sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                return;
+              }
+              count += len;
+            }
+          };
+
+          editBox._origPushUndo = function(){
+            var snap = { html: editBox.innerHTML, offset: editBox._origGetCursorOffset() };
+            var top = editBox._origUndoStack[editBox._origUndoStack.length - 1];
+            if (top && top.html === snap.html) return;
+            editBox._origUndoStack.push(snap);
+            if (editBox._origUndoStack.length > editBox._origUndoMax) editBox._origUndoStack.shift();
+            editBox._origRedoStack = [];
+          };
+
+          editBox._origPushUndoDebounced = function(){
+            if (editBox._origUndoDebounce) clearTimeout(editBox._origUndoDebounce);
+            editBox._origUndoDebounce = setTimeout(function(){
+              editBox._origPushUndo();
+              editBox._origUndoDebounce = null;
+            }, 500);
+          };
+
+          editBox._origUndo = function(){
+            if (editBox._origUndoStack.length === 0) return;
+            var current = { html: editBox.innerHTML, offset: editBox._origGetCursorOffset() };
+            var prev = editBox._origUndoStack.pop();
+            editBox._origRedoStack.push(current);
+            editBox.innerHTML = prev.html;
+            editBox._origSetCursorOffset(prev.offset);
+            // dirty 플래그 및 body 동기화
+            try {
+              var si = parseInt(editBox.getAttribute('data-sec-idx'), 10);
+              var bi = parseInt(editBox.getAttribute('data-blk-idx'), 10);
+              if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
+                sectionsState[si].blocks[bi].body = editBox.innerHTML;
+                _markSectionsDirty();
+              }
+            } catch(e) {}
+          };
+
+          editBox._origRedo = function(){
+            if (editBox._origRedoStack.length === 0) return;
+            var current = { html: editBox.innerHTML, offset: editBox._origGetCursorOffset() };
+            var next = editBox._origRedoStack.pop();
+            editBox._origUndoStack.push(current);
+            editBox.innerHTML = next.html;
+            editBox._origSetCursorOffset(next.offset);
+            try {
+              var si = parseInt(editBox.getAttribute('data-sec-idx'), 10);
+              var bi = parseInt(editBox.getAttribute('data-blk-idx'), 10);
+              if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
+                sectionsState[si].blocks[bi].body = editBox.innerHTML;
+                _markSectionsDirty();
+              }
+            } catch(e) {}
+          };
+
+          // 초기 스냅샷
+          setTimeout(function(){ editBox._origPushUndo(); }, 10);
+
+          // 타이핑 시 debounced push
+          editBox.addEventListener('input', function(){
+            editBox._origPushUndoDebounced();
+          });
+
+          // Ctrl+Z / Cmd+Z / Ctrl+Y 인터셉트
+          editBox.addEventListener('keydown', function(ev){
+            var isMod = ev.metaKey || ev.ctrlKey;
+            if (!isMod) return;
+            if (ev.key === 'z' || ev.key === 'Z') {
+              ev.preventDefault();
+              if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+              if (ev.shiftKey) editBox._origRedo();
+              else editBox._origUndo();
+            } else if (ev.key === 'y' || ev.key === 'Y') {
+              ev.preventDefault();
+              if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+              editBox._origRedo();
+            }
+          }, true);
+
+          // Tab / Shift+Tab (AI 편집박스와 동일 로직 - 우리 헬퍼 재사용)
+          editBox.addEventListener('keydown', function(ev){
+            if (ev.key !== 'Tab') return;
+            if (!window._aiCollectSelectedNodes) return;
+            var collected = window._aiCollectSelectedNodes(editBox);
+            if (collected.lis.length === 0 && collected.blocks.length === 0) return;
+
+            ev.preventDefault();
+            if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+            if (editBox._origPushUndo) editBox._origPushUndo();
+
+            var savedOffset = editBox._origGetCursorOffset ? editBox._origGetCursorOffset() : -1;
+
+            var lis = collected.lis.slice();
+            var blocks = collected.blocks.slice();
+
+            if (ev.shiftKey) {
+              // Shift+Tab: outdent / unlist
+              var sortedLisOut = lis.slice().sort(function(a, b){
+                var pos = a.compareDocumentPosition(b);
+                if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return 1;
+                if (pos & Node.DOCUMENT_POSITION_PRECEDING) return -1;
+                return 0;
+              });
+              sortedLisOut.forEach(function(li){
+                if (!li.parentNode) return;
+                var parentOl = li.parentNode;
+                var ovr = parentOl.dataset.depthOverride;
+                if (ovr != null && ovr !== '') {
+                  var currentOvr = parseInt(ovr, 10);
+                  var currentDep = window._aiGetListDepth(parentOl, editBox);
+                  if (currentOvr > currentDep) {
+                    var newOvr = currentOvr - 1;
+                    if (newOvr <= currentDep) delete parentOl.dataset.depthOverride;
+                    else parentOl.dataset.depthOverride = String(newOvr);
+                    return;
+                  }
+                }
+                var hostLi = parentOl ? parentOl.parentNode : null;
+                var isTopLevel = !hostLi || hostLi.tagName !== 'LI';
+                if (isTopLevel) {
+                  if (window._aiUnlistCurrentLi) window._aiUnlistCurrentLi(editBox, li);
+                } else {
+                  var grandOl = hostLi.parentNode;
+                  if (grandOl && grandOl.tagName === 'OL') {
+                    if (hostLi.nextSibling) grandOl.insertBefore(li, hostLi.nextSibling);
+                    else grandOl.appendChild(li);
+                    if (!parentOl.querySelector('li')) parentOl.remove();
+                  }
+                }
+              });
+              blocks.forEach(function(block){
+                var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+                if (cur > 0) {
+                  block.dataset.indent = String(cur - 1);
+                  if (block.dataset.indent === '0') delete block.dataset.indent;
+                } else if (block.dataset.indent) {
+                  delete block.dataset.indent;
+                }
+              });
+            } else {
+              // Tab: indent
+              var sortedLis = lis.slice().sort(function(a, b){
+                var pos = a.compareDocumentPosition(b);
+                if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+                if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+                return 0;
+              });
+              sortedLis.forEach(function(li, i){
+                if (!li.parentNode) return;
+                var parentOl = li.parentNode;
+                var prevLi = li.previousElementSibling;
+                var hasPrevLi = prevLi && prevLi.tagName === 'LI' && sortedLis.indexOf(prevLi) < 0;
+
+                if (hasPrevLi) {
+                  var childOl = window._aiEnsureChildOl(prevLi, window._aiStyleForDepth(window._aiGetListDepth(parentOl, editBox) + 1));
+                  childOl.appendChild(li);
+                  if (!parentOl.querySelector('li')) parentOl.remove();
+                } else {
+                  var siblings = Array.prototype.filter.call(parentOl.children, function(x){ return x.tagName === 'LI'; });
+                  var targetOl = parentOl;
+                  if (siblings.length > 1) {
+                    var isolatedOl = document.createElement('ol');
+                    isolatedOl.className = parentOl.className;
+                    isolatedOl.dataset.start = '1';
+                    isolatedOl.dataset.manualSplit = '1';
+                    parentOl.dataset.manualSplit = '1';
+                    isolatedOl.appendChild(li);
+                    if (parentOl.nextSibling) parentOl.parentNode.insertBefore(isolatedOl, parentOl.nextSibling);
+                    else parentOl.parentNode.appendChild(isolatedOl);
+                    targetOl = isolatedOl;
+                  }
+                  var currentDepth = window._aiGetListDepth(targetOl, editBox);
+                  var override = targetOl.dataset.depthOverride;
+                  var currentEffective = (override != null && override !== '') ? parseInt(override, 10) : currentDepth;
+                  var newDepth = currentEffective + 1;
+                  if (newDepth <= 5) targetOl.dataset.depthOverride = String(newDepth);
+                }
+              });
+              blocks.forEach(function(block){
+                var cur = parseInt(block.dataset.indent || '0', 10) || 0;
+                if (cur < 5) block.dataset.indent = String(cur + 1);
+              });
+            }
+
+            if (window._aiRefreshAllLists) window._aiRefreshAllLists(editBox);
+            if (savedOffset >= 0 && editBox._origSetCursorOffset) editBox._origSetCursorOffset(savedOffset);
+
+            // body 동기화 + dirty
+            try {
+              var si2 = parseInt(editBox.getAttribute('data-sec-idx'), 10);
+              var bi2 = parseInt(editBox.getAttribute('data-blk-idx'), 10);
+              if (sectionsState[si2] && sectionsState[si2].blocks && sectionsState[si2].blocks[bi2]) {
+                sectionsState[si2].blocks[bi2].body = editBox.innerHTML;
+                _markSectionsDirty();
+              }
+            } catch(e) {}
+          }, true);
+        };
+
+        // 텍스트 블록 인라인 편집: input 이벤트로 body 동기화 (rich text 이므로 innerHTML 저장)
+        sectionsRoot.querySelectorAll('.ov-block-text-body').forEach(function(el){
+          el.addEventListener('input', function(){
+            const si = parseInt(el.getAttribute('data-sec-idx'), 10);
+            const bi = parseInt(el.getAttribute('data-blk-idx'), 10);
+            if (!sectionsState[si] || !sectionsState[si].blocks || !sectionsState[si].blocks[bi]) return;
+            sectionsState[si].blocks[bi].body = el.innerHTML;
+            _markSectionsDirty();
+          });
+        });
+        // Rich text 툴바 바인딩
+        function _getListInEditor(editor){
+          const sel = window.getSelection();
+          let node = sel && sel.anchorNode;
+          while (node && node !== editor) {
+            if (node.nodeType === 1 && (node.tagName === 'UL' || node.tagName === 'OL')) return node;
+            node = node.parentNode;
+          }
+          return null;
+        }
+        function _ensureList(editor, ordered){
+          editor.focus();
+          try { document.execCommand(ordered ? 'insertOrderedList' : 'insertUnorderedList', false, null); } catch(e) {}
+          return _getListInEditor(editor);
+        }
+        function _syncEditorState(editor){
+          const si = parseInt(editor.getAttribute('data-sec-idx'), 10);
+          const bi = parseInt(editor.getAttribute('data-blk-idx'), 10);
+          if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
+            sectionsState[si].blocks[bi].body = editor.innerHTML;
+            _markSectionsDirty();
+          }
+        }
+        function _applyListStyle(editor, listType, styleValue){
+          let listEl = _getListInEditor(editor);
+          if (!listEl || (listType === 'ul' && listEl.tagName !== 'UL') || (listType === 'ol' && listEl.tagName !== 'OL')) {
+            listEl = _ensureList(editor, listType === 'ol');
+          }
+          if (!listEl) return;
+          Array.from(listEl.classList).forEach(function(cls){
+            if (cls.indexOf('ov-list-') === 0) listEl.classList.remove(cls);
+          });
+          listEl.removeAttribute('type');
+          listEl.style.listStyleType = '';
+          if (String(styleValue).indexOf('ov-') === 0) {
+            listEl.classList.add('ov-list-' + styleValue.slice(3));
+            listEl.style.listStyleType = 'none';
+          } else {
+            listEl.style.listStyleType = styleValue;
+            if (listType === 'ol') {
+              if (styleValue === 'decimal') listEl.setAttribute('type', '1');
+              else if (styleValue === 'lower-alpha') listEl.setAttribute('type', 'a');
+              else if (styleValue === 'upper-alpha') listEl.setAttribute('type', 'A');
+              else if (styleValue === 'lower-roman') listEl.setAttribute('type', 'i');
+              else if (styleValue === 'upper-roman') listEl.setAttribute('type', 'I');
+            }
+          }
+          _syncEditorState(editor);
+        }
+        function _findPreviousOrderedList(root, currentOl){
+          const all = Array.from(root.querySelectorAll('ol'));
+          const idx = all.indexOf(currentOl);
+          if (idx > 0) return all[idx - 1];
+          return null;
+        }
+        function _orderedCount(ol){
+          return ol.querySelectorAll('li').length || 0;
+        }
+        function _continueOrderedList(editor){
+          let ol = _getListInEditor(editor);
+          if (!ol || ol.tagName !== 'OL') ol = _ensureList(editor, true);
+          if (!ol) return;
+          const prev = _findPreviousOrderedList(editor.closest('.ov-section') || document, ol);
+          let nextStart = 1;
+          if (prev) {
+            const prevStart = parseInt(prev.getAttribute('start') || '1', 10) || 1;
+            const prevCount = _orderedCount(prev);
+            nextStart = prevStart + Math.max(prevCount, 1);
+          } else {
+            const raw = prompt('이어쓰기 시작 번호', ol.getAttribute('start') || '1');
+            if (!raw) return;
+            nextStart = parseInt(raw, 10);
+            if (!Number.isFinite(nextStart) || nextStart < 1) return;
+          }
+          ol.setAttribute('start', String(nextStart));
+          _syncEditorState(editor);
+        }
+        function _restartOrderedList(editor){
+          let ol = _getListInEditor(editor);
+          if (!ol || ol.tagName !== 'OL') ol = _ensureList(editor, true);
+          if (!ol) return;
+          const raw = prompt('번호 시작 값', '1');
+          if (!raw) return;
+          const start = parseInt(raw, 10);
+          if (!Number.isFinite(start) || start < 1) return;
+          ol.setAttribute('start', String(start));
+          _syncEditorState(editor);
+        }
+
+        sectionsRoot.querySelectorAll('.ov-block-text-body').forEach(function(el){
+          el.addEventListener('input', function(){
+            _syncEditorState(el);
+          });
+        });
+
+        sectionsRoot.querySelectorAll('.ov-rt-toolbar').forEach(function(bar){
+
+          const editorId = bar.getAttribute('data-editor');
+          const editor = document.getElementById(editorId);
+          function exec(cmd, val){
+            if (!editor) return;
+            editor.focus();
+            try { document.execCommand(cmd, false, val || null); } catch(e){ console.warn(e); }
+            _syncEditorState(editor);
+          }
+          bar.querySelectorAll('button[data-cmd]').forEach(function(btn){
+            btn.addEventListener('mousedown', function(e){ e.preventDefault(); });
+            btn.addEventListener('click', function(){ exec(btn.getAttribute('data-cmd')); });
+          });
+          const sel = bar.querySelector('select[data-cmd]');
+          if (sel) {
+            sel.addEventListener('change', function(){
+              let v = sel.value;
+              if (v === 'div') v = 'p';
+              exec('formatBlock', v);
+            });
+          }
+          bar.querySelectorAll('input[type="color"]').forEach(function(inp){
+            inp.addEventListener('input', function(){ exec(inp.getAttribute('data-cmd'), inp.value); });
+          });
+          bar.querySelectorAll('select[data-list-style="ul"]').forEach(function(sel2){
+            sel2.addEventListener('change', function(){
+              _applyListStyle(editor, 'ul', sel2.value);
+            });
+          });
+          bar.querySelectorAll('select[data-list-style="ol"]').forEach(function(sel3){
+            sel3.addEventListener('change', function(){
+              _applyListStyle(editor, 'ol', sel3.value);
+            });
+          });
+        });
+
+        // 모든 원본 편집박스에 Tab + undo/redo 부착
+        sectionsRoot.querySelectorAll('.ov-block-text-body').forEach(function(editor){
+          if (window._attachOriginalTextBehavior) window._attachOriginalTextBehavior(editor);
+        });
+
+        // OL 안에서 우클릭 시 커스텀 메뉴 (이어/재시작)
+        sectionsRoot.querySelectorAll('.ov-block-text-body').forEach(function(editor){
+          editor.addEventListener('contextmenu', function(e){
+            // AI 편집 박스 내부 우클릭은 전용 메뉴가 처리
+            if (e.target && e.target.closest && e.target.closest('.ov-ai-diff-edit')) return;
+
+            // 커서/클릭 위치가 OL 안에 있는지 확인
+            let node = e.target;
+            let inOl = null;
+            while (node && node !== editor) {
+              if (node.nodeType === 1 && node.tagName === 'OL') { inOl = node; break; }
+              node = node.parentNode;
+            }
+            if (!inOl) return; // 기본 브라우저 메뉴 유지
+            e.preventDefault();
+            // 기존 메뉴 있으면 제거
+            const prev = document.getElementById('ov-ol-ctxmenu');
+            if (prev) prev.remove();
+            const menu = document.createElement('div');
+            menu.id = 'ov-ol-ctxmenu';
+            menu.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1px solid #D9E3F1;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.12);padding:4px;min-width:160px;font-size:13px;';
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            menu.innerHTML = ''
+              + '<div class="ov-ctx-item" data-action="continue" style="padding:8px 12px;cursor:pointer;border-radius:4px;">이전 번호에서 이어쓰기</div>'
+              + '<div class="ov-ctx-item" data-action="restart" style="padding:8px 12px;cursor:pointer;border-radius:4px;">번호 다시 시작</div>';
+            document.body.appendChild(menu);
+            menu.querySelectorAll('.ov-ctx-item').forEach(function(item){
+              item.addEventListener('mouseenter', function(){ item.style.background = '#EEF4FB'; });
+              item.addEventListener('mouseleave', function(){ item.style.background = 'transparent'; });
+              item.addEventListener('click', function(){
+                const action = item.getAttribute('data-action');
+                if (action === 'continue') _continueOrderedList(editor);
+                else if (action === 'restart') _restartOrderedList(editor);
+                menu.remove();
+              });
+            });
+            // 바깥 클릭 시 제거
+            setTimeout(function(){
+              document.addEventListener('click', function _closeOnce(){
+                menu.remove();
+                document.removeEventListener('click', _closeOnce);
+              }, { once: true });
+            }, 0);
+          });
+        });
+
         sectionsRoot.querySelectorAll('.ov-sec-rename-btn').forEach(function(btn){
           btn.addEventListener('click', function(){
             const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
@@ -4459,6 +8306,78 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         window._renderManualSections();
       };
 
+      // 엑셀 미리보기 로더
+      // 자동 리스트 동작: "1)" "1." "-" "*" + Space → 리스트 시작, Enter → 다음 번호, 빈줄 Enter → 종료
+
+      window._loadXlsxPreviews = function(){
+        const previews = document.querySelectorAll('.ov-xlsx-preview');
+        previews.forEach(async function(el){
+          if (el.getAttribute('data-loaded') === '1') return;
+          const doc = el.getAttribute('data-doc') || '';
+          const file = el.getAttribute('data-file') || '';
+          if (!doc || !file) {
+            el.innerHTML = '<div style="color:#b42318;font-size:12px;">미리보기 정보 누락</div>';
+            return;
+          }
+          try {
+            const r = await fetch(
+              '/admin/manual-files/' + encodeURIComponent(doc) + '/' + encodeURIComponent(file) + '/xlsx-preview',
+              { credentials: 'same-origin' }
+            );
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const j = await r.json();
+            const rows = Array.isArray(j.rows) ? j.rows : [];
+            if (!rows.length) {
+              el.innerHTML = '<div style="color:#667085;font-size:12px;">비어 있는 시트입니다</div>';
+              el.setAttribute('data-loaded', '1');
+              return;
+            }
+            const nRows = j.n_rows || rows.length;
+            const nCols = j.n_cols || 0;
+            let html = '';
+            html += '<div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:8px;">📊 ' + (j.sheet || '첫 시트') + ' (' + nRows + '행 × ' + nCols + '열)</div>';
+            html += '<div style="overflow:auto;border:1px solid #D9E3F1;border-radius:8px;background:#fff;">';
+            html += '<table style="border-collapse:collapse;width:100%;font-size:12px;">';
+            rows.forEach(function(row){
+              html += '<tr>';
+              (row || []).forEach(function(cell){
+                const safe = String(cell.text == null ? '' : cell.text)
+                  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                const rs = cell.rowspan && cell.rowspan > 1 ? ' rowspan="' + cell.rowspan + '"' : '';
+                const cs = cell.colspan && cell.colspan > 1 ? ' colspan="' + cell.colspan + '"' : '';
+                let style = 'border:1px solid #D9E3F1;padding:8px 12px;text-align:center;white-space:nowrap;min-width:60px;';
+                // 배경색이 있을 때만 폰트색도 반영 (흰색 폰트 + 흰 배경 방지)
+                if (cell.bg) {
+                  style += 'background:' + cell.bg + ';';
+                  if (cell.fg) style += 'color:' + cell.fg + ';';
+                  else style += 'color:#fff;';
+                } else {
+                  style += 'color:#344054;';
+                }
+                if (cell.bold) style += 'font-weight:700;';
+                html += '<td' + rs + cs + ' style="' + style + '">' + safe + '</td>';
+              });
+              html += '</tr>';
+            });
+            html += '</table></div>';
+            el.innerHTML = html;
+            el.style.padding = '10px';
+            el.style.border = '1px solid #E5E7EB';
+            el.style.background = '#F9FAFB';
+            el.setAttribute('data-loaded', '1');
+          } catch (e) {
+            el.innerHTML = '<div style="color:#b42318;font-size:12px;">엑셀 미리보기 실패: ' + String(e.message || e) + '</div>';
+          }
+        });
+      };
+
+      // 렌더 후 매번 preview 로드
+      const _origRender = window._renderManualSections;
+      window._renderManualSections = function(){
+        _origRender();
+        setTimeout(function(){ window._loadXlsxPreviews(); }, 0);
+      };
+
       window._renderManualSections();
     } else {
       // PPT 프로젝트: 하드코딩 3탭 스크롤 바인딩
@@ -4533,8 +8452,8 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
         try {
           const payload = { project_overrides: overrides };
           if (newWeek) payload.week_override = newWeek;
-          // 수기 프로젝트: sections 도 함께 저장
-          if (isManual && sectionsDirty) {
+          // 수기 프로젝트: sections 도 함께 저장 (항상 최신 상태 전송)
+          if (isManual) {
             payload.products = [{ sections: sectionsState }];
           }
           const res = await fetch('/admin/reports/' + encodeURIComponent(docId), {
@@ -5056,7 +8975,436 @@ def admin_delete_manual_report(doc_id: str, _admin: int = Depends(get_admin_sess
         raise HTTPException(status_code=403, detail="only manual reports can be deleted here")
     items = [it for it in items if it.get("doc_id") != doc_id]
     _write_json(LATEST_FILE, items)
+    _resync_notes_from_latest()
     return {"ok": True, "doc_id": doc_id}
+
+
+
+# ─── reports → notes.json 자동 동기화 (수기 doc용) ───
+
+
+def _extract_due_date(text: str) -> tuple:
+    """(clean_text, due_iso or None) 반환.
+    
+    ★ 원문 그대로 유지 정책 (2026-07-27~):
+      - 사용자가 적은 문장을 그대로 앱에 표시하기 위해 텍스트는 건드리지 않음.
+      - due_date 만 추출 (화살표 인식형 파서 사용).
+      - 명시적 대괄호 [YYYY-MM-DD] / [YY-MM-DD] 는 우선순위로 처리.
+    """
+    import re as _re
+    from datetime import date as _date
+    if not text or not isinstance(text, str):
+        return (text or "", None)
+
+    due_iso = None
+
+    # 우선순위 1: 대괄호 안의 명시적 ISO 날짜
+    m = _re.search(r'\[\s*(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\s*\]', text)
+    if m:
+        try:
+            due_iso = _date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+        except Exception:
+            pass
+    else:
+        m = _re.search(r'\[\s*(\d{2})[-./](\d{1,2})[-./](\d{1,2})\s*\]', text)
+        if m:
+            try:
+                due_iso = _date(2000 + int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+            except Exception:
+                pass
+
+    # 우선순위 2: 새 파서 (화살표 인식 + 마지막 세그먼트 우선)
+    if not due_iso:
+        due_iso = _extract_due_date_from_text(text) or None
+
+    # ★ text 는 정리하지 않고 원문 그대로 반환
+    return (text, due_iso)
+
+def _html_body_to_items(html: str) -> list:
+    """HTML(관리자 편집기 결과)을 모바일 앱이 이해하는 items 배열로 변환.
+    
+    변환 규칙:
+    - <ol depth 0> → {"type": "bullet", "text": "1. ..."}
+    - <ol depth 1> → {"type": "sub", "text": "1) ..."}
+    - <ol depth 2+> → {"type": "sub", "text": "① ..."} (원형숫자)
+    - <div>*text*</div> 또는 <div>★text</div> → highlight
+    - <div data-indent="N">text</div> (N>=1) → sub
+    - <div>일반</div> → bullet
+    - <del>...</del> 완전 제거
+    - <ins>text</ins> → 텍스트만 유지
+    """
+    from bs4 import BeautifulSoup, NavigableString
+    
+    if not html or not isinstance(html, str):
+        return []
+    
+    # <del> 제거, <ins>는 텍스트만 남김
+    soup = BeautifulSoup(html, 'html.parser')
+    for del_tag in soup.find_all('del'):
+        del_tag.decompose()
+    for ins_tag in soup.find_all('ins'):
+        ins_tag.unwrap()
+    
+    # depth별 마커 함수
+    CIRCLED = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+               '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
+    
+    def marker_for_depth(depth: int, idx: int) -> str:
+        """depth+index로 실제 표시 문자 생성."""
+        # Word식 순환: 0=dot, 1=paren, 2=circled, 3=dot...
+        style = depth % 3
+        if style == 0:
+            return f"{idx + 1}."
+        elif style == 1:
+            return f"{idx + 1})"
+        else:  # circled
+            return CIRCLED[idx] if idx < len(CIRCLED) else f"{idx + 1}."
+    
+    def get_ol_depth(ol) -> int:
+        """ol의 effective depth 계산 (data-depth-override 우선)."""
+        override = ol.get('data-depth-override')
+        if override:
+            try:
+                return int(override)
+            except ValueError:
+                pass
+        # DOM nesting으로 계산
+        depth = 0
+        cur = ol.parent
+        while cur is not None:
+            if getattr(cur, 'name', None) == 'ol':
+                ovr = cur.get('data-depth-override') if hasattr(cur, 'get') else None
+                if ovr:
+                    try:
+                        return int(ovr) + depth + 1
+                    except ValueError:
+                        pass
+                depth += 1
+            cur = getattr(cur, 'parent', None)
+        return depth
+    
+    items = []
+    
+    def process_ol(ol, extra_prefix=""):
+        """ol의 li들을 순회하며 items에 추가 (nested ol도 재귀)."""
+        depth = get_ol_depth(ol)
+        # start 값 반영
+        try:
+            start = int(ol.get('data-start') or ol.get('start') or 1)
+        except (ValueError, TypeError):
+            start = 1
+        
+        lis = [c for c in ol.children if getattr(c, 'name', None) == 'li']
+        for i, li in enumerate(lis):
+            # li의 직접 텍스트 + 인라인 자식 (nested ol/ul 제외)
+            text_parts = []
+            nested_ols = []
+            for child in li.children:
+                if getattr(child, 'name', None) in ('ol', 'ul'):
+                    nested_ols.append(child)
+                elif isinstance(child, NavigableString):
+                    text_parts.append(str(child))
+                else:
+                    # 인라인 태그 (span, b, i 등)
+                    text_parts.append(child.get_text())
+            
+            text = ''.join(text_parts).strip()
+            if text:
+                marker = marker_for_depth(depth, i + (start - 1))
+                item_type = 'bullet' if depth == 0 else 'sub'
+                clean_text, due_iso = _extract_due_date(text)
+                _item = {
+                    'type': item_type,
+                    'text': f"{marker} {clean_text}" if clean_text else f"{marker}"
+                }
+                if due_iso:
+                    _item['due_date'] = due_iso
+                items.append(_item)
+            
+            # nested ol 재귀 처리
+            for nested in nested_ols:
+                process_ol(nested)
+    
+    def process_element(el):
+        """editor 직속 자식 처리 (div, ol 등)."""
+        name = getattr(el, 'name', None)
+        if name == 'ol':
+            process_ol(el)
+        elif name in ('div', 'p'):
+            text = el.get_text().strip()
+            if not text:
+                return
+            # highlight 감지: 시작이 * 또는 ★ 또는 ※
+            is_highlight = (
+                text.startswith('*') or text.startswith('★') or text.startswith('※')
+            )
+            # indent 감지
+            indent = 0
+            try:
+                indent = int(el.get('data-indent') or 0)
+            except (ValueError, TypeError):
+                pass
+            
+            if is_highlight:
+                # 앞의 * 또는 ★ 제거
+                clean = text.lstrip('*★※ \t').rstrip('*').strip()
+                clean, due_iso = _extract_due_date(clean)
+                _hi = {'type': 'highlight', 'text': clean}
+                if due_iso:
+                    _hi['due_date'] = due_iso
+                items.append(_hi)
+            elif indent >= 1:
+                clean, due_iso = _extract_due_date(text)
+                _sub = {'type': 'sub', 'text': clean}
+                if due_iso:
+                    _sub['due_date'] = due_iso
+                items.append(_sub)
+            else:
+                clean, due_iso = _extract_due_date(text)
+                _bul = {'type': 'bullet', 'text': clean}
+                if due_iso:
+                    _bul['due_date'] = due_iso
+                items.append(_bul)
+        elif isinstance(el, NavigableString):
+            text = str(el).strip()
+            if text:
+                clean, due_iso = _extract_due_date(text)
+                _bul = {'type': 'bullet', 'text': clean}
+                if due_iso:
+                    _bul['due_date'] = due_iso
+                items.append(_bul)
+    
+    # 최상위 자식들 순회
+    for child in soup.children:
+        process_element(child)
+    
+    return items
+
+
+def _products_to_note_cards(products: list, week_override=None) -> list:
+    """products[] → notes.json 형식의 cards[] 로 변환."""
+    if not isinstance(products, list):
+        return []
+    
+    cards = []
+    for prod in products:
+        if not isinstance(prod, dict):
+            continue
+        title = (prod.get('name') or '').strip()
+        if not title:
+            continue
+        
+        card_sections = []
+        for sec in (prod.get('sections') or []):
+            if not isinstance(sec, dict):
+                continue
+            sec_title = (sec.get('title') or '').strip()
+            blocks = sec.get('blocks') or []
+            
+            items = []
+            for blk in blocks:
+                if not isinstance(blk, dict):
+                    continue
+                kind = blk.get('kind', 'text')
+                if kind == 'text':
+                    body = blk.get('body', '')
+                    items.extend(_html_body_to_items(body))
+                elif kind == 'file':
+                    # 파일 첨부는 photo item으로
+                    fname = blk.get('file_name', '')
+                    if fname:
+                        items.append({
+                            'type': 'photo',
+                            'text': fname,
+                            'photo_ref': blk.get('url', ''),
+                        })
+            
+            if items:
+                card_sections.append({
+                    'title': sec_title,
+                    'items': items,
+                })
+        
+        if card_sections:
+            card = {
+                'title': title,
+                'sections': card_sections,
+            }
+            # summary/headline 등도 복사
+            if prod.get('headline'):
+                card['headline'] = prod.get('headline')
+            if prod.get('status'):
+                card['status'] = prod.get('status')
+            cards.append(card)
+    
+    return cards
+
+
+def _sync_report_to_notes(it: dict) -> None:
+    """수기 doc 하나를 notes.json에 upsert.
+    
+    - division_id 유추: it['division_id'] > product.name derive > semiconductor 폴백
+    - cards는 title 기준 merge
+    - _normalize_note_cards로 후처리
+    """
+    try:
+        if not isinstance(it, dict):
+            return
+        if not it.get('is_manual'):
+            return
+        
+        products = it.get('products') or []
+        cards = _products_to_note_cards(products, week_override=it.get('week_override'))
+        if not cards:
+            return
+        
+        # division_id 결정
+        division_id = (it.get('division_id') or '').strip()
+        if not division_id:
+            # product.name으로 유추 시도
+            for prod in products:
+                if isinstance(prod, dict) and prod.get('name'):
+                    try:
+                        division_id = _cl.derive_division_from_project(prod['name']) or ''
+                    except Exception:
+                        pass
+                    if division_id:
+                        break
+        if not division_id:
+            division_id = 'semiconductor'  # 폴백
+        
+        # 정규화
+        parsed = {'cards': cards}
+        _normalize_note_cards(parsed)
+        cards = parsed['cards']
+        
+        # sales_input 자동 계산 (주차별 계획 섹션)
+        try:
+            products = it.get('products') or []
+            for card in cards:
+                for sec in card.get('sections', []) or []:
+                    # products에서 같은 title의 section 찾아 sales_input 가져옴
+                    sec_title = (sec.get('title') or '').strip()
+                    for prod in products:
+                        for psec in prod.get('sections', []) or []:
+                            if (psec.get('title') or '').strip() == sec_title:
+                                # [SALES v2] 우선순위:
+                                #   1) 섹션에 첨부된 xlsx + sales_prices → 자동 파싱/계산
+                                #   2) sales_data (구조화 JSON)
+                                #   3) sales_input (구식 텍스트)
+                                sd = psec.get('sales_data')
+                                si = psec.get('sales_input') or ''
+                                prices = psec.get('sales_prices') or {}
+
+                                # 1) xlsx 파싱 (섹션 내 첨부 파일 자동 인식)
+                                #    reports_latest.json 은 blocks[] 를 씀 → blocks 우선 탐색
+                                xlsx_ref = None
+                                for _blk in (psec.get('blocks') or []):
+                                    if not isinstance(_blk, dict):
+                                        continue
+                                    _kind = (_blk.get('kind') or '').lower()
+                                    _url = _blk.get('url') or _blk.get('file_url') or ''
+                                    _fname = _blk.get('file_name') or ''
+                                    _all = (_url + ' ' + _fname).lower()
+                                    if '.xlsx' in _all or '.xlsm' in _all:
+                                        xlsx_ref = _url or _fname
+                                        break
+                                # fallback: items[] (notes 스키마)
+                                if not xlsx_ref:
+                                    xlsx_ref = _find_xlsx_in_section_items(psec.get('items') or [])
+                                if not xlsx_ref:
+                                    src_meta = psec.get('sales_source') or {}
+                                    xlsx_ref = src_meta.get('file_url')
+
+                                parsed_ok = False
+                                if xlsx_ref:
+                                    local_path = _xlsx_url_to_local_path(xlsx_ref)
+                                    if local_path and local_path.exists():
+                                        try:
+                                            parsed = parse_sales_excel(local_path)
+                                            sec['sales_source'] = {
+                                                'file_name': local_path.name,
+                                                'file_url': str(xlsx_ref),
+                                                'parsed_at': __import__('datetime').datetime.now().isoformat(timespec='seconds'),
+                                                'parsed': parsed,
+                                            }
+                                            sec['sales_prices'] = prices
+                                            if prices:
+                                                r = compute_sales_from_parsed(parsed, prices)
+                                                sec['sales_summary'] = r['sales_summary']
+                                                sec['sales_summary_data'] = r['sales_summary_data']
+                                                sec['sales_computed_at'] = r['sales_computed_at']
+                                            parsed_ok = True
+                                        except Exception as _pe:
+                                            print(f'[sales_xlsx parse ERROR] {xlsx_ref} :: {_pe}')
+
+                                # 2) fallback: sales_data (JSON)
+                                if not parsed_ok and isinstance(sd, dict) and (sd.get('prices') or sd.get('weeks')):
+                                    sec['sales_data'] = sd
+                                    r = compute_sales_from_data(sd)
+                                    sec['sales_summary'] = r['sales_summary']
+                                    sec['sales_computed_at'] = r['sales_computed_at']
+                                    parsed_ok = True
+
+                                # 3) fallback: sales_input (구식 텍스트)
+                                if not parsed_ok and si:
+                                    sec['sales_input'] = si
+                                    r = compute_sales_from_input(si)
+                                    sec['sales_summary'] = r['sales_summary']
+                                    sec['sales_computed_at'] = r['sales_computed_at']
+                                break
+        except Exception as _e:
+            print(f'[sales_compute in sync ERROR] {_e}')
+        
+        # notes.json upsert
+        from datetime import datetime
+        data = _load_notes()
+        notes_map = data.setdefault('notes', {})
+        existing = notes_map.get(division_id) or {}
+        existing_cards = existing.get('cards') or []
+        
+        def _norm_title(t):
+            return re.sub(r'\s+', '', (t or '').strip()).lower()
+        
+        by_title = {}
+        order = []
+        for c in existing_cards:
+            if not isinstance(c, dict):
+                continue
+            tkey = _norm_title(c.get('title'))
+            if not tkey or tkey in by_title:
+                continue
+            by_title[tkey] = c
+            order.append(tkey)
+        
+        for c in cards:
+            tkey = _norm_title(c.get('title'))
+            if not tkey:
+                continue
+            if tkey in by_title:
+                by_title[tkey] = c
+            else:
+                by_title[tkey] = c
+                order.append(tkey)
+        
+        merged_cards = [by_title[k] for k in order]
+        
+        report_date = ''
+        meta = it.get('report_meta') or {}
+        if isinstance(meta, dict):
+            report_date = meta.get('date', '') or ''
+        
+        notes_map[division_id] = {
+            'report_date': report_date or existing.get('report_date', ''),
+            'updated_at': datetime.now().isoformat(),
+            'raw_text': existing.get('raw_text', ''),
+            'cards': merged_cards,
+        }
+        _save_notes(data)
+    except Exception as e:
+        import traceback
+        print(f'[sync_report_to_notes ERROR] {e}')
+        traceback.print_exc()
 
 
 @app.put("/admin/reports/{doc_id}")
@@ -5106,7 +9454,7 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
             merged = []
             for i, np in enumerate(new_products):
                 base = dict(existing[i]) if i < len(existing) else {}
-                for key in ("name", "headline", "category", "status", "summary_bullets", "sections"):
+                for key in ("name", "headline", "category", "status", "summary_bullets", "sections", "sales_input", "sales_data", "sales_source", "sales_prices", "sales_summary", "sales_summary_data", "sales_computed_at"):
                     if key in np:
                         base[key] = np[key]
                 merged.append(base)
@@ -5115,7 +9463,423 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
     if not found:
         raise HTTPException(status_code=404, detail="doc_id not found")
     _write_json(LATEST_FILE, items)
+    _resync_notes_from_latest()
+    # 수기 doc이면 notes.json에도 자동 동기화 (모바일 앱 반영용)
+    for _it in items:
+        if _it.get("doc_id") == doc_id and _it.get("is_manual"):
+            _sync_report_to_notes(_it)
+            break
     return {"ok": True, "doc_id": doc_id}
+
+
+@app.post("/admin/reports/{doc_id}/section-file")
+async def admin_upload_section_file(
+    doc_id: str,
+    file: UploadFile = File(...),
+    _admin: int = Depends(get_admin_session)
+):
+    # 수기 프로젝트의 섹션 안 파일 블록용 업로드.
+    # uploads/manual/{doc_id}/ 아래에 저장하고 다운로드 URL 반환.
+    import re as _re, uuid as _uuid, shutil as _shutil
+    items = _read_json(LATEST_FILE, [])
+    target = None
+    for it in items:
+        if it.get("doc_id") == doc_id:
+            target = it
+            break
+    if not target:
+        raise HTTPException(status_code=404, detail="doc_id not found")
+    if not target.get("is_manual"):
+        raise HTTPException(status_code=403, detail="only manual reports support section files")
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="file required")
+
+    # 안전한 파일명: 원본 이름 유지하되 경로 문자 제거
+    safe_name = _re.sub(r"[\\/]", "_", file.filename).strip()
+    if not safe_name:
+        safe_name = "file"
+    # 중복 시 앞에 랜덤 프리픽스
+    manual_dir = UPLOAD_DIR / "manual" / doc_id
+    manual_dir.mkdir(parents=True, exist_ok=True)
+    dest = manual_dir / safe_name
+    if dest.exists():
+        stem = dest.stem
+        suffix = dest.suffix
+        safe_name = stem + "_" + _uuid.uuid4().hex[:6] + suffix
+        dest = manual_dir / safe_name
+
+    data = await file.read()
+    dest.write_bytes(data)
+
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "file_name": safe_name,
+        "size": len(data),
+        "url": "/admin/manual-files/" + doc_id + "/" + safe_name,
+    }
+
+
+
+@app.post("/admin/reports/{doc_id}/section-parse-xlsx")
+async def admin_parse_section_xlsx(
+    doc_id: str,
+    payload: dict,
+    _admin: int = Depends(get_admin_session)
+):
+    """섹션에 첨부된 xlsx 파일을 파싱해서 models/weeks 리턴 (판가 입력용)."""
+    import re as _re
+    filename = (payload or {}).get('filename') or ''
+    filename = filename.strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail='filename required')
+    if _re.search(r'[\\/]|\.\.', filename):
+        raise HTTPException(status_code=400, detail='invalid filename')
+    fp = UPLOAD_DIR / 'manual' / doc_id / filename
+    if not fp.exists() or not fp.is_file():
+        raise HTTPException(status_code=404, detail='xlsx not found')
+    if not filename.lower().endswith(('.xlsx', '.xlsm')):
+        raise HTTPException(status_code=400, detail='not an excel file')
+    try:
+        parsed = parse_sales_excel(fp)
+        return {'ok': True, 'filename': filename, 'parsed': parsed}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'parse error: {e}')
+
+@app.get("/admin/manual-files/{doc_id}/{filename}")
+def admin_download_section_file(
+    doc_id: str,
+    filename: str,
+    _admin: int = Depends(get_admin_session)
+):
+    # 수기 프로젝트 섹션 파일 다운로드
+    import re as _re
+    from fastapi.responses import FileResponse
+    if _re.search(r"[\\/]|\.\.", filename):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    fp = UPLOAD_DIR / "manual" / doc_id / filename
+    if not fp.exists() or not fp.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(str(fp), filename=filename)
+
+
+@app.get("/admin/manual-files/{doc_id}/{filename}/xlsx-preview")
+def admin_xlsx_preview(
+    doc_id: str,
+    filename: str,
+    _admin: int = Depends(get_admin_session)
+):
+    # 수기 프로젝트 섹션 엑셀 미리보기: 병합 셀 + 스타일 유지, 빈 행/열 제거
+    import re as _re
+    if _re.search(r"[\\/]|\.\.", filename):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    fp = UPLOAD_DIR / "manual" / doc_id / filename
+    if not fp.exists() or not fp.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    if not filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="not an excel file")
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(str(fp), data_only=True)
+        ws = wb.active
+        sheet_name = ws.title if ws else ""
+
+        MAX_ROWS = 50
+        MAX_COLS = 20
+
+        # 1) 병합 범위 파악: (min_row, min_col) → (rowspan, colspan)
+        merged_map = {}
+        skip_cells = set()
+        for mr in ws.merged_cells.ranges:
+            r1, c1, r2, c2 = mr.min_row, mr.min_col, mr.max_row, mr.max_col
+            merged_map[(r1, c1)] = (r2 - r1 + 1, c2 - c1 + 1)
+            for rr in range(r1, r2 + 1):
+                for cc in range(c1, c2 + 1):
+                    if (rr, cc) != (r1, c1):
+                        skip_cells.add((rr, cc))
+
+        # 2) 실제 데이터 범위 (빈 행/열 제거 + 시작 여백 trim)
+        max_r = min(ws.max_row or 0, MAX_ROWS)
+        max_c = min(ws.max_column or 0, MAX_COLS)
+
+        non_empty = []
+        for r in range(1, max_r + 1):
+            for c in range(1, max_c + 1):
+                v = ws.cell(row=r, column=c).value
+                if v is not None and str(v).strip() != "":
+                    non_empty.append((r, c))
+
+        if not non_empty:
+            wb.close()
+            return {"ok": True, "sheet": sheet_name, "rows": [], "n_rows": 0, "n_cols": 0}
+
+        real_min_r = min(r for r, _ in non_empty)
+        real_max_r = max(r for r, _ in non_empty)
+        real_min_c = min(c for _, c in non_empty)
+        real_max_c = max(c for _, c in non_empty)
+
+        # 3) 행 데이터 구성 (실제 데이터 bounding box만)
+        rows = []
+        for r in range(real_min_r, real_max_r + 1):
+            row_cells = []
+            for c in range(real_min_c, real_max_c + 1):
+                if (r, c) in skip_cells:
+                    continue
+                cell = ws.cell(row=r, column=c)
+                v = cell.value
+                text = "" if v is None else str(v)
+
+                # 병합 정보
+                rspan, cspan = merged_map.get((r, c), (1, 1))
+
+                # 현재 crop 범위를 벗어나는 병합은 잘라냄
+                if r + rspan - 1 > real_max_r:
+                    rspan = real_max_r - r + 1
+                if c + cspan - 1 > real_max_c:
+                    cspan = real_max_c - c + 1
+
+                # 스타일 정보
+                bg = ""
+                fg = ""
+                bold = False
+                try:
+                    if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == "rgb":
+                        rgb = cell.fill.fgColor.rgb
+                        if rgb and rgb != "00000000":
+                            bg = "#" + rgb[-6:]
+                    if cell.font and cell.font.color and cell.font.color.type == "rgb":
+                        rgb = cell.font.color.rgb
+                        if rgb and rgb != "00000000":
+                            fg = "#" + rgb[-6:]
+                    if cell.font and cell.font.bold:
+                        bold = True
+                except Exception:
+                    pass
+
+                row_cells.append({
+                    "text": text,
+                    "rowspan": rspan,
+                    "colspan": cspan,
+                    "bg": bg,
+                    "fg": fg,
+                    "bold": bold,
+                })
+            rows.append(row_cells)
+
+        wb.close()
+        return {
+            "ok": True,
+            "sheet": sheet_name,
+            "rows": rows,
+            "n_rows": real_max_r - real_min_r + 1,
+            "n_cols": real_max_c - real_min_c + 1,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"excel parse error: {e}")
+
+
+
+@app.post("/admin/reports/{doc_id}/polish-text")
+def admin_polish_text(
+    doc_id: str,
+    payload: dict,
+    _admin: int = Depends(get_admin_session)
+):
+    # 수기 프로젝트 텍스트 블록 AI 다듬기
+    import re as _re
+    from html import unescape as _html_unescape
+
+    if client is None:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+
+    raw_html = str((payload or {}).get("text") or "").strip()
+    section_title = str((payload or {}).get("section_title") or "").strip()
+
+    if not raw_html:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    def _html_to_text(s: str) -> str:
+        s = _re.sub(r'<br\s*/?>', '\n', s, flags=_re.I)
+        s = _re.sub(r'</(p|div|li|h[1-6])>', '\n', s, flags=_re.I)
+        s = _re.sub(r'<[^>]+>', '', s)
+        s = _html_unescape(s)
+        s = _re.sub(r'\n{3,}', '\n\n', s)
+        s = _re.sub(r'[ \t]+', ' ', s)
+        return s.strip()
+
+    # few-shot 예시 수집
+    items = _read_json(LATEST_FILE, [])
+    examples = []
+    seen = set()
+
+    def _push_example(txt: str):
+        t = _html_to_text(txt or "")
+        t = _re.sub(r'\s+', ' ', t).strip()
+        if len(t) < 25:
+            return
+        if t in seen:
+            return
+        seen.add(t)
+        examples.append(t[:700])
+
+    for it in items:
+        if (it or {}).get("doc_id") == doc_id:
+            continue
+        for prod in ((it or {}).get("products") or []):
+            if prod.get("headline"):
+                _push_example(str(prod.get("headline")))
+            for b in (prod.get("summary_bullets") or []):
+                _push_example(str(b))
+            for sec in (prod.get("sections") or []):
+                for blk in (sec.get("blocks") or []):
+                    if (blk or {}).get("type") == "text" and (blk or {}).get("body"):
+                        _push_example(str(blk.get("body")))
+            if len(examples) >= 3:
+                break
+        if len(examples) >= 3:
+            break
+
+    fewshot = "\n\n".join(
+        [f"[예시 {i+1}]\n{ex}" for i, ex in enumerate(examples[:3])]
+    ) or "(예시 없음)"
+
+    system_prompt = """
+너는 한국어 제조/개발 주간보고 문체 편집기다.
+원본을 최대한 보존하면서 표기와 문법만 다듬는 게 유일한 목적이다.
+
+[절대 규칙 - 위반 시 실패]
+1. 원본에 있는 문장/항목/번호를 절대 삭제하지 마라.
+2. 원본이 N줄이면 결과도 정확히 N줄이어야 한다.
+3. 원본에 없는 내용을 추가하지 마라.
+4. 숫자/날짜/주차/수량/고유명사(제품명, 파트명, 부서명, 사람이름)를 절대 바꾸지 마라.
+5. 항목 번호(1. 2. 3. / 1) 2) 3) / 가) 나) / ① ②)와 순서를 절대 바꾸지 마라.
+6. 원본의 bullet, sub-bullet, 들여쓰기 계층을 그대로 유지하라.
+7. 요약/축약/의역 절대 금지. 표현이 어색해도 원본 단어를 다른 단어로 대체하지 마라.
+
+[표기 정돈 - 반드시 적용]
+1. 화살표 통일: `-->`, `->`, `=>`, `⇒`, `~>` → 모두 `→`
+2. 라인 시작의 하이픈 bullet: `- ` → `• ` (라인 첫 문자가 하이픈일 때만)
+3. 줄 앞 불필요한 공백 정리 (단, 들여쓰기 계층은 유지):
+   - 라인 시작의 tab은 스페이스 4개로
+   - 라인 시작 스페이스는 4의 배수로 정규화
+4. 콜론 뒤 공백 하나 확보: `단어:다음` → `단어: 다음`
+5. 괄호 앞뒤 공백 정리: `단어(내용)` → `단어 (내용)`은 하지 마라. 원본 그대로.
+6. 마침표/쉼표 뒤 공백 하나 확보
+
+[문법 확인 - 반드시 적용]
+1. 맞춤법/띄어쓰기 오류 교정
+2. 오탈자 교정
+3. 어색한 조사 수정 (예: "을" ↔ "를", "이" ↔ "가", "은" ↔ "는")
+4. 잘못된 어미 자연스럽게 수정
+5. 반드시 최소 1개 이상의 실질적 텍스트 수정을 수행할 것
+
+[중요]
+- 공백/줄바꿈만 바꾸는 건 수정으로 치지 않음
+- 실제 글자를 바꿔야 수정임
+- 원문이 완벽하면 그대로 두되, 표기 정돈은 무조건 적용
+
+[하지 말 것]
+- 문장 삭제 금지
+- 항목 삭제 금지
+- 요약 금지
+- 표현 대체 금지 (원본 단어를 다른 단어로 바꾸지 마)
+- HTML 태그 임의 제거 금지
+- <ol>, <ul>, <li> 새로 만들지 마라 (원본에 없으면 만들지 마)
+
+[출력]
+- HTML fragment만 (설명 없이)
+- markdown code fence(```) 사용 금지
+- 원본 HTML 태그(<p>, <span>, <b>, <br>, <ul>, <li> 등) 그대로 유지
+- 원본에 <br>이 N개면 결과도 <br>이 N개
+
+[리스트 규칙 - 매우 중요]
+- 원본에 "1)" "2)" "가)" "1." "-" 같은 수동 번호매기기가 있으면 그대로 텍스트로 유지 (bullet 규칙에 따라 `-`는 `•`로만 변환)
+- 절대로 <ol>, <ul>, <li> 태그로 감싸지 마라. 원본이 <ol>/<ul>이 아니면 만들지 마라.
+- 원본이 평문(줄바꿈만 있는 텍스트)이면 결과도 평문으로 유지
+- 원본의 들여쓰기(공백, 탭)를 최대한 그대로 유지
+""".strip()
+
+    user_prompt = f"""
+[섹션]
+{section_title or "일반"}
+
+[참고 문체 예시]
+{fewshot}
+
+[원본 HTML]
+{raw_html}
+""".strip()
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.2,
+            max_tokens=4000,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        polished = (resp.choices[0].message.content or "").strip()
+        polished = _re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", polished)
+        polished = _re.sub(r"\s*```$", "", polished)
+        if not polished:
+            raise HTTPException(status_code=500, detail="empty model output")
+
+        # === 후처리: 표기 통일 강제 (프롬프트가 놓친 경우 대비) ===
+        # 화살표 통일: --> / -> / => / ⇒ / ~> → →
+        # 주의: <br>, </li>, <br/> 등 HTML 안의 - 는 건드리지 않음
+        polished = _re.sub(r"-->", "→", polished)
+        polished = _re.sub(r"=>", "→", polished)
+        polished = _re.sub(r"⇒", "→", polished)
+        polished = _re.sub(r"~>", "→", polished)
+        # -> 는 HTML 태그(<->, </->)와 겹치지 않게 좌우 공백 있는 경우만
+        polished = _re.sub(r"(?<=\s)->(?=\s)", "→", polished)
+        polished = _re.sub(r"^->(?=\s)", "→", polished, flags=_re.M)
+
+        # 라인 시작 하이픈 bullet: `- xxx` → `• xxx`
+        # HTML 태그 안이 아니라 텍스트 라인 시작만 처리
+        # <br> 직후, <p> 직후, <div> 직후, 문자열 시작
+        polished = _re.sub(r"(^|<br\s*/?>|<p[^>]*>|<div[^>]*>|<li[^>]*>)(\s*)-\s", r"\1\2• ", polished, flags=_re.I)
+
+        # 인라인 diff HTML 생성 (플레인 텍스트 비교 후 마크업)
+        import difflib as _difflib
+        orig_text = _html_to_text(raw_html)
+        new_text = _html_to_text(polished)
+        sm = _difflib.SequenceMatcher(None, orig_text, new_text, autojunk=False)
+        diff_parts = []
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            a_seg = orig_text[i1:i2]
+            b_seg = new_text[j1:j2]
+            def _esc(t):
+                return (t.replace("&", "&amp;")
+                         .replace("<", "&lt;")
+                         .replace(">", "&gt;")
+                         .replace("\n", "<br>"))
+            if tag == "equal":
+                diff_parts.append(_esc(a_seg))
+            elif tag == "delete":
+                diff_parts.append('<del style="background:#FEE2E2;color:#B42318;text-decoration:line-through;padding:0 2px;border-radius:3px;">' + _esc(a_seg) + '</del>')
+            elif tag == "insert":
+                diff_parts.append('<ins style="background:#D1FAE5;color:#065F46;text-decoration:none;padding:0 2px;border-radius:3px;">' + _esc(b_seg) + '</ins>')
+            elif tag == "replace":
+                diff_parts.append('<del style="background:#FEE2E2;color:#B42318;text-decoration:line-through;padding:0 2px;border-radius:3px;">' + _esc(a_seg) + '</del>')
+                diff_parts.append('<ins style="background:#D1FAE5;color:#065F46;text-decoration:none;padding:0 2px;border-radius:3px;">' + _esc(b_seg) + '</ins>')
+        diff_html = "".join(diff_parts)
+
+        return {
+            "ok": True,
+            "doc_id": doc_id,
+            "section_title": section_title,
+            "original": raw_html,
+            "polished": polished,
+            "diff_html": diff_html,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ai polish error: {e}")
 
 
 @app.post("/admin/reports/{doc_id}/hide")
@@ -5133,7 +9897,33 @@ def admin_toggle_hide(doc_id: str, _admin: int = Depends(get_admin_session)):
     if not found:
         raise HTTPException(status_code=404, detail="doc_id not found")
     _write_json(LATEST_FILE, items)
+    _resync_notes_from_latest()
     return {"ok": True, "doc_id": doc_id, "hidden": new_state}
+
+
+
+def _resync_notes_from_latest() -> None:
+    """reports_latest.json 기준으로 notes.json 자동동기화 카드를 재생성"""
+    try:
+        latest_items = _read_json(LATEST_FILE, [])
+        notes_data = _load_notes()
+        notes_map = notes_data.get("notes", {})
+        for div_id, payload in list(notes_map.items()):
+            if not isinstance(payload, dict):
+                continue
+            cards = payload.get("cards", []) or []
+            preserved = [c for c in cards if isinstance(c, dict) and c.get("note_only") is True]
+            payload["cards"] = preserved
+        _save_notes(notes_data)
+        for it in latest_items:
+            try:
+                _sync_report_to_notes(it)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+    except Exception:
+        import traceback
+        traceback.print_exc()
 
 
 @app.delete("/admin/doc/{doc_id}")
@@ -8982,3 +13772,496 @@ def admin_kpi_replace_issue_lines(
     proj["issue_lines"] = payload.issue_lines
     _save_kpi_history(hist)
     return {"status": "ok", "count": len(payload.issue_lines)}
+
+# ============================================================
+# 매출 자동 계산 헬퍼
+# ============================================================
+import re
+from datetime import date, datetime
+from typing import Optional
+
+def _parse_sales_input(text: str) -> dict:
+    """
+    [모델/판가]
+    EFEM=65
+    VTM=24
+    
+    [주차별]
+    W27: EFEM 2/2, VTM 2/2
+    W30: EFEM 5/0, VTM 1/0
+    
+    → {"prices": {"EFEM": 65.0}, "weeks": {"W27": {"EFEM": {"plan":2,"actual":2}}}}
+    """
+    prices = {}
+    weeks = {}
+    section = None
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        # 섹션 헤더
+        m = re.match(r'^\[(.+?)\]\s*$', line)
+        if m:
+            tag = m.group(1).strip().lower()
+            if '판가' in tag or 'price' in tag or '모델' in tag:
+                section = 'prices'
+            elif '주차' in tag or 'week' in tag:
+                section = 'weeks'
+            else:
+                section = None
+            continue
+        if section == 'prices':
+            # EFEM=65  또는  EFEM = 65.0
+            m = re.match(r'^([^\s=]+)\s*=\s*([\d.]+)\s*$', line)
+            if m:
+                prices[m.group(1).strip()] = float(m.group(2))
+            continue
+        if section == 'weeks':
+            # W30: EFEM 5/0, VTM 1/0
+            m = re.match(r'^(W\d+)\s*[:：]?\s*(.+)$', line, re.IGNORECASE)
+            if not m:
+                continue
+            wk = m.group(1).upper()
+            payload = m.group(2)
+            models = {}
+            # "EFEM 5/0, VTM 1/0" → 콤마/공백 mix 처리
+            for part in re.split(r'\s*,\s*', payload):
+                part = part.strip()
+                if not part:
+                    continue
+                # "EFEM 5/0"
+                mm = re.match(r'^(\S+)\s+([\d]+)\s*/\s*([\d]+)\s*$', part)
+                if mm:
+                    models[mm.group(1)] = {
+                        "plan": int(mm.group(2)),
+                        "actual": int(mm.group(3)),
+                    }
+            if models:
+                weeks[wk] = models
+    return {"prices": prices, "weeks": weeks}
+
+
+def _iso_week_number(d: date) -> int:
+    return d.isocalendar()[1]
+
+
+def _week_to_month(week_num: int, year: int) -> Optional[int]:
+    """W-번호 → 그 주의 목요일이 속한 월 (ISO 규칙)"""
+    try:
+        # ISO week's Thursday belongs to that year's month
+        thursday = datetime.strptime(f"{year}-W{week_num:02d}-4", "%G-W%V-%u").date()
+        return thursday.month
+    except Exception:
+        return None
+
+
+def _compute_sales_summary(parsed: dict, today: Optional[date] = None) -> str:
+    """
+    각 주차별로:
+      - 과거 → 실적
+      - 현재 → 실적 우선, 없으면 계획
+      - 미래 → 계획
+    매출 = 수량 × 판가
+    반환: "7월 74.0만불 · 8월 407.0만불 · W30 89.0만불"
+    """
+    if today is None:
+        today = date.today()
+    cur_week = _iso_week_number(today)
+    year = today.year
+    
+    prices = parsed.get("prices", {})
+    weeks = parsed.get("weeks", {})
+    
+    if not prices or not weeks:
+        return ""
+    
+    # 주차별 매출 계산
+    week_sales = {}  # {W27: 189.0}
+    for wk, models in weeks.items():
+        m = re.match(r'^W(\d+)$', wk, re.IGNORECASE)
+        if not m:
+            continue
+        wk_num = int(m.group(1))
+        total = 0.0
+        for model_name, qty in models.items():
+            price = prices.get(model_name, 0.0)
+            if wk_num < cur_week:
+                # 과거: 실적
+                use = qty.get("actual", 0)
+            elif wk_num > cur_week:
+                # 미래: 계획
+                use = qty.get("plan", 0)
+            else:
+                # 현재: 실적 우선, 없으면 계획
+                use = qty.get("actual", 0) or qty.get("plan", 0)
+            total += use * price
+        week_sales[wk_num] = total
+    
+    # 월별 집계
+    month_sales = {}  # {7: 74.0, 8: 407.0}
+    for wk_num, sales in week_sales.items():
+        mo = _week_to_month(wk_num, year)
+        if mo is None:
+            continue
+        month_sales[mo] = month_sales.get(mo, 0.0) + sales
+    
+    # 문자열 조립
+    parts = []
+    for mo in sorted(month_sales.keys()):
+        parts.append(f"{mo}월 {month_sales[mo]:.1f}만불")
+    # 현재 주차만 별도 강조 (있으면)
+    if cur_week in week_sales:
+        parts.append(f"W{cur_week} {week_sales[cur_week]:.1f}만불")
+    
+    return " · ".join(parts)
+
+
+
+# ============================================================
+# [SALES-XLSX] 출하계획 엑셀 자동 파싱 + 판가 기반 매출 계산
+# ============================================================
+def parse_sales_excel(file_path):
+    """출하계획 xlsx를 읽어서 models / weeks(plan/actual) 구조로 반환."""
+    from openpyxl import load_workbook
+    import re as _re
+
+    wb = load_workbook(str(file_path), data_only=True)
+    ws = wb.active
+
+    _WEEK_RE = _re.compile(r'W\s*(\d{1,2})', _re.I)
+
+    def _cell_str(v):
+        return '' if v is None else str(v).strip()
+
+    def _safe_num(v):
+        if v in (None, '', '-'):
+            return 0.0
+        try:
+            return float(v)
+        except Exception:
+            s = str(v).replace(',', '').strip()
+            try:
+                return float(s) if s else 0.0
+            except Exception:
+                return 0.0
+
+    def _month_from_label(raw):
+        s = _cell_str(raw).replace(' ', '')
+        m = _re.search(r'(\d{1,2})월', s)
+        return int(m.group(1)) if m else None
+
+    def _month_for_col(col):
+        # 자기 자신 셀 or 왼쪽 셀들에서 "N월" 라벨 스캔 (병합셀 대응)
+        for r in (1, 2):
+            m = _month_from_label(ws.cell(r, col).value)
+            if m:
+                return m
+        for c in range(col, 0, -1):
+            for r in (1, 2):
+                m = _month_from_label(ws.cell(r, c).value)
+                if m:
+                    return m
+        return None
+
+    def _build_model_name(row):
+        b = _cell_str(ws.cell(row, 2).value)
+        c = _cell_str(ws.cell(row, 3).value)
+        if not b and not c:
+            return None
+        low_b = b.lower()
+        low_c = c.lower()
+        if low_b in ('합계', 'total', '계') or low_c in ('합계', 'total', '계'):
+            return None
+        # B+C 2단 (프레임처럼)
+        if c and not _re.fullmatch(r'[\d,.\-]+', c):
+            return f'{b} / {c}' if b else c
+        return b or c
+
+    # 주차 컬럼 스캔
+    week_cols = []
+    for c in range(1, ws.max_column + 1):
+        label = _cell_str(ws.cell(3, c).value)
+        m = _WEEK_RE.search(label)
+        if not m:
+            continue
+        week_num = int(m.group(1))
+        month_num = _month_for_col(c)
+        week_cols.append((c, week_num, month_num))
+
+    models = []
+    weeks_map = {}
+
+    for row in range(5, ws.max_row + 1):
+        model = _build_model_name(row)
+        if not model:
+            continue
+
+        row_has_value = False
+        for col, week_num, month_num in week_cols:
+            plan = _safe_num(ws.cell(row, col).value)
+            actual = _safe_num(ws.cell(row, col + 1).value)
+            if plan != 0 or actual != 0:
+                row_has_value = True
+
+            weeks_map.setdefault(week_num, {
+                'week': week_num,
+                'month': month_num,
+                'models': {}
+            })
+            weeks_map[week_num]['models'][model] = {
+                'plan': plan,
+                'actual': actual,
+            }
+
+        if row_has_value and model not in models:
+            models.append(model)
+
+    return {
+        'models': models,
+        'weeks': [weeks_map[k] for k in sorted(weeks_map.keys())],
+    }
+
+
+def compute_sales_from_parsed(parsed, prices, today=None):
+    """parsed(xlsx) + prices(만불) → 3박스 요약 문자열 + 구조화 데이터."""
+    from datetime import date as _date, datetime as _dt
+
+    today = today or _date.today()
+    current_week = today.isocalendar()[1]
+    current_month = today.month
+    next_month = 1 if current_month == 12 else current_month + 1
+
+    month_totals = {}
+    week_totals = {}
+
+    for w in (parsed.get('weeks') or []):
+        wk = int(w.get('week') or 0)
+        month_num = w.get('month')
+        total = 0.0
+
+        for model, qa in (w.get('models') or {}).items():
+            price = float((prices or {}).get(model, 0) or 0)
+            plan = float((qa or {}).get('plan', 0) or 0)
+            actual = float((qa or {}).get('actual', 0) or 0)
+
+            if wk < current_week:
+                qty = actual
+            elif wk == current_week:
+                qty = actual if actual > 0 else plan
+            else:
+                qty = plan
+
+            total += qty * price
+
+        week_totals[wk] = total
+        if month_num:
+            month_totals[month_num] = month_totals.get(month_num, 0.0) + total
+
+    cur_month_amt = round(month_totals.get(current_month, 0.0), 1)
+    cur_week_amt = round(week_totals.get(current_week, 0.0), 1)
+    next_month_amt = round(month_totals.get(next_month, 0.0), 1)
+
+    delta_pct = 0.0
+    if cur_month_amt > 0:
+        delta_pct = round(((next_month_amt - cur_month_amt) / cur_month_amt) * 100.0, 1)
+
+    summary_text = (
+        f'{current_month}월 {cur_month_amt:.1f}만불 · '
+        f'이번주 {cur_week_amt:.1f}만불 · '
+        f'{next_month}월 {next_month_amt:.1f}만불'
+    )
+    if cur_month_amt > 0:
+        arrow = '▲' if delta_pct >= 0 else '▼'
+        summary_text += f' {arrow}{abs(delta_pct):.1f}%'
+
+    return {
+        'sales_summary': summary_text,
+        'sales_summary_data': {
+            'boxes': [
+                {'key': 'current_month', 'label': f'{current_month}월',
+                 'amount': cur_month_amt, 'unit': '만불'},
+                {'key': 'current_week', 'label': '이번주',
+                 'amount': cur_week_amt, 'unit': '만불', 'week': current_week},
+                {'key': 'next_month', 'label': f'{next_month}월',
+                 'amount': next_month_amt, 'unit': '만불', 'delta_pct': delta_pct},
+            ]
+        },
+        'sales_computed_at': _dt.now().isoformat(timespec='seconds'),
+    }
+
+
+def _find_xlsx_in_section_items(items):
+    """섹션 items에서 첫 번째 .xlsx 파일의 서버 URL 추출."""
+    if not items:
+        return None
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        for key in ('url', 'file_url', 'href', 'photo_ref', 'text'):
+            v = it.get(key)
+            if not v:
+                continue
+            s = str(v)
+            if '.xlsx' in s.lower() or '.xlsm' in s.lower():
+                return s
+    return None
+
+
+def _xlsx_url_to_local_path(url_str):
+    """/admin/manual-files/{doc_id}/{filename} → 실제 파일 경로."""
+    if not url_str:
+        return None
+    s = str(url_str)
+    # /admin/manual-files/{doc_id}/{filename} 패턴
+    import re as _re
+    m = _re.search(r'/admin/manual-files/([^/]+)/([^/?#]+)', s)
+    if m:
+        doc_id = m.group(1)
+        fname = m.group(2)
+        return UPLOAD_DIR / 'manual' / doc_id / fname
+    return None
+
+
+def _is_sales_section_title(title):
+    t = re.sub(r'\s+', '', (title or ''))
+    if not t:
+        return False
+    return ('주차별' in t and ('계획' in t or '출하' in t)) or t == '주차별계획'
+
+def compute_sales_from_input(sales_input: str, today: Optional[date] = None) -> dict:
+    """외부에서 호출하는 진입점"""
+    if not sales_input or not sales_input.strip():
+        return {"sales_summary": "", "sales_computed_at": ""}
+    parsed = _parse_sales_input(sales_input)
+    summary = _compute_sales_summary(parsed, today=today)
+    return {
+        "sales_summary": summary,
+        "sales_computed_at": datetime.now().isoformat(timespec='seconds'),
+        "_debug": {
+            "prices": parsed.get("prices"),
+            "weeks_count": len(parsed.get("weeks", {})),
+        },
+    }
+
+
+
+# ============================================================
+# 매출 자동 계산 API
+# ============================================================
+@app.post("/admin/notes/section/sales_input")
+def admin_set_sales_input(payload: dict, _admin: int = Depends(get_admin_session)):
+    """
+    body: { division_id, card_title, section_title, sales_input }
+    → notes.json 의 해당 section 에 sales_input/sales_summary/sales_computed_at 저장
+    → 계산 결과 반환
+    """
+    division_id = (payload.get("division_id") or "").strip()
+    card_title = (payload.get("card_title") or "").strip()
+    section_title = (payload.get("section_title") or "").strip()
+    sales_input = payload.get("sales_input") or ""
+    
+    if not division_id or not card_title or not section_title:
+        raise HTTPException(status_code=400, detail="division_id/card_title/section_title 필요")
+    
+    result = compute_sales_from_input(sales_input)
+    
+    # notes.json 갱신
+    data = _load_notes()
+    notes_map = data.get("notes", {}) or {}
+    div = notes_map.get(division_id) or {}
+    cards = div.get("cards", []) or []
+    target_card = None
+    for c in cards:
+        if (c.get("title") or "").strip() == card_title:
+            target_card = c
+            break
+    if not target_card:
+        raise HTTPException(status_code=404, detail=f"카드 없음: {card_title}")
+    
+    sections = target_card.get("sections", []) or []
+    target_sec = None
+    for s in sections:
+        if (s.get("title") or "").strip() == section_title:
+            target_sec = s
+            break
+    if not target_sec:
+        raise HTTPException(status_code=404, detail=f"섹션 없음: {section_title}")
+    
+    target_sec["sales_input"] = sales_input
+    target_sec["sales_summary"] = result["sales_summary"]
+    target_sec["sales_computed_at"] = result["sales_computed_at"]
+    
+    # 저장
+    NOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    NOTES_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    
+    return {
+        "ok": True,
+        "sales_summary": result["sales_summary"],
+        "sales_computed_at": result["sales_computed_at"],
+        "debug": result.get("_debug", {}),
+    }
+
+
+def compute_sales_from_data(sales_data: dict, today: Optional[date] = None) -> dict:
+    """구조화된 sales_data → summary 계산.
+    sales_data = {
+      "prices": {"EFEM": 65, ...},
+      "weeks": [{"week": 27, "models": {"EFEM": {"plan": 2, "actual": 2}}}, ...]
+    }
+    """
+    if not isinstance(sales_data, dict):
+        return {"sales_summary": "", "sales_computed_at": ""}
+    prices = sales_data.get("prices") or {}
+    weeks_list = sales_data.get("weeks") or []
+    if not prices or not weeks_list:
+        return {"sales_summary": "", "sales_computed_at": ""}
+    
+    # sales_helpers.py 의 _compute_sales_summary 와 동일 규칙
+    if today is None:
+        today = date.today()
+    cur_week = today.isocalendar()[1]
+    year = today.year
+    
+    # weeks 리스트를 dict로 변환하여 _compute_sales_summary 재활용
+    parsed = {"prices": {k: float(v) for k, v in prices.items()}, "weeks": {}}
+    for w in weeks_list:
+        wk_num = w.get("week")
+        if not isinstance(wk_num, int) or wk_num <= 0:
+            continue
+        models = w.get("models") or {}
+        parsed["weeks"][f"W{wk_num}"] = {
+            m: {"plan": int(v.get("plan", 0) or 0), "actual": int(v.get("actual", 0) or 0)}
+            for m, v in models.items() if isinstance(v, dict)
+        }
+    
+    summary = _compute_sales_summary(parsed, today=today)
+    return {
+        "sales_summary": summary,
+        "sales_computed_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+@app.post("/admin/notes/section/sales_recompute")
+def admin_recompute_all_sales(_admin: int = Depends(get_admin_session)):
+    """모든 section의 sales_input 재계산 (판가 정책 바뀔 때 등)"""
+    data = _load_notes()
+    notes_map = data.get("notes", {}) or {}
+    count = 0
+    for div_id, div in notes_map.items():
+        for c in div.get("cards", []) or []:
+            for s in c.get("sections", []) or []:
+                si = s.get("sales_input")
+                if not si:
+                    continue
+                r = compute_sales_from_input(si)
+                s["sales_summary"] = r["sales_summary"]
+                s["sales_computed_at"] = r["sales_computed_at"]
+                count += 1
+    NOTES_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"ok": True, "recomputed": count}
+

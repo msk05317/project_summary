@@ -184,14 +184,22 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     final dt = DateTime.tryParse(reportDate);
     if (dt == null) return null;
 
-    final jan1 = DateTime(dt.year, 1, 1);
-    final daysUntilFirstMonday = (8 - jan1.weekday) % 7;
-    final firstMonday = jan1.add(Duration(days: daysUntilFirstMonday));
-    if (dt.isBefore(firstMonday)) return 0;
-
+    // ISO 8601 week number 계산
+    // - 주는 월요일 시작
+    // - 목요일이 속한 주를 그 해의 주로 간주
+    // - 백엔드(_parse_report_filename) 와 동일한 규칙
     final target = DateTime(dt.year, dt.month, dt.day);
-    final diff = target.difference(firstMonday).inDays;
-    return 1 + (diff ~/ 7);
+
+    // 이번 주 목요일을 계산 (target 요일: 월=1 ~ 일=7)
+    final weekday = target.weekday; // 1..7
+    final thursday = target.add(Duration(days: 4 - weekday));
+
+    // 목요일이 속한 해의 1월 1일
+    final jan1 = DateTime(thursday.year, 1, 1);
+
+    // 1월 1일부터 목요일까지의 일수 → 주차
+    final daysDiff = thursday.difference(jan1).inDays;
+    return 1 + (daysDiff ~/ 7);
   }
 
   String _englishName(String key, String fallback) {
@@ -314,16 +322,9 @@ class _ReportSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final headlineItem = _pickHeadlineItem(section);
-    final headlineText = headlineItem?.text ?? section.title;
-
-    // 마감 배지 텍스트 + 톤 (없으면 둘 다 null)
-    final deadline = _deadlineFor(headlineItem?.dueDate);
-
-    final deadlineStatus =
-        _statusFromDueDate(headlineItem?.dueDate) ?? projectStatus;
-
-    final subs = _buildSubs(section, headlineItem);
+    final rows = section.items
+        .where((it) => it.type != 'photo' && it.text.trim().isNotEmpty)
+        .toList();
 
     return BaseCard(
       child: Column(
@@ -341,91 +342,174 @@ class _ReportSectionCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.x3),
           ],
-          IssueBlock(
-            headline: headlineText,
-            status: deadlineStatus,
-            showStar: deadlineStatus == 'RED' || deadlineStatus == 'YELLOW',
-            subs: subs,
-            deadlineText: deadline?.text,
-            deadlineTone: deadline?.tone ?? DeadlineTone.normal,
-          ),
+          for (int i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.x2),
+            _ReportItemRow(item: rows[i]),
+          ],
+          if (section.salesSummary != null) ...[
+            const SizedBox(height: AppSpacing.x3),
+            _SalesSummaryBadge(text: section.salesSummary!),
+          ],
         ],
       ),
     );
   }
 
-  ReportItem? _pickHeadlineItem(ReportSection section) {
-    for (final item in section.items) {
-      if (item.type == 'highlight') return item;
+}
+
+class _SalesSummaryBadge extends StatelessWidget {
+  final String text;
+
+  const _SalesSummaryBadge({required this.text});
+
+  /// "7월 298.0만불 · W31 120.0만불 · 8월 407.0만불 ▲8.8%" 파싱
+  List<_SalesBox> _parse(String raw) {
+    final segs = raw.split('·').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final boxes = <_SalesBox>[];
+
+    final segRe = RegExp(
+      r'^(.+?)\s+([\-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*만불(?:\s*([▲▼])\s*([\-]?\d+(?:\.\d+)?)\s*%)?',
+    );
+
+    for (final seg in segs) {
+      final m = segRe.firstMatch(seg);
+      if (m == null) continue;
+      var label = (m.group(1) ?? '').trim();
+      final amount = m.group(2) ?? '';
+      final arrow = m.group(3);
+      final pct = m.group(4);
+
+      final wm = RegExp(r'^W(\d+)$').firstMatch(label);
+      if (wm != null) {
+        label = '${wm.group(1)}주차';
+      }
+
+      boxes.add(_SalesBox(
+        label: label,
+        amount: amount,
+        deltaPct: pct,
+        deltaUp: arrow == '▲',
+      ));
     }
-    for (final item in section.items) {
-      if (item.type == 'bullet') return item;
-    }
-    for (final item in section.items) {
-      if (item.type == 'sub') return item;
-    }
-    return null;
+    return boxes;
   }
 
-  List<IssueSubLine> _buildSubs(ReportSection section, ReportItem? headlineItem) {
-    final result = <IssueSubLine>[];
-    for (final item in section.items) {
-      if (identical(item, headlineItem)) continue;
-      if (item.type == 'photo') continue;
-      if (item.text.trim().isEmpty) continue;
-
-      final marker = item.type == 'sub' ? '·' : '-';
-      result.add(IssueSubLine(text: item.text, marker: marker));
-    }
-    return result;
-  }
-
-  String? _statusFromDueDate(String? dueDate) {
-    if (dueDate == null || dueDate.isEmpty) return null;
-    final dt = DateTime.tryParse(dueDate);
-    if (dt == null) return null;
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final diff = dt.difference(today).inDays;
-
-    if (diff < 0) return 'RED';
-    if (diff <= 7) return 'YELLOW';
-    return 'GREEN';
-  }
-
-  // due_date → 'D+6 (06/18)' / 'D-3 (07/01)' 형식과 톤을 함께 반환
-  ({String text, DeadlineTone tone})? _deadlineFor(String? dueDate) {
-    if (dueDate == null || dueDate.isEmpty) return null;
-    final dt = DateTime.tryParse(dueDate);
-    if (dt == null) return null;
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final diff = dt.difference(today).inDays;
-
-    final mm = dt.month.toString().padLeft(2, '0');
-    final dd = dt.day.toString().padLeft(2, '0');
-
-    String text;
-    DeadlineTone tone;
-
-    if (diff < 0) {
-      text = 'D+${-diff} ($mm/$dd)';
-      tone = DeadlineTone.over;
-    } else if (diff == 0) {
-      text = 'D-day ($mm/$dd)';
-      tone = DeadlineTone.warn;
-    } else if (diff <= 7) {
-      text = 'D-$diff ($mm/$dd)';
-      tone = DeadlineTone.warn;
-    } else {
-      text = 'D-$diff ($mm/$dd)';
-      tone = DeadlineTone.normal;
+  @override
+  Widget build(BuildContext context) {
+    final boxes = _parse(text);
+    if (boxes.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F6FB),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFDCE3EE)),
+        ),
+        child: Row(
+          children: [
+            const Text('💰', style: TextStyle(fontSize: 14)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF12325F),
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
-    return (text: text, tone: tone);
+    return Row(
+      children: List.generate(boxes.length, (i) {
+        final isLast = i == boxes.length - 1;
+        final b = boxes[i];
+        final highlight = b.deltaPct != null;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: isLast ? 0 : 6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: BoxDecoration(
+                color: highlight ? const Color(0xFFFFF9E6) : const Color(0xFFF3F6FB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFDCE3EE)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    b.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF7C8594),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      b.amount,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF12325F),
+                        height: 1.15,
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    '만불',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF98A2B3),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (b.deltaPct != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      '${b.deltaUp ? "▲" : "▼"} ${b.deltaPct}%',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: b.deltaUp
+                            ? const Color(0xFFD92D20)
+                            : const Color(0xFF067647),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
   }
+}
+
+class _SalesBox {
+  final String label;
+  final String amount;
+  final String? deltaPct;
+  final bool deltaUp;
+  const _SalesBox({
+    required this.label,
+    required this.amount,
+    this.deltaPct,
+    this.deltaUp = true,
+  });
 }
 
 
@@ -536,5 +620,84 @@ class _ComingSoonView extends StatelessWidget {
       ),
     );
   }
+}
+
+
+// ─────────────────────────────────────────────
+// _ReportItemRow: 한 섹션 안의 개별 아이템 1줄 렌더
+//   · 입력 순서 그대로 (정렬 안 함)
+//   · due_date 있으면 우측 DeadlinePill, 없으면 배지 위젯 자체 미삽입
+//   · type 별 마커: highlight → 진한 dot, bullet → 옅은 dot, sub → 들여쓰기 + ·
+// ─────────────────────────────────────────────
+class _ReportItemRow extends StatelessWidget {
+  final ReportItem item;
+
+  const _ReportItemRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final deadline = _deadlineForIso(item.dueDate);
+    final isSub = item.type == 'sub';
+    final isHighlight = item.type == 'highlight';
+
+    final textStyle = (isHighlight ? AppText.bodyStrong : AppText.body).copyWith(
+      color: isSub ? AppColors.reportBody : AppColors.reportHeading,
+      height: 1.45,
+    );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 32),
+      child: Padding(
+        padding: EdgeInsets.only(left: isSub ? 16 : 0, top: 2, bottom: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                item.text,
+                style: textStyle,
+                softWrap: true,
+              ),
+            ),
+            if (deadline != null) ...[
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: DeadlinePill(
+                  text: deadline.text,
+                  tone: deadline.tone,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+({String text, DeadlineTone tone})? _deadlineForIso(String? dueDate) {
+  if (dueDate == null || dueDate.isEmpty) return null;
+  final dt = DateTime.tryParse(dueDate);
+  if (dt == null) return null;
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final diff = dt.difference(today).inDays;
+
+  final mm = dt.month.toString().padLeft(2, '0');
+  final dd = dt.day.toString().padLeft(2, '0');
+
+  if (diff < 0) {
+    return (text: 'D+${-diff} ($mm/$dd)', tone: DeadlineTone.over);
+  }
+  if (diff == 0) {
+    return (text: 'D-day ($mm/$dd)', tone: DeadlineTone.warn);
+  }
+  if (diff <= 7) {
+    return (text: 'D-$diff ($mm/$dd)', tone: DeadlineTone.warn);
+  }
+  return (text: 'D-$diff ($mm/$dd)', tone: DeadlineTone.normal);
 }
 

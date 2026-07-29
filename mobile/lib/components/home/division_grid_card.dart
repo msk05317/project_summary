@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import '../../design/colors.dart';
 import '../../design/typography.dart';
+import '../../models/dashboard.dart';
 
 class DivisionGridCard extends StatelessWidget {
   const DivisionGridCard({
@@ -19,7 +20,7 @@ class DivisionGridCard extends StatelessWidget {
     required this.divisionId,
     required this.label,
     required this.projectCount,
-    required this.isActive,
+    required this.status,
     required this.isFavorite,
     required this.onTap,
     required this.onToggleFavorite,
@@ -28,7 +29,7 @@ class DivisionGridCard extends StatelessWidget {
   final String divisionId;
   final String label;
   final int projectCount;
-  final bool isActive;
+  final DivisionStatus status;
   final bool isFavorite;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
@@ -58,21 +59,17 @@ class DivisionGridCard extends StatelessWidget {
                     width: 7,
                     height: 7,
                     decoration: BoxDecoration(
-                      color: isActive
-                          ? const Color(0xFF156082)
-                          : const Color(0xFFB8BFCC),
+                      color: _statusColor(status),
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    isActive ? '진행 중' : '대기',
+                    _statusLabel(status),
                     style: AppText.caption.copyWith(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isActive
-                          ? const Color(0xFF156082)
-                          : const Color(0xFF7C8594),
+                      color: _statusTextColor(status),
                     ),
                   ),
                   const Spacer(),
@@ -115,4 +112,31 @@ class DivisionGridCard extends StatelessWidget {
       ),
     );
   }
+  static String _statusLabel(DivisionStatus s) {
+    switch (s) {
+      case DivisionStatus.delayed: return '지연';
+      case DivisionStatus.warning: return '임박';
+      case DivisionStatus.active:  return '진행 중';
+      case DivisionStatus.empty:   return '비어 있음';
+    }
+  }
+
+  static Color _statusColor(DivisionStatus s) {
+    switch (s) {
+      case DivisionStatus.delayed: return const Color(0xFFE23D3D);
+      case DivisionStatus.warning: return const Color(0xFFE8A339);
+      case DivisionStatus.active:  return const Color(0xFF156082);
+      case DivisionStatus.empty:   return const Color(0xFFB8BFCC);
+    }
+  }
+
+  static Color _statusTextColor(DivisionStatus s) {
+    switch (s) {
+      case DivisionStatus.delayed: return const Color(0xFFE23D3D);
+      case DivisionStatus.warning: return const Color(0xFFE8A339);
+      case DivisionStatus.active:  return const Color(0xFF156082);
+      case DivisionStatus.empty:   return const Color(0xFF7C8594);
+    }
+  }
 }
+

@@ -8,7 +8,7 @@ class ProjectGridCard extends StatelessWidget {
   final String englishName;
   final String koreanName;
   final String status;
-  final int progressPercent;
+  final int? progressPercent;
   final bool isFavorite;
   final bool isSelected;
   final bool hasData;
@@ -153,7 +153,7 @@ class ProjectGridCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         Text(
-                          hasData ? '$progressPercent%' : '-',
+                          progressPercent == null ? '-' : '$progressPercent%',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,

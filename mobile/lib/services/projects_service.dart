@@ -12,7 +12,7 @@ import '../models/project_summary.dart';
 class ProjectsService {
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://projectsummary-production.up.railway.app',
+    defaultValue: 'https://project-summary-mkoo.fly.dev',
   );
 
   // 전체 프로젝트 요약을 받아옵니다.

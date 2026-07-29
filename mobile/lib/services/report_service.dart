@@ -6,7 +6,7 @@ import '../models/report_note.dart';
 class ReportService {
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://projectsummary-production.up.railway.app',
+    defaultValue: 'https://project-summary-mkoo.fly.dev',
   );
 
   static Future<ReportNote> fetchByProject(String projectKey) async {

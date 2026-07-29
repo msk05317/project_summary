@@ -1,29 +1,512 @@
 {
   "version": 1,
-  "updated_at": "2026-07-03T00:00:00Z",
+  "updated_at": "2026-07-07T09:44:10.344891Z",
   "projects": {
     "major_module": {
       "unit_economics": {
-        "EFEM": {"asp": 130000, "material": 107900},
-        "VTM":  {"asp": 240000, "material": 196800}
+        "EFEM": {
+          "asp": 130000,
+          "material": 107900
+        },
+        "VTM": {
+          "asp": 240000,
+          "material": 196800
+        }
       },
       "months": {
-        "2026-06": {"efem": 5,  "vtm": 8,  "type": "actual", "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
-        "2026-07": {"efem": 17, "vtm": 18, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
-        "2026-08": {"efem": 17, "vtm": 18, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"}
+        "2026-06": {
+          "month": "2026-06",
+          "type": "actual",
+          "efem": 5,
+          "vtm": 8,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 7,
+              "actual": 5
+            },
+            "major_module::VTM": {
+              "plan": 9,
+              "actual": 8
+            }
+          }
+        },
+        "2026-07": {
+          "month": "2026-07",
+          "type": "actual",
+          "efem": 2,
+          "vtm": 2,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 17,
+              "actual": 2
+            },
+            "major_module::VTM": {
+              "plan": 18,
+              "actual": 2
+            }
+          }
+        },
+        "2026-08": {
+          "efem": 11,
+          "vtm": 11,
+          "type": "plan",
+          "source": "pptx:ec6184dc41d5",
+          "uploaded_at": "2026-07-03T00:00:00Z",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "month": "2026-08",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 11,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 11,
+              "actual": null
+            }
+          }
+        },
+        "2026-04": {
+          "efem": 9,
+          "vtm": 4,
+          "type": "actual",
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "month": "2026-04",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 16,
+              "actual": 9
+            },
+            "major_module::VTM": {
+              "plan": 24,
+              "actual": 4
+            }
+          }
+        },
+        "2026-05": {
+          "efem": 4,
+          "vtm": 13,
+          "type": "actual",
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "month": "2026-05",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 4,
+              "actual": 4
+            },
+            "major_module::VTM": {
+              "plan": 17,
+              "actual": 13
+            }
+          }
+        }
       },
       "weeks": {
-        "2026-W27": {"efem": 2, "vtm": 2, "type": "actual", "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
-        "2026-W28": {"efem": 5, "vtm": 6, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
-        "2026-W29": {"efem": 5, "vtm": 4, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
-        "2026-W30": {"efem": 5, "vtm": 1, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"},
-        "2026-W31": {"efem": 0, "vtm": 5, "type": "plan",   "source": "260703_메이저모듈진행현황.pptx", "uploaded_at": "2026-07-03T00:00:00Z"}
+        "2026-W27": {
+          "week": "2026-W27",
+          "type": "actual",
+          "efem": 2,
+          "vtm": 2,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 2,
+              "actual": 2
+            },
+            "major_module::VTM": {
+              "plan": 2,
+              "actual": 2
+            }
+          }
+        },
+        "2026-W28": {
+          "week": "2026-W28",
+          "type": "plan",
+          "efem": 5,
+          "vtm": 6,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 5,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 6,
+              "actual": null
+            }
+          }
+        },
+        "2026-W29": {
+          "week": "2026-W29",
+          "type": "plan",
+          "efem": 5,
+          "vtm": 4,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 5,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 4,
+              "actual": null
+            }
+          }
+        },
+        "2026-W30": {
+          "week": "2026-W30",
+          "type": "plan",
+          "efem": 5,
+          "vtm": 1,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 5,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 1,
+              "actual": null
+            }
+          }
+        },
+        "2026-W31": {
+          "week": "2026-W31",
+          "type": "plan",
+          "efem": 0,
+          "vtm": 5,
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 0,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 5,
+              "actual": null
+            }
+          }
+        },
+        "2026-W32": {
+          "efem": 5,
+          "vtm": 3,
+          "type": "plan",
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "week": "2026-W32",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 5,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 3,
+              "actual": null
+            }
+          }
+        },
+        "2026-W33": {
+          "efem": 5,
+          "vtm": 2,
+          "type": "plan",
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "week": "2026-W33",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 5,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 2,
+              "actual": null
+            }
+          }
+        },
+        "2026-W34": {
+          "efem": 0,
+          "vtm": 0,
+          "type": "plan",
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "week": "2026-W34",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 0,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 0,
+              "actual": null
+            }
+          }
+        },
+        "2026-W35": {
+          "efem": 1,
+          "vtm": 6,
+          "type": "plan",
+          "source": "pptx:ec6184dc41d5",
+          "updated_at": "2026-07-07T15:20:48.569852",
+          "week": "2026-W35",
+          "models": {
+            "major_module::EFEM": {
+              "plan": 1,
+              "actual": null
+            },
+            "major_module::VTM": {
+              "plan": 6,
+              "actual": null
+            }
+          }
+        }
       },
       "issue_lines": [
-        {"text": "W28 FE 1대 고객 사급자재(엔드이펙터) 지연", "due_date": "2026-07-06", "severity": "high", "show_dday": true},
-        {"text": "MACH I VTM 추가 승인 예정 · 10월 양산 승인 목표", "due_date": "2026-10-31", "severity": "mid", "show_dday": true},
-        {"text": "VN 내재화 프레임 진행 · FE 19/11, BE 25/14", "severity": "info", "show_dday": false}
-      ]
+        {
+          "text": "W28 FE 1대 고객 사급자재(엔드이펙터) 지연",
+          "due_date": "2026-07-06",
+          "severity": "high",
+          "show_dday": true
+        },
+        {
+          "text": "MACH I VTM 추가 승인 예정 · 10월 양산 승인 목표",
+          "due_date": "2026-10-31",
+          "severity": "mid",
+          "show_dday": true
+        },
+        {
+          "text": "VN 내재화 프레임 진행 · FE 19/11, BE 25/14",
+          "severity": "info",
+          "show_dday": false
+        }
+      ],
+      "cumulative": {
+        "models": {
+          "major_module::EFEM": {
+            "po": 74,
+            "shipped": 37
+          },
+          "major_module::VTM": {
+            "po": 78,
+            "shipped": 41
+          }
+        },
+        "source": "pptx:ec6184dc41d5",
+        "updated_at": "2026-07-07T15:20:48.569852"
+      }
+    },
+    "powerbox": {
+      "months": {
+        "2026-04": {
+          "type": "actual",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "month": "2026-04",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 280,
+              "actual": 115
+            },
+            "powerbox::양산17종": {
+              "plan": 38,
+              "actual": 55
+            },
+            "powerbox::개발16종": {
+              "plan": 2,
+              "actual": 2
+            }
+          }
+        },
+        "2026-05": {
+          "type": "actual",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "month": "2026-05",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 42,
+              "actual": 42
+            },
+            "powerbox::양산17종": {
+              "plan": 50,
+              "actual": 93
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": 3
+            }
+          }
+        },
+        "2026-06": {
+          "type": "actual",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "month": "2026-06",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 73,
+              "actual": 24
+            },
+            "powerbox::양산17종": {
+              "plan": 87,
+              "actual": 85
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": 13
+            }
+          }
+        },
+        "2026-07": {
+          "type": "actual",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "month": "2026-07",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 140,
+              "actual": 28
+            },
+            "powerbox::양산17종": {
+              "plan": 106,
+              "actual": 14
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": 0
+            }
+          }
+        }
+      },
+      "weeks": {
+        "2026-W27": {
+          "type": "actual",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "week": "2026-W27",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 20,
+              "actual": 28
+            },
+            "powerbox::양산17종": {
+              "plan": 21,
+              "actual": 14
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": 0
+            }
+          }
+        },
+        "2026-W28": {
+          "type": "plan",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "week": "2026-W28",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 30,
+              "actual": null
+            },
+            "powerbox::양산17종": {
+              "plan": 23,
+              "actual": null
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": null
+            }
+          }
+        },
+        "2026-W29": {
+          "type": "plan",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "week": "2026-W29",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 30,
+              "actual": null
+            },
+            "powerbox::양산17종": {
+              "plan": 29,
+              "actual": null
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": null
+            }
+          }
+        },
+        "2026-W30": {
+          "type": "plan",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "week": "2026-W30",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 30,
+              "actual": null
+            },
+            "powerbox::양산17종": {
+              "plan": 21,
+              "actual": null
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": null
+            }
+          }
+        },
+        "2026-W31": {
+          "type": "plan",
+          "source": "pptx:c1c6807a0bde",
+          "updated_at": "2026-07-07T16:44:10.344791",
+          "week": "2026-W31",
+          "models": {
+            "powerbox::AetherGDX": {
+              "plan": 30,
+              "actual": null
+            },
+            "powerbox::양산17종": {
+              "plan": 12,
+              "actual": null
+            },
+            "powerbox::개발16종": {
+              "plan": 0,
+              "actual": null
+            }
+          }
+        }
+      },
+      "cumulative": {
+        "models": {
+          "powerbox::AetherGDX": {
+            "po": 3352,
+            "shipped": 2231
+          },
+          "powerbox::양산17종": {
+            "po": 684,
+            "shipped": 424
+          },
+          "powerbox::개발16종": {
+            "po": 85,
+            "shipped": 30
+          }
+        },
+        "source": "pptx:c1c6807a0bde",
+        "updated_at": "2026-07-07T16:44:10.344791"
+      }
     }
   }
 }

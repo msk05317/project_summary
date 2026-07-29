@@ -12,3 +12,10 @@ test_excel/
 .DS_Store
 .vscode/
 *.log
+
+# 임시 복구/백업 파일
+notes.json.merged
+notes.json.recovered_from_git
+notes.json.bak_*
+main.py.bak_*
+*.bak_*

@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.0.8",
-  "latest_version_code": 9,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.0.8/app-release.apk",
-  "release_notes": "상세 화면 렌더 수정",
+  "latest_version": "1.1.0",
+  "latest_version_code": 11,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.1.0/app-release.apk",
+  "release_notes": "서버 이전 (Railway → Fly.io) 및 UI 개선 (일정 관리 패널)",
   "force_update": false
 }

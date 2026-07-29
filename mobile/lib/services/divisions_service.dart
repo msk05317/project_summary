@@ -13,7 +13,7 @@ class DivisionsService {
   // 주입이 없을 때를 대비해 운영 도메인을 기본값으로 둡니다.
   static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://projectsummary-production.up.railway.app',
+    defaultValue: 'https://project-summary-mkoo.fly.dev',
   );
 
   // 전체 사업부 목록을 받아옵니다.

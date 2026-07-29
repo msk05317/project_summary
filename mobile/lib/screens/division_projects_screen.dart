@@ -157,10 +157,15 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 
     int red = 0, orange = 0, green = 0, other = 0;
     int weightSum = 0;
+    int weightCount = 0; // 진행률 계산에 포함되는 카드 수 (dueDateMin 있는 것만)
 
     for (final c in divisionCards) {
       final s = c.status.toUpperCase();
-      weightSum += _weightOf(s);
+      final hasDue = (c.dueDateMin != null && c.dueDateMin!.isNotEmpty);
+      if (hasDue) {
+        weightSum += _weightOf(s);
+        weightCount++;
+      }
       switch (s) {
         case 'RED':
           red++;
@@ -178,7 +183,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     }
 
     final total = divisionCards.length;
-    final progress = total == 0 ? 0 : (weightSum / total).round();
+    final progress = weightCount == 0 ? 0 : (weightSum / weightCount).round();
 
     // 즉시 확인: RED/ORANGE 카드 중 마감 임박 상위 3건
     final immCandidates = divisionCards
@@ -218,8 +223,9 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     for (final p in widget.division.projects) {
       final card = cardByKey[p.id];
       final hasData = card != null;
+      final hasDue = hasData && (card.dueDateMin != null && card.dueDateMin!.isNotEmpty);
       final status = hasData ? _statusLabel(card.status) : '';
-      final percent = hasData ? _weightOf(card.status) : 0;
+      final int? percent = hasDue ? _weightOf(card.status) : null;
       projects.add(_ProjectItem(
         id: p.id,
         englishName: _englishOf(p.id),
@@ -235,12 +241,13 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       if (c.projectKey.isEmpty) continue;
       final exists = projects.any((p) => p.id == c.projectKey);
       if (exists) continue;
+      final hasDueX = (c.dueDateMin != null && c.dueDateMin!.isNotEmpty);
       projects.add(_ProjectItem(
         id: c.projectKey,
         englishName: _englishOf(c.projectKey),
         koreanName: c.projectLabel,
         status: _statusLabel(c.status),
-        progressPercent: _weightOf(c.status),
+        progressPercent: hasDueX ? _weightOf(c.status) : null,
         hasData: true,
       ));
     }
@@ -290,7 +297,9 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       final bFav = _favoriteProjects.contains(b.id);
       if (aFav != bFav) return aFav ? -1 : 1;
       if (a.hasData != b.hasData) return a.hasData ? -1 : 1;
-      return a.progressPercent.compareTo(b.progressPercent);
+      final ap = a.progressPercent ?? -1;
+      final bp = b.progressPercent ?? -1;
+      return ap.compareTo(bp);
     });
     return list;
   }
@@ -608,7 +617,7 @@ class _ProjectItem {
   final String englishName;
   final String koreanName;
   final String status;
-  final int progressPercent;
+  final int? progressPercent;
   final bool hasData;
 
   const _ProjectItem({

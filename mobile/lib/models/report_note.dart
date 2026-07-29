@@ -25,10 +25,14 @@ class ReportItem {
 class ReportSection {
   final String title;
   final List<ReportItem> items;
+  final String? salesSummary;
+  final String? salesComputedAt;
 
   const ReportSection({
     required this.title,
     required this.items,
+    this.salesSummary,
+    this.salesComputedAt,
   });
 
   factory ReportSection.fromJson(Map<String, dynamic> j) {
@@ -37,9 +41,16 @@ class ReportSection {
         .map(ReportItem.fromJson)
         .toList();
 
+    final rawSales = j['sales_summary'];
+    final salesText = rawSales is String && rawSales.trim().isNotEmpty
+        ? rawSales.trim()
+        : null;
+
     return ReportSection(
       title: (j['title'] ?? '').toString(),
       items: list,
+      salesSummary: salesText,
+      salesComputedAt: j['sales_computed_at'] as String?,
     );
   }
 

@@ -147,3 +147,27 @@ class DashboardSummary {
     );
   }
 }
+
+// ============================================================
+// 사업부 카드 배지 상태 (4단계)
+// 우선순위: delayed > warning > active > empty
+// ============================================================
+enum DivisionStatus { delayed, warning, active, empty }
+
+DivisionStatus computeDivisionStatus(
+  String divisionId,
+  List<DashboardCard> cards,
+) {
+  var hasAny = false;
+  var hasWarning = false;
+  for (final c in cards) {
+    if (c.divisionId != divisionId) continue;
+    hasAny = true;
+    final s = c.status.toUpperCase();
+    if (s == 'RED') return DivisionStatus.delayed;
+    if (s == 'YELLOW' || s == 'ORANGE') hasWarning = true;
+  }
+  if (hasWarning) return DivisionStatus.warning;
+  if (hasAny) return DivisionStatus.active;
+  return DivisionStatus.empty;
+}
