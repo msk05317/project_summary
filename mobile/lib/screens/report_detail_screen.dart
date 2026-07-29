@@ -348,7 +348,10 @@ class _ReportSectionCard extends StatelessWidget {
           ],
           if (section.salesSummary != null) ...[
             const SizedBox(height: AppSpacing.x3),
-            _SalesSummaryBadge(text: section.salesSummary!),
+            _SalesSummaryBadge(
+              text: section.salesSummary!,
+              reportDate: section.salesComputedAt,
+            ),
           ],
         ],
       ),
@@ -359,8 +362,31 @@ class _ReportSectionCard extends StatelessWidget {
 
 class _SalesSummaryBadge extends StatelessWidget {
   final String text;
+  final String? reportDate;
 
-  const _SalesSummaryBadge({required this.text});
+  const _SalesSummaryBadge({
+    required this.text,
+    this.reportDate,
+  });
+
+  /// ISO-8601 주차 계산 (reportDate 또는 오늘 기준)
+  int _isoWeek() {
+    DateTime d;
+    try {
+      d = reportDate != null && reportDate!.isNotEmpty
+          ? DateTime.parse(reportDate!)
+          : DateTime.now();
+    } catch (_) {
+      d = DateTime.now();
+    }
+    // ISO 8601: 목요일 기준
+    final thursday = d.add(Duration(days: 3 - ((d.weekday + 6) % 7)));
+    final firstThursday = DateTime(thursday.year, 1, 4);
+    final firstMonday = firstThursday
+        .subtract(Duration(days: (firstThursday.weekday + 6) % 7));
+    final diff = thursday.difference(firstMonday).inDays;
+    return (diff ~/ 7) + 1;
+  }
 
   /// "7월 298.0만불 · W31 120.0만불 · 8월 407.0만불 ▲8.8%" 파싱
   List<_SalesBox> _parse(String raw) {
@@ -382,6 +408,8 @@ class _SalesSummaryBadge extends StatelessWidget {
       final wm = RegExp(r'^W(\d+)$').firstMatch(label);
       if (wm != null) {
         label = '${wm.group(1)}주차';
+      } else if (label == '이번주') {
+        label = '${_isoWeek()}주차';
       }
 
       boxes.add(_SalesBox(

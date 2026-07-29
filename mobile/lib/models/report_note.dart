@@ -54,11 +54,26 @@ class ReportSection {
     );
   }
 
+  static bool _isImageRef(String? ref, String? name) {
+    final s = '${ref ?? ''} ${name ?? ''}'.toLowerCase();
+    return s.endsWith('.png') ||
+        s.endsWith('.jpg') ||
+        s.endsWith('.jpeg') ||
+        s.endsWith('.webp') ||
+        s.endsWith('.gif') ||
+        s.contains('.png?') ||
+        s.contains('.jpg?') ||
+        s.contains('.jpeg?') ||
+        s.contains('.webp?') ||
+        s.contains('.gif?');
+  }
+
   ReportItem? get firstPhoto {
     for (final item in items) {
-      if (item.type == 'photo' && (item.photoRef?.isNotEmpty ?? false)) {
-        return item;
-      }
+      final isPhoto = item.type == 'photo' && (item.photoRef?.isNotEmpty ?? false);
+      if (!isPhoto) continue;
+      if (!_isImageRef(item.photoRef, item.text)) continue;
+      return item;
     }
     return null;
   }
