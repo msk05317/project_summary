@@ -33,9 +33,11 @@ class AppBottomNav extends StatelessWidget {
           top: BorderSide(color: Color(0xFFE5E7EB)),
         ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.x2,
-        vertical: AppSpacing.x2,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.x2,
+        AppSpacing.x2,
+        AppSpacing.x2,
+        16,
       ),
       child: SafeArea(
         top: false,

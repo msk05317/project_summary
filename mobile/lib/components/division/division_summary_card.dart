@@ -45,34 +45,28 @@ class DivisionSummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      '$divisionLabel 요약',
-                      style: AppText.bodyStrong.copyWith(
-                        fontSize: 12,
-                        color: AppColors.headerNavy,
+                    Expanded(
+                      child: Text(
+                        '$divisionLabel 요약',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.bodyStrong.copyWith(
+                          fontSize: 12,
+                          color: AppColors.headerNavy,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 6),
                     Text(
-                      '최근 업데이트',
+                      updatedAt,
                       style: AppText.caption.copyWith(
                         fontSize: 9,
                         color: const Color(0xFF7C8594),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 2),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    updatedAt,
-                    style: AppText.caption.copyWith(
-                      fontSize: 9,
-                      color: const Color(0xFF7C8594),
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(

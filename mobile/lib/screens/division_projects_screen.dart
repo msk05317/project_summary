@@ -536,7 +536,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                         crossAxisCount: 2,
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
-                        mainAxisExtent: 88,
+                        mainAxisExtent: 100,
                       ),
                       itemBuilder: (context, i) {
                         final p = visibleProjects[i];
