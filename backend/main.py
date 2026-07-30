@@ -517,6 +517,176 @@ RETENTION_DAYS = 180
 # =========================================================
 # FastAPI 앱
 # =========================================================
+
+# ─── FCM (Firebase Cloud Messaging) ───
+# 대표님 폰으로 상태 변화(RED/ORANGE 신규 전이) 시 푸시 알람 전송
+DEVICE_TOKENS_FILE = DATA_DIR / "device_tokens.json"
+_fcm_initialized = False
+_fcm_lock = None
+
+def _init_fcm():
+    """Firebase Admin SDK 초기화. 서비스 계정 JSON은 FIREBASE_SERVICE_ACCOUNT_JSON 환경변수."""
+    global _fcm_initialized
+    if _fcm_initialized:
+        return True
+    try:
+        import firebase_admin
+        from firebase_admin import credentials
+        raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+        if not raw:
+            print("[FCM] FIREBASE_SERVICE_ACCOUNT_JSON 환경변수 없음. FCM 비활성.")
+            return False
+        cred_dict = json.loads(raw)
+        cred = credentials.Certificate(cred_dict)
+        try:
+            firebase_admin.get_app()
+        except ValueError:
+            firebase_admin.initialize_app(cred)
+        _fcm_initialized = True
+        print("[FCM] Firebase Admin 초기화 완료")
+        return True
+    except Exception as e:
+        print(f"[FCM] 초기화 실패: {e}")
+        return False
+
+
+def _load_device_tokens() -> list:
+    try:
+        with open(DEVICE_TOKENS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("tokens", []) if isinstance(data, dict) else []
+    except Exception:
+        return []
+
+
+def _save_device_tokens(tokens: list) -> None:
+    from datetime import datetime
+    DEVICE_TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(DEVICE_TOKENS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"updated_at": datetime.now().isoformat(), "tokens": tokens}, f, ensure_ascii=False, indent=2)
+
+
+def _add_device_token(token: str, platform: str = "android", debug: bool = True) -> None:
+    from datetime import datetime
+    tokens = _load_device_tokens()
+    for t in tokens:
+        if t.get("token") == token:
+            t["last_seen"] = datetime.now().isoformat()
+            t["platform"] = platform
+            t["debug"] = debug
+            _save_device_tokens(tokens)
+            return
+    tokens.append({
+        "token": token,
+        "platform": platform,
+        "debug": debug,
+        "created_at": datetime.now().isoformat(),
+        "last_seen": datetime.now().isoformat(),
+    })
+    _save_device_tokens(tokens)
+    print(f"[FCM] 새 토큰 등록: {token[:20]}... (총 {len(tokens)}개)")
+
+
+def _send_fcm_to_all(title: str, body: str, data: dict = None) -> dict:
+    """등록된 모든 토큰에 알람 전송. 오늘 스코프: 디버그 토큰만 대상."""
+    if not _init_fcm():
+        return {"ok": False, "reason": "fcm_not_initialized"}
+    tokens = _load_device_tokens()
+    # 안전장치: debug=True 토큰만 (릴리즈 빌드는 서버에 등록 안 되므로 자동 필터)
+    target_tokens = [t["token"] for t in tokens if t.get("debug")]
+    if not target_tokens:
+        print("[FCM] 대상 토큰 없음")
+        return {"ok": False, "reason": "no_tokens"}
+
+    from firebase_admin import messaging
+    sent = 0
+    failed = 0
+    invalid_tokens = []
+    for tok in target_tokens:
+        try:
+            msg = messaging.Message(
+                notification=messaging.Notification(title=title, body=body),
+                data={k: str(v) for k, v in (data or {}).items()},
+                token=tok,
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id="briefing_alarm",
+                        priority="high",
+                    ),
+                ),
+            )
+            messaging.send(msg)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            err_str = str(e)
+            if "registration-token-not-registered" in err_str or "invalid-argument" in err_str:
+                invalid_tokens.append(tok)
+            print(f"[FCM] 전송 실패: {e}")
+
+    # 무효 토큰 정리
+    if invalid_tokens:
+        remaining = [t for t in tokens if t.get("token") not in invalid_tokens]
+        _save_device_tokens(remaining)
+        print(f"[FCM] 무효 토큰 {len(invalid_tokens)}개 제거")
+
+    print(f"[FCM] 전송 완료: 성공 {sent}, 실패 {failed}")
+    return {"ok": True, "sent": sent, "failed": failed}
+
+
+def _snapshot_notes_status() -> dict:
+    """현재 notes.json의 카드별 상태를 딕셔너리로 반환. 알람 diff용."""
+    try:
+        notes = _load_notes()
+        result = {}
+        for div_id, div_data in (notes.get("notes") or {}).items():
+            for card in (div_data.get("cards") or []):
+                title = card.get("title") or card.get("product") or ""
+                if not title:
+                    continue
+                status = _calc_card_status(card) if card.get("sections") else (card.get("status") or "")
+                result[f"{div_id}/{title}"] = status
+        return result
+    except Exception as e:
+        print(f"[FCM] snapshot 실패: {e}")
+        return {}
+
+
+def _detect_status_transitions(before: dict, after: dict) -> list:
+    """이전 → 이후 상태 diff. RED/ORANGE로 새로 전이된 카드만 반환."""
+    events = []
+    for key, new_status in after.items():
+        old_status = before.get(key, "")
+        if new_status in ("RED", "ORANGE") and old_status != new_status:
+            div_id, title = key.split("/", 1) if "/" in key else ("", key)
+            events.append({
+                "division_id": div_id,
+                "title": title,
+                "old_status": old_status or "없음",
+                "new_status": new_status,
+            })
+    return events
+
+
+def _fire_status_alarms(events: list) -> None:
+    """상태 전이 이벤트를 FCM으로 전송."""
+    if not events:
+        return
+    for ev in events:
+        emoji = "🔴" if ev["new_status"] == "RED" else "🟠"
+        title = f"{emoji} {ev['title']} 상태 변경"
+        body = f"{ev['old_status']} → {ev['new_status']}"
+        _send_fcm_to_all(title, body, data={
+            "type": "status_change",
+            "division_id": ev["division_id"],
+            "title": ev["title"],
+            "new_status": ev["new_status"],
+        })
+
+
+# ─── FCM 엔드포인트 ───
+
 app = FastAPI(title="사업부 진행현황 보고 API")
 
 app.add_middleware(
@@ -1126,12 +1296,17 @@ def _due_status_one(due_raw: str) -> str:
 
 def _calc_card_status(card: dict) -> str:
     """카드 안 items 들의 due_date 들을 보고 가장 위험한 색으로 집계.
-    빨강 > 주황 > 파랑 > 검정 순.
-    items가 비어있거나 모두 due_date 없음 → BLACK."""
-    priority = {"RED": 5, "ORANGE": 4, "BLUE": 3, "BLACK": 1}
+    빨강 > 주황 > 파랑 > 초록(매출만) > 검정 순.
+    items가 비어있고 매출 데이터도 없으면 → BLACK.
+    매출 데이터가 있고 due 항목이 없으면 → GREEN (정상 운영중)."""
+    priority = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GREEN": 2, "BLACK": 1}
     best = "BLACK"
     sections = card.get("sections") or []
+    has_sales = False
     for sec in sections:
+        # 매출 데이터 감지
+        if (sec.get("sales_summary") or "").strip():
+            has_sales = True
         for it in (sec.get("items") or []):
             if not isinstance(it, dict):
                 continue
@@ -1140,6 +1315,9 @@ def _calc_card_status(card: dict) -> str:
                 best = s
                 if best == "RED":
                     return best
+    # due 상태가 BLACK인데 매출은 있으면 GREEN 승격
+    if best == "BLACK" and has_sales:
+        return "GREEN"
     return best
 
 
@@ -1238,13 +1416,26 @@ def dashboard():
                             bullets.append(txt)
 
                                 # 카드 본문: 날짜 있는 항목 우선, 없으면 일반 bullets 사용
-                # 완전히 빈 카드(bullets/highlight/dated 모두 없음)만 스킵
-                if not dated_bullets and not bullets and not highlight_text:
+                # 완전히 빈 카드(bullets/highlight/dated/sales 모두 없음)만 스킵
+                # sales_summary 가 있으면 매출 카드로 인정
+                sales_summary_any = ""
+                for _sec in (nc.get("sections") or []):
+                    _ss = (_sec or {}).get("sales_summary")
+                    if _ss and str(_ss).strip():
+                        sales_summary_any = str(_ss).strip()
+                        break
+
+                if not dated_bullets and not bullets and not highlight_text and not sales_summary_any:
                     continue
+
                 if dated_bullets:
                     bullets = dated_bullets[:10]
                 else:
                     bullets = bullets[:10]
+
+                # 매출만 있는 카드: 요약을 bullets/headline 으로 사용
+                if not bullets and sales_summary_any:
+                    bullets = [sales_summary_any]
 
                 # headline: summary_bullets[0] 또는 첫 dated bullet 에서 날짜 제거
                 def _shorten(txt: str, limit: int = 20) -> str:
@@ -1256,6 +1447,9 @@ def dashboard():
                 # headline: due_date_min 항목 우선 선택 후 AI 15자 요약
                 headline_src = _pick_headline_source(due_items, due_date_min)
                 headline = _ai_headline(headline_src) if headline_src else ""
+                # 매출만 있는 카드: headline 을 매출 요약으로 대체
+                if not headline and sales_summary_any:
+                    headline = sales_summary_any
                 due_date_min_str = due_date_min.isoformat() if due_date_min else None
 
                 computed_status = _calc_card_status(nc)
@@ -1282,7 +1476,7 @@ def dashboard():
         print(f"노트 대시보드 머지 실패: {_e}")
         cards = []
 
-    severity = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GRAY": 2, "BLACK": 1}
+    severity = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GREEN": 2, "GRAY": 2, "BLACK": 1}
     cards.sort(key=lambda c: -severity.get(c["status"], 0))
 
     # 🟢 모델 단위 그룹핑 (신규 필드, 옛 cards 는 호환을 위해 그대로 유지)
@@ -9412,6 +9606,8 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
     # 수기 편집 저장
     # payload 예: {"project_overrides": {"메이져모듈": "메이저모듈"}, "products": [...]}
     items = _read_json(LATEST_FILE, [])
+    # FCM alarm hook: 저장 전 상태 스냅샷
+    _fcm_before_snapshot = _snapshot_notes_status()
     found = False
     for it in items:
         if it.get("doc_id") != doc_id:
@@ -9469,6 +9665,17 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
         if _it.get("doc_id") == doc_id and _it.get("is_manual"):
             _sync_report_to_notes(_it)
             break
+
+    # FCM alarm hook: 저장 후 상태 diff → RED/ORANGE 신규 전이만 알람
+    try:
+        _fcm_after_snapshot = _snapshot_notes_status()
+        _fcm_events = _detect_status_transitions(_fcm_before_snapshot, _fcm_after_snapshot)
+        if _fcm_events:
+            print(f"[FCM] 상태 전이 감지: {_fcm_events}")
+            _fire_status_alarms(_fcm_events)
+    except Exception as _fcm_e:
+        print(f"[FCM] hook 오류: {_fcm_e}")
+
     return {"ok": True, "doc_id": doc_id}
 
 
@@ -14264,4 +14471,26 @@ def admin_recompute_all_sales(_admin: int = Depends(get_admin_session)):
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return {"ok": True, "recomputed": count}
+
+@app.post("/device-tokens")
+def register_device_token(payload: dict):
+    """Flutter 앱이 앱 시작 시 FCM 토큰을 서버에 등록."""
+    token = (payload or {}).get("token")
+    if not token or not isinstance(token, str) or len(token) < 20:
+        raise HTTPException(status_code=400, detail="invalid token")
+    platform = (payload or {}).get("platform") or "android"
+    debug = bool((payload or {}).get("debug", True))
+    _add_device_token(token, platform=platform, debug=debug)
+    return {"ok": True}
+
+
+@app.post("/admin/fcm-test")
+def admin_fcm_test(_admin: int = Depends(get_admin_session)):
+    """알람 시스템 동작 테스트용 엔드포인트."""
+    result = _send_fcm_to_all(
+        title="🔔 테스트 알람",
+        body="FCM 파이프라인 정상 동작 중",
+        data={"type": "test"},
+    )
+    return result
 
