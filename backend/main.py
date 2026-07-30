@@ -593,7 +593,8 @@ def _send_fcm_to_all(title: str, body: str, data: dict = None) -> dict:
         return {"ok": False, "reason": "fcm_not_initialized"}
     tokens = _load_device_tokens()
     # 안전장치: debug=True 토큰만 (릴리즈 빌드는 서버에 등록 안 되므로 자동 필터)
-    target_tokens = [t["token"] for t in tokens if t.get("debug")]
+    # 릴리즈/디버그 모두 전송. debug 라벨은 로깅 참고용.
+    target_tokens = [t["token"] for t in tokens if t.get("token")]
     if not target_tokens:
         print("[FCM] 대상 토큰 없음")
         return {"ok": False, "reason": "no_tokens"}

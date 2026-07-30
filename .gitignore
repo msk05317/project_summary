@@ -124,3 +124,10 @@ backend/note_assets/photos/semiconductor/
 backend/tmp/
 backend/reports_latest.json.bak_*
 backend/kpi_history.json.bak_*
+
+# Firebase 서비스 계정 키 (절대 커밋 금지)
+*firebase-adminsdk*.json
+firebase-service-account.json
+
+# Flutter DevTools 자동생성
+mobile/devtools_options.yaml

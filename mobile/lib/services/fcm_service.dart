@@ -71,12 +71,8 @@ class FcmService {
 
     if (token == null) return;
 
-    // 🔒 안전장치: 디버그 빌드에서만 서버에 등록
-    if (!kDebugMode) {
-      debugPrint('[FCM] release mode: token NOT registered to server');
-      return;
-    }
-
+    // 릴리즈/디버그 모두 서버에 등록. debug 라벨은 로깅 참고용.
+    final isDebug = kDebugMode;
     try {
       final res = await http.post(
         Uri.parse('$_apiBase/device-tokens'),
@@ -84,10 +80,10 @@ class FcmService {
         body: jsonEncode({
           'token': token,
           'platform': Platform.isAndroid ? 'android' : 'ios',
-          'debug': true,
+          'debug': isDebug,
         }),
       );
-      debugPrint('[FCM] register response: ${res.statusCode}');
+      debugPrint('[FCM] register response: ${res.statusCode} (debug=$isDebug)');
     } catch (e) {
       debugPrint('[FCM] register failed: $e');
     }
@@ -118,10 +114,10 @@ class FcmService {
       }
     });
 
-    // 토큰 갱신 시 재등록
+    // 토큰 갱신 시 재등록 (릴리즈/디버그 모두)
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       debugPrint('[FCM] token refreshed');
-      if (!kDebugMode) return;
+      final isDebug = kDebugMode;
       try {
         await http.post(
           Uri.parse('$_apiBase/device-tokens'),
@@ -129,7 +125,7 @@ class FcmService {
           body: jsonEncode({
             'token': newToken,
             'platform': Platform.isAndroid ? 'android' : 'ios',
-            'debug': true,
+            'debug': isDebug,
           }),
         );
       } catch (_) {}
