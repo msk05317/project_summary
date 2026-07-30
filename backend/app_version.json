@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.1.0",
-  "latest_version_code": 11,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.1.0/app-release.apk",
-  "release_notes": "서버 이전 (Railway → Fly.io) 및 UI 개선 (일정 관리 패널)",
+  "latest_version": "1.2.0",
+  "latest_version_code": 12,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v1.2.0/app-release.apk",
+  "release_notes": "🔔 푸시 알람 시스템\n\n- 상태 변경(RED/ORANGE) 시 자동 알람\n- 챔버 상세 UI 개선\n- 프로젝트 목록 UI 보정",
   "force_update": false
 }
