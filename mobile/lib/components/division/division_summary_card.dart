@@ -90,6 +90,8 @@ class DivisionSummaryCard extends StatelessWidget {
                 Text(
                   '전월 대비 ${progressDeltaPp >= 0 ? '+' : ''}$progressDeltaPp'
                   'p · 프로젝트 $projectCount건',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AppText.caption.copyWith(
                     fontSize: 10,
                     color: AppColors.headerNavy,
@@ -115,16 +117,22 @@ class DivisionSummaryCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      '프로젝트 현황',
-                      style: AppText.bodyStrong.copyWith(
-                        fontSize: 12,
-                        color: AppColors.headerNavy,
+                    Expanded(
+                      child: Text(
+                        '프로젝트 현황',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.bodyStrong.copyWith(
+                          fontSize: 12,
+                          color: AppColors.headerNavy,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 6),
                     Text(
                       '총 $projectCount건',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: AppText.caption.copyWith(
                         fontSize: 10,
                         color: const Color(0xFF7C8594),

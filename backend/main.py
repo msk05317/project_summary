@@ -637,17 +637,74 @@ def _send_fcm_to_all(title: str, body: str, data: dict = None) -> dict:
 
 
 def _snapshot_notes_status() -> dict:
-    """현재 notes.json의 카드별 상태를 딕셔너리로 반환. 알람 diff용."""
+    """현재 notes.json의 카드별 상태 + 원인 아이템 스냅샷.
+
+    Value 형태:
+      {
+        "status": "RED",
+        "trigger": {"text": "...", "due_date": "2026-08-02", "days_diff": -1}
+      }
+    """
+    from datetime import date as _date
+
+    def _pick_worst_item(card_dict):
+        """카드 안 아이템 중 상태가 가장 위험한 것 하나 반환."""
+        priority = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GREEN": 2, "BLACK": 1}
+        worst = None
+        worst_sev = -1
+        for sec in card_dict.get("sections", []) or []:
+            for it in (sec.get("items", []) or []):
+                if not isinstance(it, dict):
+                    continue
+                due = (it.get("due_date") or "").strip()
+                if not due:
+                    continue
+                s = _due_status_one(due)
+                sev = priority.get(s, 0)
+                if sev > worst_sev:
+                    worst_sev = sev
+                    worst = {"item": it, "status": s}
+        return worst
+
     try:
         notes = _load_notes()
         result = {}
+        today = _date.today()
         for div_id, div_data in (notes.get("notes") or {}).items():
             for card in (div_data.get("cards") or []):
                 title = card.get("title") or card.get("product") or ""
                 if not title:
                     continue
+                # 카드에 project_key가 이미 있으면 사용, 없으면 매핑
+                project_key = (card.get("project_key") or "").strip()
+                if not project_key:
+                    try:
+                        from project_templates import _match_project_key
+                        project_key = _match_project_key(title) or ""
+                    except Exception:
+                        project_key = ""
                 status = _calc_card_status(card) if card.get("sections") else (card.get("status") or "")
-                result[f"{div_id}/{title}"] = status
+                trigger = None
+                worst = _pick_worst_item(card) if card.get("sections") else None
+                if worst and worst.get("status") == status:
+                    it = worst["item"]
+                    due = (it.get("due_date") or "").strip()
+                    days_diff = None
+                    try:
+                        y, m, d = due[:10].split("-")
+                        days_diff = (_date(int(y), int(m), int(d)) - today).days
+                    except Exception:
+                        days_diff = None
+                    trigger = {
+                        "text": (it.get("text") or it.get("title") or "").strip()[:80],
+                        "due_date": due,
+                        "days_diff": days_diff,
+                    }
+                result[f"{div_id}/{title}"] = {
+                    "status": status,
+                    "trigger": trigger,
+                    "project_key": project_key,
+                }
         return result
     except Exception as e:
         print(f"[FCM] snapshot 실패: {e}")
@@ -655,35 +712,190 @@ def _snapshot_notes_status() -> dict:
 
 
 def _detect_status_transitions(before: dict, after: dict) -> list:
-    """이전 → 이후 상태 diff. RED/ORANGE로 새로 전이된 카드만 반환."""
+    """이전 → 이후 상태 diff. RED/ORANGE로 새로 전이된 카드만 반환.
+
+    before/after 는 신구 구조 모두 대응 (str or dict).
+    """
+    def _as_status(v):
+        if isinstance(v, dict):
+            return v.get("status") or ""
+        return v or ""
+
+    def _trigger(v):
+        if isinstance(v, dict):
+            return v.get("trigger")
+        return None
+
+    def _pkey(v):
+        if isinstance(v, dict):
+            return v.get("project_key") or ""
+        return ""
+
     events = []
-    for key, new_status in after.items():
-        old_status = before.get(key, "")
-        if new_status in ("RED", "ORANGE") and old_status != new_status:
+    for key, after_val in after.items():
+        new_status = _as_status(after_val)
+        old_status = _as_status(before.get(key, ""))
+        # 상태 전이만 알림. 나빠지는 방향 (GREEN→ORANGE, GREEN→RED, ORANGE→RED) 만 발송
+        _worsen = {
+            ("", "RED"), ("없음", "RED"), ("GREEN", "RED"), ("BLUE", "RED"), ("ORANGE", "RED"),
+            ("", "ORANGE"), ("없음", "ORANGE"), ("GREEN", "ORANGE"), ("BLUE", "ORANGE"),
+        }
+        if (old_status, new_status) in _worsen:
             div_id, title = key.split("/", 1) if "/" in key else ("", key)
             events.append({
                 "division_id": div_id,
                 "title": title,
                 "old_status": old_status or "없음",
                 "new_status": new_status,
+                "trigger": _trigger(after_val),
+                "project_key": _pkey(after_val),
             })
     return events
 
 
+# FCM 중복 알람 쿨다운
+FCM_COOLDOWN_FILE = DATA_DIR / "fcm_cooldown.json"
+FCM_COOLDOWN_SECONDS = 30 * 60  # 30분
+
+
+def _load_fcm_cooldown() -> dict:
+    try:
+        return _read_json(FCM_COOLDOWN_FILE, {}) or {}
+    except Exception:
+        return {}
+
+
+def _save_fcm_cooldown(d: dict) -> None:
+    try:
+        _write_json(FCM_COOLDOWN_FILE, d)
+    except Exception as e:
+        print(f"[FCM cooldown] save error: {e}")
+
+
+# FCM 알람 히스토리
+FCM_HISTORY_FILE = DATA_DIR / "notification_history.json"
+FCM_HISTORY_MAX = 200
+
+
+def _load_fcm_history() -> list:
+    try:
+        v = _read_json(FCM_HISTORY_FILE, [])
+        return v if isinstance(v, list) else []
+    except Exception:
+        return []
+
+
+def _save_fcm_history(hist: list) -> None:
+    try:
+        # 최신 200건만 유지
+        if len(hist) > FCM_HISTORY_MAX:
+            hist = hist[-FCM_HISTORY_MAX:]
+        _write_json(FCM_HISTORY_FILE, hist)
+    except Exception as e:
+        print(f"[FCM history] save error: {e}")
+
+
 def _fire_status_alarms(events: list) -> None:
-    """상태 전이 이벤트를 FCM으로 전송."""
+    """상태 전이 이벤트를 FCM으로 전송. 30분 쿨다운 적용 + 히스토리 저장."""
     if not events:
         return
+
+    import time as _time, uuid as _uuid
+    from datetime import datetime as _dt
+    now = int(_time.time())
+    cooldown = _load_fcm_cooldown()
+    history = _load_fcm_history()
+
+    # 오래된 항목 청소 (24시간 이상 지난 것 제거)
+    stale_keys = [k for k, v in cooldown.items() if not isinstance(v, (int, float)) or now - int(v) > 24 * 3600]
+    for k in stale_keys:
+        cooldown.pop(k, None)
+
+    fired = 0
+    skipped = 0
     for ev in events:
-        emoji = "🔴" if ev["new_status"] == "RED" else "🟠"
-        title = f"{emoji} {ev['title']} 상태 변경"
-        body = f"{ev['old_status']} → {ev['new_status']}"
-        _send_fcm_to_all(title, body, data={
-            "type": "status_change",
-            "division_id": ev["division_id"],
-            "title": ev["title"],
-            "new_status": ev["new_status"],
-        })
+        div = ev.get("division_id") or ""
+        proj_title = ev.get("title") or ""
+        new_status = ev.get("new_status") or ""
+        key = f"{div}|{proj_title}|{new_status}"
+
+        last = cooldown.get(key, 0)
+        try:
+            last = int(last)
+        except Exception:
+            last = 0
+
+        elapsed = now - last
+        if last and elapsed < FCM_COOLDOWN_SECONDS:
+            skipped += 1
+            print(f"[FCM cooldown] skip {key} (last fired {elapsed}s ago, threshold={FCM_COOLDOWN_SECONDS}s)")
+            continue
+
+        emoji = "🔴" if new_status == "RED" else "🟠"
+        # 제목은 프로젝트명만 (사업부명은 body 데이터로만 전달)
+        title = f"{emoji} {proj_title}"
+
+        # 본문 조립: 트리거 아이템이 있으면 AI 요약 + D-day 표기
+        trig = ev.get("trigger") or {}
+        trig_text_raw = (trig.get("text") or "").strip()
+        # AI 요약 (캐시 우선, 실패 시 원문 앞 15자)
+        try:
+            trig_text = _ai_headline(trig_text_raw) if trig_text_raw else ""
+        except Exception as _e:
+            print(f"[FCM] AI 요약 실패, fallback: {_e}")
+            trig_text = trig_text_raw[:20] if trig_text_raw else ""
+        if not trig_text:
+            trig_text = trig_text_raw[:20] if trig_text_raw else ""
+        days_diff = trig.get("days_diff")
+        due_date = (trig.get("due_date") or "").strip()
+
+        if isinstance(days_diff, int):
+            if days_diff < 0:
+                dday_label = f"마감 지남 (D+{abs(days_diff)})"
+            elif days_diff == 0:
+                dday_label = "오늘 마감 (D-Day)"
+            else:
+                dday_label = f"마감 임박 (D-{days_diff})"
+        elif due_date:
+            dday_label = f"마감일 {due_date}"
+        else:
+            dday_label = f"{ev.get('old_status') or ''} → {new_status}"
+
+        if trig_text:
+            body = f"{trig_text} · {dday_label}"
+        else:
+            body = dday_label
+        project_key = ev.get("project_key") or ""
+        try:
+            _send_fcm_to_all(title, body, data={
+                "type": "status_change",
+                "division_id": div,
+                "title": proj_title,
+                "new_status": new_status,
+                "project_key": project_key,
+            })
+            cooldown[key] = now
+            fired += 1
+            history.append({
+                "id": _uuid.uuid4().hex[:12],
+                "ts": _dt.now().isoformat(timespec="seconds"),
+                "division_id": div,
+                "title": proj_title,
+                "project_key": project_key,
+                "old_status": ev.get("old_status") or "",
+                "new_status": new_status,
+                "trigger_text": trig_text,
+                "due_date": due_date,
+                "days_diff": days_diff if isinstance(days_diff, int) else None,
+                "dday_label": dday_label,
+                "read": False,
+            })
+        except Exception as e:
+            print(f"[FCM] send error for {key}: {e}")
+
+    _save_fcm_cooldown(cooldown)
+    _save_fcm_history(history)
+    print(f"[FCM] events={len(events)} fired={fired} skipped_by_cooldown={skipped}")
 
 
 # ─── FCM 엔드포인트 ───
@@ -1850,6 +2062,59 @@ def _save_note_table(division_id: str, table_data: dict) -> str:
     p.write_text(json.dumps(table_data, ensure_ascii=False, indent=2), encoding="utf-8")
     return f"{division_id}/{asset_id}"
 
+def _save_note_photo(division_id: str, image_bytes: bytes, ext: str = "png") -> str:
+    """이미지 bytes → note_photos/에 저장 → photo_ref 반환.
+    반환 예: 'semiconductor/2026-07-30_a1b2c3d4.png'
+    """
+    if not image_bytes:
+        raise ValueError("empty image bytes")
+    ext = (ext or "png").lower().lstrip(".")
+    asset_id = _new_asset_id(division_id)
+    dst = _photo_path(division_id, asset_id, ext)
+    dst.write_bytes(image_bytes)
+    return f"{division_id}/{asset_id}.{ext}"
+
+
+def _xlsx_file_to_png_bytes(xlsx_path: Path) -> bytes:
+    """xlsx 파일 → 첫 시트를 PNG bytes 로 변환.
+    기존 _excel_sheet_to_preview_data_url 재사용.
+    """
+    import openpyxl
+    from base64 import b64decode
+    wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
+    try:
+        ws = wb.worksheets[0]
+        data_url = _excel_sheet_to_preview_data_url(ws)  # 'data:image/png;base64,...'
+    finally:
+        wb.close()
+    if not data_url or "," not in data_url:
+        raise RuntimeError("xlsx → png data_url 변환 실패")
+    _, b64 = data_url.split(",", 1)
+    return b64decode(b64)
+
+
+def _derive_division_id_from_report(it: dict) -> str:
+    """report dict → division_id 유추.
+    우선순위: it.division_id → products[i].name derive → 'semiconductor' 폴백.
+    _sync_report_to_notes의 로직과 동일하게 유지.
+    """
+    if not isinstance(it, dict):
+        return "semiconductor"
+    division_id = (it.get("division_id") or "").strip()
+    if division_id:
+        return division_id
+    products = it.get("products") or []
+    for prod in products:
+        if isinstance(prod, dict) and prod.get("name"):
+            try:
+                division_id = _cl.derive_division_from_project(prod["name"]) or ""
+            except Exception:
+                pass
+            if division_id:
+                return division_id
+    return "semiconductor"
+
+
 def _load_note_table(table_ref: str):
     """table_ref = 'semiconductor/2026-06-11_a1b2c3d4' → 표 JSON 반환"""
     if not table_ref or "/" not in table_ref:
@@ -2590,7 +2855,12 @@ def _normalize_note_item(it: dict, section_title: str = "") -> dict:
 
     # ─── due_date_auto 재계산 (매번, 텍스트는 원문 유지) ───
     _, auto_iso = _extract_due_date(txt)
-    it["due_date_auto"] = auto_iso or ""
+    # auto 값이 바뀌면 auto_due_hidden 을 자동 해제 (새로운 자동값이므로)
+    _prev_auto = (it.get("due_date_auto") or "").strip()
+    _new_auto = auto_iso or ""
+    if _prev_auto != _new_auto and it.get("auto_due_hidden"):
+        it.pop("auto_due_hidden", None)
+    it["due_date_auto"] = _new_auto
 
     # ─── due_date_override 처리 ───
     override_raw = (it.get("due_date_override") or "").strip()
@@ -2984,6 +3254,35 @@ def admin_save_note(payload: dict, _admin: int = Depends(get_admin_session)):
     return {"ok": True, "division_id": division_id, "card_count": len(merged_cards)}
 
 
+# ─── 알림 히스토리 (앱 종 아이콘용) ───
+@app.get("/notifications")
+def get_notifications(limit: int = 100, unread_only: bool = False):
+    """최근 알람 목록. 최신순."""
+    hist = _load_fcm_history()
+    if unread_only:
+        hist = [h for h in hist if not h.get("read")]
+    # 최신순
+    hist = list(reversed(hist))[:max(1, min(limit, 200))]
+    unread_count = sum(1 for h in _load_fcm_history() if not h.get("read"))
+    return {"items": hist, "unread_count": unread_count}
+
+
+@app.post("/notifications/mark_read")
+def mark_notifications_read(payload: dict = None):
+    """id 지정 시 해당 항목만, 없으면 전체 읽음 처리."""
+    payload = payload or {}
+    ids = payload.get("ids")
+    hist = _load_fcm_history()
+    changed = 0
+    for h in hist:
+        if ids is None or h.get("id") in ids:
+            if not h.get("read"):
+                h["read"] = True
+                changed += 1
+    _save_fcm_history(hist)
+    return {"ok": True, "changed": changed}
+
+
 @app.get("/notes")
 def get_notes(division_id: str = ""):
     """앱이 호출하는 공개 API. division_id 지정 시 해당 사업부만 반환."""
@@ -3029,7 +3328,9 @@ def _find_item_by_id(notes_data: dict, division_id: str, card_title: str, item_i
 def _apply_effective_due_date(it: dict) -> None:
     """it 안의 override/auto 를 보고 최종 due_date 필드를 갱신."""
     override = (it.get("due_date_override") or "").strip()
-    auto = (it.get("due_date_auto") or "").strip()
+    auto_raw = (it.get("due_date_auto") or "").strip()
+    # auto_due_hidden 이 True 면 자동값을 무시
+    auto = "" if it.get("auto_due_hidden") else auto_raw
     effective = override or auto
     if effective:
         it["due_date"] = effective
@@ -3074,9 +3375,22 @@ def admin_notes_item_due_override(
     if item is None:
         raise HTTPException(status_code=404, detail=f"item_id={item_id} 을(를) 찾을 수 없음")
 
+    # FCM alarm hook: 저장 전 스냅샷
+    _fcm_before = _snapshot_notes_status()
+
     item["due_date_override"] = due_iso
     _apply_effective_due_date(item)
     _save_notes(notes_data)
+
+    # FCM alarm hook: 저장 후 diff → RED/ORANGE 신규 전이 알람
+    try:
+        _fcm_after = _snapshot_notes_status()
+        _events = _detect_status_transitions(_fcm_before, _fcm_after)
+        if _events:
+            print(f"[FCM] due_override POST 상태 전이: {_events}")
+            _fire_status_alarms(_events)
+    except Exception as _e:
+        print(f"[FCM due_override POST hook] {_e}")
 
     return {
         "ok": True,
@@ -3084,6 +3398,7 @@ def admin_notes_item_due_override(
         "due_date": item.get("due_date"),
         "due_date_auto": item.get("due_date_auto"),
         "due_date_override": item.get("due_date_override"),
+        "auto_due_hidden": bool(item.get("auto_due_hidden")),
     }
 
 
@@ -3109,9 +3424,22 @@ def admin_notes_item_due_override_reset(
     if item is None:
         raise HTTPException(status_code=404, detail=f"item_id={item_id} 을(를) 찾을 수 없음")
 
+    # FCM alarm hook: 저장 전 스냅샷
+    _fcm_before = _snapshot_notes_status()
+
     item.pop("due_date_override", None)
     _apply_effective_due_date(item)
     _save_notes(notes_data)
+
+    # FCM alarm hook: DELETE 이후에도 상태 재판정 → 신규 RED/ORANGE 알람
+    try:
+        _fcm_after = _snapshot_notes_status()
+        _events = _detect_status_transitions(_fcm_before, _fcm_after)
+        if _events:
+            print(f"[FCM] due_override DELETE 상태 전이: {_events}")
+            _fire_status_alarms(_events)
+    except Exception as _e:
+        print(f"[FCM due_override DELETE hook] {_e}")
 
     return {
         "ok": True,
@@ -3119,6 +3447,107 @@ def admin_notes_item_due_override_reset(
         "due_date": item.get("due_date"),
         "due_date_auto": item.get("due_date_auto"),
         "due_date_override": item.get("due_date_override"),
+        "auto_due_hidden": bool(item.get("auto_due_hidden")),
+    }
+
+
+@app.post("/admin/notes/item/hide_auto_due")
+def admin_notes_item_hide_auto_due(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """특정 item 의 자동 파싱 날짜를 숨김 처리. 수동값이 있으면 그것도 함께 제거.
+    
+    Request:
+      { division_id, card_title, item_id }
+    """
+    division_id = (payload or {}).get("division_id", "").strip()
+    card_title = (payload or {}).get("card_title", "").strip()
+    item_id = (payload or {}).get("item_id", "").strip()
+
+    if not division_id or not card_title or not item_id:
+        raise HTTPException(status_code=400, detail="division_id, card_title, item_id 필수")
+
+    notes_data = _load_notes()
+    item, card, sec = _find_item_by_id(notes_data, division_id, card_title, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item_id={item_id} 을(를) 찾을 수 없음")
+
+    # FCM alarm hook: 저장 전 스냅샷
+    _fcm_before = _snapshot_notes_status()
+
+    # 자동값 숨김 + 수동값도 함께 제거
+    item["auto_due_hidden"] = True
+    item.pop("due_date_override", None)
+    _apply_effective_due_date(item)
+    _save_notes(notes_data)
+
+    # FCM alarm hook
+    try:
+        _fcm_after = _snapshot_notes_status()
+        _events = _detect_status_transitions(_fcm_before, _fcm_after)
+        if _events:
+            print(f"[FCM] hide_auto_due POST 상태 전이: {_events}")
+            _fire_status_alarms(_events)
+    except Exception as _e:
+        print(f"[FCM hide_auto_due POST hook] {_e}")
+
+    return {
+        "ok": True,
+        "item_id": item_id,
+        "due_date": item.get("due_date"),
+        "due_date_auto": item.get("due_date_auto"),
+        "due_date_override": item.get("due_date_override"),
+        "auto_due_hidden": True,
+    }
+
+
+@app.delete("/admin/notes/item/hide_auto_due")
+def admin_notes_item_hide_auto_due_reset(
+    payload: dict,
+    _admin: int = Depends(get_admin_session),
+):
+    """item 의 auto_due_hidden 해제 → 자동값(due_date_auto) 복원.
+    
+    Request:
+      { division_id, card_title, item_id }
+    """
+    division_id = (payload or {}).get("division_id", "").strip()
+    card_title = (payload or {}).get("card_title", "").strip()
+    item_id = (payload or {}).get("item_id", "").strip()
+
+    if not division_id or not card_title or not item_id:
+        raise HTTPException(status_code=400, detail="division_id, card_title, item_id 필수")
+
+    notes_data = _load_notes()
+    item, card, sec = _find_item_by_id(notes_data, division_id, card_title, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"item_id={item_id} 을(를) 찾을 수 없음")
+
+    # FCM alarm hook: 저장 전 스냅샷
+    _fcm_before = _snapshot_notes_status()
+
+    item.pop("auto_due_hidden", None)
+    _apply_effective_due_date(item)
+    _save_notes(notes_data)
+
+    # FCM alarm hook
+    try:
+        _fcm_after = _snapshot_notes_status()
+        _events = _detect_status_transitions(_fcm_before, _fcm_after)
+        if _events:
+            print(f"[FCM] hide_auto_due DELETE 상태 전이: {_events}")
+            _fire_status_alarms(_events)
+    except Exception as _e:
+        print(f"[FCM hide_auto_due DELETE hook] {_e}")
+
+    return {
+        "ok": True,
+        "item_id": item_id,
+        "due_date": item.get("due_date"),
+        "due_date_auto": item.get("due_date_auto"),
+        "due_date_override": item.get("due_date_override"),
+        "auto_due_hidden": False,
     }
 
 
@@ -6682,14 +7111,14 @@ window._attachAutoListBehavior = function(el){
                       +   '<button type="button" data-cmd="italic" title="기울임" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;font-style:italic;">I</button>'
                       +   '<button type="button" data-cmd="underline" title="밑줄" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;text-decoration:underline;">U</button>'
                       +   '<button type="button" data-cmd="strikeThrough" title="취소선" style="width:26px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;text-decoration:line-through;">S</button>'
-                      +   '<label style="display:inline-flex;align-items:center;gap:2px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;padding:0 4px;height:26px;cursor:pointer;" title="글자색">'
-                      +     '<span style="font-weight:700;color:#B8302E;">A</span>'
-                      +     '<input type="color" data-cmd="foreColor" style="width:16px;height:16px;border:0;background:transparent;padding:0;cursor:pointer;">'
-                      +   '</label>'
-                      +   '<label style="display:inline-flex;align-items:center;gap:2px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;padding:0 4px;height:26px;cursor:pointer;" title="형광펜">'
-                      +     '<span style="background:#FFF3B0;font-weight:700;padding:0 3px;">H</span>'
-                      +     '<input type="color" data-cmd="hiliteColor" value="#FFF3B0" style="width:16px;height:16px;border:0;background:transparent;padding:0;cursor:pointer;">'
-                      +   '</label>'
+                      +   '<button type="button" class="word-color-btn" data-color-cmd="foreColor" data-default-color="#000000" title="글자색" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;padding:0 6px;height:26px;cursor:pointer;">'
+                      +   '<span style="font-weight:800;font-size:13px;line-height:1;color:#111827;">A</span>'
+                      +   '<span class="word-color-preview" style="display:inline-block;width:12px;height:3px;border-radius:999px;background:#000000;"></span>'
+                      +   '</button>'
+                      +   '<button type="button" class="word-color-btn" data-color-cmd="hiliteColor" data-default-color="#FFF3B0" title="배경색" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;padding:0 6px;height:26px;cursor:pointer;">'
+                      +   '<span style="font-weight:700;font-size:12px;line-height:1;color:#111827;">형광</span>'
+                      +   '<span class="word-color-preview" style="display:inline-block;width:12px;height:8px;border-radius:3px;background:#FFF3B0;border:1px solid #E5E7EB;"></span>'
+                      +   '</button>'
                       +   '<button type="button" data-cmd="justifyLeft" title="왼쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"17\" y1=\"10\" x2=\"3\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"17\" y1=\"18\" x2=\"3\" y2=\"18\"></line></svg></button>'
                       +   '<button type="button" data-cmd="justifyCenter" title="가운데 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"10\" x2=\"6\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"18\" y1=\"18\" x2=\"6\" y2=\"18\"></line></svg></button>'
                       +   '<button type="button" data-cmd="justifyRight" title="오른쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"21\" y1=\"10\" x2=\"7\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"21\" y1=\"18\" x2=\"7\" y2=\"18\"></line></svg></button>'
@@ -6739,11 +7168,18 @@ window._attachAutoListBehavior = function(el){
                   let panelHtml = '';
                   if (visibleItems.length > 0) {
                     const rows = visibleItems.map(function(it){
-                      const auto = it.due_date_auto || '';
+                      const autoRaw = it.due_date_auto || '';
                       const override = it.due_date_override || '';
+                      const autoHidden = !!it.auto_due_hidden;
+                      // autoHidden 이면 auto 를 표시상 없는 값으로 처리
+                      const auto = autoHidden ? '' : autoRaw;
                       const isOverride = !!override;
                       const effective = override || auto;
                       const mmdd = effective ? (effective.slice(5,7) + '/' + effective.slice(8,10)) : '';
+                      // 상태 판별:
+                      //   - autoHidden=true: 상태 4 (자동값 숨겨짐) → + 날짜 지정 + ↺(자동 복원)
+                      //   - effective 있음: 상태 2/3 → chip 표시
+                      //   - 그 외: 상태 1 → + 날짜 지정
                       const chipLabel = effective
                         ? (isOverride ? ('수동 ' + mmdd) : ('자동 ' + mmdd))
                         : '+ 날짜 지정';
@@ -6752,9 +7188,13 @@ window._attachAutoListBehavior = function(el){
                             ? 'background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;'
                             : 'background:#F1F3F5;color:#6B7280;border:1px solid #E5E7EB;')
                         : 'background:transparent;color:#9CA3AF;border:1px dashed #D1D5DB;';
-                      const resetBtn = isOverride
-                        ? '<button type="button" class="ov-due-reset" data-item-id="' + (it.item_id || '') + '" data-auto="' + auto + '" title="자동값(' + (auto ? auto.slice(5).replace('-','/') : '') + ')으로 되돌리기" style="background:transparent;border:0;color:#1E40AF;cursor:pointer;padding:0 4px;font-size:14px;line-height:1;margin-left:2px;">↺</button>'
-                        : '';
+                      // ↺ 버튼: 수동값 있을 때 (상태 3) or 자동 숨겨짐 (상태 4)
+                      let resetBtn = '';
+                      if (isOverride) {
+                        resetBtn = '<button type="button" class="ov-due-reset" data-item-id="' + (it.item_id || '') + '" data-auto="' + auto + '" data-mode="override" title="자동값(' + (auto ? auto.slice(5).replace('-','/') : '') + ')으로 되돌리기" style="background:transparent;border:0;color:#1E40AF;cursor:pointer;padding:0 4px;font-size:14px;line-height:1;margin-left:2px;">↺</button>';
+                      } else if (autoHidden) {
+                        resetBtn = '<button type="button" class="ov-due-reset" data-item-id="' + (it.item_id || '') + '" data-mode="hidden" title="자동값 복원" style="background:transparent;border:0;color:#6B7280;cursor:pointer;padding:0 4px;font-size:14px;line-height:1;margin-left:2px;">↺</button>';
+                      }
                       const textEsc = (it.text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                       return '<div class="ov-schedule-row" style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #F0F4F9;">'
                         +   '<div style="flex:1;font-size:13px;color:#12325F;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + textEsc + '</div>'
@@ -6891,9 +7331,15 @@ window._attachAutoListBehavior = function(el){
               
               salesBoxHtml = ''
                 + '<div class="ov-sales-box" data-sec-idx="' + idx + '" style="margin-top:12px;padding:10px;background:#F7F9FC;border:1px dashed #C5D0E0;border-radius:8px;">'
-                +   '<button type="button" class="ov-sales-toggle" data-sec-idx="' + idx + '" style="background:none;border:0;color:#12325F;font-weight:700;font-size:13px;cursor:pointer;padding:4px 0;">'
-                +     _open + ' 💰 매출 계산'
-                +   '</button>'
+                +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+                +     '<button type="button" class="ov-sales-toggle" data-sec-idx="' + idx + '" style="background:none;border:0;color:#12325F;font-weight:700;font-size:13px;cursor:pointer;padding:4px 0;">'
+                +       _open + ' 💰 매출 계산'
+                +     '</button>'
+                +     '<label class="ov-sales-vis-label" data-sec-idx="' + idx + '" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#7C8594;cursor:pointer;user-select:none;">'
+                +       '<input type="checkbox" class="ov-sales-vis" data-sec-idx="' + idx + '" ' + ((sec.sales_visible === false) ? '' : 'checked') + ' style="cursor:pointer;">'
+                +       '<span>앱에 매출 표시</span>'
+                +     '</label>'
+                +   '</div>'
                 +   '<div class="ov-sales-body" style="display:' + _display + ';margin-top:8px;">'
                 +     '<div class="ov-sales-info" data-sec-idx="' + idx + '" style="font-size:11px;color:#7C8594;margin-bottom:8px;padding:6px 8px;background:#EEF3FB;border-radius:6px;">엑셀 파일 인식 중...</div>'
                 +     '<div style="font-size:11px;font-weight:700;color:#12325F;margin-bottom:6px;">💵 판가 입력 (만불)</div>'
@@ -6932,23 +7378,56 @@ window._attachAutoListBehavior = function(el){
             const override = chip.getAttribute('data-override') || '';
             if (!itemId) { alert('item_id 없음 — 저장 후 다시 시도'); return; }
 
-            // 임시 date input 을 만들어 팝업
+            // 기존 popover 제거
+            document.querySelectorAll('.date-popover-custom').forEach(function(n){ n.remove(); });
+
+            // 커스텀 popover 생성
+            const pop = document.createElement('div');
+            pop.className = 'date-popover-custom';
+            pop.style.cssText = 'position:fixed;background:#fff;border:1px solid #d1d5db;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.15);padding:14px;z-index:9999;display:flex;flex-direction:column;gap:12px;min-width:260px;';
+            const rect = chip.getBoundingClientRect();
+            // 화면 밖으로 나가지 않게 위치 조정
+            const popW = 280;
+            let popLeft = rect.left;
+            if (popLeft + popW > window.innerWidth - 10) {
+              popLeft = window.innerWidth - popW - 10;
+            }
+            pop.style.left = popLeft + 'px';
+            pop.style.top = (rect.bottom + 6) + 'px';
+
             const inp = document.createElement('input');
             inp.type = 'date';
             inp.value = override || auto || '';
-            inp.style.position = 'fixed';
-            const rect = chip.getBoundingClientRect();
-            inp.style.left = rect.left + 'px';
-            inp.style.top = (rect.bottom + 4) + 'px';
-            inp.style.zIndex = 9999;
-            document.body.appendChild(inp);
-            inp.focus();
-            try { inp.showPicker && inp.showPicker(); } catch(e) {}
+            inp.style.cssText = 'padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:100%;';
 
-            inp.addEventListener('change', async function(){
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+
+            const btnSave = document.createElement('button');
+            btnSave.type = 'button';
+            btnSave.textContent = '저장';
+            btnSave.style.cssText = 'padding:6px 14px;background:#2563eb;color:#fff;border:0;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;';
+
+            const btnDelete = document.createElement('button');
+            btnDelete.type = 'button';
+            btnDelete.textContent = '삭제';
+            btnDelete.style.cssText = 'padding:6px 14px;background:#fff;color:#b91c1c;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;';
+
+            btnRow.appendChild(btnDelete);
+            btnRow.appendChild(btnSave);
+            pop.appendChild(inp);
+            pop.appendChild(btnRow);
+            document.body.appendChild(pop);
+            setTimeout(function(){ inp.focus(); try { inp.showPicker && inp.showPicker(); } catch(e) {} }, 100);
+
+            // 외부 클릭 시 닫기
+            function closePop(){ if (pop.parentNode) pop.remove(); document.removeEventListener('mousedown', outsideClick, true); }
+            function outsideClick(e){ if (!pop.contains(e.target) && e.target !== chip) closePop(); }
+            setTimeout(function(){ document.addEventListener('mousedown', outsideClick, true); }, 100);
+
+            btnSave.addEventListener('click', async function(){
               const val = inp.value;
-              document.body.removeChild(inp);
-              if (!val) return;
+              if (!val) { alert('날짜를 선택하세요'); return; }
               try {
                 const divId = (window._currentEditContext || {}).divisionId || '';
                 const cardTitle = (window._currentEditContext || {}).cardTitle || '';
@@ -6965,13 +7444,36 @@ window._attachAutoListBehavior = function(el){
                 });
                 const j = await r.json();
                 if (!r.ok) { alert('저장 실패: ' + (j.detail || r.status)); return; }
-                // 캐시 갱신
+                alert('일정 저장 완료: ' + val);
+                closePop();
                 await _reloadNotesCache();
                 if (window._renderManualSections) window._renderManualSections();
               } catch(e) { alert('오류: ' + e.message); }
             });
-            inp.addEventListener('blur', function(){
-              setTimeout(function(){ if (inp.parentNode) document.body.removeChild(inp); }, 200);
+
+            btnDelete.addEventListener('click', async function(){
+              closePop();
+              if (!confirm('이 일정을 삭제하시겠습니까? (자동 파싱된 날짜도 함께 숨겨집니다)')) return;
+              try {
+                const divId = (window._currentEditContext || {}).divisionId || '';
+                const cardTitle = (window._currentEditContext || {}).cardTitle || '';
+                const r = await fetch('/admin/notes/item/hide_auto_due', {
+                  method: 'POST',
+                  headers: {'Content-Type':'application/json'},
+                  credentials: 'same-origin',
+                  body: JSON.stringify({
+                    division_id: divId,
+                    card_title: cardTitle,
+                    item_id: itemId
+                  })
+                });
+                const j = await r.json();
+                if (!r.ok) { alert('삭제 실패: ' + (j.detail || r.status)); return; }
+                alert('일정이 삭제되었습니다');
+                closePop();
+                await _reloadNotesCache();
+                if (window._renderManualSections) window._renderManualSections();
+              } catch(e) { alert('오류: ' + e.message); }
             });
           });
         });
@@ -6979,6 +7481,36 @@ window._attachAutoListBehavior = function(el){
         sectionsRoot.querySelectorAll('.ov-due-reset').forEach(function(btn){
           btn.addEventListener('click', async function(ev){
             ev.stopPropagation();
+            const mode = btn.getAttribute('data-mode') || 'override';
+            const _itemId = btn.getAttribute('data-item-id');
+            if (!_itemId) return;
+            
+            // 상태 4: 자동값 복원
+            if (mode === 'hidden') {
+              if (!confirm('숨긴 자동 일정을 복원하시겠습니까?')) return;
+              try {
+                const divId = (window._currentEditContext || {}).divisionId || '';
+                const cardTitle = (window._currentEditContext || {}).cardTitle || '';
+                const r = await fetch('/admin/notes/item/hide_auto_due', {
+                  method: 'DELETE',
+                  headers: {'Content-Type':'application/json'},
+                  credentials: 'same-origin',
+                  body: JSON.stringify({
+                    division_id: divId,
+                    card_title: cardTitle,
+                    item_id: _itemId
+                  })
+                });
+                const j = await r.json();
+                if (!r.ok) { alert('복원 실패: ' + (j.detail || r.status)); return; }
+                alert('자동 일정이 복원되었습니다');
+                await _reloadNotesCache();
+                if (window._renderManualSections) window._renderManualSections();
+              } catch(e) { alert('오류: ' + e.message); }
+              return;
+            }
+            
+            // 상태 3: 기존 수동값 리셋 (아래는 원래 로직)
             const itemId = btn.getAttribute('data-item-id');
             if (!itemId) return;
             const autoVal = btn.getAttribute('data-auto') || '';
@@ -6999,6 +7531,7 @@ window._attachAutoListBehavior = function(el){
               });
               const j = await r.json();
               if (!r.ok) { alert('리셋 실패: ' + (j.detail || r.status)); return; }
+              alert('일정이 삭제되었습니다 (자동값으로 복귀)');
               await _reloadNotesCache();
               if (window._renderManualSections) window._renderManualSections();
             } catch(e) { alert('오류: ' + e.message); }
@@ -7031,6 +7564,18 @@ window._attachAutoListBehavior = function(el){
         });
         // 매출 계산 박스 토글 + 입력 → sectionsState 동기화
         // ===== 매출 계산 박스 (폼 UI) =====
+        (function bindSalesVisibility(){
+          sectionsRoot.querySelectorAll('.ov-sales-vis').forEach(function(cb){
+            cb.addEventListener('change', function(){
+              var sIdx = parseInt(cb.getAttribute('data-sec-idx'), 10);
+              if (isNaN(sIdx)) return;
+              if (!sectionsState[sIdx]) return;
+              sectionsState[sIdx].sales_visible = !!cb.checked;
+              if (typeof _markSectionsDirty === 'function') _markSectionsDirty();
+            });
+          });
+        })();
+
         // ============================================================
         // [SALES v3] xlsx 자동 파싱 + 판가만 입력
         // ============================================================
@@ -8351,8 +8896,293 @@ window._attachAutoListBehavior = function(el){
               exec('formatBlock', v);
             });
           }
-          bar.querySelectorAll('input[type="color"]').forEach(function(inp){
-            inp.addEventListener('input', function(){ exec(inp.getAttribute('data-cmd'), inp.value); });
+
+    /* === WORD_COLOR_POPOVER_BEGIN === */
+    window.__ovSavedRange = window.__ovSavedRange || null;
+    window.__ovColorPopover = window.__ovColorPopover || null;
+    window.__ovColorAnchor = window.__ovColorAnchor || null;
+    window.__ovColorDocBound = window.__ovColorDocBound || false;
+
+    window.getActiveEditor = window.getActiveEditor || function(){
+      return document.querySelector('[contenteditable="true"].is-editing, [contenteditable="true"][data-editor-active="1"], [contenteditable="true"]');
+    };
+
+    window.saveEditorSelection = function(){
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      var editor = window.getActiveEditor && window.getActiveEditor();
+      var node = sel.anchorNode;
+      if (!editor || !node || !editor.contains(node)) return;
+      window.__ovSavedRange = sel.getRangeAt(0).cloneRange();
+    };
+
+    window.restoreEditorSelection = function(){
+      if (!window.__ovSavedRange) return false;
+      var sel = window.getSelection();
+      if (!sel) return false;
+      sel.removeAllRanges();
+      sel.addRange(window.__ovSavedRange);
+      return true;
+    };
+
+    window.closeWordColorPopover = function(){
+      if (window.__ovColorPopover && window.__ovColorPopover.parentNode) {
+        window.__ovColorPopover.parentNode.removeChild(window.__ovColorPopover);
+      }
+      window.__ovColorPopover = null;
+      window.__ovColorAnchor = null;
+    };
+
+    function _hexToRgb(hex){
+      var h = (hex || '').replace('#', '').trim();
+      if (h.length === 3) h = h.split('').map(function(x){ return x + x; }).join('');
+      var n = parseInt(h, 16);
+      return { r:(n >> 16) & 255, g:(n >> 8) & 255, b:n & 255 };
+    }
+
+    function _rgbToHex(r, g, b){
+      return '#' + [r,g,b].map(function(v){
+        var s = Math.max(0, Math.min(255, Math.round(v))).toString(16);
+        return s.length === 1 ? '0' + s : s;
+      }).join('').toUpperCase();
+    }
+
+    function _mixHex(a, b, ratio){
+      var c1 = _hexToRgb(a), c2 = _hexToRgb(b);
+      return _rgbToHex(
+        c1.r + (c2.r - c1.r) * ratio,
+        c1.g + (c2.g - c1.g) * ratio,
+        c1.b + (c2.b - c1.b) * ratio
+      );
+    }
+
+    function _themeRows(){
+      var base = ['#000000','#FFFFFF','#44546A','#E7E6E6','#5B9BD5','#ED7D31','#A5A5A5','#FFC000','#4472C4','#70AD47'];
+      return [
+        base,
+        base.map(function(c){ return _mixHex(c, '#FFFFFF', 0.80); }),
+        base.map(function(c){ return _mixHex(c, '#FFFFFF', 0.60); }),
+        base.map(function(c){ return _mixHex(c, '#FFFFFF', 0.40); }),
+        base.map(function(c){ return _mixHex(c, '#000000', 0.25); }),
+        base.map(function(c){ return _mixHex(c, '#000000', 0.50); })
+      ];
+    }
+
+    function _standardColors(){
+      return ['#C00000','#FF0000','#FFC000','#FFFF00','#92D050','#00B050','#00B0F0','#0070C0','#002060','#7030A0'];
+    }
+
+    function _makeColorCell(color, onPick){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.title = color;
+      btn.style.width = '18px';
+      btn.style.height = '18px';
+      btn.style.padding = '0';
+      btn.style.border = '1px solid #D1D5DB';
+      btn.style.borderRadius = '3px';
+      btn.style.background = color;
+      btn.style.cursor = 'pointer';
+      btn.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        onPick(color);
+      });
+      return btn;
+    }
+
+    window.applyEditorColor = function(cmd, color, triggerBtn){
+      var editor = window.getActiveEditor && window.getActiveEditor();
+      if (!editor) return;
+      editor.focus();
+      if (window.restoreEditorSelection) window.restoreEditorSelection();
+      try { document.execCommand('styleWithCSS', false, true); } catch(e) {}
+      try {
+        if (cmd === 'foreColor') document.execCommand('foreColor', false, color || '#000000');
+        else document.execCommand('hiliteColor', false, color || '#FFF3B0');
+      } catch(e) {}
+      if (window.saveEditorSelection) window.saveEditorSelection();
+
+      if (triggerBtn) {
+        var preview = triggerBtn.querySelector('.word-color-preview');
+        if (preview) preview.style.background = color;
+      }
+      if (window.closeWordColorPopover) window.closeWordColorPopover();
+    };
+
+    window.openWordColorPopover = function(anchorBtn, cmd, defaultColor){
+      if (window.__ovColorPopover && window.__ovColorAnchor === anchorBtn) {
+        window.closeWordColorPopover();
+        return;
+      }
+      window.closeWordColorPopover();
+
+      var pop = document.createElement('div');
+      pop.style.position = 'absolute';
+      pop.style.zIndex = '99999';
+      pop.style.width = '232px';
+      pop.style.padding = '10px';
+      pop.style.background = '#FFFFFF';
+      pop.style.border = '1px solid #D1D5DB';
+      pop.style.borderRadius = '10px';
+      pop.style.boxShadow = '0 12px 28px rgba(0,0,0,.14)';
+
+      var rect = anchorBtn.getBoundingClientRect();
+      pop.style.left = (window.scrollX + rect.left) + 'px';
+      pop.style.top = (window.scrollY + rect.bottom + 8) + 'px';
+
+      function sectionTitle(text){
+        var el = document.createElement('div');
+        el.textContent = text;
+        el.style.fontSize = '11px';
+        el.style.fontWeight = '700';
+        el.style.color = '#6B7280';
+        el.style.margin = '6px 0 6px';
+        return el;
+      }
+
+      var autoBtn = document.createElement('button');
+      autoBtn.type = 'button';
+      autoBtn.textContent = (cmd === 'foreColor') ? '자동' : '채우기 없음';
+      autoBtn.style.width = '100%';
+      autoBtn.style.height = '28px';
+      autoBtn.style.marginBottom = '8px';
+      autoBtn.style.border = '1px solid #D1D5DB';
+      autoBtn.style.borderRadius = '6px';
+      autoBtn.style.background = '#fff';
+      autoBtn.style.cursor = 'pointer';
+      autoBtn.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        window.applyEditorColor(cmd, cmd === 'foreColor' ? '#000000' : '#FFFFFF', anchorBtn);
+      });
+      pop.appendChild(autoBtn);
+
+      pop.appendChild(sectionTitle('테마 색'));
+      var themeWrap = document.createElement('div');
+      themeWrap.style.display = 'grid';
+      themeWrap.style.gridTemplateColumns = 'repeat(10, 18px)';
+      themeWrap.style.gap = '4px';
+      _themeRows().forEach(function(row){
+        row.forEach(function(color){
+          themeWrap.appendChild(_makeColorCell(color, function(picked){
+            window.applyEditorColor(cmd, picked, anchorBtn);
+          }));
+        });
+      });
+      pop.appendChild(themeWrap);
+
+      pop.appendChild(sectionTitle('표준 색'));
+      var stdWrap = document.createElement('div');
+      stdWrap.style.display = 'grid';
+      stdWrap.style.gridTemplateColumns = 'repeat(10, 18px)';
+      stdWrap.style.gap = '4px';
+      _standardColors().forEach(function(color){
+        stdWrap.appendChild(_makeColorCell(color, function(picked){
+          window.applyEditorColor(cmd, picked, anchorBtn);
+        }));
+      });
+      pop.appendChild(stdWrap);
+
+      var moreRow = document.createElement('div');
+      moreRow.style.marginTop = '8px';
+
+      var custom = document.createElement('input');
+      custom.type = 'color';
+      custom.value = defaultColor || '#000000';
+      custom.style.width = '100%';
+      custom.style.height = '30px';
+      custom.style.border = '1px solid #D1D5DB';
+      custom.style.borderRadius = '6px';
+      custom.style.background = '#fff';
+      custom.style.cursor = 'pointer';
+      custom.addEventListener('input', function(){
+        window.applyEditorColor(cmd, custom.value, anchorBtn);
+      });
+
+      moreRow.appendChild(custom);
+      pop.appendChild(moreRow);
+
+      if (window.EyeDropper) {
+        var dropRow = document.createElement('div');
+        dropRow.style.marginTop = '6px';
+
+        var dropBtn = document.createElement('button');
+        dropBtn.type = 'button';
+        dropBtn.innerHTML = ''
+          + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;">'
+          +   '<path d="m2 22 1-1h3l9-9"/>'
+          +   '<path d="M3 21v-3l9-9"/>'
+          +   '<path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>'
+          + '</svg>'
+          + '<span style="margin-left:8px;font-weight:500;">스포이드</span>';
+        dropBtn.style.width = '100%';
+        dropBtn.style.height = '30px';
+        dropBtn.style.border = '1px solid #D1D5DB';
+        dropBtn.style.borderRadius = '6px';
+        dropBtn.style.background = '#fff';
+        dropBtn.style.cursor = 'pointer';
+        dropBtn.style.fontSize = '12px';
+        dropBtn.style.color = '#111827';
+        dropBtn.style.display = 'inline-flex';
+        dropBtn.style.alignItems = 'center';
+        dropBtn.style.justifyContent = 'flex-start';
+        dropBtn.style.padding = '0 10px';
+
+        dropBtn.addEventListener('mousedown', function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            var eyeDropper = new window.EyeDropper();
+            eyeDropper.open().then(function(result){
+              if (result && result.sRGBHex) {
+                window.applyEditorColor(cmd, result.sRGBHex, anchorBtn);
+              }
+            }).catch(function(){ /* 사용자 취소 */ });
+          } catch(err) {
+            console.warn('EyeDropper failed', err);
+          }
+        });
+
+        dropRow.appendChild(dropBtn);
+        pop.appendChild(dropRow);
+      }
+
+      document.body.appendChild(pop);
+      window.__ovColorPopover = pop;
+      window.__ovColorAnchor = anchorBtn;
+    };
+
+    if (!window.__ovColorDocBound) {
+      document.addEventListener('mousedown', function(e){
+        var pop = window.__ovColorPopover;
+        var anchor = window.__ovColorAnchor;
+        if (!pop) return;
+        if (pop.contains(e.target)) return;
+        if (anchor && anchor.contains(e.target)) return;
+        window.closeWordColorPopover();
+      }, true);
+
+      document.addEventListener('selectionchange', function(){
+        var editor = window.getActiveEditor && window.getActiveEditor();
+        var sel = window.getSelection();
+        if (!editor || !sel || sel.rangeCount === 0) return;
+        var node = sel.anchorNode;
+        if (node && editor.contains(node)) window.saveEditorSelection();
+      });
+
+      window.__ovColorDocBound = true;
+    }
+    /* === WORD_COLOR_POPOVER_END === */
+          bar.querySelectorAll('.word-color-btn').forEach(function(btn){
+            btn.addEventListener('mousedown', function(e){
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.saveEditorSelection) window.saveEditorSelection();
+              if (window.openWordColorPopover) {
+                window.openWordColorPopover(btn, btn.dataset.colorCmd, btn.dataset.defaultColor || '#000000');
+              }
+            });
           });
           bar.querySelectorAll('select[data-list-style="ul"]').forEach(function(sel2){
             sel2.addEventListener('change', function(){
@@ -9215,6 +10045,115 @@ def _extract_due_date(text: str) -> tuple:
     # ★ text 는 정리하지 않고 원문 그대로 반환
     return (text, due_iso)
 
+def _collect_inline_runs(node, inherited_style: dict) -> list:
+    """BeautifulSoup 노드를 재귀 순회하며 [(text, style_dict), ...] 반환.
+    style_dict keys: color, bold, italic, underline, size_scale.
+    부모의 스타일은 자식에게 상속됨.
+    """
+    from bs4 import NavigableString
+    if isinstance(node, NavigableString):
+        return [(str(node), dict(inherited_style))]
+
+    style = dict(inherited_style)
+    name = getattr(node, 'name', '') or ''
+    name = name.lower()
+
+    # 태그별 스타일 부여
+    if name == 'font':
+        c = node.get('color')
+        if c:
+            style['color'] = c.strip()
+        sz = node.get('size')
+        if sz:
+            try:
+                # <font size="1..7"> → 스케일 (3이 기본)
+                n = int(str(sz).strip())
+                _map = {1: 0.7, 2: 0.85, 3: 1.0, 4: 1.15, 5: 1.3, 6: 1.5, 7: 1.75}
+                style['size_scale'] = _map.get(n, 1.0)
+            except ValueError:
+                pass
+    elif name in ('b', 'strong'):
+        style['bold'] = True
+    elif name in ('i', 'em'):
+        style['italic'] = True
+    elif name == 'u':
+        style['underline'] = True
+    elif name == 'span':
+        # style="color:#xxx; font-weight:...; font-size:...; ..."
+        s_attr = node.get('style') or ''
+        if s_attr:
+            import re as _re
+            for m in _re.finditer(r'([\w-]+)\s*:\s*([^;]+)', s_attr):
+                k = m.group(1).strip().lower()
+                v = m.group(2).strip()
+                if k == 'color':
+                    style['color'] = v
+                elif k == 'font-weight':
+                    if v.lower() in ('bold', 'bolder') or v.isdigit() and int(v) >= 600:
+                        style['bold'] = True
+                elif k == 'font-style' and v.lower() == 'italic':
+                    style['italic'] = True
+                elif k == 'text-decoration' and 'underline' in v.lower():
+                    style['underline'] = True
+                elif k == 'font-size':
+                    # "14px", "1.2em", "120%"
+                    _m2 = _re.match(r'(\d+(?:\.\d+)?)\s*(px|em|%)?', v)
+                    if _m2:
+                        num = float(_m2.group(1))
+                        unit = (_m2.group(2) or 'px').lower()
+                        if unit == 'px':
+                            style['size_scale'] = num / 14.0  # 14px 기준
+                        elif unit == 'em':
+                            style['size_scale'] = num
+                        elif unit == '%':
+                            style['size_scale'] = num / 100.0
+
+    runs = []
+    for child in node.children:
+        runs.extend(_collect_inline_runs(child, style))
+    return runs
+
+
+def _runs_to_output(runs: list) -> tuple:
+    """runs [(text, style), ...] → (plain_text, text_runs 또는 None).
+    연속된 동일 style은 병합. 스타일이 하나도 없으면 text_runs=None 반환.
+    """
+    if not runs:
+        return ('', None)
+    # 앞뒤 공백을 유지하되 완전히 빈 run은 제외
+    filtered = [(t, st) for (t, st) in runs if t]
+    if not filtered:
+        return ('', None)
+    # 병합
+    merged = []
+    for t, st in filtered:
+        if merged and merged[-1][1] == st:
+            merged[-1] = (merged[-1][0] + t, st)
+        else:
+            merged.append([t, st])
+    plain = ''.join(t for t, _ in merged)
+    # 스타일이 하나라도 있는지
+    has_style = any(bool(st) for _, st in merged)
+    if not has_style:
+        return (plain, None)
+    # text_runs 포맷 (스키마 slim)
+    text_runs = []
+    for t, st in merged:
+        run = {'text': t}
+        if st.get('color'):
+            run['color'] = st['color']
+        if st.get('bold'):
+            run['bold'] = True
+        if st.get('italic'):
+            run['italic'] = True
+        if st.get('underline'):
+            run['underline'] = True
+        if 'size_scale' in st and st['size_scale'] != 1.0:
+            run['size_scale'] = round(st['size_scale'], 2)
+        text_runs.append(run)
+    return (plain, text_runs)
+
+
 def _html_body_to_items(html: str) -> list:
     """HTML(관리자 편집기 결과)을 모바일 앱이 이해하는 items 배열로 변환.
     
@@ -9320,8 +10259,42 @@ def _html_body_to_items(html: str) -> list:
             for nested in nested_ols:
                 process_ol(nested)
     
+    def emit_runs(runs: list):
+        """[(text, style), ...] 리스트 → bullet 아이템으로 emit.
+        text_runs가 있으면 함께 저장. '*'/'★'/'※' 특별 취급 없음."""
+        plain, text_runs = _runs_to_output(runs)
+        plain = plain.strip()
+        if not plain:
+            return
+        # text_runs가 있으면 각 run의 앞뒤 공백/양쪽 트림 동기화
+        if text_runs:
+            # plain의 양쪽 공백 정리에 맞춰 text_runs도 정리
+            # 앞 공백 제거
+            while text_runs and text_runs[0]['text'] and text_runs[0]['text'].lstrip() != text_runs[0]['text']:
+                text_runs[0]['text'] = text_runs[0]['text'].lstrip()
+                if not text_runs[0]['text']:
+                    text_runs.pop(0)
+                else:
+                    break
+            # 뒤 공백 제거
+            while text_runs and text_runs[-1]['text'] and text_runs[-1]['text'].rstrip() != text_runs[-1]['text']:
+                text_runs[-1]['text'] = text_runs[-1]['text'].rstrip()
+                if not text_runs[-1]['text']:
+                    text_runs.pop()
+                else:
+                    break
+        clean, due_iso = _extract_due_date(plain)
+        _bul = {'type': 'bullet', 'text': clean}
+        if due_iso:
+            _bul['due_date'] = due_iso
+        if text_runs and clean == plain:
+            # due_date 추출로 text가 바뀌지 않은 경우만 text_runs 유지 (안전)
+            _bul['text_runs'] = text_runs
+        items.append(_bul)
+
     def process_element(el):
-        """editor 직속 자식 처리 (div, ol 등)."""
+        """editor 직속 자식 처리 (div, ol 등). 인라인 태그는 상위 flush에서 처리됨.
+        '*' / '★' / '※' 특별 취급 없이 원문 그대로 유지."""
         name = getattr(el, 'name', None)
         if name == 'ol':
             process_ol(el)
@@ -9329,26 +10302,12 @@ def _html_body_to_items(html: str) -> list:
             text = el.get_text().strip()
             if not text:
                 return
-            # highlight 감지: 시작이 * 또는 ★ 또는 ※
-            is_highlight = (
-                text.startswith('*') or text.startswith('★') or text.startswith('※')
-            )
-            # indent 감지
             indent = 0
             try:
                 indent = int(el.get('data-indent') or 0)
             except (ValueError, TypeError):
                 pass
-            
-            if is_highlight:
-                # 앞의 * 또는 ★ 제거
-                clean = text.lstrip('*★※ \t').rstrip('*').strip()
-                clean, due_iso = _extract_due_date(clean)
-                _hi = {'type': 'highlight', 'text': clean}
-                if due_iso:
-                    _hi['due_date'] = due_iso
-                items.append(_hi)
-            elif indent >= 1:
+            if indent >= 1:
                 clean, due_iso = _extract_due_date(text)
                 _sub = {'type': 'sub', 'text': clean}
                 if due_iso:
@@ -9360,18 +10319,31 @@ def _html_body_to_items(html: str) -> list:
                 if due_iso:
                     _bul['due_date'] = due_iso
                 items.append(_bul)
-        elif isinstance(el, NavigableString):
-            text = str(el).strip()
-            if text:
-                clean, due_iso = _extract_due_date(text)
-                _bul = {'type': 'bullet', 'text': clean}
-                if due_iso:
-                    _bul['due_date'] = due_iso
-                items.append(_bul)
     
-    # 최상위 자식들 순회
+    # 최상위 자식들 순회.
+    # 연속된 NavigableString + 인라인 태그(font/span/b/i/u/em/strong/sub/sup 등)는 하나의 텍스트로 병합.
+    # <br> 만나면 flush(하나의 아이템으로 emit).
+    INLINE_TAGS = {'font', 'span', 'b', 'i', 'u', 'em', 'strong', 'sub', 'sup', 'small', 'mark', 'a', 'code'}
+    runs_buf = []  # [(text, style_dict), ...]
+
+    def flush_buf():
+        if runs_buf:
+            emit_runs(list(runs_buf))
+            runs_buf.clear()
+
     for child in soup.children:
-        process_element(child)
+        name = getattr(child, 'name', None)
+        if isinstance(child, NavigableString):
+            runs_buf.append((str(child), {}))
+        elif name == 'br':
+            flush_buf()
+        elif name in INLINE_TAGS:
+            runs_buf.extend(_collect_inline_runs(child, {}))
+        else:
+            # 블록 요소(div, p, ol, ul 등): 지금까지 쌓인 인라인 flush 후 별도 처리
+            flush_buf()
+            process_element(child)
+    flush_buf()
     
     return items
 
@@ -9405,20 +10377,46 @@ def _products_to_note_cards(products: list, week_override=None) -> list:
                     body = blk.get('body', '')
                     items.extend(_html_body_to_items(body))
                 elif kind == 'file':
-                    # 파일 첨부는 photo item으로
-                    fname = blk.get('file_name', '')
-                    if fname:
+                    # 파일 첨부는 photo item으로. xlsx/xlsm 이면 PNG 자동 변환.
+                    fname = blk.get('file_name', '') or ''
+                    url = blk.get('url', '') or ''
+                    if fname or url:
+                        _lower = (fname + ' ' + url).lower()
+                        _photo_ref = url  # 기본값: URL 그대로
+                        if '.xlsx' in _lower or '.xlsm' in _lower:
+                            try:
+                                local_path = _xlsx_url_to_local_path(url)
+                                if local_path and local_path.exists():
+                                    # division_id 유추 (파서는 report 전체를 안 봄 → product 이름으로)
+                                    _div_id = ''
+                                    try:
+                                        _div_id = _cl.derive_division_from_project(title) or ''
+                                    except Exception:
+                                        _div_id = ''
+                                    if not _div_id:
+                                        _div_id = 'semiconductor'
+                                    png_bytes = _xlsx_file_to_png_bytes(local_path)
+                                    _photo_ref = _save_note_photo(_div_id, png_bytes, ext='png')
+                                    print(f'[parser] xlsx→png 자동 변환: {fname} → {_photo_ref}')
+                                else:
+                                    print(f'[parser] xlsx 파일 찾지 못함, URL 그대로: {url}')
+                            except Exception as _e:
+                                print(f'[parser] xlsx→png 변환 실패 (URL 그대로 사용): {_e}')
                         items.append({
                             'type': 'photo',
-                            'text': fname,
-                            'photo_ref': blk.get('url', ''),
+                            'text': fname or url,
+                            'photo_ref': _photo_ref,
                         })
             
             if items:
-                card_sections.append({
+                new_sec = {
                     'title': sec_title,
                     'items': items,
-                })
+                }
+                # sales_visible 이 명시적으로 지정돼 있으면 유지 (기본 True 는 저장 안 함)
+                if isinstance(sec.get('sales_visible'), bool):
+                    new_sec['sales_visible'] = sec['sales_visible']
+                card_sections.append(new_sec)
         
         if card_sections:
             card = {
@@ -9651,7 +10649,7 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
             merged = []
             for i, np in enumerate(new_products):
                 base = dict(existing[i]) if i < len(existing) else {}
-                for key in ("name", "headline", "category", "status", "summary_bullets", "sections", "sales_input", "sales_data", "sales_source", "sales_prices", "sales_summary", "sales_summary_data", "sales_computed_at"):
+                for key in ("name", "headline", "category", "status", "summary_bullets", "sections", "sales_input", "sales_data", "sales_source", "sales_prices", "sales_summary", "sales_summary_data", "sales_computed_at", "sales_visible"):
                     if key in np:
                         base[key] = np[key]
                 merged.append(base)
@@ -9720,12 +10718,25 @@ async def admin_upload_section_file(
     data = await file.read()
     dest.write_bytes(data)
 
+    # xlsx/xlsm 이면 PNG로도 자동 변환해서 photo_ref 확보 (앱 렌더용)
+    photo_ref = None
+    lower = safe_name.lower()
+    if lower.endswith(('.xlsx', '.xlsm')):
+        try:
+            division_id = _derive_division_id_from_report(target)
+            png_bytes = _xlsx_file_to_png_bytes(dest)
+            photo_ref = _save_note_photo(division_id, png_bytes, ext='png')
+            print(f"[section-file] xlsx→png 자동 변환 OK: {safe_name} (div={division_id}) → {photo_ref}")
+        except Exception as _e:
+            print(f"[section-file] xlsx→png 변환 실패 (원본은 저장됨): {_e}")
+
     return {
         "ok": True,
         "doc_id": doc_id,
         "file_name": safe_name,
         "size": len(data),
         "url": "/admin/manual-files/" + doc_id + "/" + safe_name,
+        "photo_ref": photo_ref,
     }
 
 
@@ -12596,7 +13607,9 @@ function renderNotePreview(cards) {
 
 <script src="/static/note_loader.js"></script>
 <script src="/static/excel_drop.js"></script>
-<script src="/static/photo_drop.js"></script>
+<script src="/static/photo_drop.js">
+    
+    </script>
 </body>
 
 </html>

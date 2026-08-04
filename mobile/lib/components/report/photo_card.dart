@@ -43,48 +43,130 @@ class PhotoCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.x3),
           ],
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(
-              _imageUrl,
-              fit: BoxFit.contain,
-              // 로딩 중에는 박스 형태 유지를 위해 회색 톤 placeholder
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return Container(
-                  height: 140,
-                  width: double.infinity,
-                  color: const Color(0xFFF8FAFC),
-                  alignment: Alignment.center,
-                  child: const CircularProgressIndicator(strokeWidth: 2),
-                );
-              },
-              // 실패 시 안내 placeholder
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 140,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    border: Border.all(color: AppColors.reportCardBorder),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '이미지를 불러오지 못했어요',
-                    style: AppText.caption.copyWith(color: AppColors.reportBody),
-                  ),
-                );
-              },
+          // 이미지: 탭하면 풀스크린 줌 뷰어 열림
+          GestureDetector(
+            onTap: () => _openFullscreen(context),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Hero(
+                tag: 'photo_$photoRef',
+                child: Image.network(
+                  _imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 140,
+                      width: double.infinity,
+                      color: const Color(0xFFF8FAFC),
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 140,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        border: Border.all(color: AppColors.reportCardBorder),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '이미지를 불러오지 못했어요',
+                        style: AppText.caption.copyWith(color: AppColors.reportBody),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ],
       ),
     );
   }
-  // 파일명이 확장자만 있는 형태이면 표시 안 함 (예: 'foo.xlsx')
+
+  void _openFullscreen(BuildContext context) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (_, _, _) => _FullscreenPhoto(
+          imageUrl: _imageUrl,
+          heroTag: 'photo_$photoRef',
+          title: fileName,
+        ),
+      ),
+    );
+  }
+
   bool _isFileNameOnly(String name) {
     return RegExp(r'\.(xlsx|xls|pptx|ppt|docx|doc|pdf|png|jpg|jpeg|gif|webp)$',
         caseSensitive: false).hasMatch(name.trim());
   }
+}
 
+
+/// 풀스크린 이미지 뷰어. 핀치 줌 + 팬 (InteractiveViewer).
+class _FullscreenPhoto extends StatelessWidget {
+  final String imageUrl;
+  final String heroTag;
+  final String? title;
+
+  const _FullscreenPhoto({
+    required this.imageUrl,
+    required this.heroTag,
+    this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: (title != null && title!.isNotEmpty)
+            ? Text(
+                title!,
+                style: const TextStyle(fontSize: 14, color: Colors.white70),
+                overflow: TextOverflow.ellipsis,
+              )
+            : null,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Center(
+        child: Hero(
+          tag: heroTag,
+          child: InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 6.0,
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const Center(
+                  child: Text(
+                    '이미지를 불러오지 못했어요',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

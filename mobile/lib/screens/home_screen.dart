@@ -14,6 +14,7 @@
 //  - 하단 네비 첫 탭을 '홈' 으로 변경
 
 import 'package:flutter/material.dart';
+import 'notifications_screen.dart';
 
 import '../components/components.dart';
 import '../design/design.dart';
@@ -432,8 +433,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     HomeHeader(
                       todayLabel: _todayLabel,
                       onTapNotification: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('알림 기능 준비 중입니다.')),
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const NotificationsScreen(),
+                          ),
                         );
                       },
                       onTapSearch: () {

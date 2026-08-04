@@ -135,12 +135,6 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                             subtitle: _buildSubtitle(note.reportDate),
                           ),
                           const SizedBox(height: AppSpacing.x3),
-                          if ((note.summaryText ?? '').isNotEmpty)
-                            StatusSummaryCard(
-                              text: note.summaryText!,
-                              status: note.status ?? 'GRAY',
-                            ),
-                          const SizedBox(height: AppSpacing.x3),
                           if (note.kpiCard != null) ...[
                             ProfitKpiSection(
                               card: note.kpiCard!,
@@ -346,7 +340,7 @@ class _ReportSectionCard extends StatelessWidget {
             if (i > 0) const SizedBox(height: AppSpacing.x2),
             _ReportItemRow(item: rows[i]),
           ],
-          if (section.salesSummary != null) ...[
+          if (section.salesSummary != null && (section.salesVisible ?? true)) ...[
             const SizedBox(height: AppSpacing.x3),
             _SalesSummaryBadge(
               text: section.salesSummary!,
@@ -681,11 +675,7 @@ class _ReportItemRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Text(
-                item.text,
-                style: textStyle,
-                softWrap: true,
-              ),
+              child: _buildItemText(item, textStyle),
             ),
             if (deadline != null) ...[
               const SizedBox(width: 8),
@@ -727,5 +717,55 @@ class _ReportItemRow extends StatelessWidget {
     return (text: 'D-$diff ($mm/$dd)', tone: DeadlineTone.warn);
   }
   return (text: 'D-$diff ($mm/$dd)', tone: DeadlineTone.normal);
+}
+
+
+/// item.textRuns가 있으면 RichText로, 없으면 일반 Text로 렌더.
+Widget _buildItemText(ReportItem item, TextStyle baseStyle) {
+  // text_runs 유무 관계없이 항상 Text 위젯 사용 (렌더 경로 통일 → 폰트 크기 균일).
+  // text_runs가 있으면 Text.rich로 span 트리 렌더.
+  final runs = item.textRuns;
+  if (runs == null || runs.isEmpty) {
+    return Text(item.text, style: baseStyle, softWrap: true);
+  }
+  return Text.rich(
+    TextSpan(
+      style: baseStyle,
+      children: runs.map((run) {
+        Color? c;
+        if (run.color != null && run.color!.isNotEmpty) {
+          c = _parseHexColor(run.color!);
+        }
+        // 부모 baseStyle에서 fontSize/fontWeight/fontFamily/height 상속.
+        // size_scale이 1.0이 아닐 때만 fontSize 명시.
+        final scaledFontSize = run.sizeScale != 1.0
+            ? (baseStyle.fontSize ?? 14.0) * run.sizeScale
+            : null;
+        return TextSpan(
+          text: run.text,
+          style: TextStyle(
+            color: c,
+            fontWeight: run.bold ? FontWeight.w700 : null,
+            fontStyle: run.italic ? FontStyle.italic : null,
+            decoration: run.underline ? TextDecoration.underline : null,
+            fontSize: scaledFontSize,
+          ),
+        );
+      }).toList(),
+    ),
+    softWrap: true,
+  );
+}
+
+Color? _parseHexColor(String hex) {
+  var h = hex.trim();
+  if (h.startsWith('#')) h = h.substring(1);
+  if (h.length == 6) h = 'FF$h';
+  if (h.length != 8) return null;
+  try {
+    return Color(int.parse(h, radix: 16));
+  } catch (_) {
+    return null;
+  }
 }
 
