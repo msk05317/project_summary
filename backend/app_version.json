@@ -1,7 +1,6 @@
 {
-  "latest_version": "2.1.0",
+  "latest_version": "2.1.1",
   "latest_version_code": 13,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.0/app-release.apk",
-  "release_notes": "🔔 알림 시스템 개선\n\n- 알림 목록 화면 추가 (벨 아이콘 클릭)\n- 알림 탭 시 프로젝트 상세로 바로 이동\n- 상태 악화 시에만 알림 발송\n- AI 요약으로 알림 본문 축약\n\n📅 일정 관리\n- 자동 파싱 날짜 삭제/복원 기능\n- 저장/삭제 confirmation popup",
-  "force_update": false
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.1/app-release.apk",
+  "release_notes": "주차별 계획 VTM 항목 수정"
 }
