@@ -1,7 +1,8 @@
 {
-  "latest_version": "2.1.3",
-  "latest_version_code": 15,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.3/app-release.apk",
-  "release_notes": "업데이트 내용",
+  "latest_version": "2.1.4",
+  "latest_version_code": 16,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.4/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.4/app-release.apk",
+  "release_notes": "목록 화면 사업부 상태를 홈 화면과 동일하게 표시",
   "force_update": false
 }
