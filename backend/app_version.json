@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.1.8",
-  "latest_version_code": 20,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.8/app-release.apk",
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.8/app-release.apk",
-  "release_notes": "설정에 글꼴 크기 슬라이더 추가",
+  "latest_version": "2.1.9",
+  "latest_version_code": 21,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.9/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.9/app-release.apk",
+  "release_notes": "백그라운드 자동 새로고침 추가 (WorkManager, 15분 단위)",
   "force_update": false
 }
