@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../design/design.dart';
 import '../models/division.dart';
 import '../services/divisions_service.dart';
+import '../services/dashboard_service.dart';
 import '../components/home/search_filter_row.dart';
 import '../components/home/division_grid_card.dart';
 import '../models/dashboard.dart';
@@ -21,6 +22,7 @@ class DivisionSelectScreen extends StatefulWidget {
 
 class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
   late Future<List<Division>> _divisionsFuture;
+  late Future<List<DashboardCard>> _dashboardFuture;
   final Set<String> _favoriteDivisions = {};
   String _query = '';
 
@@ -28,6 +30,11 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
   void initState() {
     super.initState();
     _divisionsFuture = DivisionsService.fetchAll();
+    _dashboardFuture = DashboardService.fetchCards();
+  }
+
+  DivisionStatus _statusOf(String divisionId, List<DashboardCard> cards) {
+    return computeDivisionStatus(divisionId, cards);
   }
 
   void _toggleFavorite(String id) {
@@ -103,6 +110,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
             onPressed: () {
               setState(() {
                 _divisionsFuture = DivisionsService.fetchAll();
+                _dashboardFuture = DashboardService.fetchCards();
               });
             },
           ),
@@ -110,13 +118,19 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: FutureBuilder<List<Division>>(
-          future: _divisionsFuture,
+        child: FutureBuilder<List<dynamic>>(
+          future: Future.wait([_divisionsFuture, _dashboardFuture]),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            final all = snap.data ?? const <Division>[];
+            final results = snap.data ?? [];
+            final all = results.isNotEmpty
+                ? results[0] as List<Division>
+                : const <Division>[];
+            final cards = results.length > 1
+                ? results[1] as List<DashboardCard>
+                : const <DashboardCard>[];
             final filtered =
                 all.where((d) => _matchDivision(d, _query)).toList();
 
@@ -216,7 +230,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                         divisionId: d.id,
                         label: d.label,
                         projectCount: d.projects.length,
-                        status: DivisionStatus.active,
+                        status: _statusOf(d.id, cards),
                         isFavorite: true,
                         onTap: () => _openDivision(d),
                         onToggleFavorite: () => _toggleFavorite(d.id),
@@ -267,7 +281,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                       divisionId: d.id,
                       label: d.label,
                       projectCount: d.projects.length,
-                      status: DivisionStatus.active,
+                      status: _statusOf(d.id, cards),
                       isFavorite: false,
                       onTap: () => _openDivision(d),
                       onToggleFavorite: () => _toggleFavorite(d.id),
