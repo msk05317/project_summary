@@ -134,23 +134,15 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                             title: note.title,
                             subtitle: _buildSubtitle(note.reportDate),
                           ),
-                          const SizedBox(height: AppSpacing.x3),
-                          if (note.kpiCard != null) ...[
-                            ProfitKpiSection(
-                              card: note.kpiCard!,
-                              issues: note.issueLines,
+                          const SizedBox(height: AppSpacing.x2),
+                          // 섹션 전체 표시 (admin/v2와 동일하게)
+                          for (final section in note.bodySections) ...[
+                            _ReportSectionCard(
+                              section: section,
+                              projectStatus: note.status ?? 'GRAY',
                             ),
-                            const SizedBox(height: AppSpacing.x3),
+                            const SizedBox(height: AppSpacing.x2),
                           ],
-                          // KPI 카드가 있으면 하단 노트 섹션은 숨김
-                          if (note.kpiCard == null)
-                            for (final section in note.bodySections) ...[
-                              _ReportSectionCard(
-                                section: section,
-                                projectStatus: note.status ?? 'GRAY',
-                              ),
-                              const SizedBox(height: AppSpacing.x3),
-                            ],
                         ] else
                           _ComingSoonView(tab: _currentTab),
                       ],
@@ -305,6 +297,35 @@ class _TopHeader extends StatelessWidget {
   }
 }
 
+class _PhotoOnlySection extends StatelessWidget {
+  final ReportSection section;
+  const _PhotoOnlySection({required this.section});
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = section.firstPhoto;
+    if (photo == null || photo.photoRef == null || photo.photoRef!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return BaseCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            section.title,
+            style: AppText.h2.copyWith(color: AppColors.reportHeading),
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          PhotoCard(
+            photoRef: photo.photoRef!,
+            fileName: photo.text,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReportSectionCard extends StatelessWidget {
   final ReportSection section;
   final String projectStatus;
@@ -328,20 +349,20 @@ class _ReportSectionCard extends StatelessWidget {
             section.title,
             style: AppText.h2.copyWith(color: AppColors.reportHeading),
           ),
-          const SizedBox(height: AppSpacing.x3),
+          const SizedBox(height: AppSpacing.x2),
           if (section.firstPhoto != null) ...[
             PhotoCard(
               photoRef: section.firstPhoto!.photoRef!,
               fileName: section.firstPhoto!.text,
             ),
-            const SizedBox(height: AppSpacing.x3),
+            const SizedBox(height: AppSpacing.x2),
           ],
           for (int i = 0; i < rows.length; i++) ...[
-            if (i > 0) const SizedBox(height: AppSpacing.x2),
+            if (i > 0) const SizedBox(height: AppSpacing.x1),
             _ReportItemRow(item: rows[i]),
           ],
           if (section.salesSummary != null && (section.salesVisible ?? true)) ...[
-            const SizedBox(height: AppSpacing.x3),
+            const SizedBox(height: AppSpacing.x2),
             _SalesSummaryBadge(
               text: section.salesSummary!,
               reportDate: section.salesComputedAt,
@@ -567,7 +588,7 @@ class _ErrorView extends StatelessWidget {
                 ? AppColors.reportBody
                 : AppColors.reportHeading,
           ),
-          const SizedBox(height: AppSpacing.x3),
+          const SizedBox(height: AppSpacing.x2),
           Text(
             title,
             style: AppText.h2.copyWith(color: AppColors.reportHeading),
@@ -668,9 +689,9 @@ class _ReportItemRow extends StatelessWidget {
     );
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 32),
+      constraints: const BoxConstraints(minHeight: 0),
       child: Padding(
-        padding: EdgeInsets.only(left: isSub ? 16 : 0, top: 2, bottom: 2),
+        padding: EdgeInsets.only(left: isSub ? 16 : 0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -757,9 +778,38 @@ Widget _buildItemText(ReportItem item, TextStyle baseStyle) {
   );
 }
 
-Color? _parseHexColor(String hex) {
-  var h = hex.trim();
+Color? _parseHexColor(String raw) {
+  var s = raw.trim();
+  if (s.isEmpty) return null;
+
+  // rgb(r,g,b) / rgba(r,g,b,a) 형식
+  final rgbMatch = RegExp(
+    r'^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$',
+    caseSensitive: false,
+  ).firstMatch(s);
+  if (rgbMatch != null) {
+    try {
+      final r = int.parse(rgbMatch.group(1)!).clamp(0, 255);
+      final g = int.parse(rgbMatch.group(2)!).clamp(0, 255);
+      final b = int.parse(rgbMatch.group(3)!).clamp(0, 255);
+      int a = 255;
+      final aStr = rgbMatch.group(4);
+      if (aStr != null) {
+        final aVal = double.parse(aStr);
+        a = (aVal * 255).round().clamp(0, 255);
+      }
+      return Color.fromARGB(a, r, g, b);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // hex (#RRGGBB / RRGGBB / #AARRGGBB / AARRGGBB / #RGB / RGB)
+  var h = s;
   if (h.startsWith('#')) h = h.substring(1);
+  if (h.length == 3) {
+    h = h.split('').map((c) => '$c$c').join();
+  }
   if (h.length == 6) h = 'FF$h';
   if (h.length != 8) return null;
   try {

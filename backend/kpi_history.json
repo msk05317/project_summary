@@ -270,25 +270,7 @@
           }
         }
       },
-      "issue_lines": [
-        {
-          "text": "W28 FE 1대 고객 사급자재(엔드이펙터) 지연",
-          "due_date": "2026-07-06",
-          "severity": "high",
-          "show_dday": true
-        },
-        {
-          "text": "MACH I VTM 추가 승인 예정 · 10월 양산 승인 목표",
-          "due_date": "2026-10-31",
-          "severity": "mid",
-          "show_dday": true
-        },
-        {
-          "text": "VN 내재화 프레임 진행 · FE 19/11, BE 25/14",
-          "severity": "info",
-          "show_dday": false
-        }
-      ],
+      "issue_lines": [],
       "cumulative": {
         "models": {
           "major_module::EFEM": {

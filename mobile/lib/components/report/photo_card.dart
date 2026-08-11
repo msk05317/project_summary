@@ -140,12 +140,16 @@ class _FullscreenPhoto extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Center(
-        child: Hero(
-          tag: heroTag,
-          child: InteractiveViewer(
-            minScale: 0.8,
-            maxScale: 6.0,
+      body: Hero(
+        tag: heroTag,
+        child: InteractiveViewer(
+          minScale: 1.0,
+          maxScale: 6.0,
+          constrained: false,
+          boundaryMargin: const EdgeInsets.all(double.infinity),
+          child: SizedBox(
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
             child: Image.network(
               imageUrl,
               fit: BoxFit.contain,

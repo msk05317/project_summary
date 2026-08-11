@@ -10,6 +10,7 @@ import '../design/design.dart';
 import '../models/division.dart';
 import '../models/dashboard.dart';
 import '../services/dashboard_service.dart';
+import '../services/favorites_service.dart';
 import '../components/division/division_summary_card.dart';
 import '../components/division/division_immediate_check.dart';
 import '../components/division/project_grid_card.dart';
@@ -36,7 +37,8 @@ class DivisionProjectsScreen extends StatefulWidget {
 }
 
 class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
-  final Set<String> _favoriteProjects = {};
+  Set<String> _favoriteProjects = {};
+  bool _isDivisionFavorite = false;
   String? _selectedProjectId;
   String _projectQuery = '';
 
@@ -46,6 +48,25 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
   void initState() {
     super.initState();
     _future = DashboardService.fetchCards();
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    final projs = await FavoritesService.loadAll();
+    final isDivFav = await FavoritesService.isDivisionFavorite(widget.division.id);
+    if (!mounted) return;
+    setState(() {
+      _favoriteProjects = projs;
+      _isDivisionFavorite = isDivFav;
+    });
+  }
+
+  Future<void> _toggleDivisionFavorite() async {
+    final nowFav = await FavoritesService.toggleDivision(widget.division.id);
+    if (!mounted) return;
+    setState(() {
+      _isDivisionFavorite = nowFav;
+    });
   }
 
   Future<void> _refresh() async {
@@ -315,12 +336,14 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     }).toList();
   }
 
-  void _toggleFavorite(String id) {
+  Future<void> _toggleFavorite(String id) async {
+    final nowFav = await FavoritesService.toggle(id);
+    if (!mounted) return;
     setState(() {
-      if (_favoriteProjects.contains(id)) {
-        _favoriteProjects.remove(id);
+      if (nowFav) {
+        _favoriteProjects = {..._favoriteProjects, id};
       } else {
-        _favoriteProjects.add(id);
+        _favoriteProjects = {..._favoriteProjects}..remove(id);
       }
     });
   }
@@ -331,6 +354,8 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         builder: (_) => ReportDetailScreen(projectKey: projectKey),
       ),
     );
+    // 상세에서 돌아오면 즐겨찾기 상태 재로드
+    await _loadFavorites();
   }
 
   void _handleBottomNav(AppNavTab tab) {
@@ -389,8 +414,14 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(Icons.star_rounded,
-                color: Color(0xFFF4B63D), size: 18),
+            GestureDetector(
+              onTap: _toggleDivisionFavorite,
+              child: Icon(
+                _isDivisionFavorite ? Icons.star_rounded : Icons.star_border_rounded,
+                color: _isDivisionFavorite ? const Color(0xFFF4B63D) : const Color(0xFFB0B0B0),
+                size: 20,
+              ),
+            ),
           ],
         ),
         actions: [

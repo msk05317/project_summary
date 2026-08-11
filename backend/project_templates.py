@@ -1,3 +1,4 @@
+from typing import Optional
 """
 프로젝트(부서) 단위 보기 모듈
 - GPT가 자동 정리한 sections를 그대로 사용
@@ -87,7 +88,7 @@ PRODUCT_TO_PROJECT = [
 ]
 
 
-def _match_project_key(product_name: str) -> str | None:
+def _match_project_key(product_name: str) -> Optional[str]:
     if not product_name:
         return None
     name = product_name.lower()

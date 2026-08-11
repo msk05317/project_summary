@@ -1,10 +1,12 @@
 # Python 3.11 슬림 베이스
 FROM python:3.11-slim
 
-# 시스템 패키지: LibreOffice (PPT→PDF) + Poppler (PDF→PNG) + 폰트
+# 시스템 패키지: LibreOffice + Java (LibreOffice가 스타일 렌더링에 사용) + Poppler + 폰트
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice \
     libreoffice-impress \
+    libreoffice-calc \
+    default-jre-headless \
     poppler-utils \
     fonts-nanum \
     fonts-noto-cjk \

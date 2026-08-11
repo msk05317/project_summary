@@ -163,6 +163,8 @@ class ReportNote {
   });
 
   factory ReportNote.fromJson(Map<String, dynamic> j) {
+    // 서버가 /projects/{key} 에서 배열(merged cards)을 반환하는 경우 방어:
+    // 이 경우 호출부(report_service)에서 첫 요소만 넘기도록 처리됨.
     // /projects/{project_key} 와 /notes/by_project 두 응답 형태를 모두 받기 위해
     // card 래퍼가 있으면 card 안을 사용하고, 없으면 루트 자체를 사용합니다.
     final root = (j['card'] is Map<String, dynamic>)
@@ -175,10 +177,10 @@ class ReportNote {
         .toList();
 
     return ReportNote(
-      projectKey: (j['project_key'] ?? j['project_id'] ?? root['project_key'] ?? '').toString(),
+      projectKey: (j['project_key'] ?? j['project_id'] ?? j['key'] ?? root['project_key'] ?? root['key'] ?? '').toString(),
       title: (root['title'] ?? j['label'] ?? j['project_label'] ?? '').toString(),
       sections: sections,
-      status: j['status']?.toString(),
+      status: (j['status'] ?? root['status'])?.toString(),
       reportDate: (j['report_date'] ?? root['report_date'])?.toString(),
       divisionId: (j['division_id'] ?? root['division_id'])?.toString(),
       divisionLabel: (j['division_label'] ?? root['division_label'])?.toString(),

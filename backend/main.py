@@ -666,6 +666,25 @@ def _snapshot_notes_status() -> dict:
                     worst = {"item": it, "status": s}
         return worst
 
+    def _collect_hot_items(card_dict):
+        """카드 안 RED/ORANGE 아이템 전체 수집 (신규 지연 항목 감지용)."""
+        out = []
+        for sec in card_dict.get("sections", []) or []:
+            for it in (sec.get("items", []) or []):
+                if not isinstance(it, dict):
+                    continue
+                due = (it.get("due_date") or "").strip()
+                if not due:
+                    continue
+                s = _due_status_one(due)
+                if s in ("RED", "ORANGE"):
+                    out.append({
+                        "text": (it.get("text") or it.get("title") or "").strip()[:80],
+                        "due_date": due,
+                        "status": s,
+                    })
+        return out
+
     try:
         notes = _load_notes()
         result = {}
@@ -704,6 +723,7 @@ def _snapshot_notes_status() -> dict:
                     "status": status,
                     "trigger": trigger,
                     "project_key": project_key,
+                    "hot_items": _collect_hot_items(card) if card.get("sections") else [],
                 }
         return result
     except Exception as e:
@@ -750,6 +770,45 @@ def _detect_status_transitions(before: dict, after: dict) -> list:
                 "trigger": _trigger(after_val),
                 "project_key": _pkey(after_val),
             })
+
+    # ─── 신규 RED/ORANGE 항목 감지 (카드 색 전이 없어도 발송) ───
+    from datetime import date as _date2
+    _today2 = _date2.today()
+    for key, after_val in after.items():
+        if not isinstance(after_val, dict):
+            continue
+        new_status = after_val.get("status") or ""
+        if new_status not in ("RED", "ORANGE"):
+            continue
+        old_status = _as_status(before.get(key, ""))
+        if (old_status, new_status) in _worsen:
+            continue  # 색 전이 알람으로 이미 처리됨
+        bv = before.get(key)
+        before_hot = bv.get("hot_items") if isinstance(bv, dict) else []
+        before_set = {(h.get("text") or "", h.get("due_date") or "") for h in (before_hot or []) if isinstance(h, dict)}
+        for h in (after_val.get("hot_items") or []):
+            if not isinstance(h, dict):
+                continue
+            sig = (h.get("text") or "", h.get("due_date") or "")
+            if sig in before_set:
+                continue
+            due = h.get("due_date") or ""
+            days_diff = None
+            try:
+                yy, mm, dd = due[:10].split("-")
+                days_diff = (_date2(int(yy), int(mm), int(dd)) - _today2).days
+            except Exception:
+                pass
+            div_id, title = key.split("/", 1) if "/" in key else ("", key)
+            events.append({
+                "division_id": div_id,
+                "title": title,
+                "old_status": old_status or "없음",
+                "new_status": h.get("status") or new_status,
+                "trigger": {"text": h.get("text") or "", "due_date": due, "days_diff": days_diff},
+                "project_key": _pkey(after_val),
+                "kind": "new_item",
+            })
     return events
 
 
@@ -795,6 +854,57 @@ def _save_fcm_history(hist: list) -> None:
         print(f"[FCM history] save error: {e}")
 
 
+
+# ─── FCM 편집 세션 관리 (알람 억제용) ───
+EDIT_SESSION_FILE = Path("/tmp/fcm_edit_session.json")
+
+def _load_edit_session() -> dict:
+    """편집 세션 파일 로드. 구조: {doc_id: {"snapshot": {...}, "started_at": timestamp}}"""
+    if not EDIT_SESSION_FILE.exists():
+        return {}
+    try:
+        return json.loads(EDIT_SESSION_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_edit_session(doc_id: str, snapshot: dict) -> None:
+    """편집 세션 저장 (before snapshot)"""
+    import time as _time
+    sessions = _load_edit_session()
+    sessions[doc_id] = {
+        "snapshot": snapshot,
+        "started_at": int(_time.time())
+    }
+    try:
+        EDIT_SESSION_FILE.write_text(json.dumps(sessions, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print(f"[FCM] edit session save error: {e}")
+
+def _clear_edit_session(doc_id: str) -> dict:
+    """편집 세션 클리어 및 저장된 snapshot 반환"""
+    sessions = _load_edit_session()
+    session_data = sessions.pop(doc_id, None)
+    try:
+        EDIT_SESSION_FILE.write_text(json.dumps(sessions, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print(f"[FCM] edit session clear error: {e}")
+    return session_data.get("snapshot") if session_data else None
+
+def _cleanup_expired_sessions() -> None:
+    """30분 이상 된 세션 자동 정리"""
+    import time as _time
+    now = int(_time.time())
+    sessions = _load_edit_session()
+    expired = [k for k, v in sessions.items() if now - v.get("started_at", 0) > 30 * 60]
+    for k in expired:
+        sessions.pop(k, None)
+        print(f"[FCM] expired session cleaned: {k}")
+    if expired:
+        try:
+            EDIT_SESSION_FILE.write_text(json.dumps(sessions, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
 def _fire_status_alarms(events: list) -> None:
     """상태 전이 이벤트를 FCM으로 전송. 30분 쿨다운 적용 + 히스토리 저장."""
     if not events:
@@ -817,7 +927,8 @@ def _fire_status_alarms(events: list) -> None:
         div = ev.get("division_id") or ""
         proj_title = ev.get("title") or ""
         new_status = ev.get("new_status") or ""
-        key = f"{div}|{proj_title}|{new_status}"
+        _due_key = ((ev.get("trigger") or {}).get("due_date") or "")
+        key = f"{div}|{proj_title}|{new_status}|{_due_key}"
 
         last = cooldown.get(key, 0)
         try:
@@ -1692,6 +1803,22 @@ def dashboard():
     severity = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GREEN": 2, "GRAY": 2, "BLACK": 1}
     cards.sort(key=lambda c: -severity.get(c["status"], 0))
 
+    # 🟢 project_key 기준 중복 제거 (같은 프로젝트는 1개만 유지)
+    # - severity 높은 순으로 정렬되어 있으므로 첫 번째 카드만 남김
+    # - project_key 없으면 product(제목)으로 대체
+    seen_keys = set()
+    deduped = []
+    for c in cards:
+        key = c.get("project_key") or c.get("product") or ""
+        if not key:
+            # 키가 없으면 고유 ID로 처리 (중복 아님)
+            key = c.get("doc_id", "") or str(id(c))
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(c)
+    cards = deduped
+
     # 🟢 모델 단위 그룹핑 (신규 필드, 옛 cards 는 호환을 위해 그대로 유지)
     grouped_cards = _group_dashboard_cards(cards)
 
@@ -1928,12 +2055,12 @@ def list_reports():
             if manual_projs:
                 parsed = dict(parsed)
                 parsed["projects"] = list(manual_projs)
-                mw = (r or {}).get("week_override")
-                if mw:
-                    parsed["week"] = mw
-                if parsed.get("projects"):
-                    _wk = parsed.get("week")
-                    parsed["display_title"] = ", ".join(parsed["projects"]) + (" · W" + str(_wk) + " 주간보고" if _wk else "")
+            mw = (r or {}).get("week_override")
+            if mw:
+                parsed["week"] = mw
+            if parsed.get("projects"):
+                _wk = parsed.get("week")
+                parsed["display_title"] = ", ".join(parsed["projects"]) + (" · W" + str(_wk) + " 주간보고" if _wk else "")
             classified = _classify_report_status(
                 (r or {}).get("upload_timestamp", ""),
                 parsed.get("date") or meta.get("date", "")
@@ -2076,21 +2203,47 @@ def _save_note_photo(division_id: str, image_bytes: bytes, ext: str = "png") -> 
 
 
 def _xlsx_file_to_png_bytes(xlsx_path: Path) -> bytes:
-    """xlsx 파일 → 첫 시트를 PNG bytes 로 변환.
-    기존 _excel_sheet_to_preview_data_url 재사용.
+    """xlsx → PNG bytes (LibreOffice + pdf2image로 색상/스타일 완벽 반영).
+    
+    옛 openpyxl+Pillow 직접 렌더링 방식은 표 서식/조건부 서식/테마 색상을
+    지원하지 못했음. LibreOffice로 pdf 변환 후 pdf2image로 png 렌더링하면
+    원본 엑셀과 시각적으로 100% 동일.
     """
-    import openpyxl
-    from base64 import b64decode
-    wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
-    try:
-        ws = wb.worksheets[0]
-        data_url = _excel_sheet_to_preview_data_url(ws)  # 'data:image/png;base64,...'
-    finally:
-        wb.close()
-    if not data_url or "," not in data_url:
-        raise RuntimeError("xlsx → png data_url 변환 실패")
-    _, b64 = data_url.split(",", 1)
-    return b64decode(b64)
+    import subprocess
+    import tempfile
+    from io import BytesIO
+    from pdf2image import convert_from_path
+    
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        
+        # 1) LibreOffice: xlsx → pdf
+        result = subprocess.run(
+            ['libreoffice', '--headless', '--convert-to',
+             'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}',
+             '--outdir', str(tmp_dir), str(xlsx_path)],
+            capture_output=True, timeout=120
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"LibreOffice 변환 실패 (code={result.returncode}): "
+                f"{result.stderr.decode('utf-8', errors='ignore')[:500]}"
+            )
+        
+        pdf_files = list(tmp_dir.glob("*.pdf"))
+        if not pdf_files:
+            raise RuntimeError("LibreOffice가 PDF를 생성하지 못함")
+        pdf_path = pdf_files[0]
+        
+        # 2) pdf → png (첫 페이지, 고해상도)
+        images = convert_from_path(str(pdf_path), dpi=150, first_page=1, last_page=1)
+        if not images:
+            raise RuntimeError("pdf2image로 PNG 변환 실패")
+        
+        # 3) PNG bytes
+        buf = BytesIO()
+        images[0].save(buf, 'PNG', optimize=True)
+        return buf.getvalue()
 
 
 def _derive_division_id_from_report(it: dict) -> str:
@@ -2855,11 +3008,9 @@ def _normalize_note_item(it: dict, section_title: str = "") -> dict:
 
     # ─── due_date_auto 재계산 (매번, 텍스트는 원문 유지) ───
     _, auto_iso = _extract_due_date(txt)
-    # auto 값이 바뀌면 auto_due_hidden 을 자동 해제 (새로운 자동값이므로)
+    # 사용자가 자동 날짜를 숨긴 경우(auto_due_hidden=True)는 재계산돼도 유지
     _prev_auto = (it.get("due_date_auto") or "").strip()
     _new_auto = auto_iso or ""
-    if _prev_auto != _new_auto and it.get("auto_due_hidden"):
-        it.pop("auto_due_hidden", None)
     it["due_date_auto"] = _new_auto
 
     # ─── due_date_override 처리 ───
@@ -4101,6 +4252,13 @@ def list_projects():
 @app.get("/projects/{project_key}")
 def get_project_detail(project_key: str):
     """프로젝트 상세"""
+    # 별칭 매핑: 앱/구 데이터에서 오는 키를 실제 프로젝트 키로 변환
+    _alias_map = {
+        "hrva_plate": "havaplate",
+        "hrvaplate": "havaplate",
+        "hrva-plate": "havaplate",
+    }
+    project_key = _alias_map.get(project_key.strip().lower(), project_key.strip())
     latest = _read_json(LATEST_FILE, [])
     grouped = aggregate_projects(latest)
     detail = build_project_detail(project_key, grouped)
@@ -4845,7 +5003,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     <div class="biz-select">
       <span class="label">사업부</span>
       <select id="v2-division-select">
-        <option value="semiconductor">반도체사업부</option>
+        <option value="">로딩 중...</option>
       </select>
     </div>
 
@@ -5143,24 +5301,30 @@ window._attachAutoListBehavior = function(el){
     };
 
     window._aiIndentTextBlock = function(editor){
-      var block = window._aiGetTextBlockAtCursor(editor);
-      if (!block) return false;
-      var cur = parseInt(block.dataset.indent || '0', 10) || 0;
-      if (cur >= 5) return true;
-      block.dataset.indent = String(cur + 1);
+      // data-indent 대신 텍스트 앞 공백 2칸 삽입 (저장 안정성 확보)
+      document.execCommand('insertText', false, '  ');
       return true;
     };
 
     window._aiOutdentTextBlock = function(editor){
-      var block = window._aiGetTextBlockAtCursor(editor);
-      if (!block) return false;
-      var cur = parseInt(block.dataset.indent || '0', 10) || 0;
-      if (cur <= 0) {
-        if (block.dataset.indent) delete block.dataset.indent;
-        return true;
+      // 커서 위치에서 앞 공백 2칸 제거
+      var sel = window.getSelection();
+      if (!sel.rangeCount) return false;
+      var node = sel.anchorNode;
+      if (node.nodeType === 3) {  // 텍스트 노드
+        var text = node.textContent;
+        var offset = sel.anchorOffset;
+        // 커서 앞의 공백 2칸 제거
+        var before = text.substring(0, offset);
+        var after = text.substring(offset);
+        if (before.endsWith('  ')) {
+          node.textContent = before.slice(0, -2) + after;
+          sel.setPosition(node, offset - 2);
+        } else if (before.endsWith(' ')) {
+          node.textContent = before.slice(0, -1) + after;
+          sel.setPosition(node, offset - 1);
+        }
       }
-      block.dataset.indent = String(cur - 1);
-      if (block.dataset.indent === '0') delete block.dataset.indent;
       return true;
     };
 
@@ -5806,7 +5970,7 @@ window._attachAutoListBehavior = function(el){
             <div style="color:#9CA3AF;font-size:14px;padding:20px;text-align:center;">불러오는 중...</div>
           </div>
           <div class="ov-load-more">
-            <button type="button">이전 보고 더 보기</button>
+            <button type="button" id="ov-load-more-btn">보고 더 보기</button>
           </div>
         </div>
         <div class="ov-modal-mask" id="ov-newproj-mask">
@@ -5961,7 +6125,7 @@ window._attachAutoListBehavior = function(el){
     if (status) { status.textContent = '삭제 중...'; status.style.color = '#6B7280'; }
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.6'; }
     try {
-      var res = await fetch('/admin/doc/' + encodeURIComponent(docId), {
+      var res = await fetch('/admin/reports/' + encodeURIComponent(docId), {
         method: 'DELETE',
         credentials: 'same-origin',
       });
@@ -6204,6 +6368,32 @@ window._attachAutoListBehavior = function(el){
   window.submitNewProject = async function(){
     const name = (document.getElementById('ov-np-name').value || '').trim();
     if (!name) { alert('프로젝트명을 입력해주세요'); return; }
+    const divisionSel = document.getElementById('v2-division-select');
+    const divisionId = ((divisionSel && divisionSel.value) ? divisionSel.value : 'semiconductor').trim() || 'semiconductor';
+    // ★ 중복 검사 — 같은 division에 같은 프로젝트명이 이미 있으면 차단
+    try {
+      const _sel = document.getElementById('v2-division-select');
+      const _curDiv = (_sel && _sel.value ? _sel.value : '').trim();
+      const _all = Array.isArray(window._v2AllReports) ? window._v2AllReports : [];
+      const _dup = _all.find(function(r){
+        const _rd = (r.division_id
+                || (r.products && r.products[0] && r.products[0].division_id)
+                || '').trim();
+        const _sameDiv = _curDiv === 'semiconductor'
+          ? (!_rd || _rd === 'semiconductor')
+          : (_rd === _curDiv);
+        if (!_sameDiv) return false;
+        const _pname = ((r.products && r.products[0] && r.products[0].name) || '').trim();
+        return _pname === name;
+      });
+      if (_dup) {
+        alert('⚠️ "' + name + '" 프로젝트가 이미 존재합니다. 기존 보고서를 열어서 편집해주세요.');
+        window.closeNewProjectModal && window.closeNewProjectModal();
+        return;
+      }
+    } catch(_e) {
+      console.warn('중복 검사 실패, 계속 진행:', _e);
+    }
     // 현재 ISO 주차 자동 계산
     function getISOWeek(d){
       const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -6217,7 +6407,7 @@ window._attachAutoListBehavior = function(el){
       const res = await fetch('/admin/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_name: name, week: week, headline: '' })
+        body: JSON.stringify({ project_name: name, week: week, headline: '', division_id: divisionId })
       });
       if (!res.ok) { alert('생성 실패'); return; }
       window.closeNewProjectModal();
@@ -6227,12 +6417,38 @@ window._attachAutoListBehavior = function(el){
     }
   };
 
+// ─────────────────────────────────────────────
+// admin/v2 사업부 필터 헬퍼
+// ─────────────────────────────────────────────
+window._v2FilterByDivision = function(all){
+    const sel = document.getElementById('v2-division-select');
+    const currentDiv = (sel && sel.value ? sel.value : '').trim();
+    const arr = Array.isArray(all) ? all : [];
+    if (!currentDiv) return arr;
+    return arr.filter(function(r){
+      const rd = (r.division_id
+              || (r.products && r.products[0] && r.products[0].division_id)
+              || (r.products && r.products[0] && r.products[0]._fallback_division_id)
+              || '').trim();
+      if (currentDiv === 'semiconductor') {
+        return !rd || rd === 'semiconductor';
+      }
+      return rd === currentDiv;
+    });
+};
+
+window.renderAdminV2ByDivision = function(){
+    if (typeof window.loadAdminV2Reports === 'function') {
+      window.loadAdminV2Reports();
+    }
+};
+
   window.loadAdminV2Reports = async function(){
     try {
       const res = await fetch('/admin/reports/all');
       const data = await res.json();
-      let reports = Array.isArray(data.reports) ? data.reports : [];
-
+      window._v2AllReports = Array.isArray(data.reports) ? data.reports : [];
+    let reports = window._v2FilterByDivision(window._v2AllReports);
       // 최신순 정렬 (upload_timestamp desc)
       reports.sort(function(a, b){
         return (b.upload_timestamp || '').localeCompare(a.upload_timestamp || '');
@@ -6241,7 +6457,23 @@ window._attachAutoListBehavior = function(el){
       const listEl = document.getElementById('ov-report-list');
       if (!listEl) return;
 
-      const recent = reports.slice(0, 5);
+      const __showAll = window._v2ShowAllReports === true;
+      const recent = __showAll ? reports : reports.slice(0, 3);
+
+      // 더 보기 버튼 처리
+      const __moreBtn = document.getElementById('ov-load-more-btn');
+      if (__moreBtn) {
+        if (reports.length <= 3) {
+          __moreBtn.style.display = 'none';
+        } else {
+          __moreBtn.style.display = '';
+          __moreBtn.textContent = __showAll ? '접기' : ('보고 더 보기 (' + (reports.length - 3) + '개)');
+          __moreBtn.onclick = function(){
+            window._v2ShowAllReports = !window._v2ShowAllReports;
+            window.loadAdminV2Reports();
+          };
+        }
+      }
       if (recent.length === 0) {
         listEl.innerHTML = '<div style="color:#9CA3AF;font-size:14px;padding:20px;text-align:center;">등록된 보고가 없습니다.</div>';
       } else {
@@ -6429,7 +6661,7 @@ window._attachAutoListBehavior = function(el){
       + '<style>'
       + '.ov-edit-topbar{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #E6EBF2;border-radius:20px;padding:14px 18px;margin-bottom:20px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
       + '.ov-back-btn{border:1px solid #DCE4EF;background:#fff;color:#35527C;border-radius:12px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;}'
-      + '.ov-edit-title{font-size:16px;color:#12325F;font-weight:800;}'
+      + '.ov-edit-title{font-size:16px;color:#111827;font-weight:800;}'
       + '.ov-save-btn{border:0;background:#0F2C59;color:#fff;border-radius:12px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;}'
       + '.ov-header-card{background:#fff;border:1px solid #E6EBF2;border-radius:22px;padding:22px 24px;margin-bottom:18px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
       + '.ov-header-title{display:flex;align-items:center;gap:12px;font-size:26px;font-weight:800;color:#0F2C59;letter-spacing:-0.3px;margin-bottom:8px;}'
@@ -6437,6 +6669,12 @@ window._attachAutoListBehavior = function(el){
       + '.ov-tabs{display:inline-flex;gap:6px;background:#F1F5FB;border-radius:14px;padding:4px;margin-bottom:20px;}'
       + '.ov-tab{border:0;background:transparent;color:#6E7785;padding:8px 16px;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer;}'
       + '.ov-tab.active{background:#0F2C59;color:#fff;}'
+      + '.ov-tab-wrap{display:inline-flex;align-items:center;gap:4px;}'
+      + '.ov-tab-actions{display:inline-flex;align-items:center;gap:4px;opacity:0;pointer-events:none;transition:opacity .15s ease;}'
+      + '.ov-tab-wrap:hover .ov-tab-actions{opacity:1;pointer-events:auto;}'
+      + '.ov-tab-icon{width:24px;height:24px;border:0;border-radius:7px;background:#E8EEF7;color:#5B7BB0;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;}'
+      + '.ov-tab-icon:hover{background:#D8E5F7;}'
+      + '.ov-tab-icon.ov-tab-del:hover{background:#FEE7E7;color:#B8302E;}'
       + '.ov-section{background:#fff;border:1px solid #E6EBF2;border-radius:22px;padding:20px;margin-bottom:18px;box-shadow:0 6px 18px rgba(15,44,89,0.04);}'
       + '.ov-section-title{font-size:18px;font-weight:800;color:#0F2C59;margin-bottom:14px;display:flex;align-items:center;gap:10px;}'
       + '.ov-section-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#0F2C59;color:#fff;font-size:13px;font-weight:800;}'
@@ -6463,7 +6701,7 @@ window._attachAutoListBehavior = function(el){
       + '.ov-kpi-cell-badge.plan{background:#EAF0FB;color:#2E5B94;}'
       + '.ov-issue-list{display:flex;flex-direction:column;gap:10px;}'
       + '.ov-issue-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:14px;}'
-      + '.ov-issue-text{font-size:14px;color:#12325F;font-weight:700;line-height:1.45;flex:1;}'
+      + '.ov-issue-text{font-size:14px;color:#111827;font-weight:700;line-height:1.45;flex:1;}'
       + '.ov-issue-dday{font-size:12px;font-weight:800;color:#B8302E;white-space:nowrap;}'
       + '.ov-list-dash{padding-left:20px;} .ov-list-dash li{position:relative;list-style:none;} .ov-list-dash li::before{content:"－";position:absolute;left:-16px;color:#6E7785;}'
       + '.ov-list-triangle{padding-left:22px;} .ov-list-triangle li{position:relative;list-style:none;} .ov-list-triangle li::before{content:"▶";position:absolute;left:-18px;color:#2E5B94;font-size:0.85em;top:0.15em;}'
@@ -6472,12 +6710,12 @@ window._attachAutoListBehavior = function(el){
       + '.ov-list-arrow{padding-left:24px;} .ov-list-arrow li{position:relative;list-style:none;} .ov-list-arrow li::before{content:"➜";position:absolute;left:-20px;color:#2E5B94;}'
       + '.ov-list-diamond{padding-left:22px;} .ov-list-diamond li{position:relative;list-style:none;} .ov-list-diamond li::before{content:"◆";position:absolute;left:-18px;color:#8B5CF6;}'
       + '.ov-list-dot{padding-left:18px;} .ov-list-dot li{position:relative;list-style:none;} .ov-list-dot li::before{content:"·";position:absolute;left:-12px;color:#6E7785;font-weight:800;}'
-      + '.ov-list-circled{padding-left:26px;counter-reset:ov-circled;} .ov-list-circled li{position:relative;list-style:none;counter-increment:ov-circled;} .ov-list-circled li::before{content:counter(ov-circled,decimal);position:absolute;left:-22px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1.5px solid #12325F;border-radius:50%;font-size:10px;font-weight:800;color:#12325F;top:0.2em;}'
-      + '.ov-list-paren{padding-left:22px;counter-reset:ov-paren;} .ov-list-paren li{position:relative;list-style:none;counter-increment:ov-paren;} .ov-list-paren li::before{content:counter(ov-paren) ")";position:absolute;left:-18px;color:#12325F;font-weight:700;}'
+      + '.ov-list-circled{padding-left:26px;counter-reset:ov-circled;} .ov-list-circled li{position:relative;list-style:none;counter-increment:ov-circled;} .ov-list-circled li::before{content:counter(ov-circled,decimal);position:absolute;left:-22px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1.5px solid #12325F;border-radius:50%;font-size:10px;font-weight:800;color:#111827;top:0.2em;}'
+      + '.ov-list-paren{padding-left:22px;counter-reset:ov-paren;} .ov-list-paren li{position:relative;list-style:none;counter-increment:ov-paren;} .ov-list-paren li::before{content:counter(ov-paren) ")";position:absolute;left:-18px;color:#111827;font-weight:700;}'
       + '</style>'
       + '<div class="ov-edit-topbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
       + '  <button class="ov-back-btn" type="button" id="ov-back-btn" style="flex-shrink:0;">← 목록으로</button>'
-      + '  <div class="ov-edit-title" id="ov-edit-title" style="flex:1;text-align:center;font-size:16px;font-weight:800;color:#12325F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + projectLabel + '</div>'
+      + '  <div class="ov-edit-title" id="ov-edit-title" style="flex:1;text-align:center;font-size:16px;font-weight:800;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + projectLabel + '</div>'
       + '  <div style="flex-shrink:0;width:100px;"></div>'
       + '</div>'
       + (ctx.isManual
@@ -6598,6 +6836,14 @@ window._attachAutoListBehavior = function(el){
         return r.doc_id === docId && ((r._split_project || '') === (splitProject || ''));
       }) || reports.find(function(r){
         return r.doc_id === docId;
+      }) || reports.find(function(r){
+        return ((r._split_project || '') === (splitProject || ''));
+      }) || reports.find(function(r){
+        const names = []
+          .concat(r.manual_projects || [])
+          .concat(((r.parsed || {}).projects) || [])
+          .concat((r.products || []).map(function(p){ return p && p.name ? p.name : ''; }));
+        return names.some(function(n){ return String(n || '').trim() === String(productName || '').trim(); });
       }) || null;
       if (!target) {
         console.warn('열기: 해당 보고를 찾을 수 없음', docId, splitProject);
@@ -6615,11 +6861,11 @@ window._attachAutoListBehavior = function(el){
     const parsed = (target && target.parsed) || {};
     const projects = parsed.projects || [];
     const _base = projects.length ? projects.join(', ') : (target && target.file_name) || '보고';
-    const _week = parsed.week || '';
-    const projectLabel = target && target.display_title
-      ? target.display_title
-      : (_week ? _base + ' · W' + _week + ' 주간보고' : _base);
-    const week = parsed.week || '';
+    const _week = (target && target.week_override) || parsed.week || '';
+    const projectLabel = _base
+      ? (_week ? _base + ' · W' + _week + ' 주간보고' : _base)
+      : ((target && target.display_title) || '보고');
+    const week = _week || '';
     const date = parsed.date || (target && (target.report_meta || {}).date) || '';
     const firstProduct = (target && target.products && target.products[0]) || {};
     const headline = firstProduct.headline || '';
@@ -6718,7 +6964,7 @@ window._attachAutoListBehavior = function(el){
         console.log('[일정 패널] 컨텍스트:', window._currentEditContext);
       } catch(e) { console.error('컨텍스트 설정 실패', e); }
 
-      // ─── 일정 관리 패널용 items 캐시 로드 ───
+      // ─── 일정 관리 패널용 items 캐시 로드 (현재 카드만 notes에서 로드) ───
       window._notesItemsCache = {};
       (async function _loadNotesForSchedule(){
         try {
@@ -6737,7 +6983,7 @@ window._attachAutoListBehavior = function(el){
           if (!card) return;
           const map = {};
           (card.sections || []).forEach(function(sec){
-            map[sec.title || ''] = sec.items || [];
+            map[sec.title || ''] = Array.isArray(sec.items) ? sec.items : [];
           });
           window._notesItemsCache = map;
           if (window._renderManualSections) window._renderManualSections();
@@ -6879,8 +7125,8 @@ window._attachAutoListBehavior = function(el){
               blocks.forEach(function(block){
                 var cur = parseInt(block.dataset.indent || '0', 10) || 0;
                 if (cur > 0) {
-                  block.dataset.indent = String(cur - 1);
-                  if (block.dataset.indent === '0') delete block.dataset.indent;
+                  block.setAttribute('data-indent', String(cur - 1));
+                  if (String(cur - 1) === '0') block.removeAttribute('data-indent');
                 } else if (block.dataset.indent) {
                   delete block.dataset.indent;
                 }
@@ -6966,7 +7212,7 @@ window._attachAutoListBehavior = function(el){
               });
               blocks.forEach(function(block){
                 var cur = parseInt(block.dataset.indent || '0', 10) || 0;
-                if (cur < 5) block.dataset.indent = String(cur + 1);
+                if (cur < 5) block.setAttribute('data-indent', String(cur + 1));
               });
             }
 
@@ -6978,7 +7224,16 @@ window._attachAutoListBehavior = function(el){
               var si2 = parseInt(editBox.getAttribute('data-sec-idx'), 10);
               var bi2 = parseInt(editBox.getAttribute('data-blk-idx'), 10);
               if (sectionsState[si2] && sectionsState[si2].blocks && sectionsState[si2].blocks[bi2]) {
-                sectionsState[si2].blocks[bi2].body = editBox.innerHTML;
+                // data-indent 속성을 실제 HTML 속성으로 동기화 (innerHTML에 포함되도록)
+                editBox.querySelectorAll('[data-indent]').forEach(function(el) {
+                  if (el.dataset.indent && el.dataset.indent !== '0') {
+                    el.setAttribute('data-indent', el.dataset.indent);
+                  }
+                });
+                // HTML → items 변환 (구조화된 저장)
+                var items = window._htmlToItems(editBox.innerHTML);
+                sectionsState[si2].blocks[bi2].items = items;  // HTML 대신 items 저장
+                sectionsState[si2].blocks[bi2].body = editBox.innerHTML;  // 기존 호환용
                 _markSectionsDirty();
               }
             } catch(e) {}
@@ -7025,7 +7280,13 @@ window._attachAutoListBehavior = function(el){
               var si3 = parseInt(editBox.getAttribute('data-sec-idx'), 10);
               var bi3 = parseInt(editBox.getAttribute('data-blk-idx'), 10);
               if (sectionsState[si3] && sectionsState[si3].blocks && sectionsState[si3].blocks[bi3]) {
-                sectionsState[si3].blocks[bi3].body = editBox.innerHTML;
+                // data-indent 속성을 HTML에 확실히 반영
+                editBox.querySelectorAll('[data-indent]').forEach(function(el) {
+                  if (el.dataset.indent && el.dataset.indent !== '0') {
+                    el.setAttribute('data-indent', el.dataset.indent);
+                  }
+                });
+                                sectionsState[si3].blocks[bi3].body = editBox.innerHTML;
                 _markSectionsDirty();
               }
             } catch(e) {}
@@ -7073,7 +7334,13 @@ window._attachAutoListBehavior = function(el){
                        const t = (sec.title || '(제목 없음)');
                        const nums = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
                        const numStr = idx < nums.length ? nums[idx] : (idx+1) + '.';
-                       return '<button type="button" class="ov-tab ' + (idx === 0 ? 'active' : '') + '" data-sec-jump="' + idx + '">' + numStr + ' ' + t + '</button>';
+                       return '<div class="ov-tab-wrap">'
+                       + '<button type="button" class="ov-tab ov-sec-draggable ' + (idx === 0 ? 'active' : '') + '" draggable="true" data-sec-jump="' + idx + '" data-sec-drag-idx="' + idx + '" title="드래그하여 순서 변경">' + numStr + ' ' + t + '</button>'
+                       + '<span class="ov-tab-actions">'
+                       +   '<button type="button" class="ov-tab-icon ov-sec-tab-rename-btn" data-sec-idx="' + idx + '" title="섹션명 수정">✏️</button>'
+                       +   '<button type="button" class="ov-tab-icon ov-tab-del ov-sec-del-btn" data-sec-idx="' + idx + '" title="섹션 삭제">🗑️</button>'
+                       + '</span>'
+                       + '</div>';
                      }).join('')
                +   '</div>'
                +   '<button type="button" id="ov-sec-add-btn" style="background:#0F2C59;color:#fff;border:0;border-radius:10px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">+ 섹션 추가</button>'
@@ -7150,7 +7417,7 @@ window._attachAutoListBehavior = function(el){
                                             + '</div>';
                     return '<div class="ov-block ov-block-text" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="position:relative;margin-bottom:10px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;">'
                       +   toolbar
-                      +   '<div contenteditable="true" spellcheck="false" class="ov-block-text-body" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" id="' + editorId + '" style="outline:none;font-size:14px;color:#12325F;line-height:1.6;white-space:pre-wrap;min-height:60px;padding:12px 14px;border-top:0;">' + txt + '</div>'
+                      +   '<div contenteditable="true" spellcheck="false" class="ov-block-text-body" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" id="' + editorId + '" style="outline:none;font-size:14px;color:#111827;line-height:1.6;white-space:pre-wrap;min-height:60px;padding:12px 14px;border-top:0;">' + txt + '</div>'
                       +   '<div style="position:absolute;top:6px;right:6px;display:flex;gap:2px;z-index:2;">'
                       +     '<button type="button" class="ov-block-up" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" ' + (bIdx === 0 ? 'disabled' : '') + ' style="background:transparent;color:' + (bIdx === 0 ? '#CBD5E1' : '#5B7BB0') + ';border:0;font-size:14px;cursor:' + (bIdx === 0 ? 'not-allowed' : 'pointer') + ';padding:2px 6px;" title="위로">▲</button>'
                       +     '<button type="button" class="ov-block-down" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" ' + (bIdx === blocks.length - 1 ? 'disabled' : '') + ' style="background:transparent;color:' + (bIdx === blocks.length - 1 ? '#CBD5E1' : '#5B7BB0') + ';border:0;font-size:14px;cursor:' + (bIdx === blocks.length - 1 ? 'not-allowed' : 'pointer') + ';padding:2px 6px;" title="아래로">▼</button>'
@@ -7197,7 +7464,7 @@ window._attachAutoListBehavior = function(el){
                       }
                       const textEsc = (it.text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                       return '<div class="ov-schedule-row" style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #F0F4F9;">'
-                        +   '<div style="flex:1;font-size:13px;color:#12325F;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + textEsc + '</div>'
+                        +   '<div style="flex:1;font-size:13px;color:#111827;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:pre-wrap;">' + textEsc + '</div>'
                         +   '<button type="button" class="ov-due-chip" data-item-id="' + (it.item_id || '') + '" data-auto="' + auto + '" data-override="' + override + '" data-section-title="' + secTitle.replace(/"/g,'&quot;') + '" title="자동: ' + (auto || '없음') + (override ? (' / 수동: ' + override) : '') + ' | 클릭하여 날짜 변경" style="' + chipStyle + 'border-radius:12px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">' + chipLabel + '</button>'
                         +   resetBtn
                         + '</div>';
@@ -7207,7 +7474,7 @@ window._attachAutoListBehavior = function(el){
                       +   rows
                       + '</div>';
                   }
-                  return '<div class="ov-rt-view" style="padding:6px 4px;font-size:14px;color:#12325F;line-height:1.65;">' + txt + '</div>' + panelHtml;
+                  return '<div class="ov-rt-view" style="padding:6px 4px;font-size:14px;color:#111827;line-height:1.65;white-space:pre-wrap;">' + txt + '</div>' + panelHtml;
                 }
                 if (b && b.kind === 'file') {
                   const fname = b.file_name || '(파일)';
@@ -7220,7 +7487,7 @@ window._attachAutoListBehavior = function(el){
                       ? '<div class="ov-xlsx-preview" data-doc="' + docId + '" data-file="' + fname + '" style="margin:8px 0;padding:10px;background:#fff;border:1px dashed #D9E3F1;border-radius:8px;font-size:12px;color:#8593A6;">엑셀 미리보기 로드 중...</div>'
                       : '';
                   if (editing) {
-                    return '<div class="ov-block ov-block-file" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="position:relative;padding:10px 14px;margin-bottom:10px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;font-size:13px;color:#12325F;">'
+                    return '<div class="ov-block ov-block-file" data-sec-idx="' + idx + '" data-blk-idx="' + bIdx + '" style="position:relative;padding:10px 14px;margin-bottom:10px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:12px;font-size:13px;color:#111827;">'
                       +   '<div style="display:flex;align-items:center;gap:8px;padding-right:26px;">'
                       +     '<span>📎</span>'
                       +     (url ? '<a href="' + url + '" target="_blank" style="color:#2E5B94;text-decoration:none;font-weight:700;">' + fname + '</a>' : '<span style="font-weight:700;">' + fname + '</span>')
@@ -7234,7 +7501,7 @@ window._attachAutoListBehavior = function(el){
                       + '</div>';
                   }
                   // 표시 모드
-                  return '<div style="padding:8px 12px;margin-bottom:6px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:10px;font-size:13px;color:#12325F;">'
+                  return '<div style="padding:8px 12px;margin-bottom:6px;background:#F8FBFF;border:1px solid #E6EBF2;border-radius:10px;font-size:13px;color:#111827;">'
                     +   '<div style="display:flex;align-items:center;gap:8px;">'
                     +     '<span>📎</span>'
                     +     (url ? '<a href="' + url + '" target="_blank" style="color:#2E5B94;text-decoration:none;font-weight:700;">' + fname + '</a>' : '<span style="font-weight:700;">' + fname + '</span>')
@@ -7305,7 +7572,7 @@ window._attachAutoListBehavior = function(el){
                   var _mv = _wmodels[mname] || {plan: 0, actual: 0};
                   _rowsHtml += ''
                     + '<div style="display:flex;align-items:center;gap:6px;margin:3px 0 3px 20px;">'
-                    +   '<span style="width:80px;font-size:12px;color:#12325F;">' + mname + '</span>'
+                    +   '<span style="width:80px;font-size:12px;color:#111827;">' + mname + '</span>'
                     +   '<span style="font-size:11px;color:#7C8594;">계</span>'
                     +   '<input type="number" class="ov-sales-plan" data-week="' + _wnum + '" data-model="' + mname + '" value="' + (_mv.plan || 0) + '" style="width:56px;padding:3px 6px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;text-align:right;">'
                     +   '<span style="font-size:11px;color:#7C8594;">실</span>'
@@ -7318,7 +7585,7 @@ window._attachAutoListBehavior = function(el){
                 _weeksHtml += ''
                   + '<div class="ov-sales-week-box" data-week-idx="' + wi + '" style="padding:8px;margin-bottom:6px;background:#fff;border:1px solid #E5EAF0;border-radius:6px;">'
                   +   '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
-                  +     '<span style="font-size:12px;font-weight:700;color:#12325F;">주차 W</span>'
+                  +     '<span style="font-size:12px;font-weight:700;color:#111827;">주차 W</span>'
                   +     '<input type="number" class="ov-sales-week-num" value="' + _wnum + '" style="width:60px;padding:4px 8px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;text-align:center;">'
                   +     '<button type="button" class="ov-sales-week-del" style="margin-left:auto;background:#FEE7E7;color:#B8302E;border:0;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">삭제</button>'
                   +   '</div>'
@@ -7332,7 +7599,7 @@ window._attachAutoListBehavior = function(el){
               salesBoxHtml = ''
                 + '<div class="ov-sales-box" data-sec-idx="' + idx + '" style="margin-top:12px;padding:10px;background:#F7F9FC;border:1px dashed #C5D0E0;border-radius:8px;">'
                 +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-                +     '<button type="button" class="ov-sales-toggle" data-sec-idx="' + idx + '" style="background:none;border:0;color:#12325F;font-weight:700;font-size:13px;cursor:pointer;padding:4px 0;">'
+                +     '<button type="button" class="ov-sales-toggle" data-sec-idx="' + idx + '" style="background:none;border:0;color:#111827;font-weight:700;font-size:13px;cursor:pointer;padding:4px 0;">'
                 +       _open + ' 💰 매출 계산'
                 +     '</button>'
                 +     '<label class="ov-sales-vis-label" data-sec-idx="' + idx + '" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#7C8594;cursor:pointer;user-select:none;">'
@@ -7342,9 +7609,9 @@ window._attachAutoListBehavior = function(el){
                 +   '</div>'
                 +   '<div class="ov-sales-body" style="display:' + _display + ';margin-top:8px;">'
                 +     '<div class="ov-sales-info" data-sec-idx="' + idx + '" style="font-size:11px;color:#7C8594;margin-bottom:8px;padding:6px 8px;background:#EEF3FB;border-radius:6px;">엑셀 파일 인식 중...</div>'
-                +     '<div style="font-size:11px;font-weight:700;color:#12325F;margin-bottom:6px;">💵 판가 입력 (만불)</div>'
+                +     '<div style="font-size:11px;font-weight:700;color:#111827;margin-bottom:6px;">💵 판가 입력 (만불)</div>'
                 +     '<div class="ov-sales-prices" data-sec-idx="' + idx + '" style="padding:4px 0;"><div style="color:#7C8594;font-size:11px;">엑셀을 먼저 첨부해 주세요.</div></div>'
-                +     '<div style="margin-top:10px;padding:8px 10px;background:#EEF3FB;border-radius:6px;font-size:13px;color:#12325F;">'
+                +     '<div style="margin-top:10px;padding:8px 10px;background:#EEF3FB;border-radius:6px;font-size:13px;color:#111827;">'
                 +       '<span style="opacity:0.6;">계산 결과:</span>'
                 +       '<div style="margin-top:4px;font-weight:700;">' + _ss + '</div>'
                 +       (_sc ? '<div style="margin-top:4px;font-size:11px;color:#7C8594;">계산 시각: ' + _sc + '</div>' : '')
@@ -7542,6 +7809,108 @@ window._attachAutoListBehavior = function(el){
         const addBtn = document.getElementById('ov-sec-add-btn');
         if (addBtn) addBtn.addEventListener('click', function(){ window._addSectionFlow(); });
         // 탭 클릭 → 해당 섹션으로 스크롤
+        // ─── 섹션 탭 드래그 앤 드롭 (순서 변경) ───
+        (function(){
+          let _dragSrcIdx = null;
+          sectionsRoot.querySelectorAll('.ov-sec-draggable').forEach(function(btn){
+            btn.addEventListener('dragstart', function(e){
+              _dragSrcIdx = parseInt(btn.getAttribute('data-sec-drag-idx'), 10);
+              try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(_dragSrcIdx)); } catch(_){}
+              btn.style.opacity = '0.4';
+            });
+            btn.addEventListener('dragend', function(){
+              btn.style.opacity = '';
+              sectionsRoot.querySelectorAll('.ov-sec-draggable').forEach(function(b){
+                b.style.borderLeft = '';
+                b.style.borderRight = '';
+              });
+            });
+            btn.addEventListener('dragover', function(e){
+              e.preventDefault();
+              try { e.dataTransfer.dropEffect = 'move'; } catch(_){}
+              const tgtIdx = parseInt(btn.getAttribute('data-sec-drag-idx'), 10);
+              if (_dragSrcIdx === null || _dragSrcIdx === tgtIdx) return;
+              sectionsRoot.querySelectorAll('.ov-sec-draggable').forEach(function(b){
+                b.style.borderLeft = '';
+                b.style.borderRight = '';
+              });
+              if (tgtIdx > _dragSrcIdx) {
+                btn.style.borderRight = '3px solid #0F2C59';
+              } else {
+                btn.style.borderLeft = '3px solid #0F2C59';
+              }
+            });
+            btn.addEventListener('dragleave', function(){
+              btn.style.borderLeft = '';
+              btn.style.borderRight = '';
+            });
+            btn.addEventListener('drop', function(e){
+              e.preventDefault();
+              btn.style.borderLeft = '';
+              btn.style.borderRight = '';
+              const tgtIdx = parseInt(btn.getAttribute('data-sec-drag-idx'), 10);
+              if (_dragSrcIdx === null || _dragSrcIdx === tgtIdx) { _dragSrcIdx = null; return; }
+              if (!Array.isArray(sectionsState)) { _dragSrcIdx = null; return; }
+              const moved = sectionsState.splice(_dragSrcIdx, 1)[0];
+              sectionsState.splice(tgtIdx, 0, moved);
+              _dragSrcIdx = null;
+              try { _markSectionsDirty && _markSectionsDirty(); } catch(_){}
+              if (window._renderManualSections) window._renderManualSections();
+            });
+          });
+        })();
+
+        // ─── 섹션 탭 드래그 앤 드롭 ───
+        (function(){
+          let _dragSrcIdx = null;
+          sectionsRoot.querySelectorAll('.ov-sec-draggable').forEach(function(btn){
+            btn.addEventListener('dragstart', function(e){
+              _dragSrcIdx = parseInt(btn.getAttribute('data-sec-drag-idx'), 10);
+              try {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', String(_dragSrcIdx));
+              } catch(_){}
+              btn.style.opacity = '0.4';
+            });
+            btn.addEventListener('dragend', function(){
+              btn.style.opacity = '';
+              sectionsRoot.querySelectorAll('.ov-sec-draggable').forEach(function(b){
+                b.style.borderLeft = '';
+                b.style.borderRight = '';
+              });
+            });
+            btn.addEventListener('dragover', function(e){
+              e.preventDefault();
+              try { e.dataTransfer.dropEffect = 'move'; } catch(_){}
+              const tgtIdx = parseInt(btn.getAttribute('data-sec-drag-idx'), 10);
+              if (_dragSrcIdx === null || _dragSrcIdx === tgtIdx) return;
+              sectionsRoot.querySelectorAll('.ov-sec-draggable').forEach(function(b){
+                b.style.borderLeft = '';
+                b.style.borderRight = '';
+              });
+              if (tgtIdx > _dragSrcIdx) btn.style.borderRight = '3px solid #0F2C59';
+              else btn.style.borderLeft = '3px solid #0F2C59';
+            });
+            btn.addEventListener('dragleave', function(){
+              btn.style.borderLeft = '';
+              btn.style.borderRight = '';
+            });
+            btn.addEventListener('drop', function(e){
+              e.preventDefault();
+              btn.style.borderLeft = '';
+              btn.style.borderRight = '';
+              const tgtIdx = parseInt(btn.getAttribute('data-sec-drag-idx'), 10);
+              if (_dragSrcIdx === null || _dragSrcIdx === tgtIdx) { _dragSrcIdx = null; return; }
+              if (!Array.isArray(sectionsState)) { _dragSrcIdx = null; return; }
+              const moved = sectionsState.splice(_dragSrcIdx, 1)[0];
+              sectionsState.splice(tgtIdx, 0, moved);
+              _dragSrcIdx = null;
+              try { _markSectionsDirty && _markSectionsDirty(); } catch(_){}
+              if (window._renderManualSections) window._renderManualSections();
+            });
+          });
+        })();
+
         sectionsRoot.querySelectorAll('[data-sec-jump]').forEach(function(tab){
           tab.addEventListener('click', function(){
             const i = parseInt(tab.getAttribute('data-sec-jump'), 10);
@@ -7653,7 +8022,7 @@ window._attachAutoListBehavior = function(el){
           var html = models.map(function(m){
             var v = (prices[m] !== undefined && prices[m] !== null) ? prices[m] : '';
             return '<div class="ov-sales-price-row" data-model="' + m + '" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-              +   '<div style="min-width:120px;font-size:12px;font-weight:600;color:#12325F;">' + m + '</div>'
+              +   '<div style="min-width:120px;font-size:12px;font-weight:600;color:#111827;">' + m + '</div>'
               +   '<input type="number" step="0.1" class="ov-sales-price-input" data-sec-idx="' + secIdx + '" data-model="' + m + '" value="' + v + '" placeholder="판가" style="flex:1;padding:4px 8px;border:1px solid #C5D0E0;border-radius:4px;font-size:12px;" />'
               +   '<span style="font-size:11px;color:#7C8594;">만불</span>'
               + '</div>';
@@ -7735,7 +8104,76 @@ window._attachAutoListBehavior = function(el){
           }
         });
         
-                sectionsRoot.querySelectorAll('.ov-sec-done-btn').forEach(function(btn){
+                        // ─── 편집 세션 알람 지연 발송 헬퍼 ───
+        window._manualEditAlarmSession = window._manualEditAlarmSession || {
+          active: false,
+          sent: false,
+          docId: null
+        };
+
+        window._markManualEditAlarmSessionActive = function() {
+          try {
+            if (typeof isManual !== 'undefined' && isManual && typeof docId !== 'undefined' && docId) {
+              window._manualEditAlarmSession.active = true;
+              window._manualEditAlarmSession.sent = false;
+              window._manualEditAlarmSession.docId = docId;
+            }
+          } catch (e) {
+            console.warn('edit session mark failed:', e);
+          }
+        }
+
+        window._flushManualEditAlarmSession = function() {
+          try {
+            var s = window._manualEditAlarmSession;
+            if (!s || !s.active || s.sent || !s.docId) return;
+            s.sent = true;
+            var url = '/admin/reports/' + encodeURIComponent(s.docId) + '/edit_done';
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon(url, '');
+            } else {
+              fetch(url, { method: 'POST', keepalive: true, credentials: 'same-origin' }).catch(function(){});
+            }
+          } catch (e) {
+            console.warn('edit_done flush failed:', e);
+          }
+        }
+
+        if (!window._manualEditAlarmSessionBound) {
+          window._manualEditAlarmSessionBound = true;
+
+          // 탭 닫기 / 새로고침 / 다른 페이지 이동
+          window.addEventListener('pagehide', function() {
+            window._flushManualEditAlarmSession();
+          });
+
+          // 사파리/일부 브라우저 보완
+          document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+              window._flushManualEditAlarmSession();
+            }
+          });
+
+          // SPA 내부 네비게이션: 캡처 단계에서 모든 클릭 감지
+          // 보고서 카드 / 네비 아이템 / 뒤로가기 등 클릭 시 세션 flush
+          document.addEventListener('click', function(ev) {
+            try {
+              var s = window._manualEditAlarmSession;
+              if (!s || !s.active || s.sent || !s.docId) return;
+              var t = ev.target;
+              if (!t || !t.closest) return;
+              // 네비게이션성 클릭 대상: 사이드바, 보고서 카드 열기, 목록 버튼 등
+              var nav = t.closest('.nav-item, .ov-open-report, .ov-report-item, a[href], button[data-nav]');
+              // 단, 현재 보고서 내부의 편집 관련 클릭은 제외
+              var inner = t.closest('.ov-sec-done-btn, .ov-block-add-text, .ov-block-add-file, .ov-rt-toolbar, [contenteditable]');
+              if (nav && !inner) {
+                window._flushManualEditAlarmSession();
+              }
+            } catch (e) {}
+          }, true);
+        }
+
+        sectionsRoot.querySelectorAll('.ov-sec-done-btn').forEach(function(btn){
           btn.addEventListener('click', async function(){
             const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
             // 1) 서버 저장 (수기 프로젝트만)
@@ -7744,7 +8182,7 @@ window._attachAutoListBehavior = function(el){
               btn.disabled = true;
               btn.textContent = '💾 저장 중...';
               try {
-                const payload = { products: [{ sections: sectionsState }] };
+                const payload = { products: [{ sections: sectionsState }], edit_mode: true };
                 const res = await fetch('/admin/reports/' + encodeURIComponent(docId), {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
@@ -7757,6 +8195,7 @@ window._attachAutoListBehavior = function(el){
                   return;
                 }
                 btn.textContent = '✓ 저장됨';
+                window._markManualEditAlarmSessionActive();
                 // ── P3: 저장 후 캐시 리로드 (auto값이 바뀌었을 수 있음) ──
                 try {
                   if (typeof _reloadNotesCache === 'function') {
@@ -7910,11 +8349,11 @@ window._attachAutoListBehavior = function(el){
                 +   '.ov-ai-diff-edit ol.ov-num > li{position:relative;margin:0 0 6px 0;line-height:1.8;}'
                 +   '.ov-ai-diff-edit ol.ov-num-dot{counter-reset:aiitem 0;}'
                 +   '.ov-ai-diff-edit ol.ov-num-dot > li{counter-increment:aiitem;}'
-                +   '.ov-ai-diff-edit ol.ov-num-dot > li::before{content:counter(aiitem) ". ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#12325F;}'
+                +   '.ov-ai-diff-edit ol.ov-num-dot > li::before{content:counter(aiitem) ". ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#111827;}'
                 +   '.ov-ai-diff-edit ol.ov-num-paren{counter-reset:aiitem 0;}'
                 +   '.ov-ai-diff-edit ol.ov-num-paren > li{counter-increment:aiitem;}'
-                +   '.ov-ai-diff-edit ol.ov-num-paren > li::before{content:counter(aiitem) ") ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#12325F;}'
-                +   '.ov-ai-diff-edit ol.ov-num-circled > li::before{content:attr(data-marker) " ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#12325F;}'
+                +   '.ov-ai-diff-edit ol.ov-num-paren > li::before{content:counter(aiitem) ") ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#111827;}'
+                +   '.ov-ai-diff-edit ol.ov-num-circled > li::before{content:attr(data-marker) " ";position:absolute;left:-1.8em;top:0;font-weight:700;color:#111827;}'
                 +   '.ov-ai-diff-edit [data-indent="1"]{margin-left:24px;}'
                 +   '.ov-ai-diff-edit [data-indent="2"]{margin-left:48px;}'
                 +   '.ov-ai-diff-edit [data-indent="3"]{margin-left:72px;}'
@@ -8097,8 +8536,8 @@ window._attachAutoListBehavior = function(el){
                     blocks.forEach(function(block){
                       var cur = parseInt(block.dataset.indent || '0', 10) || 0;
                       if (cur > 0) {
-                        block.dataset.indent = String(cur - 1);
-                        if (block.dataset.indent === '0') delete block.dataset.indent;
+                        block.setAttribute('data-indent', String(cur - 1));
+                        if (String(cur - 1) === '0') block.removeAttribute('data-indent');
                       } else if (block.dataset.indent) {
                         delete block.dataset.indent;
                       }
@@ -8152,7 +8591,7 @@ window._attachAutoListBehavior = function(el){
                     });
                     blocks.forEach(function(block){
                       var cur = parseInt(block.dataset.indent || '0', 10) || 0;
-                      if (cur < 5) block.dataset.indent = String(cur + 1);
+                      if (cur < 5) block.setAttribute('data-indent', String(cur + 1));
                     });
                   }
 
@@ -8224,7 +8663,7 @@ window._attachAutoListBehavior = function(el){
                       if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
                       if (editBox._aiPushUndo) editBox._aiPushUndo();
                       block.dataset.indent = String(curIndent - 1);
-                      if (block.dataset.indent === '0') delete block.dataset.indent;
+                      if (String(cur - 1) === '0') { block.removeAttribute('data-indent'); delete block.dataset.indent; } else { block.setAttribute('data-indent', String(cur - 1)); block.dataset.indent = String(cur - 1); }
                     }
                     // indent 0이면 기본 동작 (앞 라인과 병합)
                   }
@@ -8530,7 +8969,13 @@ window._attachAutoListBehavior = function(el){
                 var si = parseInt(editBox.getAttribute('data-sec-idx'), 10);
                 var bi = parseInt(editBox.getAttribute('data-blk-idx'), 10);
                 if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
-                  sectionsState[si].blocks[bi].body = editBox.innerHTML;
+                // data-indent 속성을 HTML에 확실히 반영
+                editBox.querySelectorAll('[data-indent]').forEach(function(el) {
+                  if (el.dataset.indent && el.dataset.indent !== '0') {
+                    el.setAttribute('data-indent', el.dataset.indent);
+                  }
+                });
+                                  sectionsState[si].blocks[bi].body = editBox.innerHTML;
                   _markSectionsDirty();
                 }
               } catch(e) {}
@@ -8602,7 +9047,13 @@ window._attachAutoListBehavior = function(el){
               var si = parseInt(editBox.getAttribute('data-sec-idx'), 10);
               var bi = parseInt(editBox.getAttribute('data-blk-idx'), 10);
               if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
-                sectionsState[si].blocks[bi].body = editBox.innerHTML;
+                // data-indent 속성을 HTML에 확실히 반영
+                editBox.querySelectorAll('[data-indent]').forEach(function(el) {
+                  if (el.dataset.indent && el.dataset.indent !== '0') {
+                    el.setAttribute('data-indent', el.dataset.indent);
+                  }
+                });
+                                sectionsState[si].blocks[bi].body = editBox.innerHTML;
                 _markSectionsDirty();
               }
             } catch(e) {}
@@ -8619,7 +9070,13 @@ window._attachAutoListBehavior = function(el){
               var si = parseInt(editBox.getAttribute('data-sec-idx'), 10);
               var bi = parseInt(editBox.getAttribute('data-blk-idx'), 10);
               if (sectionsState[si] && sectionsState[si].blocks && sectionsState[si].blocks[bi]) {
-                sectionsState[si].blocks[bi].body = editBox.innerHTML;
+                // data-indent 속성을 HTML에 확실히 반영
+                editBox.querySelectorAll('[data-indent]').forEach(function(el) {
+                  if (el.dataset.indent && el.dataset.indent !== '0') {
+                    el.setAttribute('data-indent', el.dataset.indent);
+                  }
+                });
+                                sectionsState[si].blocks[bi].body = editBox.innerHTML;
                 _markSectionsDirty();
               }
             } catch(e) {}
@@ -8703,8 +9160,8 @@ window._attachAutoListBehavior = function(el){
               blocks.forEach(function(block){
                 var cur = parseInt(block.dataset.indent || '0', 10) || 0;
                 if (cur > 0) {
-                  block.dataset.indent = String(cur - 1);
-                  if (block.dataset.indent === '0') delete block.dataset.indent;
+                  block.setAttribute('data-indent', String(cur - 1));
+                  if (String(cur - 1) === '0') block.removeAttribute('data-indent');
                 } else if (block.dataset.indent) {
                   delete block.dataset.indent;
                 }
@@ -8750,7 +9207,7 @@ window._attachAutoListBehavior = function(el){
               });
               blocks.forEach(function(block){
                 var cur = parseInt(block.dataset.indent || '0', 10) || 0;
-                if (cur < 5) block.dataset.indent = String(cur + 1);
+                if (cur < 5) block.setAttribute('data-indent', String(cur + 1));
               });
             }
 
@@ -8762,7 +9219,16 @@ window._attachAutoListBehavior = function(el){
               var si2 = parseInt(editBox.getAttribute('data-sec-idx'), 10);
               var bi2 = parseInt(editBox.getAttribute('data-blk-idx'), 10);
               if (sectionsState[si2] && sectionsState[si2].blocks && sectionsState[si2].blocks[bi2]) {
-                sectionsState[si2].blocks[bi2].body = editBox.innerHTML;
+                // data-indent 속성을 실제 HTML 속성으로 동기화 (innerHTML에 포함되도록)
+                editBox.querySelectorAll('[data-indent]').forEach(function(el) {
+                  if (el.dataset.indent && el.dataset.indent !== '0') {
+                    el.setAttribute('data-indent', el.dataset.indent);
+                  }
+                });
+                // HTML → items 변환 (구조화된 저장)
+                var items = window._htmlToItems(editBox.innerHTML);
+                sectionsState[si2].blocks[bi2].items = items;  // HTML 대신 items 저장
+                sectionsState[si2].blocks[bi2].body = editBox.innerHTML;  // 기존 호환용
                 _markSectionsDirty();
               }
             } catch(e) {}
@@ -9254,6 +9720,15 @@ window._attachAutoListBehavior = function(el){
             window._renameSectionFlow(i);
           });
         });
+        sectionsRoot.querySelectorAll('.ov-sec-tab-rename-btn').forEach(function(btn){
+          btn.addEventListener('click', function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
+            window._renameSectionFlow(i);
+          });
+        });
+
         sectionsRoot.querySelectorAll('.ov-sec-del-btn').forEach(function(btn){
           btn.addEventListener('click', function(){
             const i = parseInt(btn.getAttribute('data-sec-idx'), 10);
@@ -9362,15 +9837,59 @@ window._attachAutoListBehavior = function(el){
             let html = '';
             html += '<div style="font-size:12px;font-weight:700;color:#344054;margin-bottom:8px;">📊 ' + (j.sheet || '첫 시트') + ' (' + nRows + '행 × ' + nCols + '열)</div>';
             html += '<div style="overflow:auto;border:1px solid #D9E3F1;border-radius:8px;background:#fff;">';
-            html += '<table style="border-collapse:collapse;width:100%;font-size:12px;">';
+            html += '<table style="border-collapse:separate;border-spacing:0;width:100%;font-size:12px;">';
             rows.forEach(function(row){
               html += '<tr>';
               (row || []).forEach(function(cell){
-                const safe = String(cell.text == null ? '' : cell.text)
-                  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                let rawText = String(cell.text == null ? '' : cell.text);
+                let safe = rawText
+                  .replace(/&/g,'&amp;')
+                  .replace(/</g,'&lt;')
+                  .replace(/>/g,'&gt;');
+                safe = safe.split(String.fromCharCode(13,10)).join('<br>');
+                safe = safe.split(String.fromCharCode(13)).join('<br>');
+                safe = safe.split(String.fromCharCode(10)).join('<br>');
+
+                // PO증감/월별 문자열 강제 개행 (정규식 리터럴 금지: 파이썬 템플릿 깨짐 방지)
+                const monthTokens = ['3월:', '4월:', '5월:', '6월:', '7월:', '8월:', '9월:', '10월:', '11월:', '12월:'];
+                let tokens = [];
+                for (let ti = 0; ti < monthTokens.length; ti++) {
+                  tokens.push(monthTokens[ti]);
+                }
+                for (let wi = 1; wi <= 53; wi++) {
+                  tokens.push('W' + wi + ':');
+                }
+                for (let i = 1; i < tokens.length; i++) {
+                  safe = safe.split(' ' + tokens[i]).join('<br>' + tokens[i]);
+                }
+                safe = safe.split('<br> ').join('<br>');
                 const rs = cell.rowspan && cell.rowspan > 1 ? ' rowspan="' + cell.rowspan + '"' : '';
                 const cs = cell.colspan && cell.colspan > 1 ? ' colspan="' + cell.colspan + '"' : '';
-                let style = 'border:1px solid #D9E3F1;padding:8px 12px;text-align:center;white-space:nowrap;min-width:60px;';
+                let style = 'padding:8px 12px;text-align:center;white-space:pre-line;min-width:60px;';
+                // 셀별 border (색상 지정 있으면 그거, 없으면 기본 연회색)
+                const _bd = cell.borders || {};
+                const _bstyle = function(s){
+                  const m = { thin: '1px solid', medium: '2px solid', thick: '3px solid', dashed: '1px dashed', dotted: '1px dotted', double: '3px double' };
+                  return m[s] || '1px solid';
+                };
+                // 색상 border는 box-shadow inset으로 그림 (이웃 셀에 안 가려짐)
+                const _shadows = [];
+                ['top','right','bottom','left'].forEach(function(side){
+                  if (_bd[side]) {
+                    // border-width 픽셀 값
+                    const s = _bd[side].style;
+                    const w = (s === 'medium') ? 2 : (s === 'thick' || s === 'double') ? 3 : 1;
+                    // inset shadow: inset X Y blur color, side 방향에 따라 offset 조정
+                    const off = {top:'0 '+w+'px', right:'-'+w+'px 0', bottom:'0 -'+w+'px', left:w+'px 0'}[side];
+                    _shadows.push('inset ' + off + ' 0 ' + _bd[side].color);
+                    style += 'border-' + side + ':' + w + 'px solid ' + _bd[side].color + ';';
+                  } else {
+                    style += 'border-' + side + ':1px solid #D9E3F1;';
+                  }
+                });
+                if (_shadows.length) {
+                  style += 'box-shadow:' + _shadows.join(',') + ';position:relative;z-index:2;';
+                }
                 // 배경색이 있을 때만 폰트색도 반영 (흰색 폰트 + 흰 배경 방지)
                 if (cell.bg) {
                   style += 'background:' + cell.bg + ';';
@@ -9426,6 +9945,93 @@ window._attachAutoListBehavior = function(el){
     const backBtn = document.getElementById('ov-back-btn');
     if (backBtn) backBtn.addEventListener('click', window.backToReportList);
 
+    // HTML → items 변환 함수 (구조화된 저장)
+    window._htmlToItems = function(html) {
+      var parser = new DOMParser();
+      var doc = parser.parseFromString(html, 'text/html');
+      var items = [];
+      
+      function getDepth(el) {
+        // data-indent 속성 또는 부모 요소로 depth 계산
+        var indent = el.getAttribute('data-indent');
+        if (indent) return parseInt(indent) || 0;
+        return 0;
+      }
+      
+      function processNode(node, depth) {
+        if (node.nodeType === 3) {  // 텍스트 노드
+          var text = node.textContent.trim();
+          if (text) {
+            items.push({
+              type: depth > 0 ? 'sub' : 'bullet',
+              indent: depth,
+              text: text
+            });
+          }
+        } else if (node.nodeType === 1) {  // 요소 노드
+          var tag = node.tagName.toLowerCase();
+          
+          if (tag === 'div' || tag === 'p') {
+            var itemDepth = getDepth(node) || depth;
+            var hasBlockChild = node.querySelector('ul, ol, div, p, blockquote');
+            
+            if (!hasBlockChild) {
+              var text = node.textContent.trim();
+              if (text) {
+                items.push({
+                  type: itemDepth > 0 ? 'sub' : 'bullet',
+                  indent: itemDepth,
+                  text: text
+                });
+              }
+            } else {
+              // 자식 노드 재귀 처리
+              for (var i = 0; i < node.childNodes.length; i++) {
+                processNode(node.childNodes[i], itemDepth);
+              }
+            }
+          } else if (tag === 'ul' || tag === 'ol') {
+            var listDepth = getDepth(node) || depth;
+            var lis = node.querySelectorAll(':scope > li');
+            lis.forEach(function(li, idx) {
+              var text = li.textContent.trim();
+              if (text) {
+                items.push({
+                  type: listDepth > 0 ? 'sub' : 'bullet',
+                  indent: listDepth,
+                  text: text,
+                  marker: tag === 'ul' ? '•' : (idx + 1) + '.'
+                });
+              }
+            });
+          } else if (tag === 'blockquote') {
+            // blockquote 내부는 depth +1
+            for (var i = 0; i < node.childNodes.length; i++) {
+              processNode(node.childNodes[i], depth + 1);
+            }
+          } else if (tag === 'br') {
+            // 줄바꿈은 무시 (텍스트로 처리됨)
+          } else {
+            // 기타 태그는 텍스트만 추출
+            var text = node.textContent.trim();
+            if (text) {
+              items.push({
+                type: depth > 0 ? 'sub' : 'bullet',
+                indent: depth,
+                text: text
+              });
+            }
+          }
+        }
+      }
+      
+      for (var i = 0; i < doc.body.childNodes.length; i++) {
+        processNode(doc.body.childNodes[i], 0);
+      }
+      
+      return items;
+    };
+    
     // 4-b) 인라인 프로젝트명 편집 + 저장 버튼 활성화
     const labelEl = document.getElementById('ov-project-label');
     const saveBtn = document.getElementById('ov-save-btn');
@@ -9506,7 +10112,7 @@ window._attachAutoListBehavior = function(el){
         cs.innerHTML = ''
           + '<div style="background:#F8FBFF;border:1px solid #E6EBF2;border-radius:14px;padding:16px 18px;">'
           + '  <div style="font-size:13px;color:#6E7785;font-weight:700;margin-bottom:6px;">헤드라인</div>'
-          + '  <div style="font-size:15px;color:#12325F;font-weight:700;">' + headline + '</div>'
+          + '  <div style="font-size:15px;color:#111827;font-weight:700;">' + headline + '</div>'
           + '</div>';
       }
     }
@@ -9835,6 +10441,48 @@ window._attachAutoListBehavior = function(el){
 
 })();
 </script>
+<script>
+</script>
+
+<script>
+// 사업부 드롭다운 자동 채우기 (페이지 로드 시 1회)
+(function() {
+  function fillDivisions() {
+    fetch('/divisions', { credentials: 'same-origin' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) {
+        if (!j || !j.divisions) return;
+        var sel = document.getElementById('v2-division-select');
+        if (!sel) return;
+        sel.innerHTML = '';
+        j.divisions.forEach(function(d) {
+          var opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.label;
+          sel.appendChild(opt);
+        });
+        var saved = localStorage.getItem('v2_selected_division') || (j.divisions[0] && j.divisions[0].id) || '';
+        if (saved) {
+          sel.value = saved;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        sel.addEventListener('change', function(){
+      try { localStorage.setItem('v2_division', this.value || ''); } catch(e){}
+      if (typeof window.renderAdminV2ByDivision === 'function') {
+        window.renderAdminV2ByDivision();
+      }
+    });
+        console.log('✅ 사업부 ' + j.divisions.length + '개 로드됨');
+      })
+      .catch(function(e) { console.error('사업부 로드 실패:', e); });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fillDivisions);
+  } else {
+    fillDivisions();
+  }
+})();
+</script>
 </body>
 </html>
 """
@@ -9879,12 +10527,12 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
             if manual_projs:
                 parsed = dict(parsed)
                 parsed["projects"] = list(manual_projs)
-                mw = (r or {}).get("week_override")
-                if mw:
-                    parsed["week"] = mw
-                if parsed.get("projects"):
-                    _wk = parsed.get("week")
-                    parsed["display_title"] = ", ".join(parsed["projects"]) + (" · W" + str(_wk) + " 주간보고" if _wk else "")
+            mw = (r or {}).get("week_override")
+            if mw:
+                parsed["week"] = mw
+            if parsed.get("projects"):
+                _wk = parsed.get("week")
+                parsed["display_title"] = ", ".join(parsed["projects"]) + (" · W" + str(_wk) + " 주간보고" if _wk else "")
             classified = _classify_report_status(
                 (r or {}).get("upload_timestamp", ""),
                 parsed.get("date") or meta.get("date", "")
@@ -9912,6 +10560,7 @@ def admin_list_reports_all(_admin: int = Depends(get_admin_session)):
 def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_session)):
     # 수기 프로젝트 생성. PPT 없이 리포트 카드만 추가.
     project_name = (payload.get("project_name") or "").strip()
+    division_id = (payload.get("division_id") or "semiconductor").strip() or "semiconductor" 
 
     # 중복 프로젝트명 검사 (정규화 후 비교)
     _norm_new = _normalize_project_name(project_name)
@@ -9966,14 +10615,18 @@ def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_se
         "file_name": "",
         "upload_timestamp": now_iso,
         "is_manual": True,
+        "division_id": division_id,
         "report_meta": {"date": report_date},
+        "manual_projects": [project_name],
+        "manual_projects": [project_name],
         "products": [{
             "name": project_name,
             "category": "",
             "status": "",
             "headline": headline,
             "summary_bullets": [],
-            "sections": default_sections
+            "sections": default_sections,
+            "division_id": division_id
         }],
         "project_overrides": {},
         "week_override": week_int,
@@ -9982,6 +10635,10 @@ def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_se
     items = _read_json(LATEST_FILE, [])
     items.insert(0, new_report)
     _write_json(LATEST_FILE, items)
+    try:
+        _sync_report_to_notes(new_report)
+    except Exception as _e:
+        print("[WARN] create single sync failed:", _e)
     return {"ok": True, "doc_id": doc_id, "display_title": display_title}
 
 
@@ -10000,7 +10657,10 @@ def admin_delete_manual_report(doc_id: str, _admin: int = Depends(get_admin_sess
         raise HTTPException(status_code=403, detail="only manual reports can be deleted here")
     items = [it for it in items if it.get("doc_id") != doc_id]
     _write_json(LATEST_FILE, items)
-    _resync_notes_from_latest()
+    try:
+        _resync_notes_from_latest()
+    except Exception as _e:
+        print("[WARN] delete resync failed:", _e)
     return {"ok": True, "doc_id": doc_id}
 
 
@@ -10078,35 +10738,36 @@ def _collect_inline_runs(node, inherited_style: dict) -> list:
         style['italic'] = True
     elif name == 'u':
         style['underline'] = True
-    elif name == 'span':
-        # style="color:#xxx; font-weight:...; font-size:...; ..."
-        s_attr = node.get('style') or ''
-        if s_attr:
-            import re as _re
-            for m in _re.finditer(r'([\w-]+)\s*:\s*([^;]+)', s_attr):
-                k = m.group(1).strip().lower()
-                v = m.group(2).strip()
-                if k == 'color':
-                    style['color'] = v
-                elif k == 'font-weight':
-                    if v.lower() in ('bold', 'bolder') or v.isdigit() and int(v) >= 600:
-                        style['bold'] = True
-                elif k == 'font-style' and v.lower() == 'italic':
-                    style['italic'] = True
-                elif k == 'text-decoration' and 'underline' in v.lower():
-                    style['underline'] = True
-                elif k == 'font-size':
-                    # "14px", "1.2em", "120%"
-                    _m2 = _re.match(r'(\d+(?:\.\d+)?)\s*(px|em|%)?', v)
-                    if _m2:
-                        num = float(_m2.group(1))
-                        unit = (_m2.group(2) or 'px').lower()
-                        if unit == 'px':
-                            style['size_scale'] = num / 14.0  # 14px 기준
-                        elif unit == 'em':
-                            style['size_scale'] = num
-                        elif unit == '%':
-                            style['size_scale'] = num / 100.0
+
+    # style 속성은 태그 종류에 관계없이 파싱 (b/strong/i/em/u/span/div/p 등 모두)
+    # 예: <b style="color:red">, <span style="font-weight:bold">, <div style="color:blue">
+    s_attr = node.get('style') if hasattr(node, 'get') else None
+    if s_attr:
+        import re as _re
+        for m in _re.finditer(r'([\w-]+)\s*:\s*([^;]+)', s_attr):
+            k = m.group(1).strip().lower()
+            v = m.group(2).strip()
+            if k == 'color':
+                style['color'] = v
+            elif k == 'font-weight':
+                if v.lower() in ('bold', 'bolder') or (v.isdigit() and int(v) >= 600):
+                    style['bold'] = True
+            elif k == 'font-style' and v.lower() == 'italic':
+                style['italic'] = True
+            elif k == 'text-decoration' and 'underline' in v.lower():
+                style['underline'] = True
+            elif k == 'font-size':
+                # "14px", "1.2em", "120%"
+                _m2 = _re.match(r'(\d+(?:\.\d+)?)\s*(px|em|%)?', v)
+                if _m2:
+                    num = float(_m2.group(1))
+                    unit = (_m2.group(2) or 'px').lower()
+                    if unit == 'px':
+                        style['size_scale'] = num / 14.0  # 14px 기준
+                    elif unit == 'em':
+                        style['size_scale'] = num
+                    elif unit == '%':
+                        style['size_scale'] = num / 100.0
 
     runs = []
     for child in node.children:
@@ -10157,6 +10818,31 @@ def _runs_to_output(runs: list) -> tuple:
 def _html_body_to_items(html: str) -> list:
     """HTML(관리자 편집기 결과)을 모바일 앱이 이해하는 items 배열로 변환.
     
+    우선 items가 이미 있으면 그대로 반환 (구조화된 저장 포맷).
+    없으면 HTML 파싱 (기존 방식, 호환용).
+    """
+    # items가 이미 있으면 그대로 반환
+    if isinstance(html, list):
+        return html
+    if isinstance(html, dict) and 'items' in html:
+        return html['items']
+    print(f"[DEBUG _html_body_to_items] input length={len(html)}, first 500 chars: {html[:500]}")
+    """
+    print(f"[DEBUG _html_body_to_items] input length={len(html)}, first 500 chars: {html[:500]}")
+    
+    
+
+    # 중첩된 <div> 평탄화 (브라우저 contenteditable 버그 대응)
+    # 예: <div>외부<div>내부1</div><div>내부2</div></div> → <div>외부</div><div>내부1</div><div>내부2</div>
+    from bs4 import BeautifulSoup as _BS
+    _soup = _BS(html, 'html.parser')
+    for _div in list(_soup.find_all('div')):
+        _nested = _div.find_all('div', recursive=False)
+        if _nested:
+            for _child in _nested:
+                _div.insert_after(_child)
+    html = str(_soup)
+
     변환 규칙:
     - <ol depth 0> → {"type": "bullet", "text": "1. ..."}
     - <ol depth 1> → {"type": "sub", "text": "1) ..."}
@@ -10183,16 +10869,27 @@ def _html_body_to_items(html: str) -> list:
     CIRCLED = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
                '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
     
-    def marker_for_depth(depth: int, idx: int) -> str:
-        """depth+index로 실제 표시 문자 생성."""
-        # Word식 순환: 0=dot, 1=paren, 2=circled, 3=dot...
-        style = depth % 3
-        if style == 0:
-            return f"{idx + 1}."
-        elif style == 1:
-            return f"{idx + 1})"
-        else:  # circled
-            return CIRCLED[idx] if idx < len(CIRCLED) else f"{idx + 1}."
+    def marker_for_depth(depth: int, idx: int, is_ul: bool = False) -> str:
+        """depth+index+is_ul로 실제 표시 문자 생성."""
+        if is_ul:
+            # ul(불릿): depth 0=•, 1=-, 2=*, 3+=·
+            if depth == 0:
+                return "•"
+            elif depth == 1:
+                return "-"
+            elif depth == 2:
+                return "*"
+            else:
+                return "·"
+        else:
+            # ol(숫자): depth 0=1., 1=1), 2=①...
+            style = depth % 3
+            if style == 0:
+                return f"{idx + 1}."
+            elif style == 1:
+                return f"{idx + 1})"
+            else:  # circled
+                return CIRCLED[idx] if idx < len(CIRCLED) else f"{idx + 1}."
     
     def get_ol_depth(ol) -> int:
         """ol의 effective depth 계산 (data-depth-override 우선)."""
@@ -10220,8 +10917,17 @@ def _html_body_to_items(html: str) -> list:
     items = []
     
     def process_ol(ol, extra_prefix=""):
-        """ol의 li들을 순회하며 items에 추가 (nested ol도 재귀)."""
-        depth = get_ol_depth(ol)
+        """ol의 li들을 순회하며 items에 추가 (nested ol도 재귀). data-depth-override 우선."""
+        print(f"[DEBUG process_ol] called, tag={ol.name}, children={len(list(ol.children))}, is_ul={ol.name == 'ul'}")
+        # data-depth-override 속성이 있으면 우선 사용 (에디터 Tab 들여쓰기)
+        _override = ol.get('data-depth-override')
+        if _override is not None:
+            try:
+                depth = int(_override)
+            except (ValueError, TypeError):
+                depth = get_ol_depth(ol)
+        else:
+            depth = get_ol_depth(ol)
         # start 값 반영
         try:
             start = int(ol.get('data-start') or ol.get('start') or 1)
@@ -10230,29 +10936,37 @@ def _html_body_to_items(html: str) -> list:
         
         lis = [c for c in ol.children if getattr(c, 'name', None) == 'li']
         for i, li in enumerate(lis):
-            # li의 직접 텍스트 + 인라인 자식 (nested ol/ul 제외)
-            text_parts = []
+            # li 안의 인라인 runs 수집 (색상/굵기 등 스타일 보존)
+            li_runs = []
             nested_ols = []
             for child in li.children:
                 if getattr(child, 'name', None) in ('ol', 'ul'):
                     nested_ols.append(child)
-                elif isinstance(child, NavigableString):
-                    text_parts.append(str(child))
                 else:
-                    # 인라인 태그 (span, b, i 등)
-                    text_parts.append(child.get_text())
+                    li_runs.extend(_collect_inline_runs(child, {}))
             
-            text = ''.join(text_parts).strip()
-            if text:
-                marker = marker_for_depth(depth, i + (start - 1))
+            li_plain, li_text_runs = _runs_to_output(li_runs)
+            li_plain = li_plain.rstrip()
+            print(f"[DEBUG process_ol] li[{i}] tag_name={repr(ol.name)}, plain='{li_plain[:50]}...'")
+            if li_plain:
+                # ul은 bullet(•), ol은 숫자 마커
+                if ol.name == 'ul':
+                    marker = '•'
+                else:
+                    marker = marker_for_depth(depth, i + (start - 1), is_ul=(ol.name == 'ul'))
                 item_type = 'bullet' if depth == 0 else 'sub'
-                clean_text, due_iso = _extract_due_date(text)
+                clean_text, due_iso = _extract_due_date(li_plain)
+                full_text = f"{marker} {clean_text}" if clean_text else f"{marker}"
                 _item = {
                     'type': item_type,
-                    'text': f"{marker} {clean_text}" if clean_text else f"{marker}"
+                    'text': full_text,
                 }
                 if due_iso:
                     _item['due_date'] = due_iso
+                # text_runs가 있고 due_date 추출로 텍스트가 안 바뀐 경우만 유지
+                if li_text_runs and clean_text == li_plain:
+                    prefixed_runs = [{'text': f"{marker} "}] + li_text_runs
+                    _item['text_runs'] = prefixed_runs
                 items.append(_item)
             
             # nested ol 재귀 처리
@@ -10263,14 +10977,14 @@ def _html_body_to_items(html: str) -> list:
         """[(text, style), ...] 리스트 → bullet 아이템으로 emit.
         text_runs가 있으면 함께 저장. '*'/'★'/'※' 특별 취급 없음."""
         plain, text_runs = _runs_to_output(runs)
-        plain = plain.strip()
+        plain = plain.rstrip()
         if not plain:
             return
         # text_runs가 있으면 각 run의 앞뒤 공백/양쪽 트림 동기화
         if text_runs:
-            # plain의 양쪽 공백 정리에 맞춰 text_runs도 정리
-            # 앞 공백 제거
-            while text_runs and text_runs[0]['text'] and text_runs[0]['text'].lstrip() != text_runs[0]['text']:
+            # plain의 정리에 맞춰 text_runs도 정리
+            # 앞 공백 제거 (앱이 sub 들여쓰기를 대신하므로 이중 적용 방지)
+            while text_runs and text_runs[0]['text'] and text_runs[0]['text'] != text_runs[0]['text'].lstrip():
                 text_runs[0]['text'] = text_runs[0]['text'].lstrip()
                 if not text_runs[0]['text']:
                     text_runs.pop(0)
@@ -10293,29 +11007,80 @@ def _html_body_to_items(html: str) -> list:
         items.append(_bul)
 
     def process_element(el):
-        """editor 직속 자식 처리 (div, ol 등). 인라인 태그는 상위 flush에서 처리됨.
+        """editor 직속 자식 처리 (div, ol, ul 등). 인라인 태그는 상위 flush에서 처리됨.
         '*' / '★' / '※' 특별 취급 없이 원문 그대로 유지."""
         name = getattr(el, 'name', None)
-        if name == 'ol':
+        if name in ('ol', 'ul'):
             process_ol(el)
         elif name in ('div', 'p'):
-            text = el.get_text().strip()
-            if not text:
-                return
-            indent = 0
+            # 인라인 runs 수집 (색상/굵기 등 보존)
+            # 단, 직접 자식 중 block 요소(ul, ol, div, p)는 제외 — 중첩 구조에서 텍스트 합침 방지
+            BLOCK_TAGS = {'ul', 'ol', 'div', 'p', 'li'}
+            _el_runs = []
+            _has_block_child = False
+            for _c in el.children:
+                _c_name = getattr(_c, 'name', None)
+                if _c_name in BLOCK_TAGS:
+                    _has_block_child = True
+                    continue  # block 자식은 건너뛰고, 나중에 재귀 처리
+                _el_runs.extend(_collect_inline_runs(_c, {}))
+            _el_plain, _el_text_runs = _runs_to_output(_el_runs)
+            text = (_el_plain or '').rstrip()
+            
+            # block 자식(ul/ol)은 1단계(find_all)에서 이미 처리됨 → 여기선 중첩 div/p만 재귀
+            if _has_block_child:
+                # 자기 텍스트 먼저 flush (block 자식보다 위에 위치해야 함)
+                if text:
+                    clean, due_iso = _extract_due_date(text)
+                    _bul = {'type': 'bullet', 'text': clean}
+                    if _el_text_runs and clean == text:
+                        _bul['text_runs'] = _el_text_runs
+                    if due_iso:
+                        _bul['due_date'] = due_iso
+                    items.append(_bul)
+                    text = ''  # 아래 공통 emit 방지
+                for _c in el.children:
+                    _c_name = getattr(_c, 'name', None)
+                    if _c_name in ('div', 'p'):
+                        process_element(_c)
+                    elif _c_name in ('ul', 'ol'):
+                        process_ol(_c)
+                # div 자체의 텍스트도 있으면 추가로 item 생성
+                if not text:
+                    return
+            # 들여쓰기 체크: data-indent 속성 우선, 없으면 텍스트 앞 공백 개수로 계산
+            _indent_attr = el.get('data-indent')
             try:
-                indent = int(el.get('data-indent') or 0)
+                indent = int(_indent_attr) if _indent_attr else 0
             except (ValueError, TypeError):
-                pass
+                indent = 0
+            
+            # data-indent가 없으면 앞 공백 개수로 depth 계산 (2칸=1depth)
+            if indent == 0:
+                _leading = _el_plain or ''
+                # 앞쪽 공백/탭/nbsp 개수 세기
+                _stripped = _leading.lstrip(' \t\u00a0')
+                _space_count = len(_leading) - len(_stripped)
+                indent = _space_count // 2  # 2칸당 1depth
+                if indent > 0:
+                    print(f"[DEBUG indent] text='{text[:30]}...', space_count={_space_count}, depth={indent}")
+            else:
+                print(f"[DEBUG indent] text='{text[:30]}...', data-indent={_indent_attr}, depth={indent}")
+            
+            print(f"[DEBUG FINAL] text='{text[:40]}', indent={indent}, _has_block_child={_has_block_child}")
             if indent >= 1:
                 clean, due_iso = _extract_due_date(text)
                 _sub = {'type': 'sub', 'text': clean}
+                if _el_text_runs and clean == text:
+                    _sub['text_runs'] = _el_text_runs
                 if due_iso:
                     _sub['due_date'] = due_iso
                 items.append(_sub)
             else:
                 clean, due_iso = _extract_due_date(text)
                 _bul = {'type': 'bullet', 'text': clean}
+                if _el_text_runs and clean == text:
+                    _bul['text_runs'] = _el_text_runs
                 if due_iso:
                     _bul['due_date'] = due_iso
                 items.append(_bul)
@@ -10331,6 +11096,9 @@ def _html_body_to_items(html: str) -> list:
             emit_runs(list(runs_buf))
             runs_buf.clear()
 
+    # 처리된 리스트 추적 (중복 방지)
+    _processed_lists = set()
+    
     for child in soup.children:
         name = getattr(child, 'name', None)
         if isinstance(child, NavigableString):
@@ -10339,8 +11107,12 @@ def _html_body_to_items(html: str) -> list:
             flush_buf()
         elif name in INLINE_TAGS:
             runs_buf.extend(_collect_inline_runs(child, {}))
+        elif name in ('ul', 'ol'):
+            # 제자리에서 바로 처리 (문서 순서 유지)
+            flush_buf()
+            process_ol(child)
         else:
-            # 블록 요소(div, p, ol, ul 등): 지금까지 쌓인 인라인 flush 후 별도 처리
+            # 블록 요소(div, p 등): 지금까지 쌓인 인라인 flush 후 별도 처리
             flush_buf()
             process_element(child)
     flush_buf()
@@ -10570,12 +11342,120 @@ def _sync_report_to_notes(it: dict) -> None:
             by_title[tkey] = c
             order.append(tkey)
         
+        def _merge_card_preserve_manual_state(old_card, new_card):
+            try:
+                def _norm_text(x):
+                    return re.sub(r'\s+', ' ', (x or '').strip()).lower()
+
+                old_secs = old_card.get('sections') or []
+                new_secs = new_card.get('sections') or []
+                old_item_map = {}
+
+                for os_ in old_secs:
+                    os_title = (os_.get('title') or '').strip()
+                    for oi in (os_.get('items') or []):
+                        if not isinstance(oi, dict):
+                            continue
+                        keys = []
+                        oi_id = (oi.get('item_id') or '').strip()
+                        oi_text = (oi.get('text') or '').strip()
+                        if oi_id:
+                            keys.append(('id', os_title, oi_id))
+                        if oi_text:
+                            keys.append(('text', os_title, _norm_text(oi_text)))
+                            keys.append(('text-any', '', _norm_text(oi_text)))
+                        for k in keys:
+                            old_item_map[k] = oi
+
+                for ns in new_secs:
+                    ns_title = (ns.get('title') or '').strip()
+                    for ni in (ns.get('items') or []):
+                        if not isinstance(ni, dict):
+                            continue
+                        match = None
+                        ni_id = (ni.get('item_id') or '').strip()
+                        ni_text = (ni.get('text') or '').strip()
+                        if ni_id:
+                            match = old_item_map.get(('id', ns_title, ni_id))
+                        if not match and ni_text:
+                            match = old_item_map.get(('text', ns_title, _norm_text(ni_text)))
+                        if not match and ni_text:
+                            match = old_item_map.get(('text-any', '', _norm_text(ni_text)))
+                        if match:
+                            if match.get('auto_due_hidden'):
+                                ni['auto_due_hidden'] = True
+                            if (match.get('due_date_override') or '').strip():
+                                ni['due_date_override'] = (match.get('due_date_override') or '').strip()
+                            if (match.get('due_date_auto') or '').strip() and not (ni.get('due_date_auto') or '').strip():
+                                ni['due_date_auto'] = (match.get('due_date_auto') or '').strip()
+                            try:
+                                _apply_effective_due_date(ni)
+                            except Exception:
+                                pass
+                return new_card
+            except Exception:
+                return new_card
+
+        # 기존 notes 전체에서 수동 상태 맵 생성
+        manual_state_map = {}
+        for _oc in existing_cards:
+            if not isinstance(_oc, dict):
+                continue
+            _ocard_title = (_oc.get('title') or '').strip()
+            for _os in (_oc.get('sections') or []):
+                if not isinstance(_os, dict):
+                    continue
+                _osec_title = (_os.get('title') or '').strip()
+                for _oi in (_os.get('items') or []):
+                    if not isinstance(_oi, dict):
+                        continue
+                    _otext = re.sub(r'\s+', ' ', (_oi.get('text') or '').strip()).lower()
+                    if not _otext:
+                        continue
+                    _key = (_ocard_title, _osec_title, _otext)
+                    manual_state_map[_key] = {
+                        'auto_due_hidden': bool(_oi.get('auto_due_hidden')),
+                        'due_date_override': (_oi.get('due_date_override') or '').strip(),
+                        'due_date_auto': (_oi.get('due_date_auto') or '').strip(),
+                    }
+
+        def _apply_manual_state(card_obj):
+            try:
+                _ct = (card_obj.get('title') or '').strip()
+                for _ns in (card_obj.get('sections') or []):
+                    if not isinstance(_ns, dict):
+                        continue
+                    _st = (_ns.get('title') or '').strip()
+                    for _ni in (_ns.get('items') or []):
+                        if not isinstance(_ni, dict):
+                            continue
+                        _tx = re.sub(r'\s+', ' ', (_ni.get('text') or '').strip()).lower()
+                        if not _tx:
+                            continue
+                        _m = manual_state_map.get((_ct, _st, _tx))
+                        if not _m:
+                            continue
+                        if _m.get('auto_due_hidden'):
+                            _ni['auto_due_hidden'] = True
+                        if _m.get('due_date_override'):
+                            _ni['due_date_override'] = _m['due_date_override']
+                        if _m.get('due_date_auto') and not (_ni.get('due_date_auto') or '').strip():
+                            _ni['due_date_auto'] = _m['due_date_auto']
+                        try:
+                            _apply_effective_due_date(_ni)
+                        except Exception:
+                            pass
+                return card_obj
+            except Exception:
+                return card_obj
+
         for c in cards:
             tkey = _norm_title(c.get('title'))
             if not tkey:
                 continue
+            c = _apply_manual_state(c)
             if tkey in by_title:
-                by_title[tkey] = c
+                by_title[tkey] = _merge_card_preserve_manual_state(by_title[tkey], c)
             else:
                 by_title[tkey] = c
                 order.append(tkey)
@@ -10587,11 +11467,36 @@ def _sync_report_to_notes(it: dict) -> None:
         if isinstance(meta, dict):
             report_date = meta.get('date', '') or ''
         
+        existing_out = notes_map.get(division_id) or {}
+        existing_cards_out = list(existing_out.get('cards') or [])
+
+        # 현재 동기화 대상 카드 title 집합
+        _target_titles = set()
+        for _c in cards:
+            _t = _norm_title((_c or {}).get('title'))
+            if _t:
+                _target_titles.add(_t)
+
+        _final_cards = []
+        for _c in existing_cards_out:
+            if not isinstance(_c, dict):
+                _final_cards.append(_c)
+                continue
+            _t = _norm_title((_c or {}).get('title'))
+            if _t and _t in _target_titles:
+                continue
+            _final_cards.append(_c)
+
+        # 현재 doc 카드만 추가 (기존 순서 유지 + 신규 카드 append)
+        for _c in merged_cards:
+            if isinstance(_c, dict):
+                _final_cards.append(_c)
+
         notes_map[division_id] = {
             'report_date': report_date or existing.get('report_date', ''),
             'updated_at': datetime.now().isoformat(),
             'raw_text': existing.get('raw_text', ''),
-            'cards': merged_cards,
+            'cards': _final_cards,
         }
         _save_notes(data)
     except Exception as e:
@@ -10607,11 +11512,46 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
     items = _read_json(LATEST_FILE, [])
     # FCM alarm hook: 저장 전 상태 스냅샷
     _fcm_before_snapshot = _snapshot_notes_status()
+    edit_mode = payload.get("edit_mode", False)
+    if edit_mode:
+        # 편집 모드: 알람 억제, 세션에 snapshot 저장
+        _save_edit_session(doc_id, _fcm_before_snapshot)
+        _cleanup_expired_sessions()
+        print(f"[FCM] edit mode ON for {doc_id}: alarm suppressed")
     found = False
     for it in items:
         if it.get("doc_id") != doc_id:
             continue
         found = True
+        try:
+            _now = datetime.datetime.utcnow()
+            _iso = _now.isocalendar()
+            _week_now = int(_iso[1])
+            _date_now = _now.date().isoformat()
+
+            _meta = it.get("report_meta") or {}
+            _meta["week"] = _week_now
+            _meta["date"] = _date_now
+            it["report_meta"] = _meta
+            it["week_override"] = _week_now
+
+            _parsed = it.get("parsed") or {}
+            _projects = list(_parsed.get("projects") or [])
+            if not _projects and (it.get("products") or []):
+                _p0 = (it.get("products") or [])[0] or {}
+                _nm = (_p0.get("name") or "").strip()
+                if _nm:
+                    _projects = [_nm]
+            _projects = [str(x).strip() for x in _projects if str(x).strip()]
+            if _projects:
+                _parsed["projects"] = _projects
+            _parsed["week"] = _week_now
+            _parsed["date"] = _date_now
+            _parsed["display_title"] = ", ".join(_projects) + (" · W" + str(_week_now) + " 주간보고" if _week_now else "")
+            it["parsed"] = _parsed
+            it["display_title"] = _parsed["display_title"]
+        except Exception as _e:
+            print("[WARN] week refresh failed:", _e)
         overrides = payload.get("project_overrides")
         # 이름 변경 시 다른 리포트와 중복되는지 검사
         if isinstance(overrides, dict) and overrides:
@@ -10658,25 +11598,54 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
     if not found:
         raise HTTPException(status_code=404, detail="doc_id not found")
     _write_json(LATEST_FILE, items)
-    _resync_notes_from_latest()
-    # 수기 doc이면 notes.json에도 자동 동기화 (모바일 앱 반영용)
+    # 수기 doc이면 notes.json에는 현재 doc만 자동 동기화 (모바일 앱 반영용)
     for _it in items:
         if _it.get("doc_id") == doc_id and _it.get("is_manual"):
-            _sync_report_to_notes(_it)
+            try:
+                _sync_report_to_notes(_it)
+            except Exception as _e:
+                print("[WARN] update single sync failed:", _e)
             break
 
     # FCM alarm hook: 저장 후 상태 diff → RED/ORANGE 신규 전이만 알람
+    # edit_mode=True면 스킵 (세션에 저장됨, edit_done에서 처리)
+    if not edit_mode:
+        try:
+            _fcm_after_snapshot = _snapshot_notes_status()
+            _fcm_events = _detect_status_transitions(_fcm_before_snapshot, _fcm_after_snapshot)
+            if _fcm_events:
+                print(f"[FCM] 상태 전이 감지: {_fcm_events}")
+                _fire_status_alarms(_fcm_events)
+        except Exception as _fcm_e:
+            print(f"[FCM] hook 오류: {_fcm_e}")
+    else:
+        print(f"[FCM] edit mode: alarm deferred to edit_done")
+
+    return {"ok": True, "doc_id": doc_id, "edit_mode": edit_mode}
+
+
+
+
+@app.post("/admin/reports/{doc_id}/edit_done")
+def admin_report_edit_done(doc_id: str, _admin: int = Depends(get_admin_session)):
+    """편집 완료: 저장된 before snapshot과 현재 상태 비교 → 알람 1회 발송"""
+    _before_snapshot = _clear_edit_session(doc_id)
+    if not _before_snapshot:
+        return {"ok": True, "doc_id": doc_id, "message": "no edit session found"}
+    
     try:
-        _fcm_after_snapshot = _snapshot_notes_status()
-        _fcm_events = _detect_status_transitions(_fcm_before_snapshot, _fcm_after_snapshot)
-        if _fcm_events:
-            print(f"[FCM] 상태 전이 감지: {_fcm_events}")
-            _fire_status_alarms(_fcm_events)
-    except Exception as _fcm_e:
-        print(f"[FCM] hook 오류: {_fcm_e}")
-
-    return {"ok": True, "doc_id": doc_id}
-
+        _after_snapshot = _snapshot_notes_status()
+        _events = _detect_status_transitions(_before_snapshot, _after_snapshot)
+        if _events:
+            print(f"[FCM] edit_done: 상태 전이 감지 → {_events}")
+            _fire_status_alarms(_events)
+            return {"ok": True, "doc_id": doc_id, "alarms_fired": len(_events)}
+        else:
+            print(f"[FCM] edit_done: 변경 없음 (no alarms)")
+            return {"ok": True, "doc_id": doc_id, "alarms_fired": 0}
+    except Exception as e:
+        print(f"[FCM] edit_done 오류: {e}")
+        return {"ok": False, "doc_id": doc_id, "error": str(e)}
 
 @app.post("/admin/reports/{doc_id}/section-file")
 async def admin_upload_section_file(
@@ -10858,21 +11827,108 @@ def admin_xlsx_preview(
                 if c + cspan - 1 > real_max_c:
                     cspan = real_max_c - c + 1
 
-                # 스타일 정보
+                # 스타일 정보 (rgb / theme / indexed 모두 처리)
                 bg = ""
                 fg = ""
                 bold = False
+
+                # openpyxl theme index → 근사 RGB (Office 기본 테마)
+                _THEME_RGB = {
+                    0: "FFFFFF", 1: "000000", 2: "E7E6E6", 3: "44546A",
+                    4: "4472C4", 5: "ED7D31", 6: "A5A5A5", 7: "FFC000",
+                    8: "5B9BD5", 9: "70AD47",
+                }
+
+                def _apply_tint(hex6: str, tint) -> str:
+                    """openpyxl tint(-1.0~1.0)를 근사 반영."""
+                    try:
+                        t = float(tint or 0)
+                    except Exception:
+                        t = 0.0
+                    if not t:
+                        return hex6
+                    r = int(hex6[0:2], 16)
+                    g = int(hex6[2:4], 16)
+                    b = int(hex6[4:6], 16)
+                    if t < 0:
+                        f = 1 + t
+                        r = int(r * f); g = int(g * f); b = int(b * f)
+                    else:
+                        r = int(r + (255 - r) * t)
+                        g = int(g + (255 - g) * t)
+                        b = int(b + (255 - b) * t)
+                    r = max(0, min(255, r)); g = max(0, min(255, g)); b = max(0, min(255, b))
+                    return f"{r:02X}{g:02X}{b:02X}"
+
+                def _color_to_hex(color_obj):
+                    if color_obj is None:
+                        return ""
+                    try:
+                        ctype = getattr(color_obj, "type", None)
+                        if ctype == "rgb":
+                            rgb = getattr(color_obj, "rgb", None)
+                            if rgb and isinstance(rgb, str) and rgb != "00000000":
+                                return "#" + rgb[-6:]
+                        elif ctype == "theme":
+                            theme_idx = getattr(color_obj, "theme", None)
+                            if isinstance(theme_idx, int) and theme_idx in _THEME_RGB:
+                                base = _THEME_RGB[theme_idx]
+                                tint = getattr(color_obj, "tint", 0)
+                                return "#" + _apply_tint(base, tint)
+                        elif ctype == "indexed":
+                            # 흔한 인덱스만 처리 (필요시 확장)
+                            _INDEXED = {
+                                0: "000000", 1: "FFFFFF", 2: "FF0000", 3: "00FF00",
+                                4: "0000FF", 5: "FFFF00", 6: "FF00FF", 7: "00FFFF",
+                                64: "000000",  # system foreground
+                            }
+                            idx = getattr(color_obj, "indexed", None)
+                            if isinstance(idx, int) and idx in _INDEXED:
+                                return "#" + _INDEXED[idx]
+                    except Exception:
+                        return ""
+                    return ""
+
                 try:
-                    if cell.fill and cell.fill.fgColor and cell.fill.fgColor.type == "rgb":
-                        rgb = cell.fill.fgColor.rgb
-                        if rgb and rgb != "00000000":
-                            bg = "#" + rgb[-6:]
-                    if cell.font and cell.font.color and cell.font.color.type == "rgb":
-                        rgb = cell.font.color.rgb
-                        if rgb and rgb != "00000000":
-                            fg = "#" + rgb[-6:]
+                    if cell.fill and cell.fill.patternType:
+                        bg = _color_to_hex(getattr(cell.fill, "fgColor", None))
+                    if cell.font and cell.font.color:
+                        fg = _color_to_hex(cell.font.color)
                     if cell.font and cell.font.bold:
                         bold = True
+                except Exception:
+                    pass
+
+                # border 정보 (색상이 지정된 경우만 - default 검정선은 스킵)
+                borders = {}
+                try:
+                    b = cell.border
+                    for side_name in ("left", "right", "top", "bottom"):
+                        side = getattr(b, side_name, None)
+                        if not side or not side.style:
+                            continue
+                        col = side.color
+                        if not col:
+                            continue
+                        # rgb 값 안전하게 추출 (openpyxl 버전 차이 대응)
+                        rgb_val = None
+                        try:
+                            ctype = getattr(col, "type", None)
+                            if ctype == "rgb":
+                                raw = col.__dict__.get("rgb") if hasattr(col, "__dict__") else None
+                                if isinstance(raw, str) and len(raw) >= 6:
+                                    rgb_val = raw
+                        except Exception:
+                            pass
+                        # default 검정선은 제외 (파일 크기 절약)
+                        if not rgb_val:
+                            continue
+                        if rgb_val.upper() in ("00000000", "FF000000", "000000"):
+                            continue
+                        borders[side_name] = {
+                            "color": "#" + rgb_val[-6:],
+                            "style": side.style,
+                        }
                 except Exception:
                     pass
 
@@ -10883,6 +11939,7 @@ def admin_xlsx_preview(
                     "bg": bg,
                     "fg": fg,
                     "bold": bold,
+                    "borders": borders,
                 })
             rows.append(row_cells)
 
@@ -14659,10 +15716,77 @@ def _build_major_module_kpi_card() -> dict:
 
 
 def _build_major_module_issue_lines() -> list:
-    """kpi_history.json 에서 이슈 라인 로드. 없으면 빈 리스트."""
+    """이슈 라인 로드.
+    1) kpi_history.json 에 수동 등록된 값이 있으면 그걸 우선.
+    2) 없으면 notes.json 의 메이저모듈 sections 에서 자동 생성:
+       - type='sub' 이거나 due_date 있는 아이템을 추출
+       - due_date 있으면 severity/show_dday 자동 계산
+    """
+    from datetime import date as _date
+
+    # 1) 수동 등록 우선
     hist = _load_kpi_history()
     proj = (hist.get("projects") or {}).get("major_module") or {}
-    return proj.get("issue_lines") or []
+    manual = proj.get("issue_lines") or []
+    if manual:
+        return manual
+
+    # 2) notes.json에서 자동 생성
+    try:
+        notes_data = _load_notes()
+        semi = (notes_data.get("notes") or {}).get("semiconductor") or {}
+        card = None
+        for c in (semi.get("cards") or []):
+            if (c.get("title") or "").strip() == "메이저모듈":
+                card = c
+                break
+        if not card:
+            return []
+
+        today = _date.today()
+        auto_lines = []
+        for sec in (card.get("sections") or []):
+            for it in (sec.get("items") or []):
+                if not isinstance(it, dict):
+                    continue
+                itype = (it.get("type") or "").lower()
+                text = (it.get("text") or "").strip()
+                if not text:
+                    continue
+                # photo 는 스킵
+                if itype == "photo":
+                    continue
+                # sub 또는 due_date 있는 것만
+                due = (it.get("due_date") or it.get("due_date_auto") or "").strip()
+                if itype != "sub" and not due:
+                    continue
+
+                line = {"text": text, "show_dday": False}
+                if due:
+                    try:
+                        y, m, d = due[:10].split("-")
+                        due_d = _date(int(y), int(m), int(d))
+                        delta = (due_d - today).days
+                        line["due_date"] = due[:10]
+                        line["show_dday"] = True
+                        if delta < 0:
+                            line["severity"] = "high"
+                        elif delta <= 3:
+                            line["severity"] = "high"
+                        elif delta <= 14:
+                            line["severity"] = "mid"
+                        else:
+                            line["severity"] = "info"
+                    except Exception:
+                        line["severity"] = "info"
+                else:
+                    line["severity"] = "info"
+                auto_lines.append(line)
+
+        return auto_lines
+    except Exception as _e:
+        print(f"[issue_lines] 자동 생성 실패: {_e}")
+        return []
 
 
 # =========================================================

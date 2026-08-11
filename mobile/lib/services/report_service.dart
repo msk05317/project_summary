@@ -21,10 +21,35 @@ class ReportService {
     }
 
     final decoded = jsonDecode(utf8.decode(res.bodyBytes));
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('ReportService: unexpected JSON shape');
+
+    // 서버가 /projects/{key} 에서 Map이 아닌 List(merged 카드 배열)를
+    // 반환하는 경우가 있어 방어한다.
+    Map<String, dynamic>? map;
+    if (decoded is Map<String, dynamic>) {
+      map = decoded;
+    } else if (decoded is List && decoded.isNotEmpty) {
+      // title이 projectKey와 매칭되는 카드를 우선 선택, 없으면 첫 번째
+      for (final item in decoded) {
+        if (item is Map<String, dynamic>) {
+          final t = (item['title'] ?? item['label'] ?? item['name'] ?? '').toString().trim();
+          if (t.isNotEmpty && t == projectKey.trim()) {
+            map = item;
+            break;
+          }
+        }
+      }
+      // 매칭 실패 시 첫 번째 Map 요소 사용
+      if (map == null) {
+        for (final item in decoded) {
+          if (item is Map<String, dynamic>) { map = item; break; }
+        }
+      }
     }
 
-    return ReportNote.fromJson(decoded);
+    if (map == null) {
+      throw Exception('ReportService: unexpected JSON shape for $projectKey');
+    }
+
+    return ReportNote.fromJson(map);
   }
 }

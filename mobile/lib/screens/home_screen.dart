@@ -295,6 +295,17 @@ class _HomeScreenState extends State<HomeScreen> {
       candidates.add(_RankedCard(card: c, diffDays: diffDays));
     }
 
+    // 1.5) 같은 프로젝트 중복 제거 (projectKey 기준, 가장 마감 가까운 것만 유지)
+    final seenKeys = <String>{};
+    candidates.removeWhere((rc) {
+      final key = rc.card.projectKey.isNotEmpty 
+          ? rc.card.projectKey 
+          : rc.card.projectLabel;
+      if (seenKeys.contains(key)) return true;
+      seenKeys.add(key);
+      return false;
+    });
+
     // 2) 마감이 가까운 순 정렬 (이미 지난 것 = 음수가 가장 앞으로 옴)
     // 정렬 규칙 (시안 v3):
     // - 7일 이상 지난 항목은 제외 (오래된 RED 카드 노출 방지)
@@ -409,12 +420,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openDivision(Division division) {
-    Navigator.of(context).push(
+  Future<void> _openDivision(Division division) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DivisionProjectsScreen(division: division),
       ),
     );
+    // 목록 화면에서 즐겨찾기 상태가 바뀌었을 수 있으니 재로드
+    await _loadFavDivisions();
   }
 
   @override
