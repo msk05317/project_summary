@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.1.5",
-  "latest_version_code": 17,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.5/app-release.apk",
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.5/app-release.apk",
-  "release_notes": "설정 화면 추가 (글꼴/알림/핀관리/데이터/정보)",
+  "latest_version": "2.1.6",
+  "latest_version_code": 18,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.6/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.6/app-release.apk",
+  "release_notes": "설정 화면 기능화: 글꼴 크기/알림 토글/고정 사업부/캐시 정리/자동 새로고침",
   "force_update": false
 }
