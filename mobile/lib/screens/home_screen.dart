@@ -1,3 +1,4 @@
+import 'dart:async';
 // 앱의 첫 화면(홈).
 // 시안 기준 상단부터 다음 순서로 구성합니다.
 //  1) 상단 헤더 (HomeHeader)         — 로고, 알림/검색, 인사말, 오늘 날짜
@@ -31,6 +32,7 @@ import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
+import '../services/settings_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -40,6 +42,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  Timer? _autoRefreshTimer;
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    final min = SettingsService.instance.autoRefreshMinutes.value;
+    if (min <= 0) return;
+    _autoRefreshTimer = Timer.periodic(Duration(minutes: min), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _refresh();
+      }
+    });
+  }
+
   // 사업부 목록 비동기 결과.
   late Future<List<Division>> _divisionsFuture;
 
@@ -54,6 +69,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _setupAutoRefresh();
+    SettingsService.instance.autoRefreshMinutes.addListener(_setupAutoRefresh);
     // 화면 진입 시 즉시 모든 데이터를 받아옵니다.
     _divisionsFuture = DivisionsService.fetchAll();
     _dashboardFuture = DashboardService.fetchCards();

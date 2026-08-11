@@ -170,4 +170,16 @@ class FcmService {
       cb(data);
     }
   }
+
+  static Future<void> setUpdateTopic(bool subscribed) async {
+    try {
+      if (subscribed) {
+        await FirebaseMessaging.instance.subscribeToTopic('update_notice');
+      } else {
+        await FirebaseMessaging.instance.unsubscribeFromTopic('update_notice');
+      }
+    } catch (e) {
+      debugPrint('FCM topic error: $e');
+    }
+  }
 }

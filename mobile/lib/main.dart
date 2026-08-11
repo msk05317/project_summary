@@ -11,10 +11,12 @@ import 'config/app_settings.dart';
 import 'services/app_updater.dart';
 import 'screens/home_screen.dart';
 import 'services/fcm_service.dart';
+import 'services/settings_service.dart';
 import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SettingsService.instance.load();
   FcmService.initialize();
   // 사용자 설정(폰트 스케일 등)을 디스크에서 로드.
   await AppSettings.instance.load();
@@ -74,6 +76,7 @@ class _BriefingAppState extends State<BriefingApp> {
             ),
           ),
           builder: (context, child) {
+        Widget built() {
             // 사용자 폰트 배율을 전체 트리에 강제 적용합니다.
             final media = MediaQuery.of(context);
             return MediaQuery(
@@ -82,7 +85,17 @@ class _BriefingAppState extends State<BriefingApp> {
               ),
               child: child!,
             );
-          },
+          }
+        return ValueListenableBuilder<double>(
+          valueListenable: SettingsService.instance.fontScale,
+          builder: (context, scale, _) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(scale),
+            ),
+            child: built(),
+          ),
+        );
+      },
           // 항상 HomeScreen 으로 시작.
           home: const HomeScreen(),
         );
