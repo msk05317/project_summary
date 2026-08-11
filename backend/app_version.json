@@ -1,6 +1,6 @@
 {
-  "latest_version": "2.1.1",
-  "latest_version_code": 13,
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.1/app-release.apk",
-  "release_notes": "주차별 계획 VTM 항목 수정"
+  "latest_version": "2.1.2",
+  "latest_version_code": 14,
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.2/app-release.apk",
+  "release_notes": "대시보드 중복 수정, UI 개선, 주차별 계획 동적 변경"
 }
