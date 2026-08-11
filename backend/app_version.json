@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.1.6",
-  "latest_version_code": 18,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.6/app-release.apk",
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.6/app-release.apk",
-  "release_notes": "설정 화면 기능화: 글꼴 크기/알림 토글/고정 사업부/캐시 정리/자동 새로고침",
+  "latest_version": "2.1.7",
+  "latest_version_code": 19,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.7/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.7/app-release.apk",
+  "release_notes": "글꼴 배율 원복, 하단 탭 하이라이트 수정, 목록/캘린더에서 설정 진입 연결",
   "force_update": false
 }
