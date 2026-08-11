@@ -2127,6 +2127,7 @@ def get_app_version():
             "release_notes": "",
             "force_update": False,
         }
+    print(f"[APP_VERSION] 반환: {data}")
     return data
 
 
@@ -4254,9 +4255,9 @@ def get_project_detail(project_key: str):
     """프로젝트 상세"""
     # 별칭 매핑: 앱/구 데이터에서 오는 키를 실제 프로젝트 키로 변환
     _alias_map = {
-        "hrva_plate": "havaplate",
-        "hrvaplate": "havaplate",
-        "hrva-plate": "havaplate",
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
     }
     project_key = _alias_map.get(project_key.strip().lower(), project_key.strip())
     latest = _read_json(LATEST_FILE, [])
@@ -16620,6 +16621,22 @@ def register_device_token(payload: dict):
     debug = bool((payload or {}).get("debug", True))
     _add_device_token(token, platform=platform, debug=debug)
     return {"ok": True}
+
+
+
+
+@app.post("/admin/push/update-notice")
+def admin_push_update_notice(_admin: int = Depends(get_admin_session)):
+    """업데이트 공지 푸시 발송 (관리자 전용)"""
+    result = _send_fcm_to_all(
+        "새 버전 업데이트 안내",
+        "새 버전 2.1.2가 배포되었습니다. 최신 APK를 설치해주세요.",
+        data={
+            "type": "app_update",
+            "url": "https://github.com/msk05317/project_summary/releases/tag/v2.1.2",
+        },
+    )
+    return result
 
 
 @app.post("/admin/fcm-test")

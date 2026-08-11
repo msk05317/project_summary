@@ -10,6 +10,10 @@ class FcmService {
   static const String _apiBase = 'https://project-summary-mkoo.fly.dev';
   static bool _initialized = false;
 
+  // 알림 클릭 시 앱에서 처리할 콜백/데이터
+  static Future<void> Function(Map<String, dynamic> data)? onUpdateNotificationTap;
+  static Map<String, dynamic>? pendingOpenData;
+
   static final FlutterLocalNotificationsPlugin _localNotifs =
       FlutterLocalNotificationsPlugin();
 
@@ -37,7 +41,20 @@ class FcmService {
     try {
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const initSettings = InitializationSettings(android: androidInit);
-      await _localNotifs.initialize(settings: initSettings);
+      await _localNotifs.initialize(
+        settings: initSettings,
+        onDidReceiveNotificationResponse: (resp) {
+          try {
+            final payload = resp.payload;
+            if (payload == null || payload.isEmpty) return;
+            final data = Map<String, dynamic>.from(jsonDecode(payload));
+            debugPrint('[FCM] local notif tapped: $data');
+            _handleOpenData(data);
+          } catch (e) {
+            debugPrint('[FCM] local notif tap parse failed: $e');
+          }
+        },
+      );
       await _localNotifs
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
@@ -71,7 +88,6 @@ class FcmService {
 
     if (token == null) return;
 
-    // 릴리즈/디버그 모두 서버에 등록. debug 라벨은 로깅 참고용.
     final isDebug = kDebugMode;
     try {
       final res = await http.post(
@@ -88,7 +104,7 @@ class FcmService {
       debugPrint('[FCM] register failed: $e');
     }
 
-    // 포그라운드 메시지 → 로컬 알림으로 팝업 표시
+    // 포그라운드 메시지 → 로컬 알림으로 표시
     FirebaseMessaging.onMessage.listen((msg) async {
       final notif = msg.notification;
       debugPrint('[FCM] onMessage: ${notif?.title} - ${notif?.body}');
@@ -98,6 +114,7 @@ class FcmService {
           id: msg.hashCode,
           title: notif.title,
           body: notif.body,
+          payload: jsonEncode(msg.data),
           notificationDetails: NotificationDetails(
             android: AndroidNotificationDetails(
               _channel.id,
@@ -114,7 +131,21 @@ class FcmService {
       }
     });
 
-    // 토큰 갱신 시 재등록 (릴리즈/디버그 모두)
+    // 앱이 백그라운드에 있다가 알림 클릭으로 열릴 때
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      debugPrint('[FCM] onMessageOpenedApp: ${msg.data}');
+      _handleOpenData(msg.data);
+    });
+
+    // 앱이 완전 종료 상태에서 알림 클릭으로 실행될 때
+    FirebaseMessaging.instance.getInitialMessage().then((msg) {
+      if (msg != null) {
+        debugPrint('[FCM] initialMessage: ${msg.data}');
+        _handleOpenData(msg.data);
+      }
+    });
+
+    // 토큰 갱신 시 재등록
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       debugPrint('[FCM] token refreshed');
       final isDebug = kDebugMode;
@@ -130,5 +161,13 @@ class FcmService {
         );
       } catch (_) {}
     });
+  }
+
+  static void _handleOpenData(Map<String, dynamic> data) {
+    pendingOpenData = data;
+    final cb = onUpdateNotificationTap;
+    if (cb != null) {
+      cb(data);
+    }
   }
 }

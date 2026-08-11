@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +25,7 @@ class AppVersionInfo {
   factory AppVersionInfo.fromJson(Map<String, dynamic> j) => AppVersionInfo(
         latestVersion: (j['latest_version'] as String?) ?? '1.0.0',
         latestVersionCode: (j['latest_version_code'] as int?) ?? 1,
-        downloadUrl: (j['download_url'] as String?) ?? '',
+        downloadUrl: (j['download_url'] as String?) ?? (j['apk_url'] as String?) ?? '',
         releaseNotes: (j['release_notes'] as String?) ?? '',
         forceUpdate: (j['force_update'] as bool?) ?? false,
       );
@@ -39,12 +40,16 @@ class AppUpdater {
   /// 서버 버전 조회. 실패 시 null.
   Future<AppVersionInfo?> fetchLatest() async {
     try {
-      // GitHub Raw URL 사용 (서버 URL 변경돼도 앱 재빌드 불필요)
-      const versionCheckUrl = 'https://raw.githubusercontent.com/msk05317/project_summary/main/backend/app_version.json';
-      final res = await _dio.get(versionCheckUrl);
+      // GitHub API 사용 (raw URL 캐시 문제 방지, 실시간 반영)
+      const apiUrl = 'https://api.github.com/repos/msk05317/project_summary/contents/backend/app_version.json';
+      final res = await _dio.get(apiUrl);
       if (res.statusCode != 200) return null;
-      return AppVersionInfo.fromJson(
-          Map<String, dynamic>.from(res.data as Map));
+      // GitHub API는 base64 인코딩된 content 반환
+      final content = res.data['content'] as String?;
+      if (content == null) return null;
+      final decoded = utf8.decode(base64.decode(content.replaceAll('\n', '')));
+      final jsonMap = jsonDecode(decoded) as Map<String, dynamic>;
+      return AppVersionInfo.fromJson(jsonMap);
     } catch (_) {
       return null;
     }
@@ -59,15 +64,78 @@ class AppUpdater {
   /// 시작 시 호출 — 업데이트가 있으면 다이얼로그 표시
   Future<void> checkAndPromptUpdate(BuildContext context) async {
     final latest = await fetchLatest();
+    debugPrint('[AppUpdater] latest=${latest?.latestVersion}, latestCode=${latest?.latestVersionCode}');
     if (latest == null) return;
     final currentCode = await currentVersionCode();
-    if (latest.latestVersionCode <= currentCode) return;
+    final currentInfo = await PackageInfo.fromPlatform();
+    final currentVersion = currentInfo.version;
+    debugPrint('[AppUpdater] currentCode=$currentCode, currentVersion=$currentVersion');
+
+    // versionCode 또는 semantic version 중 하나라도 낮으면 업데이트 필요
+    final needsUpdate = latest.latestVersionCode > currentCode ||
+        _compareVersion(latest.latestVersion, currentVersion) > 0;
+
+    if (!needsUpdate) return;
 
     if (!context.mounted) return;
     await showDialog(
       context: context,
       barrierDismissible: !latest.forceUpdate,
       builder: (ctx) => _UpdateDialog(info: latest, updater: this),
+    );
+  }
+
+  /// semantic version 비교 (예: "2.1.3" vs "2.1.2")
+  /// - suffix(-test, +14 등)는 제거하고 숫자만 비교
+  /// - 반환값: a>b -> 1, a==b -> 0, a<b -> -1
+  int _compareVersion(String a, String b) {
+    String normalize(String v) {
+      var s = v.trim();
+      s = s.replaceFirst(RegExp(r'^v'), '');
+      s = s.split('+').first;
+      s = s.split('-').first;
+      return s;
+    }
+
+    final ap = normalize(a).split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final bp = normalize(b).split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final maxLen = ap.length > bp.length ? ap.length : bp.length;
+
+    while (ap.length < maxLen) { ap.add(0); }
+    while (bp.length < maxLen) { bp.add(0); }
+
+    for (var i = 0; i < maxLen; i++) {
+      if (ap[i] > bp[i]) return 1;
+      if (ap[i] < bp[i]) return -1;
+    }
+    return 0;
+  }
+
+  /// 알림 클릭 등에서 호출하는 강제 업데이트 팝업.
+  /// versionCode 비교 없이 무조건 다이얼로그를 띄운다.
+  Future<void> promptUpdateForced(BuildContext context) async {
+    final latest = await fetchLatest();
+    if (latest == null) return;
+
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: !latest.forceUpdate,
+      builder: (ctx) => _UpdateDialog(info: latest, updater: this),
+    );
+  }
+
+  /// 알림 클릭 시 바로 업데이트 다운로드 시작.
+  /// 팝업 없이 APK 다운로드 후 설치 화면까지 바로 진행한다.
+  Future<void> startDirectUpdateDownload({
+    void Function(double progress)? onProgress,
+  }) async {
+    final latest = await fetchLatest();
+    if (latest == null) return;
+
+    await downloadAndInstall(
+      info: latest,
+      onProgress: onProgress ?? (_) {},
     );
   }
 

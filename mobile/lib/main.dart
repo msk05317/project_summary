@@ -11,6 +11,7 @@ import 'config/app_settings.dart';
 import 'services/app_updater.dart';
 import 'screens/home_screen.dart';
 import 'services/fcm_service.dart';
+import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,10 +36,21 @@ class _BriefingAppState extends State<BriefingApp> {
   void initState() {
     super.initState();
     // 첫 프레임이 그려진 직후, 잠깐 뒤에 업데이트 안내를 시도합니다.
+    FcmService.onUpdateNotificationTap = (data) async {
+      await Future.delayed(const Duration(milliseconds: 500));
+      final ctx = _navKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        await AppUpdater.instance.startDirectUpdateDownload();
+      }
+    };
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(seconds: 1));
       final ctx = _navKey.currentContext;
       if (ctx != null && ctx.mounted) {
+        if (FcmService.pendingOpenData != null) {
+          FcmService.pendingOpenData = null;
+        }
         await AppUpdater.instance.checkAndPromptUpdate(ctx);
       }
     });

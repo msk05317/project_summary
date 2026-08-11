@@ -64,6 +64,8 @@ CUSTOM_IMAGES_MAPPING_FILE = DATA_DIR / "image_mappings.json"
 PROJECT_LABELS = {
     "chamber": "챔버",
     "havaplate": "하바플레이트",
+    "hrva_plate": "하바플레이트",
+    "hrva_plate": "하바플레이트",
     "enclosure": "엔클로저",
     "casting_enclosure": "캐스팅 엔클로저",
     "cup": "CUP",
@@ -77,7 +79,7 @@ PRODUCT_TO_PROJECT = [
     (["캐스팅 엔클로저", "캐스팅엔클로저", "casting enclosure", "캐스팅"], "casting_enclosure"),
     (["엔클로저", "enclosure"], "enclosure"),
     (["챔버", "chamber", "메탈챔버", "메탈 챔버", "dep 챔버", "dep챔버"], "chamber"),
-    (["하바플레이트", "하바 플레이트", "하바", "havaplate", "hava plate"], "havaplate"),
+    (["하바플레이트", "하바 플레이트", "하바", "havaplate", "hava plate", "hrva_plate", "hrva plate", "hrvaplate"], "hrva_plate"),
     (["cup", "컵"], "cup"),
     (["파워박스", "powerbox", "power box", "aether gdx", "aether", "에테르",
       "mach i", "mach 1", "machi"], "powerbox"),
