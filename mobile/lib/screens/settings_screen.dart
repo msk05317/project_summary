@@ -77,23 +77,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('설정')),
       body: ListView(
         children: [
-          _sectionTitle('글꼴 크기'),
-          ValueListenableBuilder<double>(
-            valueListenable: _settings.fontScale,
-            builder: (_, scale, _) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SegmentedButton<double>(
-                segments: const [
-                  ButtonSegment(value: 0.9, label: Text('작게')),
-                  ButtonSegment(value: 1.0, label: Text('보통')),
-                  ButtonSegment(value: 1.15, label: Text('크게')),
-                ],
-                selected: {scale},
-                onSelectionChanged: (s) => _settings.setFontScale(s.first),
-              ),
-            ),
-          ),
-          const Divider(height: 32),
 
           _sectionTitle('알림'),
           ValueListenableBuilder<bool>(

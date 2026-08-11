@@ -11,6 +11,7 @@ import '../components/calendar/calendar_deadline_row.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart';
 import 'report_detail_screen.dart';
+import 'settings_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -242,8 +243,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       case AppNavTab.calendar:
         break;
       case AppNavTab.settings:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('설정 화면은 준비 중입니다.')),
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SettingsScreen()),
         );
         break;
     }

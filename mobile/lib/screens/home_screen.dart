@@ -550,7 +550,7 @@ class _HomeScreenState extends State<HomeScreen> {
             AppBottomNav(
               current: _currentTab,
               onChanged: (tab) {
-                setState(() => _currentTab = tab);
+                if (tab != AppNavTab.settings) setState(() => _currentTab = tab);
                 switch (tab) {
                   case AppNavTab.home:
                     break;

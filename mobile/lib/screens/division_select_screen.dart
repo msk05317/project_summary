@@ -12,6 +12,7 @@ import '../components/home/app_bottom_nav.dart';
 import 'division_projects_screen.dart';
 import 'calendar_screen.dart';
 import 'chat_screen.dart';
+import 'settings_screen.dart';
 
 class DivisionSelectScreen extends StatefulWidget {
   const DivisionSelectScreen({super.key});
@@ -78,8 +79,9 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
         );
         break;
       case AppNavTab.settings:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('설정 화면은 준비 중입니다.')),
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SettingsScreen()),
         );
         break;
     }
