@@ -41,7 +41,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _autoRefreshTimer;
 
   void _setupAutoRefresh() {
@@ -54,6 +54,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refresh();
+    }
+  }
+
 
   // 사업부 목록 비동기 결과.
   late Future<List<Division>> _divisionsFuture;
@@ -69,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupAutoRefresh();
     SettingsService.instance.autoRefreshMinutes.addListener(_setupAutoRefresh);
     // 화면 진입 시 즉시 모든 데이터를 받아옵니다.

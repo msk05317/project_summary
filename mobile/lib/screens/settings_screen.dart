@@ -5,6 +5,7 @@ import '../models/division.dart';
 import '../services/settings_service.dart';
 import '../services/cache_service.dart';
 import '../services/fcm_service.dart';
+import '../services/background_service.dart';
 import '../services/favorites_service.dart';
 import '../services/divisions_service.dart';
 import 'division_projects_screen.dart';
@@ -208,6 +209,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+
+          ValueListenableBuilder<int>(
+            valueListenable: _settings.backgroundRefreshMinutes,
+            builder: (_, min, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ListTile(
+                  leading: Icon(Icons.sync),
+                  title: Text('백그라운드 자동 새로고침'),
+                  subtitle: Text('앱이 꺼져 있을 때 (시스템상 최소 15분)'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final e in [
+                        ('끔', 0), ('15분', 15), ('30분', 30), ('1시간', 60)
+                      ])
+                        ChoiceChip(
+                          label: Text(e.$1),
+                          selected: min == e.$2,
+                          onSelected: (_) async {
+                            await _settings.setBackgroundRefreshMinutes(e.$2);
+                            await BackgroundService.instance.registerPeriodic(e.$2);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+
           const Divider(height: 32),
 
           _sectionTitle('앱 정보'),

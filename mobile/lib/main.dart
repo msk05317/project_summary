@@ -12,11 +12,14 @@ import 'services/app_updater.dart';
 import 'screens/home_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/settings_service.dart';
+import 'services/background_service.dart';
 import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SettingsService.instance.load();
+  await BackgroundService.instance.init();
+  await BackgroundService.instance.registerPeriodic(SettingsService.instance.backgroundRefreshMinutes.value);
   FcmService.initialize();
   // 사용자 설정(폰트 스케일 등)을 디스크에서 로드.
   await AppSettings.instance.load();
