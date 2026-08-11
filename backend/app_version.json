@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.1.7",
-  "latest_version_code": 19,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.7/app-release.apk",
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.7/app-release.apk",
-  "release_notes": "글꼴 배율 원복, 하단 탭 하이라이트 수정, 목록/캘린더에서 설정 진입 연결",
+  "latest_version": "2.1.8",
+  "latest_version_code": 20,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.8/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.8/app-release.apk",
+  "release_notes": "설정에 글꼴 크기 슬라이더 추가",
   "force_update": false
 }
