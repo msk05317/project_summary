@@ -151,7 +151,7 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
       result.add(_DivisionAgg(
         division: d,
         total: total,
-        normal: normal + inProgress,
+        normal: normal,
         warning: warning,
         delayed: delayed,
         inProgress: inProgress,

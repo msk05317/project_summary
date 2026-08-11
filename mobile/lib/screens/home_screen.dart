@@ -30,6 +30,7 @@ import 'calendar_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'report_detail_screen.dart';
 import 'chat_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -557,9 +558,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                     break;
                   case AppNavTab.settings:
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${_labelOf(tab)} 화면 준비 중입니다.')),
+
+                    Navigator.of(context).push(
+
+                      MaterialPageRoute(
+
+                        builder: (_) => const SettingsScreen(),
+
+                      ),
+
                     );
+
                     break;
                 }
               },
@@ -570,19 +579,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 탭 enum → 사용자 표시 라벨.
-  String _labelOf(AppNavTab tab) {
-    switch (tab) {
-      case AppNavTab.home:
-        return '홈';
-      case AppNavTab.list:
-        return '목록';
-      case AppNavTab.calendar:
-        return '캘린더';
-      case AppNavTab.settings:
-        return '설정';
-    }
-  }
 }
 
 // 전체 현황 요약 섹션.
