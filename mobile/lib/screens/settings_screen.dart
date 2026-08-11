@@ -78,6 +78,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         children: [
 
+
+
+          _sectionTitle('글꼴 크기'),
+          ValueListenableBuilder<double>(
+            valueListenable: _settings.fontScale,
+            builder: (_, scale, _) => Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    '가나다라마바사 123',
+                    textScaler: TextScaler.linear(scale),
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+                Slider(
+                  value: scale,
+                  min: 0.85,
+                  max: 1.3,
+                  divisions: 9,
+                  label: '${(scale * 100).round()}%',
+                  activeColor: AppColors.headerNavy,
+                  onChanged: (v) => _settings.setFontScale(v),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      Text('작게', style: TextStyle(fontSize: 12)),
+                      Text('크게', style: TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 32),
+
           _sectionTitle('알림'),
           ValueListenableBuilder<bool>(
             valueListenable: _settings.notificationsEnabled,
