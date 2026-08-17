@@ -16649,3 +16649,8 @@ def admin_fcm_test(_admin: int = Depends(get_admin_session)):
     )
     return result
 
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
