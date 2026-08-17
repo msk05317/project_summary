@@ -224,6 +224,45 @@ def aggregate_projects(reports_latest: list[dict]) -> dict:
                 print(f"⚠️  매핑 실패: name='{product_name}' category='{category}'")
                 continue
             status = product.get("status", "BLACK")
+            # status가 빈 문자열이면 sections를 보고 계산
+            if not status or status == "":
+                # main.py의 _calc_card_status와 동일 로직 (순환 import 방지)
+                priority = {"RED": 5, "ORANGE": 4, "BLUE": 3, "GREEN": 2, "BLACK": 1}
+                best = "BLACK"
+                has_sales = False
+                for sec in (product.get("sections") or []):
+                    if (sec.get("sales_summary") or "").strip():
+                        has_sales = True
+                    for it in (sec.get("items") or []):
+                        if not isinstance(it, dict):
+                            continue
+                        due = it.get("due_date") or ""
+                        # due_date 기반 상태 판정 (간소화)
+                        if due:
+                            from datetime import datetime, date
+                            try:
+                                due_dt = datetime.fromisoformat(due.replace("Z", "+00:00")).date()
+                                today = date.today()
+                                if due_dt < today:
+                                    s = "RED"
+                                elif (due_dt - today).days <= 3:
+                                    s = "ORANGE"
+                                elif (due_dt - today).days <= 7:
+                                    s = "BLUE"
+                                else:
+                                    s = "GREEN"
+                            except Exception:
+                                s = "BLACK"
+                            if priority.get(s, 0) > priority.get(best, 0):
+                                best = s
+                                if best == "RED":
+                                    break
+                    if best == "RED":
+                        break
+                if best == "BLACK" and has_sales:
+                    status = "GREEN"
+                else:
+                    status = best
             label = PROJECT_LABELS.get(key, product_name)
             if key not in grouped:
                 grouped[key] = {
