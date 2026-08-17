@@ -90,15 +90,139 @@ PRODUCT_TO_PROJECT = [
 ]
 
 
+# 한국어 초성/중성/종성 리스트
+_CHOSUNG = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+_JUNGSUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ']
+_JONGSUNG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+
+def _decompose_hangul(char: str) -> tuple:
+    """한글 문자를 초성/중성/종성으로 분리"""
+    if '가' <= char <= '힣':
+        code = ord(char) - 0xAC00
+        jong = code % 28
+        jung = (code // 28) % 21
+        cho = (code // 28) // 21
+        return (_CHOSUNG[cho], _JUNGSUNG[jung], _JONGSUNG[jong])
+    return (char, '', '')
+
+def _get_phonetic_key(text: str) -> str:
+    """텍스트의 발음 키 생성 (초성+중성만, 종성 생략)"""
+    result = []
+    for char in text:
+        if '가' <= char <= '힣':
+            cho, jung, _ = _decompose_hangul(char)
+            result.append(cho + jung)
+        else:
+            result.append(char.lower())
+    return ''.join(result)
+
+def _phonetic_similarity(a: str, b: str) -> float:
+    """두 한국어 텍스트의 발음 유사도 (0.0 ~ 1.0)"""
+    if not a or not b:
+        return 0.0
+    
+    key_a = _get_phonetic_key(a)
+    key_b = _get_phonetic_key(b)
+    
+    # 완전 일치
+    if key_a == key_b:
+        return 1.0
+    
+    # 부분 일치 (한쪽이 다른 쪽에 포함)
+    if key_a in key_b or key_b in key_a:
+        shorter = min(len(key_a), len(key_b))
+        longer = max(len(key_a), len(key_b))
+        return shorter / longer
+    
+    # 레벤슈타인 거리 기반 유사도
+    distance = _levenshtein(key_a, key_b)
+    max_len = max(len(key_a), len(key_b))
+    if max_len == 0:
+        return 0.0
+    return 1.0 - (distance / max_len)
+
+def _levenshtein(a: str, b: str) -> int:
+    """레벤슈타인 거리 계산"""
+    if len(a) < len(b):
+        return _levenshtein(b, a)
+    if len(b) == 0:
+        return len(a)
+    
+    previous_row = range(len(b) + 1)
+    for i, c1 in enumerate(a):
+        current_row = [i + 1]
+        for j, c2 in enumerate(b):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
+
+def _get_project_aliases(project_key: str) -> list[str]:
+    """프로젝트의 모든 별칭/발음 변형 반환"""
+    aliases = []
+    
+    # 기본 키워드
+    for keywords, key in PRODUCT_TO_PROJECT:
+        if key == project_key:
+            aliases.extend(keywords)
+    
+    # 발음 변형 추가 (하바플레이트 예시)
+    if project_key == "hrva_plate":
+        aliases.extend([
+            "하바", "하바플레이트", "하바 플레이트", "하바플레이트",
+            "하버", "하버플레이트", "하버 플레이트",
+            "하봐", "하봐플레이트",
+            "허버", "허버플레이트",
+            "hrva", "hava", "harva", "herva"
+        ])
+    elif project_key == "chamber":
+        aliases.extend(["챔버", "챔버", "chamber", "쳄버", "챔벌"])
+    elif project_key == "powerbox":
+        aliases.extend(["파워박스", "파워 박스", "파워빅스", "파워빅스", "powerbox", "power box"])
+    elif project_key == "major_module":
+        aliases.extend(["메이저모듈", "메이저 모듈", "메이저모듈", "major module", "majormodule"])
+    elif project_key == "enclosure":
+        aliases.extend([
+            "엔클로저", "엔클로저", "엔클로져",
+            "엔크루저", "엔크루져", "엔크로저", "엔크로져",
+            "앤크로저", "앤크루저", "앤클로저", "앤클로져",
+            "인클로저", "인크루저",
+            "enclosure", "encloser"
+        ])
+    elif project_key == "frame":
+        aliases.extend(["프레임", "프래임", "프레임", "frame"])
+    
+    return list(set(aliases))
+
 def _match_project_key(product_name: str) -> Optional[str]:
+    """프로젝트 키 매칭 (발음 유사도 기반 퍼지 매칭)"""
     if not product_name:
         return None
-    name = product_name.lower()
+    
+    name = product_name.strip()
+    best_match = None
+    best_score = 0.0
+    
+    # 1. 정확한 키워드 매칭 (기존 로직)
+    name_lower = name.lower()
     for keywords, key in PRODUCT_TO_PROJECT:
         for kw in keywords:
-            if kw.lower() in name:
+            if kw.lower() in name_lower:
                 return key
-    return None
+    
+    # 2. 발음 유사도 매칭 (퍼지)
+    for keywords, key in PRODUCT_TO_PROJECT:
+        all_aliases = _get_project_aliases(key)
+        for alias in all_aliases:
+            score = _phonetic_similarity(name, alias)
+            if score > best_score and score >= 0.6:  # 60% 이상 유사하면 매칭
+                best_score = score
+                best_match = key
+    
+    return best_match
 
 
 # 3. 외부 파일 로더
