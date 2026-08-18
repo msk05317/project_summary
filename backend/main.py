@@ -10674,6 +10674,75 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-empty { padding: 40px; text-align: center; color: #9CA3AF; background: #F9FAFB; border-radius: 8px; }',
     '.mdl-loading { padding: 40px; text-align: center; color: #9CA3AF; }',
     '.mdl-plan-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px; }',
+      /* ═══ 디자인 시안 기준 재정의 (덮어쓰기) ═══ */
+    '.mdl-wrap { background: transparent; }',
+    '.mdl-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; background: transparent; border: none; }',
+    '.mdl-table th { background: transparent; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #64748B; text-align: left; border: none; }',
+    '.mdl-table td { background: #FFFFFF; padding: 12px 14px; font-size: 13px; border-top: 1px solid #E4E7EC; border-bottom: 1px solid #E4E7EC; vertical-align: middle; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }',
+    '.mdl-table td:first-child { border-left: 1px solid #E4E7EC; border-radius: 8px 0 0 8px; }',
+    '.mdl-table td:last-child { border-right: 1px solid #E4E7EC; border-radius: 0 8px 8px 0; }',
+    '.mdl-table tr:last-child td { border-bottom: 1px solid #E4E7EC; }',
+    '.mdl-group-row td { background: transparent !important; border: none !important; box-shadow: none !important; padding: 4px 6px !important; }',
+    '.mdl-group-badge { display: inline-block; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; }',
+    '.mdl-group-mass { background: #EFF6FF; color: #1E40AF; }',
+    '.mdl-group-dev { background: #FEF3C7; color: #92400E; }',
+    '.mdl-group-cnt { margin-left: 8px; font-size: 12px; color: #64748B; font-weight: 600; }',
+    '.mdl-input { width: 110px; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 13px; text-align: right; background: #FFFFFF; }',
+    '.mdl-input:focus { outline: none; border-color: #2563EB; }',
+    '.mdl-table select[data-field="group"] { padding: 6px 10px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; background: #EFF6FF; color: #2563EB; cursor: pointer; }',
+    '.mdl-devtype { padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }',
+    '.mdl-dt-hvm { background: #F5F3FF; color: #7C3AED; }',
+    '.mdl-dt-rpm { background: #ECFDF5; color: #059669; }',
+    '.mdl-btn-add { background: #0F172A; color: #FFFFFF; padding: 10px 18px; border-radius: 6px; font-size: 13px; font-weight: 700; }',
+    '.mdl-btn-add:hover { background: #1E293B; }',
+    '.mdl-btn-save { background: #10B981; color: #FFFFFF; padding: 10px 24px; border-radius: 6px; font-size: 14px; font-weight: 700; }',
+    '.mdl-btn-save:hover { background: #059669; }',
+    '.mdl-btn-del { background: #FEF2F2; color: #EF4444; padding: 6px 12px; font-size: 12px; border-radius: 6px; font-weight: 600; }',
+    '.mdl-btn-del:hover { background: #FEE2E2; }',
+    '.mdl-btn-process { background: #F5F3FF; color: #7C3AED; padding: 6px 12px; font-size: 12px; border-radius: 6px; font-weight: 600; margin-right: 6px; }',
+    '.mdl-btn-process:hover { background: #EDE9FE; }',
+    '.mdl-btn-note-save { background: #10B981; color: #FFFFFF; padding: 6px 16px; font-size: 12px; border-radius: 6px; font-weight: 700; }',
+    '.mdl-btn-note-save:hover { background: #059669; }',
+    '.mdl-note-card { background: #FFFFFF; border: 1px solid #E4E7EC; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }',
+    '.mdl-note-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }',
+    '.mdl-note-label { font-size: 14px; font-weight: 700; color: #1E293B; }',
+    '.mdl-note-card textarea { width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; font-size: 13px; resize: vertical; box-sizing: border-box; font-family: inherit; color: #1E293B; }',
+    '.mdl-note-card textarea:focus { outline: none; border-color: #2563EB; }',
+    '.mdl-plan-card { background: #FFFFFF; border: 1px solid #E4E7EC; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }',
+    '.mdl-empty { padding: 40px; text-align: center; color: #94A3B8; background: #FFFFFF; border-radius: 12px; border: 1px solid #E4E7EC; }',
+    '.mdl-loading { padding: 40px; text-align: center; color: #94A3B8; }',
+    /* ── 프로세스 에디터 시안 ── */
+    '.mdl-proc { max-width: 1080px; }',
+    '.mdl-proc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }',
+    '.mdl-proc-title { font-size: 20px; font-weight: 700; color: #1E293B; margin-right: auto; }',
+    '.mdl-btn-back { background: #FFFFFF; color: #475569; border: 1px solid #E2E8F0; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; }',
+    '.mdl-btn-back:hover { background: #F8FAFC; }',
+    '.mdl-proc-head .mdl-select { padding: 8px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; background: #F5F3FF; color: #7C3AED; min-width: 90px; }',
+    '.mdl-proc-summary { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 12px; margin-bottom: 20px; }',
+    '.mdl-proc-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }',
+    '.mdl-proc-card .lbl { font-size: 12px; color: #64748B; margin-bottom: 6px; font-weight: 600; }',
+    '.mdl-proc-card .val { font-size: 18px; font-weight: 800; color: #1E293B; }',
+    '.mdl-proc-card .sub { font-size: 11px; color: #94A3B8; margin-top: 4px; }',
+    '.mdl-proc-bar { height: 8px; background: #F1F5F9; border-radius: 4px; margin-top: 10px; overflow: hidden; }',
+    '.mdl-proc-fill { height: 100%; background: #10B981; border-radius: 4px; transition: width 0.3s; }',
+    '.mdl-proc-group { background: #FFFFFF; border: 1px solid #E4E7EC; border-radius: 12px; margin-bottom: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }',
+    '.mdl-proc-group-head { padding: 0 16px; height: 40px; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; }',
+    '.mdl-proc-group:nth-of-type(2) .mdl-proc-group-head { background: #EEF2FF !important; color: #312E81 !important; }',
+    '.mdl-proc-cnt { font-size: 11px; font-weight: 700; opacity: 0.85; padding: 2px 10px; border-radius: 10px; background: rgba(255,255,255,0.5); }',
+    '.mdl-proc-row { display: flex; align-items: center; gap: 14px; padding: 0 16px; height: 48px; border-top: 1px solid #F1F5F9; background: #FFFFFF; }',
+    '.mdl-proc-row.current { background: #F0F7FF; }',
+    '.mdl-proc-icon { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }',
+    '.mdl-proc-icon.done { background: #22C55E; color: #FFFFFF; }',
+    '.mdl-proc-icon.doing { background: #2563EB; color: #FFFFFF; }',
+    '.mdl-proc-icon.todo { background: #E2E8F0; color: #94A3B8; }',
+    '.mdl-proc-name { font-size: 13px; font-weight: 700; color: #1E293B; min-width: 180px; }',
+    '.mdl-proc-dates { display: flex; gap: 18px; margin-left: auto; align-items: center; }',
+    '.mdl-proc-dates label { font-size: 11px; color: #64748B; display: flex; align-items: center; gap: 6px; }',
+    '.mdl-proc-dates input[type=date] { border: none; background: transparent; font-size: 11px; font-weight: 600; color: #2563EB; padding: 2px 0; cursor: pointer; }',
+    '.mdl-proc-dates input[type=date]:focus { outline: none; }',
+    '.mdl-proc-status { font-size: 11px; font-weight: 700; color: #94A3B8; width: 44px; text-align: right; }',
+    '.mdl-proc-status.done { color: #64748B; }',
+    '.mdl-proc-status.doing { color: #2563EB; }',
   ].join(' ');
   document.head.appendChild(style);
 
@@ -10716,22 +10785,34 @@ window.renderAdminV2ByDivision = function(){
   }
 
   // 모델 테이블 렌더링
+  function syncDomToData(container) {
+    container.querySelectorAll('tr[data-model-id]').forEach(function(r) {
+      const m = _modelsData.find(function(x) { return x.id === r.dataset.modelId; });
+      if (!m) return;
+      const g = r.querySelector('[data-field="group"]');
+      if (g) m.group = g.value;
+      const dt = r.querySelector('[data-field="dev_type"]');
+      if (dt) m.dev_type = dt.value;
+      const st = r.querySelector('[data-field="status"]');
+      if (st) m.status = st.value;
+      m.price = parseInt((r.querySelector('[data-field="price"]').value || '0').replace(/,/g, ''), 10) || 0;
+      m.material_cost = parseInt((r.querySelector('[data-field="material_cost"]').value || '0').replace(/,/g, ''), 10) || 0;
+      const pg = r.querySelector('[data-field="progress"]');
+      if (pg) m.progress = parseInt(pg.value || '0', 10) || 0;
+    });
+  }
+
   function renderTable(container) {
     const byGroup = { '양산': [], '개발': [] };
     _modelsData.forEach(function(m) {
       const g = (m.group === '개발') ? '개발' : '양산';
       byGroup[g].push(m);
     });
-
-    const totalCount = _modelsData.length;
-    const massCount = byGroup['양산'].length;
-    const devCount = byGroup['개발'].length;
-
     const tabCount = document.getElementById('mdl-tab-count');
-    if (tabCount) tabCount.textContent = totalCount;
+    if (tabCount) tabCount.textContent = _modelsData.length;
 
     let html = '<table class="mdl-table"><thead><tr>' +
-      '<th>모델명</th><th>구분</th><th>상태</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>' +
+      '<th>모델명</th><th>구분</th><th>개발 유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>' +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
@@ -10744,35 +10825,47 @@ window.renderAdminV2ByDivision = function(){
         const price = m.price || 0;
         const mcost = m.material_cost || 0;
         const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
+        const isDev = g === '개발';
+        const devType = (m.dev_type || 'HVM').toUpperCase();
         html += '<tr data-model-id="' + m.id + '">' +
           '<td class="mdl-td-name">' + m.name + '</td>' +
           '<td><select data-field="group">' +
             '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
-            '<option value="개발"' + (m.group === '개발' ? ' selected' : '') + '>개발</option>' +
+            '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
           '</select></td>' +
-          '<td><select data-field="status">' +
-            '<option value="정상"' + (m.status === '정상' ? ' selected' : '') + '>정상</option>' +
-            '<option value="주의"' + (m.status === '주의' ? ' selected' : '') + '>주의</option>' +
-            '<option value="지연"' + (m.status === '지연' ? ' selected' : '') + '>지연</option>' +
-          '</select></td>' +
+          '<td>' + (isDev
+            ? '<select data-field="dev_type" class="mdl-devtype mdl-dt-' + devType.toLowerCase() + '">' +
+              '<option value="HVM"' + (devType === 'HVM' ? ' selected' : '') + '>HVM</option>' +
+              '<option value="RPM"' + (devType === 'RPM' ? ' selected' : '') + '>RPM</option></select>'
+            : '<span class="mdl-dash">-</span>') + '</td>' +
           '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
           '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
           '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
-          '<td><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
-          '<button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>' +
-          '</tr>';
+          '<td class="mdl-td-actions">' +
+            '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
+            '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
+            (isDev ? '<button type="button" class="mdl-btn mdl-btn-process mdl-row-process">Process 입력</button>' : '') +
+            '<button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button>' +
+          '</td></tr>';
       });
     });
 
     html += '</tbody></table>';
-    if (!totalCount) html = '<div class="mdl-empty">등록된 모델이 없습니다. [＋ 모델 추가] 버튼으로 추가하세요.</div>';
+    if (!_modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     container.innerHTML = html;
 
     container.querySelectorAll('input, select').forEach(function(el) {
       el.addEventListener('change', function() {
         const tr = el.closest('tr');
         if (!tr) return;
-        if (el.dataset.field === 'group') { renderTable._pendingGroupMove = true; }
+        if (el.dataset.field === 'group') {
+          syncDomToData(container);
+          renderTable(container);
+          return;
+        }
+        if (el.dataset.field === 'dev_type') {
+          el.className = 'mdl-devtype mdl-dt-' + el.value.toLowerCase();
+        }
         if (el.dataset.field === 'price' || el.dataset.field === 'material_cost') {
           const pr = parseInt(tr.querySelector('[data-field="price"]').value || '0', 10) || 0;
           const mc = parseInt(tr.querySelector('[data-field="material_cost"]').value || '0', 10) || 0;
@@ -10787,11 +10880,130 @@ window.renderAdminV2ByDivision = function(){
         const tr = btn.closest('tr');
         const mid = tr ? tr.dataset.modelId : null;
         if (!mid) return;
-        if (confirm('[' + mid + '] 모델을 삭제하시겠습니까? (저장 버튼을 눌러야 반영됩니다)')) {
+        if (confirm('[' + mid + '] 삭제하시겠습니까? (저장 버튼을 눌러야 반영됩니다)')) {
           _modelsData = _modelsData.filter(function(m) { return m.id !== mid; });
           renderTable(container);
         }
       });
+    });
+
+    container.querySelectorAll('.mdl-row-process').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const tr = btn.closest('tr');
+        if (tr && tr.dataset.modelId) openProcessEditor(tr.dataset.modelId);
+      });
+    });
+  }
+
+  function openProcessEditor(modelId) {
+    if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요'); return; }
+    fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(modelId) + '/process', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.detail) { alert(d.detail); return; }
+        renderProcessEditor(d);
+      })
+      .catch(function(e) { alert('프로세스 로드 실패: ' + e.message); });
+  }
+
+  function renderProcessEditor(d) {
+    const tableBox = document.getElementById('mdl-table-box');
+    if (!tableBox) return;
+    const groups = [['발주', '#DBEAFE', '#1D4ED8'], ['제작·검사', '#FEF3C7', '#B45309'], ['승인', '#EDE9FE', '#7C3AED']];
+
+    let html = '<div class="mdl-proc">' +
+      '<div class="mdl-proc-head">' +
+        '<button type="button" class="mdl-btn mdl-btn-back" id="mdl-proc-back">← 목록으로</button>' +
+        '<span class="mdl-proc-title">' + d.model_name + ' · 개발 Process 입력</span>' +
+        '<select id="mdl-proc-devtype" class="mdl-select" style="min-width:90px">' +
+          '<option value="HVM"' + (d.dev_type === 'HVM' ? ' selected' : '') + '>HVM</option>' +
+          '<option value="RPM"' + (d.dev_type === 'RPM' ? ' selected' : '') + '>RPM</option>' +
+        '</select>' +
+        '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-proc-save">저장</button>' +
+        '<span id="mdl-proc-msg" class="mdl-save-msg"></span>' +
+      '</div>' +
+      '<div class="mdl-proc-summary">' +
+        '<div class="mdl-proc-card"><div class="lbl">개발 유형</div><div class="val">' + d.dev_type + '</div></div>' +
+        '<div class="mdl-proc-card"><div class="lbl">진행률</div><div class="val">' + d.done + ' / ' + d.total + ' 단계</div>' +
+          '<div class="mdl-proc-bar"><div class="mdl-proc-fill" style="width:' + d.progress + '%"></div></div></div>' +
+        '<div class="mdl-proc-card"><div class="lbl">다음 단계</div><div class="val">' + d.current_stage + '</div>' +
+          '<div class="sub">' + (d.current_expected ? '예상 ' + d.current_expected : '예상일 미정') + '</div></div>' +
+      '</div>';
+
+    let num = 0;
+    groups.forEach(function(g) {
+      const steps = d.steps.filter(function(s) { return s.group === g[0]; });
+      if (!steps.length) return;
+      html += '<div class="mdl-proc-group">' +
+        '<div class="mdl-proc-group-head" style="background:' + g[1] + ';color:' + g[2] + '">' +
+          g[0] + '<span class="mdl-proc-cnt">' + steps.length + '단계</span></div>';
+      steps.forEach(function(s) {
+        num++;
+        const isDone = (s.actual || '').trim() !== '';
+        const isCurrent = !isDone && d.current_stage === s.name;
+        html += '<div class="mdl-proc-row' + (isCurrent ? ' current' : '') + '" data-step-key="' + s.key + '">' +
+          '<span class="mdl-proc-icon ' + (isDone ? 'done' : (isCurrent ? 'doing' : 'todo')) + '">' +
+            (isDone ? '✓' : (isCurrent ? '●' : '○')) + '</span>' +
+          '<span class="mdl-proc-name">' + ('0' + num).slice(-2) + ' ' + s.name + '</span>' +
+          '<span class="mdl-proc-dates">' +
+            '<label>예상 <input type="date" data-f="expected" value="' + (s.expected || '') + '"></label>' +
+            '<label>실제 <input type="date" data-f="actual" value="' + (s.actual || '') + '"></label>' +
+          '</span>' +
+          '<span class="mdl-proc-status ' + (isDone ? 'done' : (isCurrent ? 'doing' : '')) + '">' +
+            (isDone ? '완료' : (isCurrent ? '진행중' : '대기')) + '</span>' +
+        '</div>';
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+    tableBox.innerHTML = html;
+
+    document.getElementById('mdl-proc-back').addEventListener('click', function() {
+      renderTable(tableBox);
+    });
+
+    document.getElementById('mdl-proc-save').addEventListener('click', function() {
+      const steps = [];
+      tableBox.querySelectorAll('.mdl-proc-row').forEach(function(row) {
+        steps.push({
+          key: row.dataset.stepKey,
+          expected: row.querySelector('[data-f="expected"]').value || '',
+          actual: row.querySelector('[data-f="actual"]').value || ''
+        });
+      });
+      const msg = document.getElementById('mdl-proc-msg');
+      fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(d.model_id) + '/process', {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dev_type: document.getElementById('mdl-proc-devtype').value, steps: steps })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.ok) {
+            msg.textContent = '✅ 저장 완료 (진행률 ' + res.progress + '%)';
+            msg.style.color = '#059669';
+            const m = _modelsData.find(function(x) { return x.id === d.model_id; });
+            if (m) { m.dev_type = res.dev_type; m.progress = res.progress; }
+            // 저장 직후 서버 데이터로 화면 즉시 갱신 (체크 상태/진행률/다음 단계 반영)
+            fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(d.model_id) + '/process', { credentials: 'same-origin' })
+              .then(function(r2) { return r2.json(); })
+              .then(function(d2) {
+                if (!d2.detail) renderProcessEditor(d2);
+                // 상단 메시지는 리렌더 후에도 유지되도록 다시 표시
+                setTimeout(function() {
+                  const msg2 = document.getElementById('mdl-proc-msg');
+                  if (msg2) { msg2.textContent = '✅ 저장 완료 (진행률 ' + res.progress + '%)'; msg2.style.color = '#059669'; }
+                }, 50);
+              });
+          } else {
+            msg.textContent = '❌ 실패: ' + (res.detail || '');
+            msg.style.color = '#DC2626';
+          }
+        })
+        .catch(function(e) {
+          msg.textContent = '❌ ' + e.message;
+          msg.style.color = '#DC2626';
+        });
     });
   }
 
@@ -10871,6 +11083,14 @@ window.renderAdminV2ByDivision = function(){
         '</div>' +
 
         '<div class="mdl-pane" data-mpane="list">' +
+          '<div class="mdl-note-card">' +
+            '<div class="mdl-note-row">' +
+              '<div class="mdl-note-label">프로젝트 현황</div>' +
+              '<button type="button" class="mdl-btn mdl-btn-note-save" id="mdl-note-save">저장</button>' +
+            '</div>' +
+            '<textarea id="mdl-status-note" rows="3" placeholder="프로젝트 현황을 입력하세요 (앱에 표시됩니다)"></textarea>' +
+            '<div id="mdl-note-msg" class="mdl-save-msg"></div>' +
+          '</div>' +
           '<div class="mdl-actions">' +
             '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
             '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
@@ -10914,7 +11134,17 @@ window.renderAdminV2ByDivision = function(){
     const saveBtn = document.getElementById('mdl-save-btn');
     const saveMsg = document.getElementById('mdl-save-msg');
     const addBtn = document.getElementById('mdl-add-btn');
-    let _currentProjectKey = null;
+
+    function loadStatusNote(projectKey) {
+      if (!projectKey) return;
+      fetch('/projects/' + encodeURIComponent(projectKey) + '/models/detail', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          const ta = document.getElementById('mdl-status-note');
+          if (ta) ta.value = d.status_note || '';
+        })
+        .catch(function() {});
+    }
 
     function loadWeeklyPlan(projectKey) {
       if (!projectKey) {
@@ -10998,20 +11228,29 @@ window.renderAdminV2ByDivision = function(){
     });
 
     saveBtn.addEventListener('click', function() {
-      // 테이블의 현재 입력값을 _modelsData에 반영
-      const rows = tableBox.querySelectorAll('tr[data-model-id]');
-      rows.forEach(function(r) {
-        const mid = r.dataset.modelId;
-        const m = _modelsData.find(function(x) { return x.id === mid; });
-        if (!m) return;
-        m.group = r.querySelector('[data-field="group"]').value;
-        m.status = r.querySelector('[data-field="status"]').value;
-        m.price = parseInt((r.querySelector('[data-field="price"]').value || '0').replace(/,/g, ''), 10) || 0;
-        m.material_cost = parseInt((r.querySelector('[data-field="material_cost"]').value || '0').replace(/,/g, ''), 10) || 0;
-        m.progress = parseInt(r.querySelector('[data-field="progress"]').value || '0', 10) || 0;
-      });
+      syncDomToData(tableBox);
       saveModels(saveMsg);
     });
+
+    const noteSaveBtn = document.getElementById('mdl-note-save');
+    if (noteSaveBtn) {
+      noteSaveBtn.addEventListener('click', function() {
+        if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요'); return; }
+        const noteEl = document.getElementById('mdl-status-note');
+        const msg = document.getElementById('mdl-note-msg');
+        fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/status-note', {
+          method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: noteEl ? noteEl.value : '' })
+        })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.ok) { msg.textContent = '✅ 현황 저장 완료'; msg.style.color = '#059669'; }
+            else { msg.textContent = '❌ 저장 실패'; msg.style.color = '#DC2626'; }
+          })
+          .catch(function(e) { msg.textContent = '❌ ' + e.message; msg.style.color = '#DC2626'; });
+      });
+    }
 
     addBtn.addEventListener('click', function() {
       const name = prompt('모델명 (예: CUP-100)');
@@ -11042,7 +11281,7 @@ window.renderAdminV2ByDivision = function(){
           sel.appendChild(opt);
         });
         loadModels(sel.value, tableBox);
-        loadWeeklyPlan(sel.value);
+        loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
       })
       .catch(function(e) {
         sel.innerHTML = '<option value="">오류: ' + e.message + '</option>';
@@ -11051,7 +11290,7 @@ window.renderAdminV2ByDivision = function(){
 
     sel.addEventListener('change', function() {
       loadModels(sel.value, tableBox);
-      loadWeeklyPlan(sel.value);
+      loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
     });
   }
 
@@ -12212,10 +12451,7 @@ def admin_delete_model(project_key: str, model_id: str, _admin: int = Depends(ge
 
 @app.put("/admin/projects/{project_key}/models")
 def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depends(get_admin_session)):
-    """admin용 모델 목록 저장 (전체 교체)
-
-    payload: {"models": [{"id": "cup-100", "name": "CUP-100", "group": "양산", "progress": 35, "status": "지연"}, ...]}
-    """
+    """admin용 모델 목록 저장 (전체 교체) - dev_type/process/weekly_plan/status_note 보존"""
     _alias = {
         "havaplate": "hrva_plate",
         "hrvaplate": "hrva_plate",
@@ -12227,7 +12463,11 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
     if not isinstance(raw_models, list):
         raise HTTPException(status_code=400, detail="models는 배열이어야 합니다.")
 
-    # 정규화 + 유효성 검사
+    data = _load_models()
+    projects = data.setdefault("projects", {})
+    proj = projects.setdefault(_key, {})
+    old_map = {m.get("id"): m for m in proj.get("models", []) if isinstance(m, dict)}
+
     normalized = []
     seen_ids = set()
     for m in raw_models:
@@ -12257,7 +12497,7 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             material_cost = int(m.get("material_cost") or 0)
         except (ValueError, TypeError):
             material_cost = 0
-        normalized.append({
+        entry = {
             "id": mid,
             "name": name,
             "group": group,
@@ -12265,13 +12505,19 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             "status": status,
             "price": max(0, price),
             "material_cost": max(0, material_cost),
-        })
+        }
+        old = old_map.get(mid) or {}
+        if group == "개발":
+            dev_type = str(m.get("dev_type") or old.get("dev_type") or "HVM").strip().upper()
+            if dev_type not in ("HVM", "RPM"):
+                dev_type = "HVM"
+            entry["dev_type"] = dev_type
+            proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
+            entry["process"] = proc if isinstance(proc, list) and len(proc) == 13 else _default_process()
+        normalized.append(entry)
 
-    # 양산 먼저, 개발 나중 (그룹 내 순서는 입력 순서 유지 - stable sort)
     normalized.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
-    data = _load_models()
-    projects = data.setdefault("projects", {})
-    projects[_key] = {"models": normalized}
+    proj["models"] = normalized
     _save_models(data)
     print(f"[models] saved {_key}: {len(normalized)} models")
     return {"ok": True, "project_key": _key, "count": len(normalized)}
@@ -17537,6 +17783,160 @@ def admin_fcm_test(_admin: int = Depends(get_admin_session)):
         data={"type": "test"},
     )
     return result
+
+
+
+# ─── 개발 승인 프로세스 (13단계 고정 템플릿) ───
+DEV_PROCESS_STEPS = [
+    ("fa_po", "FA PO", "발주"),
+    ("material_order", "자재 발주", "발주"),
+    ("incoming", "입고", "발주"),
+    ("machining", "가공 (조립)", "제작·검사"),
+    ("la_incoming", "LA 입고", "제작·검사"),
+    ("lair_write", "LAIR 작성", "제작·검사"),
+    ("lair_approval", "LAIR 승인", "제작·검사"),
+    ("source_inspection", "Source Inspection", "승인"),
+    ("fair_write", "FAIR 작성", "승인"),
+    ("fair_approval", "FAIR 승인", "승인"),
+    ("lap_test", "LAP TEST", "승인"),
+    ("cdr", "CDR", "승인"),
+    ("final_approval", "최종 승인 완료", "승인"),
+]
+
+def _default_process() -> list:
+    return [{"key": k, "name": n, "group": g, "expected": "", "actual": ""} for k, n, g in DEV_PROCESS_STEPS]
+
+def _model_key_alias(project_key: str) -> str:
+    _alias = {"havaplate": "hrva_plate", "hrvaplate": "hrva_plate", "hrva-plate": "hrva_plate"}
+    return _alias.get(project_key.strip().lower(), project_key.strip())
+
+def _ensure_process(m: dict) -> list:
+    proc = m.get("process")
+    if not isinstance(proc, list) or len(proc) != 13:
+        proc = _default_process()
+        m["process"] = proc
+    return proc
+
+def _process_progress(proc: list) -> int:
+    if not proc:
+        return 0
+    done = sum(1 for s in proc if str(s.get("actual") or "").strip())
+    return round(done / len(proc) * 100)
+
+def _process_current(proc: list):
+    for s in proc:
+        if not str(s.get("actual") or "").strip():
+            return s.get("name") or "", str(s.get("expected") or "")
+    return "최종 승인 완료", ""
+
+def _enrich_model(m: dict) -> dict:
+    out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type")}
+    if m.get("group") == "개발":
+        proc = _ensure_process(m)
+        out["dev_type"] = m.get("dev_type") or "HVM"
+        out["progress"] = _process_progress(proc)
+        stage, expected = _process_current(proc)
+        out["current_stage"] = stage
+        out["current_expected"] = expected
+        out["done_steps"] = sum(1 for s in proc if str(s.get("actual") or "").strip())
+        out["total_steps"] = len(proc)
+    return out
+
+@app.get("/projects/{project_key}/models/detail")
+def get_project_models_detail(project_key: str):
+    """앱용 확장 모델 목록: dev_type, 자동 진행률, 현황(현재 단계), 완료예정일, status_note 포함"""
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    changed = False
+    enriched = []
+    for m in proj.get("models", []):
+        if not isinstance(m, dict):
+            continue
+        if m.get("group") == "개발" and (not isinstance(m.get("process"), list) or len(m.get("process")) != 13):
+            changed = True
+        enriched.append(_enrich_model(m))
+    if changed:
+        _save_models(data)
+    enriched.sort(key=lambda x: 0 if x.get("group") == "양산" else 1)
+    return {
+        "project_key": _key,
+        "has_models": len(enriched) > 0,
+        "total": len(enriched),
+        "status_note": proj.get("status_note") or "",
+        "models": enriched,
+    }
+
+@app.get("/projects/{project_key}/models/{model_id}/process")
+def get_model_process(project_key: str, model_id: str):
+    """앱용 개발 승인 프로세스 조회"""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            if m.get("group") != "개발":
+                raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
+            proc = _ensure_process(m)
+            _save_models(data)
+            done = sum(1 for s in proc if str(s.get("actual") or "").strip())
+            stage, expected = _process_current(proc)
+            return {
+                "model_id": model_id,
+                "model_name": m.get("name") or model_id,
+                "dev_type": m.get("dev_type") or "HVM",
+                "steps": proc,
+                "done": done,
+                "total": len(proc),
+                "progress": _process_progress(proc),
+                "current_stage": stage,
+                "current_expected": expected,
+            }
+    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
+@app.put("/admin/projects/{project_key}/models/{model_id}/process")
+def admin_put_model_process(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """admin용 프로세스 저장: {"dev_type": "HVM", "steps": [{"key","expected","actual"}, ...]}"""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    target = None
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            target = m
+            break
+    if target is None:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    dt = str(payload.get("dev_type") or "").strip().upper()
+    if dt in ("HVM", "RPM"):
+        target["dev_type"] = dt
+    proc = _ensure_process(target)
+    incoming = payload.get("steps")
+    if isinstance(incoming, list):
+        by_key = {s.get("key"): s for s in incoming if isinstance(s, dict)}
+        for step in proc:
+            inc = by_key.get(step.get("key"))
+            if inc is None:
+                continue
+            step["expected"] = str(inc.get("expected") or "").strip()[:10]
+            step["actual"] = str(inc.get("actual") or "").strip()[:10]
+    target["progress"] = _process_progress(proc)
+    _save_models(data)
+    return {"ok": True, "model_id": model_id, "progress": target["progress"], "dev_type": target.get("dev_type")}
+
+@app.put("/admin/projects/{project_key}/status-note")
+def admin_put_status_note(project_key: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """프로젝트 현황 텍스트 저장: {"note": "..."}"""
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    proj["status_note"] = str(payload.get("note") or "").strip()
+    _save_models(data)
+    return {"ok": True, "project_key": _key}
 
 
 
