@@ -131,3 +131,9 @@ firebase-service-account.json
 
 # Flutter DevTools 자동생성
 mobile/devtools_options.yaml
+# 서버 데이터 파일 (로컬 덮어쓰기 방지)
+backend/notes.json
+backend/reports_latest.json
+backend/reports_history.json
+backend/reports.json
+backend/models.json
