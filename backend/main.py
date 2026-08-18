@@ -12544,7 +12544,7 @@ def get_weekly_plan(project_key: str):
         "file_name": plan.get("file_name"),
         "uploaded_at": plan.get("uploaded_at"),
         "photo_ref": _ref,
-        "url": f"/note_photos/{_ref}.png" if _ref else None,
+        "url": f"/note_photos/{_ref}" if _ref else None,
     }
 
 
