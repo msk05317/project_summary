@@ -2163,6 +2163,70 @@ def _save_notes(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# ─── 프로젝트 모델 (양산/개발 구조) 헬퍼 ───
+MODELS_FILE = DATA_DIR / "models.json"
+
+
+def _load_models() -> dict:
+    try:
+        with open(MODELS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"version": 1, "updated_at": None, "projects": {}}
+
+
+def _save_models(data: dict) -> None:
+    from datetime import datetime
+    data["updated_at"] = datetime.now().isoformat()
+    with open(MODELS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _normalize_model(raw: dict, existing_ids: set) -> dict | None:
+    """dict → 정규화된 모델 dict. 검증 실패 시 None 반환"""
+    if not isinstance(raw, dict):
+        return None
+    mid = str(raw.get("id") or "").strip()
+    name = str(raw.get("name") or "").strip()
+    if not name:
+        return None
+    if not mid:
+        mid = (name.lower().replace(" ", "-").replace("/", "-")) or f"model-{int(__import__('time').time()*1000)}"
+    if mid in existing_ids:
+        return None
+    group = str(raw.get("group") or "양산").strip()
+    if group not in ("양산", "개발"):
+        group = "양산"
+    try:
+        progress = int(raw.get("progress") or 0)
+    except (ValueError, TypeError):
+        progress = 0
+    progress = max(0, min(100, progress))
+    status = str(raw.get("status") or "정상").strip()
+    if status not in ("정상", "주의", "지연"):
+        status = "정상"
+    return {
+        "id": mid,
+        "name": name,
+        "group": group,
+        "progress": progress,
+        "status": status,
+    }
+
+
+def _get_project_models(project_key: str) -> list:
+    """프로젝트 키로 모델 목록 조회 (별칭 매핑 적용)"""
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+    data = _load_models()
+    proj = (data.get("projects") or {}).get(_key) or {}
+    return proj.get("models") or []
+
+
 # ─── 노트 첨부 자료 (표 JSON / 사진) 헬퍼 ───
 import uuid as _uuid_mod
 from datetime import datetime as _dt_mod
@@ -4250,6 +4314,35 @@ def list_projects():
     return {"projects": projects}
 
 
+@app.get("/projects/{project_key}/models")
+def get_project_models(project_key: str):
+    """프로젝트 모델 목록 + 그룹별 요약 (앱 8번 화면용)
+
+    응답:
+    {
+      "project_key": "cup",
+      "has_models": true,
+      "total": 4,
+      "groups": {"양산": {"count": 4, "models": [...]}, "개발": {...}},
+      "models": [...]
+    }
+    """
+    models = _get_project_models(project_key)
+    groups: dict = {}
+    for m in models:
+        g = (m.get("group") or "기타").strip() or "기타"
+        groups.setdefault(g, {"count": 0, "models": []})
+        groups[g]["count"] += 1
+        groups[g]["models"].append(m)
+    return {
+        "project_key": project_key,
+        "has_models": len(models) > 0,
+        "total": len(models),
+        "groups": groups,
+        "models": models,
+    }
+
+
 @app.get("/projects/{project_key}")
 def get_project_detail(project_key: str):
     """프로젝트 상세"""
@@ -5015,6 +5108,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       <div class="nav-item" data-page="production"><span class="icon">🏭</span><span>생산</span></div>
       <div class="nav-item" data-page="inbound"><span class="icon">📥</span><span>입고</span></div>
       <div class="nav-item" data-page="outbound"><span class="icon">📤</span><span>출하</span></div>
+      <div class="nav-item" data-page="models"><span class="icon">🧩</span><span>모델 관리</span></div>
     </nav>
 
     <div class="spacer"></div>
@@ -6862,7 +6956,14 @@ window.renderAdminV2ByDivision = function(){
     const parsed = (target && target.parsed) || {};
     const projects = parsed.projects || [];
     const _base = projects.length ? projects.join(', ') : (target && target.file_name) || '보고';
-    const _week = (target && target.week_override) || parsed.week || '';
+    // week_override > parsed.week > 현재 주차 (자동 계산)
+    let _week = (target && target.week_override) || parsed.week || '';
+    if (!_week) {
+      const _now = new Date();
+      const _start = new Date(_now.getFullYear(), 0, 1);
+      const _days = Math.floor((_now - _start) / (24 * 60 * 60 * 1000));
+      _week = Math.ceil((_days + _start.getDay() + 1) / 7);
+    }
     const projectLabel = _base
       ? (_week ? _base + ' · W' + _week + ' 주간보고' : _base)
       : ((target && target.display_title) || '보고');
@@ -10483,6 +10584,287 @@ window.renderAdminV2ByDivision = function(){
     fillDivisions();
   }
 })();
+
+// ═══════════════════════════════════════════════
+// 모델 관리 페이지
+// ═══════════════════════════════════════════════
+(function() {
+  'use strict';
+
+  // 스타일 주입
+  var style = document.createElement('style');
+  style.textContent = [
+    '.mdl-wrap { max-width: 800px; }',
+    '.mdl-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }',
+    '.mdl-header h2 { font-size: 20px; font-weight: 800; color: #111827; margin: 0; }',
+    '.mdl-proj-sel { padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 14px; background: #fff; min-width: 200px; }',
+    '.mdl-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid #E5E7EB; }',
+    '.mdl-table th { background: #F9FAFB; padding: 10px 14px; font-size: 12px; font-weight: 700; color: #6B7280; text-align: left; border-bottom: 1px solid #E5E7EB; }',
+    '.mdl-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }',
+    '.mdl-table tr:last-child td { border-bottom: none; }',
+    '.mdl-input { padding: 6px 10px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 13px; width: 100%; box-sizing: border-box; }',
+    '.mdl-input:focus { outline: none; border-color: #3B82F6; }',
+    '.mdl-sel { padding: 6px 8px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 13px; background: #fff; }',
+    '.mdl-num { width: 70px; text-align: center; }',
+    '.mdl-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }',
+    '.mdl-badge-prod { background: #DBEAFE; color: #1D4ED8; }',
+    '.mdl-badge-dev { background: #FEF3C7; color: #92400E; }',
+    '.mdl-btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }',
+    '.mdl-btn-add { background: #0F2C59; color: #fff; }',
+    '.mdl-btn-add:hover { background: #12356F; }',
+    '.mdl-btn-del { background: #FEE2E2; color: #DC2626; padding: 4px 10px; font-size: 12px; }',
+    '.mdl-btn-del:hover { background: #FECACA; }',
+    '.mdl-btn-save { background: #059669; color: #fff; padding: 10px 24px; font-size: 14px; }',
+    '.mdl-btn-save:hover { background: #047857; }',
+    '.mdl-actions { display: flex; gap: 8px; margin-top: 16px; align-items: center; }',
+    '.mdl-status { font-size: 13px; margin-left: auto; }',
+    '.mdl-status.ok { color: #059669; }',
+    '.mdl-status.err { color: #DC2626; }',
+    '.mdl-empty { text-align: center; padding: 40px; color: #9CA3AF; font-size: 14px; }',
+    '.mdl-group-sep td { background: #F9FAFB; font-weight: 700; font-size: 12px; color: #374151; padding: 8px 14px; }',
+  ].join(' ');
+  document.head.appendChild(style);
+
+  var _modelsData = [];
+  var _currentProjectKey = '';
+
+  function _esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  function _genId(name) {
+    return (name || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'model-' + Date.now();
+  }
+
+  // 프로젝트 목록 로드 (드롭다운용)
+  function loadProjectOptions(sel) {
+    var divSel = document.getElementById('v2-division-select');
+    var divId = divSel ? divSel.value : '';
+    if (!divId) {
+      sel.innerHTML = '<option value="">사업부를 먼저 선택하세요</option>';
+      return;
+    }
+    fetch('/admin/config/projects?division_id=' + encodeURIComponent(divId), { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var projects = (d && d.projects) || [];
+        sel.innerHTML = '<option value="">프로젝트 선택...</option>';
+        projects.forEach(function(p) {
+          var opt = document.createElement('option');
+          opt.value = p.id || p.label;
+          opt.textContent = p.label || p.id;
+          sel.appendChild(opt);
+        });
+      })
+      .catch(function() {
+        sel.innerHTML = '<option value="">로드 실패</option>';
+      });
+  }
+
+  // 모델 테이블 렌더링
+  function renderTable(container) {
+    var html = '';
+    if (!_modelsData.length) {
+      html = '<div class="mdl-empty">등록된 모델이 없습니다. 아래 [모델 추가] 버튼으로 추가하세요.</div>';
+    } else {
+      html = '<table class="mdl-table"><thead><tr>' +
+        '<th style="width:40px">#</th>' +
+        '<th>모델명</th>' +
+        '<th style="width:120px">구분</th>' +
+        '<th style="width:110px">상태</th>' +
+        '<th style="width:60px"></th>' +
+        '</tr></thead><tbody>';
+
+      var groups = {};
+      _modelsData.forEach(function(m, i) {
+        var g = m.group || '양산';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push({ model: m, idx: i });
+      });
+
+      var groupOrder = ['양산', '개발'];
+      var rowNum = 0;
+      groupOrder.forEach(function(gname) {
+        var items = groups[gname] || [];
+        if (!items.length) return;
+        html += '<tr class="mdl-group-sep"><td colspan="5">' +
+          (gname === '양산' ? '🏭 양산' : '🔧 개발') +
+          ' (' + items.length + '개)</td></tr>';
+        items.forEach(function(entry) {
+          var m = entry.model;
+          var i = entry.idx;
+          rowNum++;
+          var badgeClass = (m.group === '개발') ? 'mdl-badge-dev' : 'mdl-badge-prod';
+          html += '<tr>' +
+            '<td>' + rowNum + '</td>' +
+            '<td><input class="mdl-input" data-idx="' + i + '" data-field="name" value="' + _esc(m.name) + '"></td>' +
+            '<td><select class="mdl-sel" data-idx="' + i + '" data-field="group">' +
+              '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
+              '<option value="개발"' + (m.group === '개발' ? ' selected' : '') + '>개발</option>' +
+            '</select></td>' +
+            '<td><select class="mdl-sel" data-idx="' + i + '" data-field="status">' +
+              '<option value="정상"' + (m.status === '정상' ? ' selected' : '') + '>정상</option>' +
+              '<option value="주의"' + (m.status === '주의' ? ' selected' : '') + '>주의</option>' +
+              '<option value="지연"' + (m.status === '지연' ? ' selected' : '') + '>지연</option>' +
+            '</select></td>' +
+            '<td><button class="mdl-btn mdl-btn-del" data-del="' + i + '">삭제</button></td>' +
+            '</tr>';
+        });
+      });
+      html += '</tbody></table>';
+    }
+    container.innerHTML = html;
+
+    // 이벤트 바인딩
+    container.querySelectorAll('input[data-field], select[data-field]').forEach(function(el) {
+      el.addEventListener('change', function() {
+        var idx = parseInt(this.getAttribute('data-idx'), 10);
+        var field = this.getAttribute('data-field');
+        if (idx >= 0 && idx < _modelsData.length) {
+          if (field === 'progress') {
+            _modelsData[idx][field] = Math.max(0, Math.min(100, parseInt(this.value, 10) || 0));
+          } else {
+            _modelsData[idx][field] = this.value;
+          }
+          if (field === 'name') {
+            _modelsData[idx].id = _genId(this.value);
+          }
+          if (field === 'group') {
+            renderTable(container);
+          }
+        }
+      });
+    });
+    container.querySelectorAll('[data-del]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var idx = parseInt(this.getAttribute('data-del'), 10);
+        _modelsData.splice(idx, 1);
+        renderTable(container);
+      });
+    });
+  }
+
+  // 모델 로드
+  function loadModels(projectKey, container) {
+    if (!projectKey) { _modelsData = []; renderTable(container); return; }
+    _currentProjectKey = projectKey;
+    fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _modelsData = (d && d.models) || [];
+        renderTable(container);
+      })
+      .catch(function() { _modelsData = []; renderTable(container); });
+  }
+
+  // 모델 저장
+  function saveModels(statusEl) {
+    if (!_currentProjectKey) {
+      if (statusEl) { statusEl.textContent = '프로젝트를 먼저 선택하세요'; statusEl.className = 'mdl-status err'; }
+      return;
+    }
+    if (statusEl) { statusEl.textContent = '저장 중...'; statusEl.className = 'mdl-status'; }
+    fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ models: _modelsData })
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(d) {
+      if (statusEl) { statusEl.textContent = '✅ 저장 완료 (' + (d.count || 0) + '개)'; statusEl.className = 'mdl-status ok'; }
+      // 서버 정렬 결과(양산→개발)를 화면에 즉시 반영
+      var tableBox = document.getElementById('mdl-table-box');
+      if (tableBox) loadModels(_currentProjectKey, tableBox);
+    })
+    .catch(function(e) {
+      if (statusEl) { statusEl.textContent = '❌ 저장 실패: ' + e.message; statusEl.className = 'mdl-status err'; }
+    });
+  }
+
+  // 사업부 select가 비어있으면 자동 fallback: 첫 번째 사업부 선택
+  function ensureDivisionSelected() {
+    var divSel = document.getElementById('v2-division-select');
+    if (!divSel) return false;
+    if (divSel.value) return true;
+    if (!divSel.options || divSel.options.length <= 1) return false;
+    var first = divSel.options[1];  // 0번은 placeholder
+    if (first && first.value) {
+      divSel.value = first.value;
+      try { localStorage.setItem('v2_division', divSel.value); } catch(e){}
+      divSel.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    return false;
+  }
+
+  // 페이지 렌더링 (data-page="models" 클릭 시)
+  function renderModelsPage() {
+    var content = document.getElementById('v2-content');
+    if (!content) return;
+    content.innerHTML =
+      '<div class="mdl-wrap">' +
+        '<div class="mdl-header">' +
+          '<h2>🧩 모델 관리</h2>' +
+          '<select class="mdl-proj-sel" id="mdl-proj-sel"><option value="">로딩...</option></select>' +
+        '</div>' +
+        '<div id="mdl-table-box"><div class="mdl-empty">프로젝트를 선택하세요</div></div>' +
+        '<div class="mdl-actions">' +
+          '<button class="mdl-btn mdl-btn-add" id="mdl-add">+ 모델 추가</button>' +
+          '<button class="mdl-btn mdl-btn-save" id="mdl-save">💾 저장</button>' +
+          '<span class="mdl-status" id="mdl-status"></span>' +
+        '</div>' +
+      '</div>';
+
+    var sel = document.getElementById('mdl-proj-sel');
+    var tableBox = document.getElementById('mdl-table-box');
+    loadProjectOptions(sel);
+
+    sel.addEventListener('change', function() {
+      loadModels(this.value, tableBox);
+    });
+
+    document.getElementById('mdl-add').addEventListener('click', function() {
+      _modelsData.push({ id: '', name: '', group: '양산', progress: 0, status: '정상' });
+      renderTable(tableBox);
+      // 마지막 행의 이름 input에 포커스
+      var inputs = tableBox.querySelectorAll('input[data-field="name"]');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+
+    document.getElementById('mdl-save').addEventListener('click', function() {
+      saveModels(document.getElementById('mdl-status'));
+    });
+
+    // 사업부 변경 시 프로젝트 목록 새로고침
+    var divSel = document.getElementById('v2-division-select');
+    if (divSel) {
+      divSel.addEventListener('change', function() {
+        loadProjectOptions(sel);
+        _modelsData = [];
+        tableBox.innerHTML = '<div class="mdl-empty">프로젝트를 선택하세요</div>';
+      });
+    }
+  }
+
+  // 네비게이션 클릭 감지
+  document.addEventListener('click', function(e) {
+    var navItem = e.target.closest('.nav-item[data-page="models"]');
+    if (navItem) {
+      // 기존 active 해제
+      document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+      navItem.classList.add('active');
+      var crumb = document.getElementById('v2-crumb-page');
+      if (crumb) crumb.textContent = '모델 관리';
+      renderModelsPage();
+    }
+  });
+})();
 </script>
 </body>
 </html>
@@ -10719,6 +11101,15 @@ def _collect_inline_runs(node, inherited_style: dict) -> list:
     name = getattr(node, 'name', '') or ''
     name = name.lower()
 
+    # ★ 블록 태그(div/p/br)는 줄바꿈 run으로 처리 — 저장 시 줄바꿈 보존
+    if name in ('div', 'p'):
+        children_runs = []
+        for child in node.children:
+            children_runs.extend(_collect_inline_runs(child, style))
+        return children_runs + [('\n', {})]  # 블록 끝에 줄바꿈
+    if name == 'br':
+        return [('\n', {})]  # <br>은 줄바꿈
+
     # 태그별 스타일 부여
     if name == 'font':
         c = node.get('color')
@@ -10786,10 +11177,12 @@ def _runs_to_output(runs: list) -> tuple:
     filtered = [(t, st) for (t, st) in runs if t]
     if not filtered:
         return ('', None)
-    # 병합
+    # 병합 — 단, 줄바꿈 run은 항상 별도 유지
     merged = []
     for t, st in filtered:
-        if merged and merged[-1][1] == st:
+        if t == '\n':
+            merged.append([t, {}])  # 줄바꿈은 스타일 없이 별도
+        elif merged and merged[-1][1] == st and merged[-1][0] != '\n':
             merged[-1] = (merged[-1][0] + t, st)
         else:
             merged.append([t, st])
@@ -11506,6 +11899,162 @@ def _sync_report_to_notes(it: dict) -> None:
         traceback.print_exc()
 
 
+@app.get("/admin/projects/{project_key}/models")
+def admin_get_project_models(project_key: str, _admin: int = Depends(get_admin_session)):
+    """admin용 모델 목록 조회"""
+    models = _get_project_models(project_key)
+    return {
+        "project_key": project_key,
+        "models": models,
+    }
+
+
+@app.post("/admin/projects/{project_key}/models")
+def admin_add_model(project_key: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """모델 단건 추가. 같은 id가 이미 있으면 409 반환.
+    payload: {"id": "cup-100", "name": "CUP-100", "group": "양산", "progress": 35, "status": "지연"}
+    """
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    existing_ids = {m.get("id") for m in proj.get("models", [])}
+    norm = _normalize_model(payload or {}, existing_ids)
+    if norm is None:
+        raise HTTPException(status_code=400, detail="모델명이 필요하거나 ID가 중복됩니다.")
+    proj.setdefault("models", []).append(norm)
+    proj["models"].sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+    _save_models(data)
+    print(f"[models] POST {_key}: +{norm['id']} ({len(proj['models'])} models)")
+    return {"ok": True, "project_key": _key, "model": norm, "total": len(proj["models"])}
+
+
+@app.patch("/admin/projects/{project_key}/models/{model_id}")
+def admin_update_model(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """모델 단건 수정 (부분 업데이트)
+    payload: 변경할 필드만 {"name": "...", "progress": 50, ...}"""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    target = None
+    for m in proj.get("models", []):
+        if m.get("id") == model_id:
+            target = m
+            break
+    if target is None:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    if "name" in payload and str(payload["name"]).strip():
+        target["name"] = str(payload["name"]).strip()
+    if "group" in payload:
+        g = str(payload["group"]).strip()
+        if g in ("양산", "개발"):
+            target["group"] = g
+    if "progress" in payload:
+        try:
+            p = int(payload["progress"])
+        except (ValueError, TypeError):
+            p = target.get("progress", 0)
+        target["progress"] = max(0, min(100, p))
+    if "status" in payload:
+        s = str(payload["status"]).strip()
+        if s in ("정상", "주의", "지연"):
+            target["status"] = s
+    _save_models(data)
+    print(f"[models] PATCH {_key}/{model_id}")
+    return {"ok": True, "project_key": _key, "model": target}
+
+
+@app.delete("/admin/projects/{project_key}/models/{model_id}")
+def admin_delete_model(project_key: str, model_id: str, _admin: int = Depends(get_admin_session)):
+    """모델 단건 삭제"""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    before = len(proj.get("models", []))
+    proj["models"] = [m for m in proj.get("models", []) if m.get("id") != model_id]
+    after = len(proj["models"])
+    if before == after:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    _save_models(data)
+    print(f"[models] DELETE {_key}/{model_id}")
+    return {"ok": True, "project_key": _key, "removed": before - after, "total": after}
+
+
+@app.put("/admin/projects/{project_key}/models")
+def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """admin용 모델 목록 저장 (전체 교체)
+
+    payload: {"models": [{"id": "cup-100", "name": "CUP-100", "group": "양산", "progress": 35, "status": "지연"}, ...]}
+    """
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+
+    raw_models = payload.get("models") or []
+    if not isinstance(raw_models, list):
+        raise HTTPException(status_code=400, detail="models는 배열이어야 합니다.")
+
+    # 정규화 + 유효성 검사
+    normalized = []
+    seen_ids = set()
+    for m in raw_models:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("id") or "").strip()
+        name = str(m.get("name") or "").strip()
+        if not mid or not name:
+            continue
+        if mid in seen_ids:
+            continue
+        seen_ids.add(mid)
+        group = str(m.get("group") or "양산").strip()
+        if group not in ("양산", "개발"):
+            group = "양산"
+        try:
+            progress = int(m.get("progress") or 0)
+        except (ValueError, TypeError):
+            progress = 0
+        progress = max(0, min(100, progress))
+        status = str(m.get("status") or "정상").strip()
+        normalized.append({
+            "id": mid,
+            "name": name,
+            "group": group,
+            "progress": progress,
+            "status": status,
+        })
+
+    # 양산 먼저, 개발 나중 (그룹 내 순서는 입력 순서 유지 - stable sort)
+    normalized.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+    data = _load_models()
+    projects = data.setdefault("projects", {})
+    projects[_key] = {"models": normalized}
+    _save_models(data)
+    print(f"[models] saved {_key}: {len(normalized)} models")
+    return {"ok": True, "project_key": _key, "count": len(normalized)}
+
+
 @app.put("/admin/reports/{doc_id}")
 def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
     # 수기 편집 저장
@@ -11578,11 +12127,17 @@ def admin_update_report(doc_id: str, payload: dict, _admin: int = Depends(get_ad
             existing_ov.update({str(k): str(v) for k, v in overrides.items() if v})
             it["project_overrides"] = existing_ov
 
-        week_override = payload.get("week_override")
-        if isinstance(week_override, int) and week_override > 0:
-            it["week_override"] = week_override
-        elif isinstance(week_override, str) and week_override.strip().isdigit():
-            it["week_override"] = int(week_override.strip())
+        # N-1: 저장 시점의 현재 주차로 강제 업데이트 (수정 저장 기준)
+        from datetime import date
+        current_week = date.today().isocalendar()[1]
+        it["week_override"] = current_week
+        
+        # parsed.display_title도 업데이트
+        if it.get("parsed") and it["parsed"].get("projects"):
+            projects_str = ", ".join(it["parsed"]["projects"])
+            it["parsed"]["week"] = current_week
+            it["parsed"]["display_title"] = projects_str + " · W" + str(current_week) + " 주간보고"
+            it["display_title"] = it["parsed"]["display_title"]
 
         new_products = payload.get("products")
         if isinstance(new_products, list):
