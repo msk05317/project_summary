@@ -2205,12 +2205,28 @@ def _normalize_model(raw: dict, existing_ids: set) -> dict | None:
     status = str(raw.get("status") or "정상").strip()
     if status not in ("정상", "주의", "지연"):
         status = "정상"
+    # 판가/재료비 (선택)
+    price = 0
+    material_cost = 0
+    try:
+        price = int(raw.get("price") or 0)
+    except (ValueError, TypeError):
+        pass
+    try:
+        material_cost = int(raw.get("material_cost") or 0)
+    except (ValueError, TypeError):
+        pass
+    price = max(0, price)
+    material_cost = max(0, material_cost)
+
     return {
         "id": mid,
         "name": name,
         "group": group,
         "progress": progress,
         "status": status,
+        "price": price,
+        "material_cost": material_cost,
     }
 
 
@@ -10622,6 +10638,42 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-status.err { color: #DC2626; }',
     '.mdl-empty { text-align: center; padding: 40px; color: #9CA3AF; font-size: 14px; }',
     '.mdl-group-sep td { background: #F9FAFB; font-weight: 700; font-size: 12px; color: #374151; padding: 8px 14px; }',
+    '.mdl-weekly-section { margin-top: 24px; padding-top: 20px; border-top: 2px solid #E5E7EB; }',
+    '.mdl-weekly-section h3 { font-size: 16px; font-weight: 700; color: #111827; margin: 0 0 12px 0; }',
+    '.mdl-weekly-status { font-size: 13px; color: #6B7280; margin-bottom: 12px; }',
+    '.mdl-weekly-status.ok { color: #059669; }',
+    '.mdl-weekly-status.err { color: #DC2626; }',
+    '.mdl-weekly-actions { display: flex; gap: 8px; margin-bottom: 16px; }',
+    '.mdl-weekly-preview { background: #F9FAFB; border-radius: 8px; padding: 12px; max-height: 300px; overflow: auto; }',
+    '.mdl-weekly-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }',
+    '.mdl-weekly-preview th { background: #E5E7EB; padding: 6px 8px; text-align: left; font-weight: 600; }',
+    '.mdl-weekly-preview td { padding: 6px 8px; border-bottom: 1px solid #E5E7EB; min-width: 40px; }',
+    '.mdl-weekly-preview td:empty { background: #F3F4F6; }',
+    '.mdl-wrap { padding: 4px 0; }',
+    '.mdl-head { margin-bottom: 16px; }',
+    '.mdl-title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }',
+    '.mdl-mark { color: #0F2C59; font-size: 14px; }',
+    '.mdl-title { font-size: 18px; font-weight: 700; color: #111827; margin: 0; }',
+    '.mdl-select { margin-left: auto; padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 13px; background: #fff; min-width: 160px; }',
+    '.mdl-tabs { display: flex; gap: 4px; border-bottom: 2px solid #E5E7EB; }',
+    '.mdl-tab { padding: 10px 18px; border: none; background: none; font-size: 14px; font-weight: 600; color: #6B7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }',
+    '.mdl-tab.is-active { color: #0F2C59; border-bottom-color: #0F2C59; }',
+    '.mdl-badge { display: inline-block; min-width: 20px; padding: 1px 6px; background: #EEF2FF; color: #0F2C59; border-radius: 10px; font-size: 11px; font-weight: 700; margin-left: 4px; }',
+    '.mdl-pane { padding-top: 16px; }',
+    '.mdl-actions { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }',
+    '.mdl-save-msg { font-size: 13px; font-weight: 600; }',
+    '.mdl-hint { font-size: 12px; color: #9CA3AF; margin-top: 10px; }',
+    '.mdl-input { width: 110px; padding: 6px 8px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 13px; text-align: right; }',
+    '.mdl-td-name { font-weight: 600; color: #111827; }',
+    '.mdl-td-ratio { font-weight: 700; color: #0F2C59; }',
+    '.mdl-group-row td { background: #F9FAFB; padding: 8px 14px !important; }',
+    '.mdl-group-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }',
+    '.mdl-group-mass { background: #DBEAFE; color: #1D4ED8; }',
+    '.mdl-group-dev { background: #FEF3C7; color: #B45309; }',
+    '.mdl-group-cnt { margin-left: 8px; font-size: 12px; color: #6B7280; }',
+    '.mdl-empty { padding: 40px; text-align: center; color: #9CA3AF; background: #F9FAFB; border-radius: 8px; }',
+    '.mdl-loading { padding: 40px; text-align: center; color: #9CA3AF; }',
+    '.mdl-plan-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px; }',
   ].join(' ');
   document.head.appendChild(style);
 
@@ -10665,88 +10717,84 @@ window.renderAdminV2ByDivision = function(){
 
   // 모델 테이블 렌더링
   function renderTable(container) {
-    var html = '';
-    if (!_modelsData.length) {
-      html = '<div class="mdl-empty">등록된 모델이 없습니다. 아래 [모델 추가] 버튼으로 추가하세요.</div>';
-    } else {
-      html = '<table class="mdl-table"><thead><tr>' +
-        '<th style="width:40px">#</th>' +
-        '<th>모델명</th>' +
-        '<th style="width:120px">구분</th>' +
-        '<th style="width:110px">상태</th>' +
-        '<th style="width:60px"></th>' +
-        '</tr></thead><tbody>';
+    const byGroup = { '양산': [], '개발': [] };
+    _modelsData.forEach(function(m) {
+      const g = (m.group === '개발') ? '개발' : '양산';
+      byGroup[g].push(m);
+    });
 
-      var groups = {};
-      _modelsData.forEach(function(m, i) {
-        var g = m.group || '양산';
-        if (!groups[g]) groups[g] = [];
-        groups[g].push({ model: m, idx: i });
-      });
+    const totalCount = _modelsData.length;
+    const massCount = byGroup['양산'].length;
+    const devCount = byGroup['개발'].length;
 
-      var groupOrder = ['양산', '개발'];
-      var rowNum = 0;
-      groupOrder.forEach(function(gname) {
-        var items = groups[gname] || [];
-        if (!items.length) return;
-        html += '<tr class="mdl-group-sep"><td colspan="5">' +
-          (gname === '양산' ? '🏭 양산' : '🔧 개발') +
-          ' (' + items.length + '개)</td></tr>';
-        items.forEach(function(entry) {
-          var m = entry.model;
-          var i = entry.idx;
-          rowNum++;
-          var badgeClass = (m.group === '개발') ? 'mdl-badge-dev' : 'mdl-badge-prod';
-          html += '<tr>' +
-            '<td>' + rowNum + '</td>' +
-            '<td><input class="mdl-input" data-idx="' + i + '" data-field="name" value="' + _esc(m.name) + '"></td>' +
-            '<td><select class="mdl-sel" data-idx="' + i + '" data-field="group">' +
-              '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
-              '<option value="개발"' + (m.group === '개발' ? ' selected' : '') + '>개발</option>' +
-            '</select></td>' +
-            '<td><select class="mdl-sel" data-idx="' + i + '" data-field="status">' +
-              '<option value="정상"' + (m.status === '정상' ? ' selected' : '') + '>정상</option>' +
-              '<option value="주의"' + (m.status === '주의' ? ' selected' : '') + '>주의</option>' +
-              '<option value="지연"' + (m.status === '지연' ? ' selected' : '') + '>지연</option>' +
-            '</select></td>' +
-            '<td><button class="mdl-btn mdl-btn-del" data-del="' + i + '">삭제</button></td>' +
-            '</tr>';
-        });
+    const tabCount = document.getElementById('mdl-tab-count');
+    if (tabCount) tabCount.textContent = totalCount;
+
+    let html = '<table class="mdl-table"><thead><tr>' +
+      '<th>모델명</th><th>구분</th><th>상태</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>' +
+      '</tr></thead><tbody>';
+
+    ['양산', '개발'].forEach(function(g) {
+      const list = byGroup[g];
+      if (!list.length) return;
+      html += '<tr class="mdl-group-row"><td colspan="7">' +
+        '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
+        '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
+      list.forEach(function(m) {
+        const price = m.price || 0;
+        const mcost = m.material_cost || 0;
+        const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
+        html += '<tr data-model-id="' + m.id + '">' +
+          '<td class="mdl-td-name">' + m.name + '</td>' +
+          '<td><select data-field="group">' +
+            '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
+            '<option value="개발"' + (m.group === '개발' ? ' selected' : '') + '>개발</option>' +
+          '</select></td>' +
+          '<td><select data-field="status">' +
+            '<option value="정상"' + (m.status === '정상' ? ' selected' : '') + '>정상</option>' +
+            '<option value="주의"' + (m.status === '주의' ? ' selected' : '') + '>주의</option>' +
+            '<option value="지연"' + (m.status === '지연' ? ' selected' : '') + '>지연</option>' +
+          '</select></td>' +
+          '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
+          '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
+          '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
+          '<td><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
+          '<button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>' +
+          '</tr>';
       });
-      html += '</tbody></table>';
-    }
+    });
+
+    html += '</tbody></table>';
+    if (!totalCount) html = '<div class="mdl-empty">등록된 모델이 없습니다. [＋ 모델 추가] 버튼으로 추가하세요.</div>';
     container.innerHTML = html;
 
-    // 이벤트 바인딩
-    container.querySelectorAll('input[data-field], select[data-field]').forEach(function(el) {
+    container.querySelectorAll('input, select').forEach(function(el) {
       el.addEventListener('change', function() {
-        var idx = parseInt(this.getAttribute('data-idx'), 10);
-        var field = this.getAttribute('data-field');
-        if (idx >= 0 && idx < _modelsData.length) {
-          if (field === 'progress') {
-            _modelsData[idx][field] = Math.max(0, Math.min(100, parseInt(this.value, 10) || 0));
-          } else {
-            _modelsData[idx][field] = this.value;
-          }
-          if (field === 'name') {
-            _modelsData[idx].id = _genId(this.value);
-          }
-          if (field === 'group') {
-            renderTable(container);
-          }
+        const tr = el.closest('tr');
+        if (!tr) return;
+        if (el.dataset.field === 'group') { renderTable._pendingGroupMove = true; }
+        if (el.dataset.field === 'price' || el.dataset.field === 'material_cost') {
+          const pr = parseInt(tr.querySelector('[data-field="price"]').value || '0', 10) || 0;
+          const mc = parseInt(tr.querySelector('[data-field="material_cost"]').value || '0', 10) || 0;
+          const cell = tr.querySelector('[data-field="ratio"]');
+          if (cell) cell.textContent = pr > 0 ? ((mc / pr) * 100).toFixed(1) + '%' : '-';
         }
       });
     });
-    container.querySelectorAll('[data-del]').forEach(function(btn) {
+
+    container.querySelectorAll('.mdl-row-del').forEach(function(btn) {
       btn.addEventListener('click', function() {
-        var idx = parseInt(this.getAttribute('data-del'), 10);
-        _modelsData.splice(idx, 1);
-        renderTable(container);
+        const tr = btn.closest('tr');
+        const mid = tr ? tr.dataset.modelId : null;
+        if (!mid) return;
+        if (confirm('[' + mid + '] 모델을 삭제하시겠습니까? (저장 버튼을 눌러야 반영됩니다)')) {
+          _modelsData = _modelsData.filter(function(m) { return m.id !== mid; });
+          renderTable(container);
+        }
       });
     });
   }
 
-  // 모델 로드
   function loadModels(projectKey, container) {
     if (!projectKey) { _modelsData = []; renderTable(container); return; }
     _currentProjectKey = projectKey;
@@ -10805,54 +10853,208 @@ window.renderAdminV2ByDivision = function(){
 
   // 페이지 렌더링 (data-page="models" 클릭 시)
   function renderModelsPage() {
-    var content = document.getElementById('v2-content');
+    const content = document.getElementById('v2-content');
     if (!content) return;
+
     content.innerHTML =
       '<div class="mdl-wrap">' +
-        '<div class="mdl-header">' +
-          '<h2>🧩 모델 관리</h2>' +
-          '<select class="mdl-proj-sel" id="mdl-proj-sel"><option value="">로딩...</option></select>' +
+        '<div class="mdl-head">' +
+          '<div class="mdl-title-row">' +
+            '<span class="mdl-mark">◆</span>' +
+            '<h2 class="mdl-title">모델 관리</h2>' +
+            '<select id="mdl-proj-select" class="mdl-select"></select>' +
+          '</div>' +
+          '<div class="mdl-tabs">' +
+            '<button type="button" class="mdl-tab is-active" data-mtab="list">📋 모델 목록 <span id="mdl-tab-count" class="mdl-badge">0</span></button>' +
+            '<button type="button" class="mdl-tab" data-mtab="plan">📅 주차별 계획</button>' +
+          '</div>' +
         '</div>' +
-        '<div id="mdl-table-box"><div class="mdl-empty">프로젝트를 선택하세요</div></div>' +
-        '<div class="mdl-actions">' +
-          '<button class="mdl-btn mdl-btn-add" id="mdl-add">+ 모델 추가</button>' +
-          '<button class="mdl-btn mdl-btn-save" id="mdl-save">💾 저장</button>' +
-          '<span class="mdl-status" id="mdl-status"></span>' +
+
+        '<div class="mdl-pane" data-mpane="list">' +
+          '<div class="mdl-actions">' +
+            '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
+            '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
+            '<span id="mdl-save-msg" class="mdl-save-msg"></span>' +
+          '</div>' +
+          '<div id="mdl-table-box"><div class="mdl-loading">불러오는 중...</div></div>' +
+          '<p class="mdl-hint">판가·재료비는 달러($) 기준이며, 재료비율은 자동 계산됩니다 (재료비 ÷ 판가 × 100).</p>' +
+        '</div>' +
+
+        '<div class="mdl-pane" data-mpane="plan" hidden>' +
+          '<div class="mdl-plan-card">' +
+            '<div id="mdl-weekly-status" class="mdl-weekly-status">로딩 중...</div>' +
+            '<div class="mdl-weekly-actions">' +
+              '<input type="file" id="mdl-weekly-file" accept=".xlsx,.xls,.xlsm" style="display:none">' +
+              '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-weekly-upload">📁 엑셀 업로드</button>' +
+              '<button type="button" class="mdl-btn mdl-btn-del" id="mdl-weekly-delete" style="display:none">🗑️ 삭제</button>' +
+            '</div>' +
+            '<div id="mdl-weekly-preview" class="mdl-weekly-preview"></div>' +
+          '</div>' +
         '</div>' +
       '</div>';
 
-    var sel = document.getElementById('mdl-proj-sel');
-    var tableBox = document.getElementById('mdl-table-box');
-    loadProjectOptions(sel);
+    // 탭 전환
+    const tabs = content.querySelectorAll('.mdl-tab');
+    const panes = content.querySelectorAll('.mdl-pane');
+    tabs.forEach(function(t) {
+      t.addEventListener('click', function() {
+        tabs.forEach(function(x) { x.classList.remove('is-active'); });
+        t.classList.add('is-active');
+        panes.forEach(function(pn) { pn.hidden = pn.dataset.mpane !== t.dataset.mtab; });
+      });
+    });
+
+    const sel = document.getElementById('mdl-proj-select');
+    const tableBox = document.getElementById('mdl-table-box');
+    const weeklyStatus = document.getElementById('mdl-weekly-status');
+    const weeklyPreview = document.getElementById('mdl-weekly-preview');
+    const weeklyFileInput = document.getElementById('mdl-weekly-file');
+    const weeklyUploadBtn = document.getElementById('mdl-weekly-upload');
+    const weeklyDeleteBtn = document.getElementById('mdl-weekly-delete');
+    const saveBtn = document.getElementById('mdl-save-btn');
+    const saveMsg = document.getElementById('mdl-save-msg');
+    const addBtn = document.getElementById('mdl-add-btn');
+    let _currentProjectKey = null;
+
+    function loadWeeklyPlan(projectKey) {
+      if (!projectKey) {
+        weeklyStatus.textContent = '프로젝트를 선택하세요';
+        weeklyStatus.className = 'mdl-weekly-status';
+        weeklyPreview.innerHTML = '';
+        weeklyDeleteBtn.style.display = 'none';
+        return;
+      }
+      weeklyStatus.textContent = '불러오는 중...';
+      weeklyStatus.className = 'mdl-weekly-status';
+      fetch('/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.has_plan && d.url) {
+            weeklyStatus.textContent = '✅ ' + (d.file_name || '엑셀 파일') + ' (' + (d.uploaded_at || '').substring(0, 10) + ')';
+            weeklyStatus.className = 'mdl-weekly-status ok';
+            weeklyDeleteBtn.style.display = 'inline-block';
+            weeklyPreview.innerHTML = '<img src="' + d.url + '" style="max-width:100%;border:1px solid #E5E7EB;border-radius:8px;background:#fff;cursor:zoom-in;" alt="weekly plan" onerror="this.parentNode.textContent=&#39;이미지 로드 실패&#39;;this.remove();">';
+          } else {
+            weeklyStatus.textContent = '등록된 주차별 계획이 없습니다';
+            weeklyStatus.className = 'mdl-weekly-status';
+            weeklyPreview.innerHTML = '';
+            weeklyDeleteBtn.style.display = 'none';
+          }
+        })
+        .catch(function(e) {
+          weeklyStatus.textContent = '❌ 로드 실패: ' + e.message;
+          weeklyStatus.className = 'mdl-weekly-status err';
+        });
+    }
+
+    weeklyUploadBtn.addEventListener('click', function() {
+      if (!sel.value) { alert('프로젝트를 먼저 선택하세요'); return; }
+      weeklyFileInput.click();
+    });
+
+    weeklyFileInput.addEventListener('change', function() {
+      const file = weeklyFileInput.files[0];
+      if (!file) return;
+      const projectKey = sel.value;
+      if (!projectKey) { alert('프로젝트를 먼저 선택하세요'); weeklyFileInput.value = ''; return; }
+      weeklyStatus.textContent = '⏳ 업로드 중...';
+      weeklyStatus.className = 'mdl-weekly-status';
+      const fd = new FormData();
+      fd.append('file', file);
+      fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', {
+        method: 'POST', credentials: 'same-origin', body: fd
+      })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+        .then(function(res) {
+          if (res.ok && res.d.ok) {
+            weeklyStatus.textContent = '✅ ' + (res.d.file_name || file.name);
+            weeklyStatus.className = 'mdl-weekly-status ok';
+            loadWeeklyPlan(projectKey);
+          } else {
+            weeklyStatus.textContent = '❌ ' + (res.d.detail || '업로드 실패');
+            weeklyStatus.className = 'mdl-weekly-status err';
+          }
+        })
+        .catch(function(e) {
+          weeklyStatus.textContent = '❌ ' + e.message;
+          weeklyStatus.className = 'mdl-weekly-status err';
+        })
+        .finally(function() { weeklyFileInput.value = ''; });
+    });
+
+    weeklyDeleteBtn.addEventListener('click', function() {
+      const projectKey = sel.value;
+      if (!projectKey) return;
+      if (!confirm('주차별 계획을 삭제하시겠습니까?')) return;
+      fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', {
+        method: 'DELETE', credentials: 'same-origin'
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.ok) loadWeeklyPlan(projectKey);
+          else alert('삭제 실패: ' + (d.detail || ''));
+        })
+        .catch(function(e) { alert('삭제 실패: ' + e.message); });
+    });
+
+    saveBtn.addEventListener('click', function() {
+      // 테이블의 현재 입력값을 _modelsData에 반영
+      const rows = tableBox.querySelectorAll('tr[data-model-id]');
+      rows.forEach(function(r) {
+        const mid = r.dataset.modelId;
+        const m = _modelsData.find(function(x) { return x.id === mid; });
+        if (!m) return;
+        m.group = r.querySelector('[data-field="group"]').value;
+        m.status = r.querySelector('[data-field="status"]').value;
+        m.price = parseInt((r.querySelector('[data-field="price"]').value || '0').replace(/,/g, ''), 10) || 0;
+        m.material_cost = parseInt((r.querySelector('[data-field="material_cost"]').value || '0').replace(/,/g, ''), 10) || 0;
+        m.progress = parseInt(r.querySelector('[data-field="progress"]').value || '0', 10) || 0;
+      });
+      saveModels(saveMsg);
+    });
+
+    addBtn.addEventListener('click', function() {
+      const name = prompt('모델명 (예: CUP-100)');
+      if (!name || !name.trim()) return;
+      const trimmed = name.trim();
+      if (_modelsData.some(function(m) { return m.id === trimmed; })) {
+        alert('이미 존재하는 모델명입니다');
+        return;
+      }
+      _modelsData.push({ id: trimmed, name: trimmed, group: '양산', status: '정상', progress: 0, price: 0, material_cost: 0 });
+      renderTable(tableBox);
+    });
+
+    fetch('/admin/config/projects?division_id=semiconductor', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        const projects = data.projects || [];
+        sel.innerHTML = '';
+        if (!projects.length) {
+          sel.innerHTML = '<option value="">프로젝트 없음</option>';
+          tableBox.innerHTML = '<div class="mdl-empty">프로젝트가 없습니다</div>';
+          return;
+        }
+        projects.forEach(function(pj) {
+          const opt = document.createElement('option');
+          opt.value = pj.id;
+          opt.textContent = pj.label || pj.id;
+          sel.appendChild(opt);
+        });
+        loadModels(sel.value, tableBox);
+        loadWeeklyPlan(sel.value);
+      })
+      .catch(function(e) {
+        sel.innerHTML = '<option value="">오류: ' + e.message + '</option>';
+        tableBox.innerHTML = '<div class="mdl-empty">프로젝트 목록 로드 실패</div>';
+      });
 
     sel.addEventListener('change', function() {
-      loadModels(this.value, tableBox);
+      loadModels(sel.value, tableBox);
+      loadWeeklyPlan(sel.value);
     });
-
-    document.getElementById('mdl-add').addEventListener('click', function() {
-      _modelsData.push({ id: '', name: '', group: '양산', progress: 0, status: '정상' });
-      renderTable(tableBox);
-      // 마지막 행의 이름 input에 포커스
-      var inputs = tableBox.querySelectorAll('input[data-field="name"]');
-      if (inputs.length) inputs[inputs.length - 1].focus();
-    });
-
-    document.getElementById('mdl-save').addEventListener('click', function() {
-      saveModels(document.getElementById('mdl-status'));
-    });
-
-    // 사업부 변경 시 프로젝트 목록 새로고침
-    var divSel = document.getElementById('v2-division-select');
-    if (divSel) {
-      divSel.addEventListener('change', function() {
-        loadProjectOptions(sel);
-        _modelsData = [];
-        tableBox.innerHTML = '<div class="mdl-empty">프로젝트를 선택하세요</div>';
-      });
-    }
   }
 
-  // 네비게이션 클릭 감지
   document.addEventListener('click', function(e) {
     var navItem = e.target.closest('.nav-item[data-page="models"]');
     if (navItem) {
@@ -11970,6 +12172,16 @@ def admin_update_model(project_key: str, model_id: str, payload: dict, _admin: i
         s = str(payload["status"]).strip()
         if s in ("정상", "주의", "지연"):
             target["status"] = s
+    if "price" in payload:
+        try:
+            target["price"] = max(0, int(payload["price"]))
+        except (ValueError, TypeError):
+            pass
+    if "material_cost" in payload:
+        try:
+            target["material_cost"] = max(0, int(payload["material_cost"]))
+        except (ValueError, TypeError):
+            pass
     _save_models(data)
     print(f"[models] PATCH {_key}/{model_id}")
     return {"ok": True, "project_key": _key, "model": target}
@@ -12037,12 +12249,22 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             progress = 0
         progress = max(0, min(100, progress))
         status = str(m.get("status") or "정상").strip()
+        try:
+            price = int(m.get("price") or 0)
+        except (ValueError, TypeError):
+            price = 0
+        try:
+            material_cost = int(m.get("material_cost") or 0)
+        except (ValueError, TypeError):
+            material_cost = 0
         normalized.append({
             "id": mid,
             "name": name,
             "group": group,
             "progress": progress,
             "status": status,
+            "price": max(0, price),
+            "material_cost": max(0, material_cost),
         })
 
     # 양산 먼저, 개발 나중 (그룹 내 순서는 입력 순서 유지 - stable sort)
@@ -12053,6 +12275,118 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
     _save_models(data)
     print(f"[models] saved {_key}: {len(normalized)} models")
     return {"ok": True, "project_key": _key, "count": len(normalized)}
+
+
+# ─── 주차별 계획 (프로젝트당 1개) ───
+
+@app.get("/projects/{project_key}/weekly-plan")
+def get_weekly_plan(project_key: str):
+    """프로젝트 주차별 계획 조회 (앱용)"""
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+    data = _load_models()
+    proj = (data.get("projects") or {}).get(_key) or {}
+    plan = proj.get("weekly_plan") or {}
+    _ref = plan.get("photo_ref")
+    return {
+        "project_key": _key,
+        "has_plan": bool(_ref),
+        "file_name": plan.get("file_name"),
+        "uploaded_at": plan.get("uploaded_at"),
+        "photo_ref": _ref,
+        "url": f"/note_photos/{_ref}" if _ref else None,
+    }
+
+
+@app.post("/admin/projects/{project_key}/weekly-plan")
+async def admin_upload_weekly_plan(
+    project_key: str,
+    file: UploadFile = File(...),
+    _admin: int = Depends(get_admin_session),
+):
+    """주차별 계획 엑셀 업로드 → 첫 시트를 PNG로 변환 → 저장 (보고서 엑셀과 동일 방식)"""
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+
+    orig_name = file.filename or "weekly_plan.xlsx"
+    lower = orig_name.lower()
+    if not (lower.endswith(".xlsx") or lower.endswith(".xlsm")):
+        raise HTTPException(status_code=400, detail="xlsx/xlsm 파일만 허용")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일")
+
+    try:
+        import openpyxl
+        from io import BytesIO
+        import base64
+        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+        ws = wb.worksheets[0]
+        data_url = _excel_sheet_to_preview_data_url(ws)
+        b64 = data_url.split(",", 1)[1]
+        png_bytes = base64.b64decode(b64)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"엑셀 변환 실패: {e}")
+
+    asset_id = "plan_" + _new_asset_id(_key)
+    out_path = _photo_path(_key, asset_id, "png")
+    out_path.write_bytes(png_bytes)
+    photo_ref = f"{_key}/{asset_id}.png"
+
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    # 기존 계획 이미지가 있으면 삭제
+    old_ref = (proj.get("weekly_plan") or {}).get("photo_ref")
+    if old_ref:
+        try:
+            _delete_note_photo(old_ref)
+        except Exception:
+            pass
+    proj["weekly_plan"] = {
+        "file_name": orig_name,
+        "uploaded_at": __import__("datetime").datetime.now().isoformat(),
+        "photo_ref": photo_ref,
+    }
+    _save_models(data)
+    print(f"[weekly_plan] saved {_key}: {orig_name} -> {photo_ref}")
+    return {
+        "ok": True,
+        "project_key": _key,
+        "file_name": orig_name,
+        "photo_ref": photo_ref,
+        "url": f"/note_photos/{photo_ref}",
+    }
+
+
+@app.delete("/admin/projects/{project_key}/weekly-plan")
+def admin_delete_weekly_plan(project_key: str, _admin: int = Depends(get_admin_session)):
+    """주차별 계획 삭제"""
+    _alias = {
+        "havaplate": "hrva_plate",
+        "hrvaplate": "hrva_plate",
+        "hrva-plate": "hrva_plate",
+    }
+    _key = _alias.get(project_key.strip().lower(), project_key.strip())
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    if "weekly_plan" in proj:
+        _ref = (proj.get("weekly_plan") or {}).get("photo_ref")
+        if _ref:
+            try:
+                _delete_note_photo(_ref)
+            except Exception:
+                pass
+        del proj["weekly_plan"]
+        _save_models(data)
+    return {"ok": True, "project_key": _key}
 
 
 @app.put("/admin/reports/{doc_id}")
