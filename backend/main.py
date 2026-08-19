@@ -5120,11 +5120,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
     <div class="nav-title">MENU</div>
     <nav class="nav">
       <div class="nav-item" data-page="home"><span class="icon">🏠</span><span>홈 대시보드</span></div>
-      <div class="nav-item active" data-page="report"><span class="icon">📄</span><span>보고</span></div>
-      <div class="nav-item" data-page="production"><span class="icon">🏭</span><span>생산</span></div>
-      <div class="nav-item" data-page="inbound"><span class="icon">📥</span><span>입고</span></div>
-      <div class="nav-item" data-page="outbound"><span class="icon">📤</span><span>출하</span></div>
-      <div class="nav-item" data-page="models"><span class="icon">🧩</span><span>모델 관리</span></div>
+      <div class="nav-item active" data-page="models"><span class="icon">🧩</span><span>모델 관리</span></div>
     </nav>
 
     <div class="spacer"></div>
