@@ -8,7 +8,7 @@ import '../components/immediate/issue_card.dart';
 import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
-import 'report_detail_screen.dart';
+import 'project_overview_screen.dart';
 import 'calendar_screen.dart';
 import 'chat_screen.dart';
 
@@ -239,7 +239,7 @@ class _ImmediateCheckScreenState extends State<ImmediateCheckScreen> {
     }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ReportDetailScreen(projectKey: projectKey),
+        builder: (_) => ProjectOverviewScreen(projectKey: projectKey, projectName: ''),
       ),
     );
   }

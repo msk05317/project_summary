@@ -4,7 +4,7 @@ import '../models/chat_message.dart';
 import '../services/chat_service.dart';
 import '../services/voice_input_service.dart';
 import '../components/chat/chat_bubble.dart';
-import 'report_detail_screen.dart';
+import 'project_overview_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? initialQuestion;
@@ -123,7 +123,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (s.projectKey.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ReportDetailScreen(projectKey: s.projectKey),
+        builder: (_) => ProjectOverviewScreen(projectKey: s.projectKey, projectName: ''),
       ),
     );
   }

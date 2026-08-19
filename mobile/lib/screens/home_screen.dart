@@ -29,7 +29,7 @@ import 'overall_status_screen.dart';
 import 'immediate_check_screen.dart';
 import 'calendar_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
-import 'report_detail_screen.dart';
+import 'project_overview_screen.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 import '../services/settings_service.dart';
@@ -423,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _openProject(String projectKey) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ReportDetailScreen(projectKey: projectKey),
+        builder: (_) => ProjectOverviewScreen(projectKey: projectKey, projectName: ''),
       ),
     );
   }

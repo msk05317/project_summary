@@ -1,0 +1,749 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-18T17:30:21.241445",
+  "projects": {
+    "cup": {
+      "models": [
+        {
+          "id": "02-434103-00",
+          "name": "02-434103-00",
+          "group": "양산",
+          "progress": 0,
+          "status": "정상",
+          "price": 5557,
+          "material_cost": 3049
+        },
+        {
+          "id": "853-b36462-001",
+          "name": "853-B36462-001",
+          "group": "개발",
+          "progress": 15,
+          "status": "정상",
+          "price": 9200,
+          "material_cost": 8502,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "2026-03-05",
+              "actual": "2026-03-01"
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "2026-06-02",
+              "actual": "2026-06-06"
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "2026-07-01",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        },
+        {
+          "id": "853-324155-001",
+          "name": "853-324155-001",
+          "group": "개발",
+          "progress": 8,
+          "status": "정상",
+          "price": 6000,
+          "material_cost": 3500,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        },
+        {
+          "id": "853-b92561-001",
+          "name": "853-B92561-001",
+          "group": "개발",
+          "progress": 0,
+          "status": "정상",
+          "price": 6000,
+          "material_cost": 4502,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        },
+        {
+          "id": "853-b36462-101",
+          "name": "853-B36462-101",
+          "group": "개발",
+          "progress": 0,
+          "status": "정상",
+          "price": 4292,
+          "material_cost": 3029,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        },
+        {
+          "id": "853-a19448-001",
+          "name": "853-A19448-001",
+          "group": "개발",
+          "progress": 0,
+          "status": "정상",
+          "price": 7000,
+          "material_cost": 6203,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        },
+        {
+          "id": "853-a77634-001",
+          "name": "853-A77634-001",
+          "group": "개발",
+          "progress": 0,
+          "status": "정상",
+          "price": 7380,
+          "material_cost": 5069,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        },
+        {
+          "id": "713-291128-002",
+          "name": "713-291128-002",
+          "group": "개발",
+          "progress": 0,
+          "status": "정상",
+          "price": 2877,
+          "material_cost": 1295,
+          "dev_type": "HVM",
+          "process": [
+            {
+              "key": "fa_po",
+              "name": "FA PO",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "material_order",
+              "name": "자재 발주",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "incoming",
+              "name": "입고",
+              "group": "발주",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "machining",
+              "name": "가공 (조립)",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "la_incoming",
+              "name": "LA 입고",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_write",
+              "name": "LAIR 작성",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lair_approval",
+              "name": "LAIR 승인",
+              "group": "제작·검사",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "source_inspection",
+              "name": "Source Inspection",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_write",
+              "name": "FAIR 작성",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "fair_approval",
+              "name": "FAIR 승인",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "lap_test",
+              "name": "LAP TEST",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "cdr",
+              "name": "CDR",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            },
+            {
+              "key": "final_approval",
+              "name": "최종 승인 완료",
+              "group": "승인",
+              "expected": "",
+              "actual": ""
+            }
+          ]
+        }
+      ],
+      "status_note": "개발 현황\n*총 28종 (4종 승인 대기 + 17종 고객사 검토 + 4종 가공 진행 + 3종 대기)"
+    },
+    "chamber": {
+      "models": [],
+      "weekly_plan": {
+        "file_name": "CUP.xlsx",
+        "uploaded_at": "2026-08-18T17:30:15.227928",
+        "photo_ref": "chamber/plan_2026-08-18_d61d5ccd.png"
+      }
+    }
+  }
+}

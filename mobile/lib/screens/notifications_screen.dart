@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/notifications_service.dart';
-import 'report_detail_screen.dart';
+import 'project_overview_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -244,7 +244,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) =>
-                                        ReportDetailScreen(projectKey: key),
+                                        ProjectOverviewScreen(projectKey: key, projectName: ''),
                                   ),
                                 );
                               },

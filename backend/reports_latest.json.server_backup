@@ -1,0 +1,316 @@
+[
+  {
+    "doc_id": "manual_2892c7ba5b37",
+    "file_name": "",
+    "upload_timestamp": "2026-07-29T02:40:05.262555",
+    "is_manual": true,
+    "report_meta": {
+      "date": "2026-07-27",
+      "week": 31
+    },
+    "products": [
+      {
+        "name": "챔버",
+        "category": "",
+        "status": "",
+        "headline": "",
+        "summary_bullets": [],
+        "sections": [
+          {
+            "id": "sec_a05ec1f8",
+            "title": "현황",
+            "kind": "text",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "*현황: 총 <font color=\"#002aff\">25</font>종 중 <span style=\"color: rgb(49, 57, 255);\">5</span>종 승인 완료 + <font color=\"#002aff\">1</font>종 승인 대기 + <font color=\"#002aff\">4</font>종 내재화 (메이저모듈) + <font color=\"#002aff\">15</font>종 Dep챔버 개발"
+              }
+            ]
+          },
+          {
+            "id": "sec_41894a6a",
+            "title": "주차별 계획",
+            "kind": "mixed",
+            "blocks": [
+              {
+                "kind": "file",
+                "file_name": "챔버.xlsx",
+                "url": "/admin/manual-files/manual_2892c7ba5b37/챔버.xlsx",
+                "size": 11320
+              },
+              {
+                "kind": "text",
+                "body": "*Dep챔버 31종 RFQ <font color=\"#0040ff\">(재료비 40-60%) 연간물량 2,300만불</font><font color=\"#4867ff\">,</font> <font color=\"#ff0000\">하이러너 모델 15종 우선 진행 <u>(챔버 10종, 탑플레이트 5종)</u></font><div>→ 마스터파트 (대표) 2종만 CDR 진행, 나머지 파트 절차 간소화 협의 완료  .</div>"
+              }
+            ],
+            "sales_prices": {
+              "EFEM": 2,
+              "VTM": 4
+            },
+            "sales_visible": false
+          },
+          {
+            "id": "sec_f98fe0a7",
+            "title": "주요내용",
+            "kind": "mixed",
+            "blocks": []
+          }
+        ]
+      }
+    ],
+    "project_overrides": {},
+    "week_override": 34,
+    "manual_projects": [
+      "챔버"
+    ],
+    "parsed": {
+      "projects": [
+        "챔버"
+      ],
+      "week": 34,
+      "date": "2026-07-27",
+      "display_title": "챔버 · W34 주간보고"
+    },
+    "display_title": "챔버 · W34 주간보고",
+    "hidden": false
+  },
+  {
+    "doc_id": "manual_e1eb2c11b5cf",
+    "is_manual": true,
+    "manual_projects": [
+      "파워박스"
+    ],
+    "upload_timestamp": "2026-07-29T09:12:14.799369",
+    "report_meta": {
+      "report_family": "default",
+      "date": "2026-07-20",
+      "week": 32
+    },
+    "products": [
+      {
+        "name": "파워박스",
+        "headline": "",
+        "category": "",
+        "status": "",
+        "summary_bullets": [],
+        "sections": [
+          {
+            "id": "c67b1ab4",
+            "title": "매출목표",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "<div>*26년 매출목표 $2,668만</div>"
+              }
+            ]
+          },
+          {
+            "id": "e462924f",
+            "title": "주차별 출하실적 및 계획",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "file",
+                "file_name": "파워박스 출하 및 실적.xlsx",
+                "url": "/admin/manual-files/manual_e1eb2c11b5cf/파워박스 출하 및 실적.xlsx",
+                "size": 12282
+              },
+              {
+                "kind": "text",
+                "body": "<div data-indent=\"1\"><span style=\"color: rgb(68, 114, 196);\">*에테르 GDX (PCBA 입고 중): 7월 목표 (140개) 대비</span> <b style=\"color: rgb(255, 0, 0);\">초과 달성 중</b> <span style=\"color: rgb(255, 0, 0);\">(160개 달성)</span></div><div data-indent=\"1\"><span style=\"color: rgb(68, 114, 196);\">7월 목표 246개 중 7월 내 </span><span style=\"color: rgb(255, 0, 0);\">초과 달성 (312개)</span></div><div data-indent=\"1\"><span style=\"color: rgb(255, 0, 0);\">지연된 품목 19개 8월 복구 예정 (5개 글로벌쇼티지 이슈 확인 중) [7/30]</span></div>"
+              }
+            ]
+          },
+          {
+            "id": "0e4a77e4",
+            "title": "양산 19종",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "<span style=\"color: rgb(255, 0, 0);\">※ 에테르 GDX 자재 글로벌 쇼티지,</span> <span style=\"color: rgb(68, 114, 196);\">반제품 78개 진행 중 </span><div><span style=\"color: rgb(68, 114, 196); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">     → 자빌 PCBA 입고 현황: 160개 입고 완료 (주 30개 이상 입고 중), W33부터 60개 이상 입고 필요 요청</span></div><div><span style=\"color: rgb(255, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">※ 키요-326 구미 조립 지원 총 98개 ($7,034)</span></div><div><span style=\"color: rgb(255, 0, 0); font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">     → 64개 출하 완료 (6월), 34개 출하 완료 (7월)</span></div>"
+              }
+            ]
+          },
+          {
+            "id": "43433a6b",
+            "title": "개발 22종",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "file",
+                "file_name": "파워박스 개발모델.xlsx",
+                "url": "/admin/manual-files/manual_e1eb2c11b5cf/파워박스 개발모델.xlsx",
+                "size": 11791
+              },
+              {
+                "kind": "text",
+                "body": "<ul><li>5종 (화성 세이버) 7월말 승인 타겟 진행 중 <span style=\"font-size: 13px; white-space: nowrap; color: rgb(255, 0, 0);\">→ FAIR 승인 완료</span></li><li><span style=\"color: rgb(0, 0, 0);\">3종 자재 준비 및 초도빌드 병행 (8/14), 1종 (VCTR) 9월 초도빌드 연기 (고객 확인)</span></li><li><span style=\"color: rgb(0, 0, 0);\">6종 신규 개발 추가 (자재 준비 중: 9/5)</span></li></ul>"
+              }
+            ]
+          },
+          {
+            "id": "107fbb89",
+            "title": "EMA 33종 (총 33종 중 승인 7종, 개발 26종)",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "<ul><li>2종 출고완료: 648-114 (1 EA), 997-003 (1 EA)</li><li>5종 조립완료: 648-221, 648-212, 170-003, 618-102, 618-202 (출고 대기)<br></li><li>2종 조립진행: 960-002, 648-115</li><li>24종 자재준비: 8월부터 순차적 승인 예정</li></ul><br>"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "project_overrides": {},
+    "week_override": 32,
+    "parsed": {
+      "projects": [
+        "파워박스"
+      ],
+      "week": 32,
+      "date": "2026-07-20",
+      "display_title": "파워박스 · W32 주간보고"
+    },
+    "display_title": "파워박스 · W32 주간보고"
+  },
+  {
+    "doc_id": "manual_cc5f0a94df95",
+    "is_manual": true,
+    "manual_projects": [
+      "메이저모듈"
+    ],
+    "upload_timestamp": "2026-07-29T09:12:14.799395",
+    "report_meta": {
+      "report_family": "default",
+      "date": "2026-07-20",
+      "week": 32
+    },
+    "products": [
+      {
+        "name": "메이저모듈",
+        "headline": "",
+        "category": "",
+        "status": "",
+        "summary_bullets": [],
+        "sections": [
+          {
+            "id": "811eed82",
+            "title": "주차별 출하실적 및 계획",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "file",
+                "file_name": "메이저모듈_c1ddb0.xlsx",
+                "url": "/admin/manual-files/manual_cc5f0a94df95/메이저모듈_c1ddb0.xlsx",
+                "size": 11152
+              },
+              {
+                "kind": "text",
+                "body": "<div data-indent=\"1\">1) W31: 출하 없음 (사급자재 입고 지연 7/29 <span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">→ 8/4)</span></div><div data-indent=\"1\"><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">    W32: FE 5대, BE 4대</span></div><div data-indent=\"1\"><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">    W33: FE 2대, BE 2대 출하 예정</span></div><blockquote style=\"margin: 0 0 0 40px; border: none; padding: 0px;\"><div data-indent=\"1\"><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif; color: rgb(255, 0, 0);\">→ FE 3대 LPM 일정 고객 확인 중</span></div></blockquote><div data-indent=\"1\"><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">2) MACH I VTM 장비 추가: 초도빌드 검증 진행 중(10월 양산 목표)</span></div><div data-indent=\"1\"><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">3) VN 내재화 프레임 </span></div><div data-indent=\"1\"><ul><li><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">EFEM: 27대 투입 / 16대 </span></li><ul><li>VTM: 34대 투입 / 25대 출하</li></ul></ul>  VTM: 34대 투입 / 25대 출하</div><blockquote style=\"margin: 0 0 0 40px; border: none; padding: 0px;\"><div data-indent=\"1\"><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">테스트 테스트 </span></div></blockquote>"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "project_overrides": {},
+    "week_override": 32,
+    "parsed": {
+      "projects": [
+        "메이저모듈"
+      ],
+      "week": 32,
+      "date": "2026-07-20",
+      "display_title": "메이저모듈 · W32 주간보고"
+    },
+    "display_title": "메이저모듈 · W32 주간보고"
+  },
+  {
+    "doc_id": "manual_6ba035b646f9",
+    "is_manual": true,
+    "manual_projects": [
+      "프레임"
+    ],
+    "upload_timestamp": "2026-07-29T09:12:14.799426",
+    "report_meta": {
+      "report_family": "default",
+      "date": "2026-07-20",
+      "week": 32
+    },
+    "products": [
+      {
+        "name": "프레임",
+        "headline": "",
+        "category": "",
+        "status": "",
+        "summary_bullets": [],
+        "sections": [
+          {
+            "id": "7e5f0190",
+            "title": "현황",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "<div>*총 42개 모델 중 양산 2종, 진행중 40종*</div>"
+              }
+            ]
+          },
+          {
+            "id": "548f54f2",
+            "title": "CEFEM 프레임",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "<div>*출고 대기중 (우드박스 6/18 10세트 입고 → W26 출하) [2026-06-18]*</div><div data-indent=\"1\">CEFEM SI 리포트 리뷰 완료 (5/20) → 카말 승인 완료 → 오웬 최종승인 검토 중</div><div data-indent=\"1\">내재화 TPM Lam 내부순위 협의 중 (세이버 & 백터코어), 텍슨 동시진행 요청 중</div>"
+              },
+              {
+                "kind": "file",
+                "file_name": "프레임.xlsx",
+                "url": "semiconductor/xls_2026-06-16_95d1f2ce.png",
+                "size": 0
+              }
+            ]
+          },
+          {
+            "id": "930bddb8",
+            "title": "쿼로스 프레임",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "<div>설계 및 전개도 협의완료</div><div>출하: 업퍼 2대 6/6 출고 완료, 로워 2대 6/12 출고 완료, 2대 고객 치수 검토 후 출고예정 (6/19) [2026-06-19]</div>"
+              }
+            ]
+          },
+          {
+            "id": "d4f155f9",
+            "title": "내재화 프레임",
+            "kind": "section",
+            "blocks": [
+              {
+                "kind": "text",
+                "body": "① 세이버 프레임 4종<br><ul><li>승인 예정: 6/22 (조찬형 이사 계획 수립) [2026-06-22]</li><li>4종 중 1종 C4 크리티컬 등급 → Lam SE 니킬 NC로 변경 예정 회신 받음 (5/22)</li></ul><span style=\"font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Pretendard, &quot;Apple SD Gothic Neo&quot;, sans-serif;\">      → CEFEM과 비교 자료 검토 완료 시 PRR 미진행</span><br>#2 프레임 제작 진행 중 (스틸 1종 / SUS 1종) 용접 진행 완료 → 용접 검사 중<br>② 백터 코어 2종 (화성 신규 내재화 프레임) - 빌드 검증 8월 중순 예상<br><ul><li>스틸 프레임 1종, 알루미늄 프레임 1종</li><li>원자재 ETA 단축 진행 중 (스틸: 8/1, 알루미늄: 9/15) [2026-08-01]</li><li>크로메이트 도금 (리치포트 가능) → 신규 프레임 도금 라인 증설 예정 (흥옌)</li></ul>③ STRIP 2종 (용인)<br><ul><li>아크 스프레이 테스트 진행 완료 (6/12) → 외부 인증 기관 (베트남) 의뢰 예정 (6/17) [2026-06-17]</li></ul>④ MACH I VTM 1종<br><ul><li>승인 순위 4순위, 우선 순위대로 승인 예정</li></ul>"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "project_overrides": {},
+    "week_override": 34,
+    "parsed": {
+      "projects": [
+        "프레임"
+      ],
+      "week": 34,
+      "date": "2026-07-20",
+      "display_title": "프레임 · W34 주간보고"
+    },
+    "display_title": "프레임 · W34 주간보고"
+  }
+]

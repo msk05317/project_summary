@@ -40,6 +40,12 @@ class ProjectSummary {
   // 디자인 시안의 보조 배지 텍스트 (현재는 대부분 label 과 동일).
   final String? projectBadge;
 
+  // 모델 데이터 유무 (서버에서 계산됨).
+  final bool hasModels;
+
+  // 모델 개수 (서버에서 계산됨).
+  final int modelCount;
+
   const ProjectSummary({
     required this.key,
     required this.label,
@@ -48,6 +54,8 @@ class ProjectSummary {
     this.divisionId,
     this.divisionLabel,
     this.projectBadge,
+    this.hasModels = false,
+    this.modelCount = 0,
   });
 
   // JSON → 모델 변환.
@@ -58,6 +66,8 @@ class ProjectSummary {
       key: (j['key'] ?? j['project_key'] ?? j['project_id'] ?? '').toString(),
       label: (j['label'] ?? j['project_label'] ?? '').toString(),
       status: j['status']?.toString(),
+      hasModels: j['has_models'] as bool? ?? false,
+      modelCount: (j['model_count'] as num?)?.toInt() ?? 0,
       reportDate: j['report_date']?.toString(),
       divisionId: j['division_id']?.toString(),
       divisionLabel: j['division_label']?.toString(),

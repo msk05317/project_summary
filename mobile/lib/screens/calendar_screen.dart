@@ -10,7 +10,7 @@ import '../components/calendar/calendar_day_event_card.dart';
 import '../components/calendar/calendar_deadline_row.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart';
-import 'report_detail_screen.dart';
+import 'project_overview_screen.dart';
 import 'settings_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -225,7 +225,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _openReport(String projectKey) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ReportDetailScreen(projectKey: projectKey),
+        builder: (_) => ProjectOverviewScreen(projectKey: projectKey, projectName: ''),
       ),
     );
   }

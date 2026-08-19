@@ -26,10 +26,14 @@ class DivisionProjectRef {
   // 사업부 내에서의 정렬 순서. 작은 숫자가 먼저 표시됩니다.
   final int order;
 
+  // 모델 데이터 유무 (서버에서 계산됨).
+  final bool hasModels;
+
   const DivisionProjectRef({
     required this.id,
     required this.label,
     required this.order,
+    this.hasModels = false,
   });
 
   // JSON → 모델 변환.
@@ -39,6 +43,7 @@ class DivisionProjectRef {
       id: (j['id'] ?? '').toString(),
       label: (j['label'] ?? '').toString(),
       order: (j['order'] is int) ? j['order'] as int : 0,
+      hasModels: j['has_models'] as bool? ?? false,
     );
   }
 }

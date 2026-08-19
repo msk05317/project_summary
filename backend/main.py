@@ -5848,9 +5848,7 @@ window._attachAutoListBehavior = function(el){
   function renderPage(pg){
     const c = document.getElementById('v2-content');
     if (pg === 'report') {
-      c.innerHTML = renderReportPageHTML();
-      loadAdminV2Reports();
-      bindAdminV2Upload();
+      c.innerHTML = window.renderReportPageHTML(); // 홈 안내 화면 (보고 UI 제거됨)
     } else {
       const icons = { home:'🏠', production:'🏭', inbound:'📥', outbound:'📤' };
       c.innerHTML = '<div class="placeholder"><div class="big">'+(icons[pg]||'✦')+'</div><div class="title">'+(PAGE_LABEL[pg]||pg)+'</div><div class="sub">개발 중 — 곧 오픈됩니다</div></div>';
@@ -5861,296 +5859,14 @@ window._attachAutoListBehavior = function(el){
   // Admin v2 · Report Page (KPI + Upload + List)
   // ============================================================
   window.renderReportPageHTML = function(){
-    return `
-      <style>
-        .ov-page { padding: 0; }
-        .ov-kpi-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-        .ov-kpi-card {
-          background: #fff;
-          border: 1px solid #E6EBF2;
-          border-radius: 20px;
-          padding: 18px;
-          box-shadow: 0 6px 18px rgba(15,44,89,0.04);
-        }
-        .ov-kpi-label { font-size: 13px; color: #6E7785; font-weight: 600; margin-bottom: 10px; }
-        .ov-kpi-value { font-size: 28px; color: #0F2C59; font-weight: 800; line-height: 1.1; margin-bottom: 6px; }
-        .ov-kpi-sub { font-size: 13px; color: #7A8595; font-weight: 600; }
-
-        .ov-upload-card {
-          background: #fff;
-          border: 1px solid #E6EBF2;
-          border-radius: 24px;
-          padding: 24px;
-          margin-bottom: 20px;
-          box-shadow: 0 6px 18px rgba(15,44,89,0.04);
-        }
-        .ov-upload-drop {
-          border: 2px dashed #BFD2EA;
-          background: #F7FBFF;
-          border-radius: 22px;
-          padding: 34px 20px;
-          text-align: center;
-        }
-        .ov-upload-icon { font-size: 34px; margin-bottom: 10px; }
-        .ov-upload-title { font-size: 22px; color: #173B72; font-weight: 800; margin-bottom: 8px; }
-        .ov-upload-desc { font-size: 14px; color: #6F7B8C; margin-bottom: 16px; }
-        .ov-upload-meta {
-          display: inline-block; margin-top: 14px;
-          background: #EEF4FB; color: #2E5B94;
-          padding: 8px 12px; border-radius: 999px;
-          font-size: 13px; font-weight: 700;
-        }
-
-        .ov-list-card {
-          background: #fff;
-          border: 1px solid #E6EBF2;
-          border-radius: 24px;
-          padding: 20px;
-          box-shadow: 0 6px 18px rgba(15,44,89,0.04);
-        }
-        .ov-list-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; }
-        .ov-new-btn {
-          background: #0F2C59; color: #fff; border: none; border-radius: 12px;
-          padding: 10px 16px; font-size: 14px; font-weight: 800; cursor: pointer;
-        }
-        .ov-new-btn:hover { background: #173B72; }
-        .ov-modal-mask {
-          position: fixed; inset: 0; background: rgba(15,44,89,0.35);
-          display: none; align-items: center; justify-content: center; z-index: 9999;
-        }
-        .ov-modal-mask.open { display: flex; }
-        .ov-modal {
-          background: #fff; border-radius: 20px; padding: 28px 26px; width: 420px; max-width: 92vw;
-          box-shadow: 0 20px 60px rgba(15,44,89,0.25);
-        }
-        .ov-modal h3 { margin: 0 0 16px 0; font-size: 20px; color: #0F2C59; font-weight: 800; }
-        .ov-modal label { display: block; font-size: 13px; color: #4A5568; font-weight: 700; margin: 10px 0 6px; }
-        .ov-modal input {
-          width: 100%; box-sizing: border-box; padding: 10px 12px;
-          border: 1px solid #D0D9E5; border-radius: 10px; font-size: 14px;
-        }
-        .ov-modal input:focus { outline: none; border-color: #4A6FA5; }
-        .ov-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-        .ov-modal-cancel {
-          background: #F4F6FA; color: #4A5568; border: 1px solid #E6EBF2;
-          border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
-        }
-        .ov-modal-confirm {
-          background: #0F2C59; color: #fff; border: none;
-          border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
-        }
-        .ov-manual-badge {
-          display: inline-block; background: #FFF4EC; color: #B4380F;
-          padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-left: 8px;
-        }
-        .ov-list-title { font-size: 20px; color: #173B72; font-weight: 800; }
-        .ov-list-sub { font-size: 13px; color: #748092; font-weight: 600; }
-
-        .ov-report-list { display: flex; flex-direction: column; gap: 14px; }
-        .ov-report-item.is-hidden { opacity: 0.45; background: #F4F6FA; }
-        .ov-report-item.is-hidden .ov-report-project::after {
-          content: " · 숨김"; color: #B4380F; font-size: 12px; font-weight: 700;
-        }
-        .ov-hide-btn {
-          background: #F4F6FA; color: #4A5568;
-          border: 1px solid #E6EBF2; border-radius: 999px;
-          padding: 6px 12px; font-size: 12px; font-weight: 700;
-          cursor: pointer; margin-right: 8px;
-        }
-        .ov-hide-btn:hover { background: #E6EBF2; }
-        .ov-hide-btn.is-active { background: #FFF4EC; color: #B4380F; border-color: #F5C9AE; }
-        .ov-del-btn {
-          background: #FEE2E2; color: #DC2626;
-          border: 1px solid #FCA5A5; border-radius: 999px;
-          padding: 6px 12px; font-size: 12px; font-weight: 700;
-          cursor: pointer;
-        }
-        .ov-del-btn:hover { background: #FCA5A5; color: #ffffff; border-color: #DC2626; }
-        .ov-side-top-actions { display: flex; gap: 8px; align-items: center; }
-        .ov-report-item {
-          display: grid;
-          grid-template-columns: 6px minmax(0, 1fr) 180px;
-          gap: 18px;
-          align-items: center;
-          border: 1px solid #E8EDF4;
-          border-radius: 22px;
-          overflow: hidden;
-          background: #FFFFFF;
-          min-height: 112px;
-        }
-        .ov-report-bar {
-          align-self: stretch;
-          min-height: 100%;
-          width: 6px;
-        }
-        .ov-report-bar.orange { background: #F59E0B; }
-        .ov-report-bar.red { background: #EF4444; }
-        .ov-report-bar.green { background: #10B981; }
-        .ov-report-main {
-          padding: 18px 0;
-          min-width: 0;
-        }
-        .ov-report-project {
-          font-size: 20px;
-          line-height: 1.2;
-          color: #12325F;
-          font-weight: 800;
-          margin-bottom: 8px;
-          letter-spacing: -0.2px;
-        }
-        .ov-report-file {
-          font-size: 14px;
-          line-height: 1.35;
-          color: #7A8595;
-          margin-bottom: 8px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .ov-report-preview {
-          font-size: 14px;
-          line-height: 1.4;
-          color: #667085;
-          font-weight: 500;
-        }
-        .ov-report-side {
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: flex-end;
-          gap: 14px;
-          padding: 18px 18px 18px 0;
-        }
-        .ov-badge {
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          border-radius: 999px;
-          padding: 9px 16px;
-          font-size: 13px;
-          font-weight: 800;
-          min-width: 108px;
-        }
-        .ov-badge.blue { background: #E7F0FB; color: #23538C; }
-        .ov-badge.amber { background: #FFF3D9; color: #9A6700; }
-        .ov-badge.green { background: #E7F8F0; color: #117A52; }
-        .ov-open-btn {
-          border: 0;
-          border-radius: 12px;
-          background: #163A70;
-          color: #fff;
-          padding: 11px 18px;
-          font-size: 15px;
-          font-weight: 800;
-          cursor: pointer;
-          width: 118px;
-          height: 44px;
-        }
-        .ov-load-more { display:flex; justify-content:center; margin-top: 16px; }
-        .ov-load-more button {
-          border: 1px solid #DCE4EF; background: #fff; color: #35527C;
-          border-radius: 999px; padding: 12px 18px;
-          font-size: 14px; font-weight: 700; cursor: pointer;
-        }
-        @media (max-width: 1200px) { .ov-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-        @media (max-width: 760px) {
-          .ov-kpi-grid { grid-template-columns: 1fr; }
-          .ov-report-item { grid-template-columns: 6px 1fr; }
-          .ov-report-side { grid-column: 2; align-items: flex-start; padding: 0 16px 16px 0; }
-        }
-      </style>
-
-      <div class="ov-page">
-        <div class="ov-kpi-grid">
-          <div class="ov-kpi-card">
-            <div class="ov-kpi-label">이번 주</div>
-            <div class="ov-kpi-value" id="ov-kpi-week">-</div>
-            <div class="ov-kpi-sub">업로드된 보고 수</div>
-          </div>
-          <div class="ov-kpi-card">
-            <div class="ov-kpi-label">AI 처리중</div>
-            <div class="ov-kpi-value" id="ov-kpi-ai">-</div>
-            <div class="ov-kpi-sub">현재 처리 대기/진행</div>
-          </div>
-          <div class="ov-kpi-card">
-            <div class="ov-kpi-label">검토 대기</div>
-            <div class="ov-kpi-value" id="ov-kpi-review">-</div>
-            <div class="ov-kpi-sub">관리자 확인 필요</div>
-          </div>
-          <div class="ov-kpi-card">
-            <div class="ov-kpi-label">발행 완료</div>
-            <div class="ov-kpi-value" id="ov-kpi-published">-</div>
-            <div class="ov-kpi-sub">앱 반영 가능 상태</div>
-          </div>
-        </div>
-
-        <div class="ov-upload-card">
-          <div class="ov-upload-drop" id="ov-upload-drop">
-            <div class="ov-upload-icon">📤</div>
-            <div class="ov-upload-title">보고 PPT를 여기로 끌어다 놓으세요</div>
-            <div class="ov-upload-desc">또는 버튼으로 파일 선택 · .pptx / .ppt · 최대 50MB</div>
-            <input type="file" id="ov-upload-input" accept=".pptx,.ppt" style="display:none;" />
-            <button class="btn-primary" type="button" id="ov-upload-btn">파일 선택</button>
-            <div class="ov-upload-meta">✨ 표 · 목록 · 이미지 자동 파싱</div>
-            <div id="ov-upload-status" style="margin-top:14px;font-size:13px;font-weight:600;"></div>
-          </div>
-        </div>
-
-        <div class="ov-list-card">
-          <div class="ov-list-head">
-            <div>
-              <div class="ov-list-title">최근 보고</div>
-              <div class="ov-list-sub">가장 최근 등록된 보고를 확인하세요</div>
-            </div>
-            <button class="ov-new-btn" type="button" id="ov-new-project-btn">+ 새 프로젝트</button>
-          </div>
-          <div class="ov-report-list" id="ov-report-list">
-            <div style="color:#9CA3AF;font-size:14px;padding:20px;text-align:center;">불러오는 중...</div>
-          </div>
-          <div class="ov-load-more">
-            <button type="button" id="ov-load-more-btn">보고 더 보기</button>
-          </div>
-        </div>
-        <div class="ov-modal-mask" id="ov-newproj-mask">
-          <div class="ov-modal" style="max-width:640px;width:90vw;">
-            <h3>+ 새 프로젝트</h3>
-            <div style="margin-top:8px;font-size:13px;color:#374151;font-weight:600;">등록된 프로젝트 <span id="ov-np-current-div" style="color:#6B7280;font-weight:400;font-size:12px;"></span></div>
-            <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">클릭하면 바로 생성됩니다</div>
-            <div id="ov-np-project-buttons" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;min-height:44px;padding:8px;background:#F9FAFB;border-radius:8px;"></div>
-            <div style="margin-top:16px;display:flex;align-items:center;gap:8px;">
-              <div style="flex:1;height:1px;background:#E5E7EB;"></div>
-              <span style="color:#9CA3AF;font-size:12px;">또는 새 이름으로</span>
-              <div style="flex:1;height:1px;background:#E5E7EB;"></div>
-            </div>
-            <label for="ov-np-name" style="margin-top:8px;">프로젝트명</label>
-            <input type="text" id="ov-np-name" name="np-name" placeholder="예: Chamber" autocomplete="off" />
-            <div id="ov-np-suggest" style="margin-top:8px;min-height:0;"></div>
-            <div style="font-size:12px;color:#7A8595;margin-top:8px;">주차는 현재 주차로 자동 설정됩니다.</div>
-            <div class="ov-modal-actions">
-              <button class="ov-modal-cancel" type="button" id="ov-np-cancel">취소</button>
-              <button class="ov-modal-confirm" type="button" id="ov-np-confirm">생성</button>
-            </div>
-          </div>
-        </div>
-        <div class="ov-modal-mask" id="ov-delconf-mask">
-          <div class="ov-modal" style="max-width:480px;width:90vw;">
-            <h3 style="color:#DC2626;">프로젝트 삭제</h3>
-            <div id="ov-delconf-body" style="margin-top:12px;font-size:14px;color:#374151;line-height:1.6;"></div>
-            <div style="margin-top:12px;padding:10px 12px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:6px;font-size:13px;color:#991B1B;">⚠️ 되돌릴 수 없습니다. 관련 카드와 PPT 파일 모두 제거됩니다.</div>
-            <div id="ov-delconf-status" style="margin-top:8px;font-size:13px;min-height:18px;"></div>
-            <div class="ov-modal-actions">
-              <button class="ov-modal-cancel" type="button" id="ov-delconf-cancel">취소</button>
-              <button class="ov-modal-confirm" type="button" id="ov-delconf-confirm" style="background:#DC2626;color:#fff;">삭제</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
+    return ''
+      + '<div class="ov-page">'
+      +   '<div style="padding:64px 24px;text-align:center;color:#6B7280;">'
+      +     '<div style="font-size:48px;margin-bottom:16px;">🏠</div>'
+      +     '<div style="font-size:20px;font-weight:800;color:#35527C;margin-bottom:10px;">홈 대시보드</div>'
+      +     '<div style="font-size:14px;line-height:1.7;">좌측 <b>모델 관리</b> 메뉴에서 프로젝트별 모델·주차별 계획·현황을 등록하고 관리하세요.</div>'
+      +   '</div>'
+      + '</div>';
   };
 
   window.openNewProjectModal = async function(){
@@ -6587,6 +6303,7 @@ window.renderAdminV2ByDivision = function(){
 };
 
   window.loadAdminV2Reports = async function(){
+    return; // 보고 기능 제거됨
     try {
       const res = await fetch('/admin/reports/all');
       const data = await res.json();
@@ -6690,20 +6407,7 @@ window.renderAdminV2ByDivision = function(){
       const review = reports.filter(function(r){ return (r.report_status || '') === 'review_pending'; }).length;
       const ai = reports.filter(function(r){ return (r.report_status || '') === 'ai_processing'; }).length;
 
-      // 이번 주 = 오늘 기준 지난 7일 이내 업로드
-      const now = new Date();
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const thisWeek = reports.filter(function(r){
-        try { return new Date(r.upload_timestamp) >= sevenDaysAgo; } catch(_){ return false; }
-      }).length;
-
-      const wkEl = document.getElementById('ov-kpi-week');
-      const aiEl = document.getElementById('ov-kpi-ai');
-      const rvEl = document.getElementById('ov-kpi-review');
-      const pbEl = document.getElementById('ov-kpi-published');
-      if (wkEl) wkEl.textContent = String(thisWeek);
-      if (aiEl) aiEl.textContent = String(ai);
-      if (rvEl) rvEl.textContent = String(review);
+      // KPI 갱신 JS 제거됨 (보고 UI 삭제)
       if (pbEl) pbEl.textContent = String(published);
 
       // + 새 프로젝트 버튼 (재바인딩 안전)
@@ -10326,9 +10030,7 @@ window.renderAdminV2ByDivision = function(){
     window.backToReportList = function(){
     const c = document.getElementById('v2-content-inner') || document.getElementById('v2-content');
     if (!c) return;
-    c.innerHTML = window.renderReportPageHTML();
-    window.loadAdminV2Reports();
-    window.bindAdminV2Upload();
+    if (typeof renderModelsPage === 'function') renderModelsPage(); // 사업부 변경 시 모델 관리 렌더
   };
 
 
@@ -10471,121 +10173,14 @@ window.renderAdminV2ByDivision = function(){
   // ============================================================
   // Admin v2 · PPT 업로드 처리
   // ============================================================
-  window.bindAdminV2Upload = function(){
-    const drop = document.getElementById('ov-upload-drop');
-    const input = document.getElementById('ov-upload-input');
-    const btn = document.getElementById('ov-upload-btn');
-    const statusEl = document.getElementById('ov-upload-status');
-    if (!drop || !input || !btn || !statusEl) return;
+  // bindAdminV2Upload 제거됨 (보고 UI 삭제)
 
-    function setStatus(msg, color){
-      statusEl.textContent = msg || '';
-      statusEl.style.color = color || '#415064';
-    }
-
-    function highlight(on){
-      drop.style.background = on ? '#EAF3FF' : '#F7FBFF';
-      drop.style.borderColor = on ? '#2E5B94' : '#BFD2EA';
-    }
-
-    async function doUpload(file){
-      if (!file) return;
-      const name = (file.name || '').toLowerCase();
-      if (!name.endsWith('.pptx') && !name.endsWith('.ppt')) {
-        setStatus('❌ .pptx / .ppt 파일만 업로드 가능합니다.', '#C1272D');
-        return;
-      }
-      const sizeMB = file.size / (1024 * 1024);
-      if (sizeMB > 50) {
-        setStatus('❌ 파일 크기가 50MB 를 초과합니다.', '#C1272D');
-        return;
-      }
-
-      setStatus('⏳ 업로드 중... ' + file.name + ' (' + sizeMB.toFixed(1) + 'MB)', '#2E5B94');
-      btn.disabled = true;
-      btn.style.opacity = '0.6';
-
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('report_family', 'default');
-      fd.append('allow_duplicate', 'false');
-
-      try {
-        const res = await fetch('/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
-        let data = {};
-        try { data = await res.json(); } catch(_) {}
-
-        if (res.status === 409) {
-          const ok = confirm('이미 업로드된 파일과 동일합니다. 그래도 계속 업로드할까요?');
-          if (ok) {
-            const fd2 = new FormData();
-            fd2.append('file', file);
-            fd2.append('report_family', 'default');
-            fd2.append('allow_duplicate', 'true');
-            const res2 = await fetch('/upload', { method: 'POST', body: fd2, credentials: 'same-origin' });
-            const data2 = await res2.json().catch(function(){ return {}; });
-            if (res2.ok) {
-              setStatus('✅ 업로드 완료 (중복 허용): ' + (data2.filename || file.name), '#117A52');
-              window.loadAdminV2Reports && window.loadAdminV2Reports();
-            } else {
-              setStatus('❌ 업로드 실패: ' + (data2.detail || res2.status), '#C1272D');
-            }
-          } else {
-            setStatus('취소됨 (중복 파일)', '#7A8595');
-          }
-        } else if (res.ok) {
-          setStatus('✅ 업로드 완료: ' + (data.filename || file.name), '#117A52');
-          window.loadAdminV2Reports && window.loadAdminV2Reports();
-        } else if (res.status === 401) {
-          setStatus('❌ 인증이 필요합니다. 다시 로그인해주세요.', '#C1272D');
-        } else {
-          setStatus('❌ 업로드 실패: ' + (data.detail || res.status), '#C1272D');
-        }
-      } catch (e) {
-        setStatus('❌ 네트워크 오류: ' + e.message, '#C1272D');
-      } finally {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        input.value = '';
-      }
-    }
-
-    btn.addEventListener('click', function(){ input.click(); });
-    input.addEventListener('change', function(e){
-      const f = e.target.files && e.target.files[0];
-      if (f) doUpload(f);
-    });
-
-    ['dragenter','dragover'].forEach(function(evt){
-      drop.addEventListener(evt, function(e){
-        e.preventDefault(); e.stopPropagation();
-        highlight(true);
-      });
-    });
-    ['dragleave','drop'].forEach(function(evt){
-      drop.addEventListener(evt, function(e){
-        e.preventDefault(); e.stopPropagation();
-        highlight(false);
-      });
-    });
-    drop.addEventListener('drop', function(e){
-      const dt = e.dataTransfer;
-      const f = dt && dt.files && dt.files[0];
-      if (f) doUpload(f);
-    });
-  };
-
-  // 최초 진입 시 report 페이지 즉시 렌더
+  // 최초 진입 시 모델 관리 페이지 렌더
   document.addEventListener('DOMContentLoaded', function(){
     const root = document.getElementById('ov-report-root');
-    if (root) {
-      root.outerHTML = '<div id="v2-content-inner"></div>';
-      const inner = document.getElementById('v2-content-inner');
-      if (inner) {
-        inner.innerHTML = window.renderReportPageHTML();
-        window.loadAdminV2Reports();
-        window.bindAdminV2Upload();
-      }
+    if (root) root.remove();
+    if (typeof window.renderModelsPage === 'function') {
+      window.renderModelsPage();
     }
   });
 
@@ -11096,7 +10691,7 @@ window.renderAdminV2ByDivision = function(){
   }
 
   // 페이지 렌더링 (data-page="models" 클릭 시)
-  function renderModelsPage() {
+  window.renderModelsPage = function() {
     const content = document.getElementById('v2-content');
     if (!content) return;
 

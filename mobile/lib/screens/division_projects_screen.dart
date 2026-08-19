@@ -19,7 +19,7 @@ import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'immediate_check_screen.dart';
-import 'report_detail_screen.dart';
+import 'project_overview_screen.dart';
 import 'calendar_screen.dart';
 import 'chat_screen.dart';
 
@@ -203,7 +203,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       }
     }
 
-    final total = divisionCards.length;
+    // final total = divisionCards.length; // unused
     final progress = weightCount == 0 ? 0 : (weightSum / weightCount).round();
 
     // 즉시 확인: RED/ORANGE 카드 중 마감 임박 상위 3건
@@ -243,9 +243,9 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     final projects = <_ProjectItem>[];
     for (final p in widget.division.projects) {
       final card = cardByKey[p.id];
-      final hasData = card != null;
-      final hasDue = hasData && (card.dueDateMin != null && card.dueDateMin!.isNotEmpty);
-      final status = hasData ? _statusLabel(card.status) : '';
+      final hasData = p.hasModels;  // 모델 데이터 유무로 변경
+      final hasDue = hasData && (card?.dueDateMin != null && card!.dueDateMin!.isNotEmpty);
+      final status = hasData && card != null ? _statusLabel(card.status) : '';
       final int? percent = hasDue ? _weightOf(card.status) : null;
       projects.add(_ProjectItem(
         id: p.id,
@@ -348,10 +348,20 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     });
   }
 
-  Future<void> _openProject(String projectKey) async {
+  Future<void> _openProject(String projectKey, String projectName) async {
+    // 모델 데이터 로드
+    // 모델 데이터 로드 (사용하지 않음)
+
+    // 모델 있든 없든 프로젝트 현황 화면으로 이동
+    if (!mounted) return;
+
+    // 모델 있든 없든 프로젝트 현황 화면으로 이동
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ReportDetailScreen(projectKey: projectKey),
+        builder: (_) => ProjectOverviewScreen(
+          projectKey: projectKey,
+          projectName: projectName,
+        ),
       ),
     );
     // 상세에서 돌아오면 즐겨찾기 상태 재로드
@@ -583,7 +593,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                             setState(() {
                               _selectedProjectId = p.id;
                             });
-                            await _openProject(p.id);
+                            await _openProject(p.id, p.koreanName);
                             if (!mounted) return;
                             setState(() {
                               _selectedProjectId = null;
