@@ -4227,13 +4227,15 @@ def list_divisions():
     매핑 관리 대시보드 / 모바일 사업부 화면에서 사용."""
     divs = _cl.get_divisions(visible_only=True)
     
-    # 모델 데이터 로드 (프로젝트별 모델 유무)
+    # 모델/현황/주차별 계획 데이터 로드 (프로젝트별 데이터 유무)
     models_data = _load_models()
     models_by_project = {}
     for proj_key, proj_data in models_data.get("projects", {}).items():
-        models_list = proj_data.get("models", [])
-        if models_list:
-            models_by_project[proj_key] = len(models_list)
+        has_models = len(proj_data.get("models", [])) > 0
+        has_note = bool((proj_data.get("status_note") or "").strip())
+        has_plan = bool(proj_data.get("weekly_plan", {}).get("photo_ref"))
+        if has_models or has_note or has_plan:
+            models_by_project[proj_key] = len(proj_data.get("models", []))
     
     result = []
     for d in divs:
@@ -17823,10 +17825,10 @@ DEV_PROCESS_STEPS = [
     ("incoming", "입고", "발주"),
     ("machining", "가공 (조립)", "제작·검사"),
     ("la_incoming", "LA 입고", "제작·검사"),
-    ("lair_write", "LAIR 작성", "제작·검사"),
+    ("lair_write", "LAIR 제출", "제작·검사"),
     ("lair_approval", "LAIR 승인", "제작·검사"),
     ("source_inspection", "Source Inspection", "승인"),
-    ("fair_write", "FAIR 작성", "승인"),
+    ("fair_write", "FAIR 제출", "승인"),
     ("fair_approval", "FAIR 승인", "승인"),
     ("lap_test", "LAP TEST", "승인"),
     ("cdr", "CDR", "승인"),
