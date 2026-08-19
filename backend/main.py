@@ -4309,18 +4309,41 @@ def get_divisions_updates():
 
 @app.get("/projects")
 def list_projects():
-    """프로젝트 버튼 목록"""
+    """프로젝트 버튼 목록 + 모델 데이터 유무"""
     latest = _read_json(LATEST_FILE, [])
     grouped = aggregate_projects(latest)
+    
+    # 모델 데이터 로드
+    models_data = _load_models()
+    models_by_project = {}
+    for proj_key, proj_data in models_data.get("projects", {}).items():
+        models_list = proj_data.get("models", [])
+        if models_list:
+            models_by_project[proj_key] = len(models_list)
+    
     projects = [
         {
             "key": k,
             "label": v["label"],
             "status": v["status"],
             "report_date": v.get("report_date"),
+            "has_models": k in models_by_project,  # 모델 데이터 유무 추가
+            "model_count": models_by_project.get(k, 0),  # 모델 개수 추가
         }
         for k, v in grouped.items()
     ]
+
+    # 보고서에 없지만 모델이 있는 프로젝트도 목록에 추가
+    for proj_key, model_count in models_by_project.items():
+        if proj_key not in grouped:
+            projects.append({
+                "key": proj_key,
+                "label": proj_key.upper(),
+                "status": "BLACK",
+                "report_date": None,
+                "has_models": True,
+                "model_count": model_count,
+            })
     severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
 
     # 🟢 프로젝트 목록 enrichment (기존 필드 변경 없음)
@@ -5134,7 +5157,7 @@ _ADMIN_V2_HTML = """<!DOCTYPE html>
       <div class="breadcrumb">
         <span id="v2-crumb-biz">반도체사업부</span>
         <span class="sep">›</span>
-        <span class="cur" id="v2-crumb-page">보고</span>
+        <span class="cur" id="v2-crumb-page">모델 관리</span>
       </div>
       <div class="grow"></div>
       <div class="search"><input type="text" placeholder="검색"></div>
