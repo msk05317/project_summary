@@ -10374,6 +10374,7 @@ window.renderAdminV2ByDivision = function(){
   document.head.appendChild(style);
 
   var _modelsData = [];
+  var _projTypes = [];
   var _currentProjectKey = '';
 
   function _esc(s) {
@@ -10429,6 +10430,31 @@ window.renderAdminV2ByDivision = function(){
     });
   }
 
+
+  // 유형 색상 (Flutter 앱과 동일 팔레트)
+  function _typeColor(t) {
+    if (t === 'HVM') return { bg: '#EDE9FE', fg: '#7C3AED' };
+    if (t === 'RPM') return { bg: '#E0F2FE', fg: '#0284C7' };
+    var pal = [
+      ['#DBEAFE', '#1D4ED8'], ['#FEF3C7', '#B45309'], ['#D1FAE5', '#059669'],
+      ['#FCE7F3', '#BE185D'], ['#FEE2E2', '#B91C1C'], ['#ECFCCB', '#4D7C0F'],
+      ['#CFFAFE', '#0E7490'], ['#F3E8FF', '#9333EA']
+    ];
+    var h = 0;
+    for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+    var c = pal[h % pal.length];
+    return { bg: c[0], fg: c[1] };
+  }
+  function _applyTypeColor(inp) {
+    if (!inp) return;
+    var v = (inp.value || '').trim();
+    if (!v) { inp.style.background = '#FFFFFF'; inp.style.color = '#374151'; inp.style.borderColor = '#D1D5DB'; return; }
+    var c = _typeColor(v);
+    inp.style.background = c.bg;
+    inp.style.color = c.fg;
+    inp.style.borderColor = c.fg;
+  }
+
   function renderTable(container) {
     const byGroup = { '양산': [], '개발': [] };
     _modelsData.forEach(function(m) {
@@ -10439,7 +10465,8 @@ window.renderAdminV2ByDivision = function(){
     if (tabCount) tabCount.textContent = _modelsData.length;
 
     let html = '<table class="mdl-table"><thead><tr>' +
-      '<th>모델명</th><th>구분</th><th>개발 유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>' +
+      '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
+      '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>' +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
@@ -10460,11 +10487,7 @@ window.renderAdminV2ByDivision = function(){
             '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
             '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
           '</select></td>' +
-          '<td>' + (isDev
-            ? '<select data-field="dev_type" class="mdl-devtype mdl-dt-' + devType.toLowerCase() + '">' +
-              '<option value="HVM"' + (devType === 'HVM' ? ' selected' : '') + '>HVM</option>' +
-              '<option value="RPM"' + (devType === 'RPM' ? ' selected' : '') + '>RPM</option></select>'
-            : '<span class="mdl-dash">-</span>') + '</td>' +
+          '<td><input data-field="dev_type" value="' + (m.dev_type || '') + '" list="mdl-type-list" placeholder="유형" style="width:80px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;" /></td>' +
           '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
           '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
           '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
@@ -10480,6 +10503,10 @@ window.renderAdminV2ByDivision = function(){
     html += '</tbody></table>';
     if (!_modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     container.innerHTML = html;
+    container.querySelectorAll('input[data-field="dev_type"]').forEach(function(inp){
+      _applyTypeColor(inp);
+      inp.addEventListener('input', function(){ _applyTypeColor(inp); });
+    });
 
     container.querySelectorAll('input, select').forEach(function(el) {
       el.addEventListener('change', function() {
@@ -10634,8 +10661,81 @@ window.renderAdminV2ByDivision = function(){
     });
   }
 
+  // ── 프로젝트별 유형 관리 ──
+  function loadTypes(projectKey) {
+    if (!projectKey) { _projTypes = []; renderTypeChips(); return; }
+    fetch('/projects/' + encodeURIComponent(projectKey) + '/types')
+      .then(function(r) { return r.ok ? r.json() : { types: ['HVM', 'RPM'] }; })
+      .then(function(d) {
+        _projTypes = (d && d.types) ? d.types : [];
+        renderTypeChips();
+      })
+      .catch(function() { _projTypes = []; renderTypeChips(); });
+  }
+
+  function renderTypeChips() {
+    var box = document.getElementById('mdl-type-chips');
+    if (!box) return;
+    box.innerHTML = _projTypes.map(function(t) {
+      var _c = _typeColor(t);
+      return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:' + _c.bg + ';color:' + _c.fg + ';border:1px solid ' + _c.fg + ';border-radius:999px;font-size:12px;font-weight:700;">'
+        + t
+        + '<button type="button" class="mdl-type-del" data-type="' + t + '" style="border:0;background:transparent;color:' + _c.fg + ';font-size:13px;cursor:pointer;padding:0 0 0 2px;line-height:1;" title="삭제">×</button>'
+        + '</span>';
+    }).join('');
+    // 삭제 이벤트
+    box.querySelectorAll('.mdl-type-del').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var t = btn.getAttribute('data-type');
+        if (!confirm('유형 "' + t + '"을 삭제하시겠습니까? (모델에 입력된 값은 유지됩니다)')) return;
+        _projTypes = _projTypes.filter(function(x) { return x !== t; });
+        saveTypes();
+      });
+    });
+  }
+
+  function saveTypes() {
+    var projKey = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) || '';
+    if (!projKey) { alert('프로젝트를 먼저 선택하세요'); return; }
+    fetch('/admin/projects/' + encodeURIComponent(projKey) + '/types', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ types: _projTypes })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        renderTypeChips();
+        var tableBox = document.getElementById('mdl-table-box');
+        if (tableBox) renderTable(tableBox); // datalist 갱신
+      })
+      .catch(function(e) { alert('유형 저장 실패: ' + e.message); });
+  }
+
+  // 유형 추가 버튼 + 엔터키
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'mdl-type-add') {
+      var input = document.getElementById('mdl-type-input');
+      if (!input) return;
+      var v = (input.value || '').trim();
+      if (!v) return;
+      if (_projTypes.indexOf(v) === -1) {
+        _projTypes.push(v);
+        saveTypes();
+      }
+      input.value = '';
+    }
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.target && e.target.id === 'mdl-type-input' && e.key === 'Enter') {
+      e.preventDefault();
+      var btn = document.getElementById('mdl-type-add');
+      if (btn) btn.click();
+    }
+  });
+
   function loadModels(projectKey, container) {
     if (!projectKey) { _modelsData = []; renderTable(container); return; }
+    loadTypes(projectKey);
     _currentProjectKey = projectKey;
     fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
@@ -10722,6 +10822,12 @@ window.renderAdminV2ByDivision = function(){
             '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
             '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
             '<span id="mdl-save-msg" class="mdl-save-msg"></span>' +
+          '</div>' +
+          '<div id="mdl-types-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 4px;padding:10px 14px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;">' +
+            '<span style="font-size:12px;font-weight:700;color:#374151;">유형:</span>' +
+            '<span id="mdl-type-chips" style="display:inline-flex;flex-wrap:wrap;gap:6px;"></span>' +
+            '<input id="mdl-type-input" type="text" placeholder="새 유형 입력" style="width:110px;padding:4px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;" />' +
+            '<button type="button" id="mdl-type-add" style="padding:4px 10px;border:0;border-radius:6px;background:#0F2C59;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">+ 추가</button>' +
           '</div>' +
           '<div id="mdl-table-box"><div class="mdl-loading">불러오는 중...</div></div>' +
           '<p class="mdl-hint">판가·재료비는 달러($) 기준이며, 재료비율은 자동 계산됩니다 (재료비 ÷ 판가 × 100).</p>' +
@@ -12148,6 +12254,39 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
     _save_models(data)
     print(f"[models] saved {_key}: {len(normalized)} models")
     return {"ok": True, "project_key": _key, "count": len(normalized)}
+
+
+
+# ─── 프로젝트별 유형(types) 관리 ───
+
+def _get_project_types(project_key: str) -> list:
+    """프로젝트의 유형 목록 (기본값: 빈 목록)"""
+    data = _read_json(MODELS_FILE, {})
+    proj = data.get("projects", {}).get(project_key, {})
+    types = proj.get("types")
+    if not isinstance(types, list):
+        return []
+    return types
+
+
+@app.get("/projects/{project_key}/types")
+def get_project_types(project_key: str):
+    return {"project_key": project_key, "types": _get_project_types(project_key)}
+
+
+@app.put("/admin/projects/{project_key}/types")
+def save_project_types(project_key: str, payload: dict):
+    """프로젝트별 유형 목록 저장"""
+    types = payload.get("types")
+    if not isinstance(types, list):
+        raise HTTPException(status_code=400, detail="types는 배열이어야 합니다")
+    # 공백 제거 + 중복 제거 + 빈 문자열 제거
+    types = list(dict.fromkeys(t.strip() for t in types if isinstance(t, str) and t.strip()))
+    data = _read_json(MODELS_FILE, {})
+    proj = data.setdefault("projects", {}).setdefault(project_key, {"models": []})
+    proj["types"] = types
+    _save_models(data)
+    return {"ok": True, "project_key": project_key, "types": types}
 
 
 # ─── 주차별 계획 (프로젝트당 1개) ───
