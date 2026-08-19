@@ -1,5 +1,5 @@
 app = "project-summary-mkoo"
-primary_region = "icn"
+primary_region = "nrt"
 
 [build]
   dockerfile = "backend/Dockerfile"
