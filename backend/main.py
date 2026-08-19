@@ -4226,6 +4226,15 @@ def list_divisions():
     """공개 사업부 목록 + 각 사업부의 visible 프로젝트 리스트.
     매핑 관리 대시보드 / 모바일 사업부 화면에서 사용."""
     divs = _cl.get_divisions(visible_only=True)
+    
+    # 모델 데이터 로드 (프로젝트별 모델 유무)
+    models_data = _load_models()
+    models_by_project = {}
+    for proj_key, proj_data in models_data.get("projects", {}).items():
+        models_list = proj_data.get("models", [])
+        if models_list:
+            models_by_project[proj_key] = len(models_list)
+    
     result = []
     for d in divs:
         div_id = d.get("id")
@@ -4245,6 +4254,8 @@ def list_divisions():
                     "id": p.get("id"),
                     "label": p.get("label"),
                     "order": p.get("order", 999),
+                    "has_models": p.get("id") in models_by_project,
+                    "model_count": models_by_project.get(p.get("id"), 0),
                 }
                 for p in ps_sorted
             ],
