@@ -10607,7 +10607,7 @@ window.renderAdminV2ByDivision = function(){
         const mcost = m.material_cost || 0;
         const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
         const isDev = g === '개발';
-        const devType = (m.dev_type || 'HVM').toUpperCase();
+        const devType = (m.dev_type || '').toUpperCase();
         html += '<tr data-model-id="' + m.id + '">' +
           '<td class="mdl-td-name">' + m.name + '</td>' +
           '<td><select data-field="group">' +
@@ -12414,9 +12414,7 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         }
         old = old_map.get(mid) or {}
         if group == "개발":
-            dev_type = str(m.get("dev_type") or old.get("dev_type") or "HVM").strip().upper()
-            if dev_type not in ("HVM", "RPM"):
-                dev_type = "HVM"
+            dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             entry["dev_type"] = dev_type
             proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
             entry["process"] = proc if isinstance(proc, list) and len(proc) == 13 else _default_process()
@@ -17772,7 +17770,7 @@ def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type")}
     if m.get("group") == "개발":
         proc = _ensure_process(m)
-        out["dev_type"] = m.get("dev_type") or "HVM"
+        out["dev_type"] = m.get("dev_type") or ""
         out["progress"] = _process_progress(proc)
         stage, expected = _process_current(proc)
         out["current_stage"] = stage
@@ -17825,7 +17823,7 @@ def get_model_process(project_key: str, model_id: str):
             return {
                 "model_id": model_id,
                 "model_name": m.get("name") or model_id,
-                "dev_type": m.get("dev_type") or "HVM",
+                "dev_type": m.get("dev_type") or "",
                 "steps": proc,
                 "done": done,
                 "total": len(proc),
