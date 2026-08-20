@@ -5326,17 +5326,17 @@ window._normalizeAiNumberedHtml = function(html){
   var current = null;
   for (var i = 0; i < lines.length; i++){
     var raw = lines[i];
-    var text = stripTag(raw).replace(/\u00A0/g, ' ').trim();
+    var text = stripTag(raw).replace(/\\u00A0/g, ' ').trim();
     if (!text) {
       // 빈 라인은 현재 항목에 <br> 로 유지
       if (current !== null) current += '<br>';
       continue;
     }
     // "1)" "2." 등 새 항목 시작
-    var m = text.match(/^(\\d+)[)\.]\\s+(.*)$/);
+    var m = text.match(/^(\\d+)[)\\.]\\s+(.*)$/);
     if (m) {
       // 새 항목 시작 - raw에서 "숫자)" 또는 "숫자." 부분 제거
-      var stripped = raw.replace(/^(\s|&nbsp;|\u00A0)*\d+[)\.]\s*/, '');
+      var stripped = raw.replace(/^(\\s|&nbsp;|\\u00A0)*\\d+[)\\.]\\s*/, '');
       if (current !== null) items.push(current);
       current = stripped;
     } else {
@@ -5913,9 +5913,9 @@ window._attachAutoListBehavior = function(el){
   }
 
   function _detectExistingListLine(line){
-    var m = line.match(/^(\s*)(\d+)([\)\.])\s+(.*)$/);
+    var m = line.match(/^(\\s*)(\\d+)([\\)\\.])\\s+(.*)$/);
     if (m) return { type: 'num', indent: m[1], num: parseInt(m[2],10), sep: m[3], content: m[4] };
-    m = line.match(/^(\s*)([-*\u00B7])\s+(.*)$/);
+    m = line.match(/^(\\s*)([-*\\u00B7])\\s+(.*)$/);
     if (m) return { type: 'bullet', indent: m[1], bullet: m[2], content: m[3] };
     return null;
   }
@@ -6892,7 +6892,7 @@ window.renderAdminV2ByDivision = function(){
       '요청사항': ['요청사항','요청','지원요청','request']
     };
     function _normSectionName(s){
-      return String(s || '').trim().toLowerCase().replace(/\s+/g,' ');
+      return String(s || '').trim().toLowerCase().replace(/\\s+/g,' ');
     }
     function _findAliasCanonical(input){
       const n = _normSectionName(input);
@@ -6929,7 +6929,7 @@ window.renderAdminV2ByDivision = function(){
         }
         // 마지막 fallback: URL/hash에서 division 추출
         if (!divIdFromTarget) {
-          const m = location.hash.match(/division[=/]([\w-]+)/);
+          const m = location.hash.match(/division[=/]([\\w-]+)/);
           if (m) divIdFromTarget = m[1];
         }
 
@@ -7467,8 +7467,8 @@ window.renderAdminV2ByDivision = function(){
                 if (b && b.kind === 'file') {
                   const fname = b.file_name || '(파일)';
                   const url = b.url || '';
-                  const isImage = /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(fname);
-                  const isExcel = /\.(xlsx|xls)$/i.test(fname);
+                  const isImage = /\\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(fname);
+                  const isExcel = /\\.(xlsx|xls)$/i.test(fname);
                   const previewHtml = (isImage && url)
                     ? '<div style="margin:8px 0;text-align:center;"><img src="' + url + '" alt="' + fname + '" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid #E6EBF2;"></div>'
                     : (isExcel && url)
@@ -7949,7 +7949,7 @@ window.renderAdminV2ByDivision = function(){
             var lo = s.toLowerCase();
             if (lo.indexOf('.xlsx') < 0 && lo.indexOf('.xlsm') < 0) return null;
             // /admin/manual-files/{doc_id}/{filename} 패턴
-            var m = s.match(/\/admin\/manual-files\/[^\/]+\/([^\/?#]+)/);
+            var m = s.match(/\\/admin\\/manual-files\\/[^\\/]+\\/([^\\/?#]+)/);
             if (m) return decodeURIComponent(m[1]);
             // 그냥 파일명일 수도
             return s.split('/').pop().split('?')[0];
@@ -8785,15 +8785,15 @@ window.renderAdminV2ByDivision = function(){
                       }
 
                       function _cleanStartBr(html){
-                        return String(html || '').replace(/^(\s|&nbsp;|<br\s*\/?>)+/ig, '');
+                        return String(html || '').replace(/^(\\s|&nbsp;|<br\\s*\\/?>)+/ig, '');
                       }
 
                       function _cleanEndBr(html){
-                        return String(html || '').replace(/(<br\s*\/?>|\s|&nbsp;)+$/ig, '');
+                        return String(html || '').replace(/(<br\\s*\\/?>|\\s|&nbsp;)+$/ig, '');
                       }
 
                       var rangeNow = sel.getRangeAt(0);
-                      var liText = (li.textContent || '').replace(/\u00A0/g, ' ').trim();
+                      var liText = (li.textContent || '').replace(/\\u00A0/g, ' ').trim();
 
                       // 빈 항목에서 Enter → 그 자리에서 번호만 제거하고 plain 빈 줄로 전환
                       if (!liText) {
@@ -10057,7 +10057,7 @@ window.renderAdminV2ByDivision = function(){
         // display_title에서 프로젝트명만 추출: " · W## 주간보고" 앞까지
         let newProjectName = newLabel;
         let newWeek = null;
-        const m = newLabel.match(/^(.*?)(?:\s*·\s*W(\d+)\s*주간보고)?\s*$/);
+        const m = newLabel.match(/^(.*?)(?:\\s*·\\s*W(\\d+)\\s*주간보고)?\\s*$/);
         if (m) {
           newProjectName = (m[1] || '').trim();
           if (m[2]) newWeek = parseInt(m[2], 10);
@@ -14813,7 +14813,7 @@ function renderNotePreview(cards) {
   const renderPhoto = (photoRef) => {
     if (!photoRef) return '';
     const url = '/note_photos/' + photoRef;
-    const isExcel = /\/xls_/.test(photoRef);
+    const isExcel = /\\/xls_/.test(photoRef);
     if (isExcel) {
       return `
         <div style="margin:8px 0 14px 0;">
@@ -14881,7 +14881,7 @@ function renderNotePreview(cards) {
       textStyle = 'font-size:14px;color:#dc2626;font-weight:700;';
     } else if (type === 'sub') {
       // 화살표 중복 방지: 본문이 이미 → / ↳ / => 로 시작하면 prefix 비움
-      prefix = /^(?:→|↳|=>)\s*/.test(rawText) ? '' : '→';
+      prefix = /^(?:→|↳|=>)\\s*/.test(rawText) ? '' : '→';
       textStyle = 'font-size:13px;color:#374151;';
       leftPad = 'padding-left:18px;';
     }
