@@ -10550,7 +10550,7 @@ window.renderAdminV2ByDivision = function(){
   // 모델 테이블 렌더링
   function syncDomToData(container) {
     container.querySelectorAll('tr[data-model-id]').forEach(function(r) {
-      const m = _modelsData.find(function(x) { return x.id === r.dataset.modelId; });
+      const m = window._modelsData.find(function(x) { return x.id === r.dataset.modelId; });
       if (!m) return;
       const g = r.querySelector('[data-field="group"]');
       if (g) m.group = g.value;
@@ -10663,7 +10663,7 @@ window.renderAdminV2ByDivision = function(){
     });
 
     html += '</tbody></table>';
-    if (!_modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
+    if (!window._modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     container.innerHTML = html;
     container.querySelectorAll('.mdl-ess-qty').forEach(function(inp){
       inp.addEventListener('input', function(){
@@ -10706,7 +10706,7 @@ window.renderAdminV2ByDivision = function(){
         const mid = tr ? tr.dataset.modelId : null;
         if (!mid) return;
         if (confirm('[' + mid + '] 삭제하시겠습니까? (저장 버튼을 눌러야 반영됩니다)')) {
-          _modelsData = _modelsData.filter(function(m) { return m.id !== mid; });
+          window._modelsData = window._modelsData.filter(function(m) { return m.id !== mid; });
           renderTable(container);
         }
       });
@@ -10807,7 +10807,7 @@ window.renderAdminV2ByDivision = function(){
           if (res.ok) {
             msg.textContent = '✅ 저장 완료 (진행률 ' + res.progress + '%)';
             msg.style.color = '#059669';
-            const m = _modelsData.find(function(x) { return x.id === d.model_id; });
+            const m = window._modelsData.find(function(x) { return x.id === d.model_id; });
             if (m) { m.dev_type = res.dev_type; m.progress = res.progress; }
             // 저장 직후 서버 데이터로 화면 즉시 갱신 (체크 상태/진행률/다음 단계 반영)
             fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(d.model_id) + '/process', { credentials: 'same-origin' })
@@ -10947,7 +10947,7 @@ window.renderAdminV2ByDivision = function(){
   };
 
   window.loadModels = function loadModels(projectKey, container) {
-    if (!projectKey) { _modelsData = []; renderTable(container); return; }
+    if (!projectKey) { window._modelsData = []; renderTable(container); return; }
     _currentProjectKey = projectKey;
     loadTypes(projectKey);
     
@@ -10960,12 +10960,12 @@ window.renderAdminV2ByDivision = function(){
       return fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models', { credentials: 'same-origin' });
     }).then(function(r) { return r.json(); })
       .then(function(d) {
-        _modelsData = (d && d.models) || [];
+        window._modelsData = (d && d.models) || [];
         renderTable(container);
       })
       .catch(function() { 
         _projIsEss = false;
-        _modelsData = []; 
+        window._modelsData = []; 
         renderTable(container); 
       });
   }
@@ -10981,7 +10981,7 @@ window.renderAdminV2ByDivision = function(){
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ models: _modelsData })
+      body: JSON.stringify({ models: window._modelsData })
     })
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -11245,11 +11245,11 @@ window.renderAdminV2ByDivision = function(){
       const name = prompt('모델명 (예: CUP-100)');
       if (!name || !name.trim()) return;
       const trimmed = name.trim();
-      if (_modelsData.some(function(m) { return m.id === trimmed; })) {
+      if (window._modelsData.some(function(m) { return m.id === trimmed; })) {
         alert('이미 존재하는 모델명입니다');
         return;
       }
-      _modelsData.push({ id: trimmed, name: trimmed, group: '양산', status: '정상', progress: 0, price: 0, material_cost: 0 });
+      window._modelsData.push({ id: trimmed, name: trimmed, group: '양산', status: '정상', progress: 0, price: 0, material_cost: 0 });
       renderTable(tableBox);
     });
 
