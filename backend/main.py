@@ -4366,6 +4366,133 @@ def list_projects():
     return {"projects": projects}
 
 
+# ─── 모델 엑셀 일괄 등록 ───
+
+@app.get("/admin/models/template")
+def admin_models_template(_admin: int = Depends(get_admin_session)):
+    from io import BytesIO
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.cell(row=2, column=2, value="모델")
+    ws.cell(row=2, column=3, value="구분")
+    ws.cell(row=2, column=4, value="유형")
+    ws.cell(row=2, column=5, value="판가")
+    ws.cell(row=2, column=6, value="재료비")
+    ws.cell(row=3, column=2, value="853-XXXXX-001")
+    ws.cell(row=3, column=3, value="개발")
+    ws.cell(row=3, column=4, value="HVM")
+    ws.cell(row=3, column=5, value=9200)
+    ws.cell(row=3, column=6, value=8502)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=model_template.xlsx"},
+    )
+
+
+@app.post("/admin/projects/{project_key}/models/import")
+async def admin_models_import(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
+    from io import BytesIO
+    from openpyxl import load_workbook
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    try:
+        wb = load_workbook(BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀 파싱 실패: {e}")
+    ws = wb.active
+
+    # 헤더 행 탐색: '모델' 텍스트가 있는 행
+    header_row = None
+    col_map = {}
+    for r in range(1, min(ws.max_row, 10) + 1):
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(row=r, column=c).value
+            if v is None:
+                continue
+            t = str(v).strip()
+            if t in ("모델", "모델명"):
+                header_row = r
+                col_map["name"] = c
+            elif t == "구분":
+                col_map["group"] = c
+            elif t == "유형" or t == "개발 유형":
+                col_map["dev_type"] = c
+            elif t.startswith("판가"):
+                col_map["price"] = c
+            elif t.startswith("재료비"):
+                col_map["material_cost"] = c
+        if header_row:
+            break
+    if not header_row or "name" not in col_map:
+        raise HTTPException(status_code=400, detail="양식 오류: '모델' 헤더를 찾을 수 없습니다.")
+
+    _key = project_key.strip()
+    data = _load_models()
+    projs = data.setdefault("projects", {})
+    proj = projs.setdefault(_key, {"models": []})
+    models = proj.setdefault("models", [])
+    by_name = {str(m.get("name", "")).strip().lower(): m for m in models}
+
+    added, updated, skipped = 0, 0, 0
+    for r in range(header_row + 1, ws.max_row + 1):
+        name_v = ws.cell(row=r, column=col_map["name"]).value
+        if name_v is None or not str(name_v).strip():
+            continue
+        name = str(name_v).strip()
+        group = str(ws.cell(row=r, column=col_map.get("group", 0)).value or "").strip() if col_map.get("group") else ""
+        group = "개발" if group == "개발" else "양산"
+        dev_type = str(ws.cell(row=r, column=col_map.get("dev_type", 0)).value or "").strip().upper() if col_map.get("dev_type") else ""
+
+        def _num(col):
+            if not col:
+                return 0
+            v = ws.cell(row=r, column=col).value
+            try:
+                return float(str(v).replace(",", "").replace("$", "").strip() or 0)
+            except Exception:
+                return 0
+
+        price = _num(col_map.get("price"))
+        mcost = _num(col_map.get("material_cost"))
+
+        existing = by_name.get(name.lower())
+        if existing is not None:
+            existing["group"] = group
+            if dev_type:
+                existing["dev_type"] = dev_type
+            existing["price"] = price
+            existing["material_cost"] = mcost
+            updated += 1
+        else:
+            entry = {
+                "id": name,
+                "name": name,
+                "group": group,
+                "dev_type": dev_type,
+                "price": price,
+                "material_cost": mcost,
+                "status": "정상",
+                "progress": 0,
+            }
+            if group == "개발":
+                entry["process"] = _default_process()
+            models.append(entry)
+            by_name[name.lower()] = entry
+            added += 1
+
+    models.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+    _save_models(data)
+    print(f"[models-import] {_key}: +{added} 신규, {updated} 갱신, {skipped} 건너뜀")
+    return {"ok": True, "added": added, "updated": updated, "total": len(models)}
+
+
 @app.get("/projects/{project_key}/models")
 def get_project_models(project_key: str):
     """프로젝트 모델 목록 + 그룹별 요약 (앱 8번 화면용)
@@ -10733,6 +10860,48 @@ window.renderAdminV2ByDivision = function(){
     }
   });
 
+// ── 엑셀 일괄 등록 ──
+  window.bindModelExcel = function(){
+    var upBtn = document.getElementById('mdl-excel-btn');
+    var tplBtn = document.getElementById('mdl-excel-tpl-btn');
+    var input = document.getElementById('mdl-excel-input');
+    var wrap = document.getElementById('mdl-table-box');
+    if (!upBtn || !input) return;
+    if (tplBtn) tplBtn.onclick = function(){ window.location.href = '/admin/models/template'; };
+    upBtn.onclick = function(){ input.click(); };
+    input.onchange = function(){ if (input.files && input.files[0]) doExcelUpload(input.files[0]); input.value = ''; };
+    if (wrap && !wrap.dataset.excelDrop) {
+      wrap.dataset.excelDrop = '1';
+      wrap.addEventListener('dragover', function(e){ e.preventDefault(); wrap.style.outline = '2px dashed #2563EB'; });
+      wrap.addEventListener('dragleave', function(){ wrap.style.outline = 'none'; });
+      wrap.addEventListener('drop', function(e){
+        e.preventDefault(); wrap.style.outline = 'none';
+        var f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) doExcelUpload(f);
+      });
+    }
+    async function doExcelUpload(file){
+      if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) {
+        alert('❌ .xlsx / .xls 파일만 가능합니다.'); return;
+      }
+      if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요.'); return; }
+      var fd = new FormData();
+      fd.append('file', file);
+      try {
+        var r = await fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/import', { method: 'POST', body: fd, credentials: 'same-origin' });
+        var d = await r.json();
+        if (r.ok && d.ok) {
+          alert('✅ 완료: 신규 ' + d.added + '개, 갱신 ' + d.updated + '개 (전체 ' + d.total + '개)');
+          var tb = document.getElementById('mdl-table-box');
+          if (tb) loadModels(_currentProjectKey, tb);
+          loadTypes(_currentProjectKey);
+        } else {
+          alert('❌ 실패: ' + (d.detail || '알 수 없는 오류'));
+        }
+      } catch(e) { alert('❌ ' + e.message); }
+    }
+  };
+
   function loadModels(projectKey, container) {
     if (!projectKey) { _modelsData = []; renderTable(container); return; }
     loadTypes(projectKey);
@@ -10820,6 +10989,9 @@ window.renderAdminV2ByDivision = function(){
           '</div>' +
           '<div class="mdl-actions">' +
             '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
+          '<button type="button" class="mdl-btn" id="mdl-excel-btn" style="background:#059669;color:#fff;">📥 엑셀 업로드</button>' +
+          '<button type="button" class="mdl-btn" id="mdl-excel-tpl-btn" style="background:#6B7280;color:#fff;">📄 양식 다운로드</button>' +
+          '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls" style="display:none;">' +
             '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
             '<span id="mdl-save-msg" class="mdl-save-msg"></span>' +
           '</div>' +
@@ -11013,7 +11185,8 @@ window.renderAdminV2ByDivision = function(){
           opt.textContent = pj.label || pj.id;
           sel.appendChild(opt);
         });
-        loadModels(sel.value, tableBox);
+        bindModelExcel();
+      loadModels(sel.value, tableBox);
         loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
       })
       .catch(function(e) {
