@@ -10597,6 +10597,10 @@ window.renderAdminV2ByDivision = function(){
   }
 
   window.renderTable = function renderTable(container) {
+    // ESS 프로젝트 동기 강제 판별 (fetch 레이스 컨디션 방지)
+    var _pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) || '';
+    if (['sdi','fluence','epc_power'].indexOf(_pk) >= 0) { _projIsEss = true; }
+    else if (_pk) { _projIsEss = false; }
     // ESS 프로젝트 키 기반으로 강제 설정
     var currentProj = document.getElementById('mdl-proj-select');
     if (currentProj && ['sdi', 'fluence', 'epc_power'].includes(currentProj.value)) {
