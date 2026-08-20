@@ -4326,7 +4326,6 @@ def list_projects():
     import config_loader
     config_projects = config_loader.get_projects(visible_only=False)
     
-    # models.json에서 모델 수 로드
     models_data = _load_models()
     models_by_project = {}
     for proj_key, proj_data in models_data.get("projects", {}).items():
@@ -4334,7 +4333,6 @@ def list_projects():
         if models_list:
             models_by_project[proj_key] = len(models_list)
     
-    # config 기반으로 프로젝트 목록 생성
     projects = []
     for p in config_projects:
         proj_key = p.get("id") or p.get("key")
@@ -4348,7 +4346,6 @@ def list_projects():
             "division_id": p.get("division_id", "semiconductor"),
         })
     
-    # models.json에만 있고 config에 없는 프로젝트도 추가
     for proj_key, model_count in models_by_project.items():
         if not any(p["key"] == proj_key for p in projects):
             projects.append({
@@ -4358,51 +4355,10 @@ def list_projects():
                 "report_date": None,
                 "has_models": True,
                 "model_count": model_count,
-                "division_id": "semiconductor" if proj_key not in ["sdi", "fluence", "epc_power"] else "ess",
+                "division_id": "ess" if proj_key in ["sdi", "fluence", "epc_power"] else "semiconductor",
             })
     
-    # 모델 데이터 로드
-    models_data = _load_models()
-    models_by_project = {}
-    for proj_key, proj_data in models_data.get("projects", {}).items():
-        models_list = proj_data.get("models", [])
-        if models_list:
-            models_by_project[proj_key] = len(models_list)
-    
-    projects = [
-        {
-            "key": k,
-            "label": v["label"],
-            "status": v["status"],
-            "report_date": v.get("report_date"),
-            "has_models": models_by_project.get(k, 0) > 0,
-            "model_count": models_by_project.get(k, 0),
-        }
-        for k, v in grouped.items()
-    ]
-
-    # 보고서에 없지만 모델이 있는 프로젝트도 목록에 추가
-    for proj_key, model_count in models_by_project.items():
-        if proj_key not in grouped:
-            projects.append({
-                "key": proj_key,
-                "label": proj_key.upper(),
-                "status": "BLACK",
-                "report_date": None,
-                "has_models": True,
-                "model_count": model_count,
-            })
-    severity = {"RED": 3, "BLUE": 2, "BLACK": 1}
-
-    # 🟢 프로젝트 목록 enrichment (기존 필드 변경 없음)
-    projects = [enrich_project_entry(p) for p in projects]
-
-    projects.sort(key=lambda p: -severity.get(p["status"], 0))
     return {"projects": projects}
-
-
-# ─── 모델 엑셀 일괄 등록 ───
-
 @app.get("/admin/models/template")
 def admin_models_template(_admin: int = Depends(get_admin_session)):
     from io import BytesIO
