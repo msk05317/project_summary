@@ -5333,7 +5333,7 @@ window._normalizeAiNumberedHtml = function(html){
       continue;
     }
     // "1)" "2." 등 새 항목 시작
-    var m = text.match(/^(\d+)[)\.]\s+(.*)$/);
+    var m = text.match(/^(\\d+)[)\.]\\s+(.*)$/);
     if (m) {
       // 새 항목 시작 - raw에서 "숫자)" 또는 "숫자." 부분 제거
       var stripped = raw.replace(/^(\s|&nbsp;|\u00A0)*\d+[)\.]\s*/, '');
