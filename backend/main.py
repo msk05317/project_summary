@@ -4323,8 +4323,43 @@ def get_divisions_updates():
 @app.get("/projects")
 def list_projects():
     """프로젝트 버튼 목록 + 모델 데이터 유무"""
-    latest = _read_json(LATEST_FILE, [])
-    grouped = aggregate_projects(latest)
+    import config_loader
+    config_projects = config_loader.get_projects(visible_only=False)
+    
+    # models.json에서 모델 수 로드
+    models_data = _load_models()
+    models_by_project = {}
+    for proj_key, proj_data in models_data.get("projects", {}).items():
+        models_list = proj_data.get("models", [])
+        if models_list:
+            models_by_project[proj_key] = len(models_list)
+    
+    # config 기반으로 프로젝트 목록 생성
+    projects = []
+    for p in config_projects:
+        proj_key = p.get("id") or p.get("key")
+        projects.append({
+            "key": proj_key,
+            "label": p.get("label", proj_key.upper()),
+            "status": "BLACK",
+            "report_date": None,
+            "has_models": models_by_project.get(proj_key, 0) > 0,
+            "model_count": models_by_project.get(proj_key, 0),
+            "division_id": p.get("division_id", "semiconductor"),
+        })
+    
+    # models.json에만 있고 config에 없는 프로젝트도 추가
+    for proj_key, model_count in models_by_project.items():
+        if not any(p["key"] == proj_key for p in projects):
+            projects.append({
+                "key": proj_key,
+                "label": proj_key.upper(),
+                "status": "BLACK",
+                "report_date": None,
+                "has_models": True,
+                "model_count": model_count,
+                "division_id": "semiconductor" if proj_key not in ["sdi", "fluence", "epc_power"] else "ess",
+            })
     
     # 모델 데이터 로드
     models_data = _load_models()
@@ -10558,11 +10593,6 @@ window.renderAdminV2ByDivision = function(){
       const shq = r.querySelector('[data-field="shipped_qty"]');
       const duet = r.querySelector('[data-field="due_text"]');
       const iss = r.querySelector('[data-field="issues"]');
-      // ESS 필드 할당 추가
-      if (poq) m.po_qty = parseInt(poq.value || '0', 10) || 0;
-      if (shq) m.shipped_qty = parseInt(shq.value || '0', 10) || 0;
-      if (duet) m.due_text = duet.value || '';
-      if (iss) m.issues = iss.value || '';
       const dt = r.querySelector('[data-field="dev_type"]');
       if (dt) m.dev_type = dt.value;
       const st = r.querySelector('[data-field="status"]');
