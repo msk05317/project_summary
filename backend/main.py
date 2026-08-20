@@ -2680,7 +2680,7 @@ def notes_by_project(project_key: str = ""):
 
 # ─── 노트 엑셀(표) 마커 전/후처리 (ai_parse 용) ───
 _EXCEL_MARKER_RE = re.compile(
-    "\U0001F4CA\s*([^\n\r]+?)\s*@@table_ref=([^\s\n\r]+)",
+    "\U0001F4CA" r"\s*([^\n\r]+?)\s*@@table_ref=([^\s\n\r]+)",
     re.IGNORECASE,
 )
 
@@ -4340,8 +4340,8 @@ def list_projects():
             "label": v["label"],
             "status": v["status"],
             "report_date": v.get("report_date"),
-            "has_models": k in models_by_project,  # 모델 데이터 유무 추가
-            "model_count": models_by_project.get(k, 0),  # 모델 개수 추가
+            "has_models": models_by_project.get(k, 0) > 0,
+            "model_count": models_by_project.get(k, 0),
         }
         for k, v in grouped.items()
     ]
@@ -5316,7 +5316,7 @@ window._normalizeAiNumberedHtml = function(html){
   if (!html) return html;
   var s = String(html);
   // <br> 기준으로 라인 분리 (대소문자 무시)
-  var lines = s.split(/<br\s*\/?>/i);
+  var lines = s.split(/<br\s*\/?>/i);  # noqa
   // 각 라인의 &nbsp; 정규화
   lines = lines.map(function(l){ return l.replace(/&nbsp;/g, ' '); });
   // stripTag 함수: 태그 벗겨서 텍스트만 봤을 때 번호로 시작하는지 확인
@@ -6000,6 +6000,11 @@ window._attachAutoListBehavior = function(el){
     var mask = document.getElementById('ov-newproj-mask');
     var nameEl = document.getElementById('ov-np-name');
     var sidebarSel = document.getElementById('v2-division-select');
+    // 초기 로드 시 첫 프로젝트 데이터 로드
+    if (sel.value) {
+      window._projIsEss = ['sdi', 'fluence', 'epc_power'].includes(sel.value);
+      loadModels(sel.value, tableBox);
+    }
     var divisionId = sidebarSel ? sidebarSel.value : 'semiconductor';
     if (!mask) return;
     if (nameEl) nameEl.value = '';
@@ -6034,7 +6039,9 @@ window._attachAutoListBehavior = function(el){
     loading.textContent = '불러오는 중...';
     box.appendChild(loading);
     try {
-      var r = await fetch('/admin/config/projects?division_id=' + encodeURIComponent(divisionId), { credentials: 'same-origin' });
+      var sidebarSel = document.getElementById('v2-division-select');
+      var currentDiv = sidebarSel ? sidebarSel.value : 'semiconductor';
+      var r = await fetch('/admin/config/projects?division_id=' + encodeURIComponent(currentDiv), { credentials: 'same-origin' });
       var d = await r.json();
       var items = (d && d.projects) || [];
       while (box.firstChild) box.removeChild(box.firstChild);
@@ -10500,8 +10507,9 @@ window.renderAdminV2ByDivision = function(){
   ].join(' ');
   document.head.appendChild(style);
 
-  var _modelsData = [];
+  window._modelsData = [];
   var _projTypes = [];
+  window._projIsEss = false;
   var _currentProjectKey = '';
 
   function _esc(s) {
@@ -10546,12 +10554,18 @@ window.renderAdminV2ByDivision = function(){
       if (!m) return;
       const g = r.querySelector('[data-field="group"]');
       if (g) m.group = g.value;
+      const poq = r.querySelector('[data-field="po_qty"]');
+      const shq = r.querySelector('[data-field="shipped_qty"]');
+      const duet = r.querySelector('[data-field="due_text"]');
+      const iss = r.querySelector('[data-field="issues"]');
       const dt = r.querySelector('[data-field="dev_type"]');
       if (dt) m.dev_type = dt.value;
       const st = r.querySelector('[data-field="status"]');
       if (st) m.status = st.value;
-      m.price = parseInt((r.querySelector('[data-field="price"]').value || '0').replace(/,/g, ''), 10) || 0;
-      m.material_cost = parseInt((r.querySelector('[data-field="material_cost"]').value || '0').replace(/,/g, ''), 10) || 0;
+      var priceEl = r.querySelector('[data-field="price"]');
+      m.price = priceEl ? parseInt((priceEl.value || '0').replace(/,/g, ''), 10) || 0 : 0;
+      var matEl = r.querySelector('[data-field="material_cost"]');
+      m.material_cost = matEl ? parseInt((matEl.value || '0').replace(/,/g, ''), 10) || 0 : 0;
       const pg = r.querySelector('[data-field="progress"]');
       if (pg) m.progress = parseInt(pg.value || '0', 10) || 0;
     });
@@ -10582,18 +10596,25 @@ window.renderAdminV2ByDivision = function(){
     inp.style.borderColor = c.fg;
   }
 
-  function renderTable(container) {
+  window.renderTable = function renderTable(container) {
+    // ESS 프로젝트 키 기반으로 강제 설정
+    var currentProj = document.getElementById('mdl-proj-select');
+    if (currentProj && ['sdi', 'fluence', 'epc_power'].includes(currentProj.value)) {
+      _projIsEss = true;
+    } else {
+      _projIsEss = false;
+    }
     const byGroup = { '양산': [], '개발': [] };
-    _modelsData.forEach(function(m) {
+    (window._modelsData || []).forEach(function(m) {
       const g = (m.group === '개발') ? '개발' : '양산';
       byGroup[g].push(m);
     });
     const tabCount = document.getElementById('mdl-tab-count');
-    if (tabCount) tabCount.textContent = _modelsData.length;
+    if (tabCount) tabCount.textContent = (window._modelsData || []).length;
 
     let html = '<table class="mdl-table"><thead><tr>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
-      '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>' +
+      (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th><th>관리</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
@@ -10615,7 +10636,17 @@ window.renderAdminV2ByDivision = function(){
             '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
           '</select></td>' +
           '<td><input data-field="dev_type" value="' + (m.dev_type || '') + '" list="mdl-type-list" placeholder="유형" style="width:80px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;" /></td>' +
-          '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
+          (_projIsEss ?
+  '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
+  '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
+  '<td data-field="remaining" class="mdl-td-ratio">' + Math.max(0, (m.po_qty || 0) - (m.shipped_qty || 0)) + '</td>' +
+  '<td><input data-field="due_text" type="text" value="' + (m.due_text || '').replace(/"/g, '&quot;') + '" class="mdl-input" placeholder="예: 8월 24일" style="width:140px;"></td>' +
+  '<td><textarea data-field="issues" class="mdl-input" placeholder="이슈사항" style="width:220px;min-height:34px;font-size:12px;">' + (m.issues || '') + '</textarea></td>'
+:
+  '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
+  '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
+  '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>'
+) +
           '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
           '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
           '<td class="mdl-td-actions">' +
@@ -10630,6 +10661,15 @@ window.renderAdminV2ByDivision = function(){
     html += '</tbody></table>';
     if (!_modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     container.innerHTML = html;
+    container.querySelectorAll('.mdl-ess-qty').forEach(function(inp){
+      inp.addEventListener('input', function(){
+        var tr = inp.closest('tr');
+        var po = parseInt(tr.querySelector('[data-field="po_qty"]').value) || 0;
+        var sh = parseInt(tr.querySelector('[data-field="shipped_qty"]').value) || 0;
+        var rem = tr.querySelector('[data-field="remaining"]');
+        if (rem) rem.textContent = Math.max(0, po - sh);
+      });
+    });
     container.querySelectorAll('input[data-field="dev_type"]').forEach(function(inp){
       _applyTypeColor(inp);
       inp.addEventListener('input', function(){ _applyTypeColor(inp); });
@@ -10902,17 +10942,28 @@ window.renderAdminV2ByDivision = function(){
     }
   };
 
-  function loadModels(projectKey, container) {
+  window.loadModels = function loadModels(projectKey, container) {
     if (!projectKey) { _modelsData = []; renderTable(container); return; }
-    loadTypes(projectKey);
     _currentProjectKey = projectKey;
-    fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models', { credentials: 'same-origin' })
-      .then(function(r) { return r.json(); })
+    loadTypes(projectKey);
+    
+    // ESS 여부 확인 후 모델 로드 및 테이블 렌더링
+    fetch('/projects').then(function(r){ return r.json(); }).then(function(d){
+      var p = (d.projects || []).find(function(x){ return x.key === projectKey || x.project_id === projectKey; });
+      _projIsEss = !!(p && (p.division_id === 'ess' || ['sdi', 'fluence', 'epc_power'].includes(projectKey)));
+      
+      // ESS 확인 후 모델 데이터 로드
+      return fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models', { credentials: 'same-origin' });
+    }).then(function(r) { return r.json(); })
       .then(function(d) {
         _modelsData = (d && d.models) || [];
         renderTable(container);
       })
-      .catch(function() { _modelsData = []; renderTable(container); });
+      .catch(function() { 
+        _projIsEss = false;
+        _modelsData = []; 
+        renderTable(container); 
+      });
   }
 
   // 모델 저장
@@ -10958,6 +11009,34 @@ window.renderAdminV2ByDivision = function(){
     }
     return false;
   }
+
+  // 사이드바 사업부 변경 시 프로젝트 목록 갱신 (전역)
+  document.addEventListener('DOMContentLoaded', function() {
+    var sidebarSel = document.getElementById('v2-division-select');
+    if (sidebarSel) {
+      sidebarSel.addEventListener('change', function() {
+        // 사업부 변경 시 모델 관리 페이지 다시 렌더링
+        if (typeof renderModelsPage === 'function') {
+          renderModelsPage();
+        }
+        var divId = sidebarSel.value || 'semiconductor';
+        fetch('/projects').then(function(r){ return r.json(); }).then(function(d){
+          var projs = (d.projects || []).filter(function(x){ return x.division_id === divId; });
+          var projSel = document.getElementById('mdl-proj-select');
+          if (projSel && projs.length > 0) {
+            projSel.innerHTML = projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
+            var firstKey = projs[0].key || projs[0].project_id || projs[0].id;
+            projSel.value = firstKey;
+            _currentProjectKey = firstKey;
+            var tb = document.getElementById('mdl-table-box');
+            if (tb) loadModels(firstKey, tb);
+            if (typeof loadTypes === 'function') loadTypes(firstKey);
+            if (typeof loadStatusNote === 'function') loadStatusNote(firstKey);
+          }
+        }).catch(function(){});
+      });
+    }
+  });
 
   // 페이지 렌더링 (data-page="models" 클릭 시)
   window.renderModelsPage = function() {
@@ -11028,6 +11107,7 @@ window.renderAdminV2ByDivision = function(){
         panes.forEach(function(pn) { pn.hidden = pn.dataset.mpane !== t.dataset.mtab; });
       });
     });
+
 
     const sel = document.getElementById('mdl-proj-select');
     const tableBox = document.getElementById('mdl-table-box');
@@ -11169,25 +11249,24 @@ window.renderAdminV2ByDivision = function(){
       renderTable(tableBox);
     });
 
-    fetch('/admin/config/projects?division_id=semiconductor', { credentials: 'same-origin' })
+    var sidebarSel = document.getElementById('v2-division-select');
+    var currentDiv = sidebarSel ? sidebarSel.value : 'semiconductor';
+    fetch('/admin/config/projects?division_id=' + encodeURIComponent(currentDiv), { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        const projects = data.projects || [];
-        sel.innerHTML = '';
-        if (!projects.length) {
-          sel.innerHTML = '<option value="">프로젝트 없음</option>';
+        var projects = data.projects || [];
+        if (projects.length === 0) {
+          sel.innerHTML = '<option value="">프로젝트가 없습니다</option>';
           tableBox.innerHTML = '<div class="mdl-empty">프로젝트가 없습니다</div>';
           return;
         }
-        projects.forEach(function(pj) {
-          const opt = document.createElement('option');
-          opt.value = pj.id;
-          opt.textContent = pj.label || pj.id;
-          sel.appendChild(opt);
-        });
+        sel.innerHTML = '<option value="">프로젝트 선택...</option>' + projects.map(function(p) {
+          return '<option value="' + p.id + '">' + (p.label || p.id) + '</option>';
+        }).join('');
         bindModelExcel();
-      loadModels(sel.value, tableBox);
-        loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
+        loadModels(sel.value, tableBox);
+        loadWeeklyPlan(sel.value);
+        loadStatusNote(sel.value);
       })
       .catch(function(e) {
         sel.innerHTML = '<option value="">오류: ' + e.message + '</option>';
@@ -11195,6 +11274,9 @@ window.renderAdminV2ByDivision = function(){
       });
 
     sel.addEventListener('change', function() {
+      window._modelsData = [];
+      window._projIsEss = ['sdi', 'fluence', 'epc_power'].includes(sel.value);
+      loadModels(sel.value, tableBox);
       loadModels(sel.value, tableBox);
       loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
     });
@@ -11208,7 +11290,25 @@ window.renderAdminV2ByDivision = function(){
       navItem.classList.add('active');
       var crumb = document.getElementById('v2-crumb-page');
       if (crumb) crumb.textContent = '모델 관리';
-      renderModelsPage();
+      // 사업부 변경 시 프로젝트 목록 갱신 후 첫 프로젝트 자동 선택
+      var sidebarSel = document.getElementById('v2-division-select');
+      var divId = sidebarSel ? sidebarSel.value : 'semiconductor';
+      fetch('/projects').then(function(r){ return r.json(); }).then(function(d){
+        var projs = (d.projects || []).filter(function(x){ return x.division_id === divId; });
+        var sel = document.getElementById('mdl-proj-select');
+        if (sel) {
+          sel.innerHTML = projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
+          if (projs.length > 0) {
+            _currentProjectKey = projs[0].key || projs[0].project_id || projs[0].id;
+            sel.value = _currentProjectKey;
+            // 모델 목록 로드
+            var tb = document.getElementById('mdl-table-box');
+            if (tb) loadModels(_currentProjectKey, tb);
+            loadTypes(_currentProjectKey);
+          }
+        }
+        renderModelsPage();
+      }).catch(function(){ renderModelsPage(); });
     }
   });
 })();
@@ -12411,6 +12511,11 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             "status": status,
             "price": max(0, price),
             "material_cost": max(0, material_cost),
+            # ESS 필드 추가
+            "po_qty": max(0, int(m.get("po_qty") or 0)),
+            "shipped_qty": max(0, int(m.get("shipped_qty") or 0)),
+            "due_text": str(m.get("due_text") or ""),
+            "issues": str(m.get("issues") or ""),
         }
         old = old_map.get(mid) or {}
         if group == "개발":
@@ -14690,7 +14795,7 @@ function renderNotePreview(cards) {
 
   const renderDueChip = (dueRaw) => {
     if (!dueRaw) return '';
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);  # noqa
     if (!m) return '';
     const due = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
     const today = new Date();

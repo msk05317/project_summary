@@ -669,6 +669,56 @@
       ],
       "visible": true,
       "order": 1
+    },
+    {
+      "id": "sdi",
+      "division_id": "ess",
+      "label": "SDI",
+      "badge_label": "SDI",
+      "aliases": [
+        "SDI",
+        "sdi"
+      ],
+      "keywords": [
+        "SDI"
+      ],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "fluence",
+      "division_id": "ess",
+      "label": "FLUENCE",
+      "badge_label": "FLUENCE",
+      "aliases": [
+        "FLUENCE",
+        "Fluence",
+        "fluence"
+      ],
+      "keywords": [
+        "FLUENCE",
+        "Fluence"
+      ],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "epc_power",
+      "division_id": "ess",
+      "label": "EPC POWER",
+      "badge_label": "EPC POWER",
+      "aliases": [
+        "EPC POWER",
+        "EPC Power",
+        "epc power",
+        "EPC"
+      ],
+      "keywords": [
+        "EPC POWER",
+        "EPC"
+      ],
+      "visible": true,
+      "order": 3
     }
   ]
 }
