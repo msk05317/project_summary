@@ -5316,7 +5316,7 @@ window._normalizeAiNumberedHtml = function(html){
   if (!html) return html;
   var s = String(html);
   // <br> 기준으로 라인 분리 (대소문자 무시)
-  var lines = s.split(/<br\s*\/?>/i);  # noqa
+  var lines = s.split(/<br\\s*\\/?>/i);
   // 각 라인의 &nbsp; 정규화
   lines = lines.map(function(l){ return l.replace(/&nbsp;/g, ' '); });
   // stripTag 함수: 태그 벗겨서 텍스트만 봤을 때 번호로 시작하는지 확인
@@ -14795,7 +14795,7 @@ function renderNotePreview(cards) {
 
   const renderDueChip = (dueRaw) => {
     if (!dueRaw) return '';
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueRaw);  # noqa
+    const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(dueRaw);
     if (!m) return '';
     const due = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
     const today = new Date();
