@@ -1,0 +1,12 @@
+mobile/
+backend/venv/
+backend/uploads/
+backend/slides/
+backend/slide_images/
+backend/cropped/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.bak_*
+backend/main.py.bak*
+backend/_backup_*/
+.git/
