@@ -10558,6 +10558,11 @@ window.renderAdminV2ByDivision = function(){
       const shq = r.querySelector('[data-field="shipped_qty"]');
       const duet = r.querySelector('[data-field="due_text"]');
       const iss = r.querySelector('[data-field="issues"]');
+      // ESS 필드 할당 추가
+      if (poq) m.po_qty = parseInt(poq.value || '0', 10) || 0;
+      if (shq) m.shipped_qty = parseInt(shq.value || '0', 10) || 0;
+      if (duet) m.due_text = duet.value || '';
+      if (iss) m.issues = iss.value || '';
       const dt = r.querySelector('[data-field="dev_type"]');
       if (dt) m.dev_type = dt.value;
       const st = r.querySelector('[data-field="status"]');
