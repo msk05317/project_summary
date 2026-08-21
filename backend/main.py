@@ -10696,8 +10696,6 @@ window.renderAdminV2ByDivision = function(){
   '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>'
 ) +
-          '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
-          '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
           (!_projIsEss ? '<td class="mdl-td-actions">' +
             '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
             '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
