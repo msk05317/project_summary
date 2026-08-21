@@ -1645,6 +1645,25 @@ def _calc_card_status(card: dict) -> str:
     return best
 
 
+
+def _parse_due_text(t: str):
+    """due_text '8월 24일' -> 'YYYY-MM-DD' (올해 기준, 지났으면 내년)"""
+    import re as _re
+    from datetime import date as _date, datetime as _dt
+    m = _re.search(r"(\d{1,2})월\s*(\d{1,2})일", t or "")
+    if not m:
+        return None
+    mo, d = int(m.group(1)), int(m.group(2))
+    today = _dt.utcnow().date()
+    for y in (today.year, today.year + 1):
+        try:
+            cand = _date(y, mo, d)
+            if cand >= today:
+                return cand.isoformat()
+        except ValueError:
+            return None
+    return None
+
 @app.get("/dashboard")
 def dashboard():
     """신호등 카드 - 각 카드에 project_key 포함 → Flutter에서 상세 이동에 사용"""
@@ -1837,8 +1856,8 @@ def dashboard():
                     f"PO 수량: {_m.get('po_qty', 0)} / 출하완료: {_m.get('shipped_qty', 0)} / 잔여: {_remaining}",
                     f"납기: {_m.get('due_text') or '-'}",
                 ] + ([f"이슈: {_issues_txt}"] if _issues_txt else []),
-                "due_date_min": None,
-                "report_date": None,
+                "due_date_min": _parse_due_text(_m.get("due_text") or ""),
+                "report_date": "2026-08-21",
                 "report_family": "models",
                 "project_key": _pk,
                 "project_id": _pk,
