@@ -10742,7 +10742,7 @@ window.renderAdminV2ByDivision = function(){
 
     let html = '<table class="mdl-table"><thead><tr>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
-      (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th><th style="width:56px">관리</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>') +
+      (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th><th style="width:56px">관리</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>이슈사항</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
@@ -10773,7 +10773,8 @@ window.renderAdminV2ByDivision = function(){
 :
   '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
   '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
-  '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>'
+  '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
+  '<td><textarea data-field="issues" class="mdl-input" placeholder="이슈사항" style="width:180px;min-height:34px;font-size:12px;">' + (m.issues || '') + '</textarea></td>'
 ) +
           (!_projIsEss ? '<td class="mdl-td-actions">' +
             '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
