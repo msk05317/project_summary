@@ -10734,7 +10734,7 @@ window.renderAdminV2ByDivision = function(){
 
     let html = '<table class="mdl-table"><thead><tr>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
-      (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>') +
+      (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th><th style="width:56px">관리</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
@@ -10772,7 +10772,7 @@ window.renderAdminV2ByDivision = function(){
             '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
             (isDev ? '<button type="button" class="mdl-btn mdl-btn-process mdl-row-process">Process 입력</button>' : '') +
             '<button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button>' +
-          '</td>' : '<td style="display:none;"><input data-field="status" type="hidden" value="' + (m.status || '정상') + '"><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '"></td>') + '</tr>';
+          '</td>' : '<td class="mdl-td-actions"><input data-field="status" type="hidden" value="' + (m.status || '정상') + '"><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '"><button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>') + '</tr>';
       });
     });
 
