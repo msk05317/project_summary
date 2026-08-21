@@ -4533,6 +4533,76 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
     return {"ok": True, "added": added, "updated": updated, "total": len(models)}
 
 
+# ─── 이슈 AI 요약 (models.json 기반, 캐시) ───
+_issues_summary_cache = {}  # project_key -> {"fingerprint": str, "summary": str}
+
+
+def _issues_fingerprint(models: list) -> str:
+    """issues 내용 기반 지문 — 변경 시에만 LLM 재호출"""
+    import hashlib
+    raw = "|".join(str(m.get("issues") or "") for m in models)
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def _summarize_issues(project_key: str, models: list) -> list:
+    """모델별 이슈를 각각 1~2문장으로 요약. 반환: [{"model": str, "summary": str}, ...]
+    summary 내 문장은 \n으로 분리 (이슈 / 후속조치)."""
+    with_issues = [(m.get("name") or m.get("id") or "", (m.get("issues") or "").strip())
+                   for m in models if (m.get("issues") or "").strip()]
+    if not with_issues:
+        return []
+    fp = _issues_fingerprint(models)
+    cached = _issues_summary_cache.get(project_key)
+    if cached and cached.get("fingerprint") == fp:
+        return cached["summary"]
+    if client is None:
+        return [{"model": n, "summary": t.splitlines()[0]} for n, t in with_issues]
+    bullet_src = "\n".join(f"[{name}] {txt}" for name, txt in with_issues)
+    prompt = (
+        "다음은 프로젝트 모델별 이슈사항입니다. 각 모델의 이슈를 항목별로 한 줄씩 요약하세요.\n"
+        "규칙:\n"
+        "- 이슈가 여러 개면 절대 합치지 말고 각각 별도 줄로 작성\n"
+        "- 각 줄은 짧은 명사구 형태 (예: '4T 철강 자재 8/20 입고 예정', 'KCC 도료 입고 지연 — 입고 후 3일 내 출하 가능')\n"
+        "- 날짜와 조치/일정은 반드시 포함\n"
+        "- 반드시 이 JSON 형식으로만 답하세요 (다른 텍스트 금지):\n"
+        '{"items": [{"model": "모델명", "summary": "줄1\\n줄2"}, ...]}\n\n' + bullet_src
+    )
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        import json as _json
+        raw = (resp.choices[0].message.content or "").strip()
+        parsed = _json.loads(raw)
+        items = parsed.get("items") if isinstance(parsed, dict) else parsed
+        if not isinstance(items, list):
+            items = list(parsed.values())[0] if isinstance(parsed, dict) else []
+        result = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            s = str(it.get("summary", ""))
+            # 문장 구분을 확실히: ". " 뒤를 줄바꿈으로
+            s = s.replace(". ", ".\n")
+            result.append({"model": str(it.get("model", "")), "summary": s})
+    except Exception:
+        result = [{"model": n, "summary": t.splitlines()[0]} for n, t in with_issues]
+    _issues_summary_cache[project_key] = {"fingerprint": fp, "summary": result}
+    return result
+
+@app.get("/projects/{project_key}/issues/summary")
+def get_issues_summary(project_key: str):
+    """앱 개요 화면용 이슈 AI 요약"""
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    models = data.get("projects", {}).get(_key, {}).get("models", [])
+    items = _summarize_issues(_key, models)
+    return {"project_key": _key, "items": items}
+
 @app.get("/projects/{project_key}/models")
 def get_project_models(project_key: str):
     """프로젝트 모델 목록 + 그룹별 요약 (앱 8번 화면용)
