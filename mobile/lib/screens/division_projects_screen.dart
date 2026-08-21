@@ -184,7 +184,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       final s = c.status.toUpperCase();
       final hasDue = (c.dueDateMin != null && c.dueDateMin!.isNotEmpty);
       if (hasDue) {
-        weightSum += _weightOf(s);
+        weightSum += c.progress ?? _weightOf(s);
         weightCount++;
       }
       switch (s) {
@@ -233,11 +233,23 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     // 프로젝트 카드 매핑
     // - Division 모델의 projects 리스트를 기준으로 하되,
     //   해당 project_key에 대응하는 dashboard 카드가 있으면 상태/진행률 반영
-    final cardByKey = <String, DashboardCard>{};
+    final cardsByKey = <String, List<DashboardCard>>{};
     for (final c in divisionCards) {
       if (c.projectKey.isNotEmpty) {
-        cardByKey[c.projectKey] = c;
+        cardsByKey.putIfAbsent(c.projectKey, () => []).add(c);
       }
+    }
+    int? avgProgressOf(String key) {
+      final list = cardsByKey[key] ?? const [];
+      final vals = list
+          .map((c) => c.progress ?? _weightOf(c.status))
+          .toList();
+      if (vals.isEmpty) return null;
+      return (vals.reduce((a, b) => a + b) / vals.length).round();
+    }
+    final cardByKey = <String, DashboardCard>{};
+    for (final e in cardsByKey.entries) {
+      cardByKey[e.key] = e.value.first;
     }
 
     final projects = <_ProjectItem>[];
@@ -246,7 +258,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       final hasData = p.hasModels;  // 모델 데이터 유무로 변경
       final hasDue = hasData && (card?.dueDateMin != null && card!.dueDateMin!.isNotEmpty);
       final status = hasData && card != null ? _statusLabel(card.status) : '';
-      final int? percent = hasDue ? _weightOf(card.status) : null;
+      final int? percent = hasDue ? avgProgressOf(p.id) : null;
       projects.add(_ProjectItem(
         id: p.id,
         englishName: _englishOf(p.id),
@@ -268,7 +280,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         englishName: _englishOf(c.projectKey),
         koreanName: c.projectLabel,
         status: _statusLabel(c.status),
-        progressPercent: hasDueX ? _weightOf(c.status) : null,
+        progressPercent: hasDueX ? avgProgressOf(c.projectKey) : null,
         hasData: true,
       ));
     }

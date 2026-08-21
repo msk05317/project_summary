@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 import '../design/typography.dart';
 import 'dev_process_screen.dart';
 
@@ -28,7 +29,7 @@ class ModelListScreen extends StatelessWidget {
   // ── 보고서 존재 여부 확인
   Future<bool> _checkReportExists(String projectKey) async {
     try {
-      final uri = Uri.parse('\$kApiBaseUrl/projects/\$projectKey');
+      final uri = Uri.parse('$kApiBaseUrl/projects/$projectKey');
       final res = await http.get(uri).timeout(const Duration(seconds: 5));
       if (res.statusCode != 200) return false;
       final decoded = jsonDecode(utf8.decode(res.bodyBytes));
@@ -170,21 +171,38 @@ class ModelListScreen extends StatelessWidget {
 
   // ── 양산 모델 카드 (보고서 존재 여부 확인 후 이동)
   Widget _massCard(BuildContext context, Map<String, dynamic> m) {
-    final progress = (m['progress'] as num?)?.toInt() ?? 0;
+    final poQty = (m['po_qty'] as num?)?.toInt() ?? 0;
+    final shipped = (m['shipped_qty'] as num?)?.toInt() ?? 0;
+    final progress = poQty > 0 ? ((shipped * 100) / poQty).round() : 0;
     final status = (m['status'] ?? '정상').toString();
     return GestureDetector(
       onTap: () async {
-        final hasReport = await _checkReportExists(projectKey);
+        Map<String, dynamic> modelData = m;
+        try {
+          final uri = Uri.parse('$kApiBaseUrl/projects/$projectKey/models');
+          final res = await http.get(uri).timeout(const Duration(seconds: 8));
+          if (res.statusCode == 200) {
+            final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+            final groups = decoded['groups'] as Map<String, dynamic>? ?? const {};
+            outer:
+            for (final g in groups.values) {
+              final list = (g['models'] as List? ?? const []);
+              for (final x in list) {
+                if (x is Map<String, dynamic> &&
+                    (x['id'] ?? x['name']) == (m['id'] ?? m['name'])) {
+                  modelData = x;
+                  break outer;
+                }
+              }
+            }
+          }
+        } catch (_) {}
         if (!context.mounted) return;
-        if (hasReport) {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => _NoReportScreen(projectName: projectName)),
-          );
-        } else {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => _NoReportScreen(projectName: projectName)),
-          );
-        }
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ModelDetailScreen(projectName: projectName, model: modelData),
+          ),
+        );
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -356,3 +374,175 @@ class _NoReportScreen extends StatelessWidget {
     );
   }
 }
+
+// ── 모델 상세 화면 (models.json 기반 KPI + 이슈)
+class ModelDetailScreen extends StatelessWidget {
+  final String projectName;
+  final Map<String, dynamic> model;
+  const ModelDetailScreen({super.key, required this.projectName, required this.model});
+
+  int get _poQty => (model['po_qty'] as num?)?.toInt() ?? 0;
+  int get _shipped => (model['shipped_qty'] as num?)?.toInt() ?? 0;
+  int get _remaining => _poQty - _shipped;
+  int get _shipProgress => _poQty > 0 ? ((_shipped * 100) / _poQty).round() : 0;
+  String get _dueText => (model['due_text'] ?? '').toString();
+
+  int get _delayDays {
+    final mm = RegExp(r'(\d{1,2})월\s*(\d{1,2})일').firstMatch(_dueText);
+    if (mm == null) return 0;
+    final now = DateTime.now();
+    var due = DateTime(now.year, int.parse(mm.group(1)!), int.parse(mm.group(2)!));
+    if (due.isBefore(now)) due = DateTime(now.year + 1, due.month, due.day);
+    final d = now.difference(due).inDays;
+    return d > 0 ? d : 0;
+  }
+
+  List<String> get _issueLines => (model['issues'] ?? '')
+      .toString()
+      .split('\n')
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF0F2C59);
+    const red = Color(0xFFD32F2F);
+    final delay = _delayDays;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F6F8),
+      appBar: AppBar(
+        backgroundColor: navy,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text('${model['name'] ?? ''}',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '목록 > $projectName > ${model['group'] ?? ''} > ${model['name'] ?? ''}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            _kpi('잔여 수량', '$_remaining', Colors.black87),
+            const SizedBox(width: 8),
+            _kpi('목표 납기일', _dueText.isEmpty ? '-' : _dueText, Colors.black87),
+          ]),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: _cardDeco(),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('출하 진행률 $_shipProgress%',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: _shipProgress / 100,
+                  minHeight: 8,
+                  backgroundColor: const Color(0xFFE5E7EB),
+                  valueColor: const AlwaysStoppedAnimation(navy),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('PO $_poQty · 출하완료 $_shipped',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          const Text('이슈사항',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          if (_issueLines.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: _cardDeco(),
+              child: const Text('등록된 이슈가 없습니다',
+                  style: TextStyle(color: Color(0xFF6B7280))),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: red.withOpacity(0.4), width: 1.5),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  _badge('이슈', filled: true, color: const Color(0xFFFFA000)),
+                  if (delay > 0) ...[
+                    const SizedBox(width: 6),
+                    _badge('지연', filled: false, color: red),
+                  ],
+                ]),
+                const SizedBox(height: 10),
+                for (final line in _issueLines)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(line,
+                        style: const TextStyle(fontSize: 13, height: 1.5)),
+                  ),
+              ]),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kpi(String label, String value, Color valueColor) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: _cardDeco(),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value,
+                style: TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w800, color: valueColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text(label,
+                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+          ]),
+        ),
+      );
+
+  BoxDecoration _cardDeco() => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2))
+        ],
+      );
+
+  Widget _badge(String txt, {required bool filled, required Color color}) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: filled ? color : Colors.transparent,
+          border: filled ? null : Border.all(color: color),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(txt,
+            style: TextStyle(
+                color: filled ? Colors.white : color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700)),
+      );
+}
+

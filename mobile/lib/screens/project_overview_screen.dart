@@ -18,12 +18,14 @@ class ProjectOverviewScreen extends StatefulWidget {
 class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   late Future<Map<String, dynamic>> _modelsFuture;
   late Future<Map<String, dynamic>> _planFuture;
+  late Future<List<Map<String, String>>> _summaryFuture;
 
   @override
   void initState() {
     super.initState();
     _modelsFuture = _fetchModels();
     _planFuture = _fetchWeeklyPlan();
+    _summaryFuture = _fetchIssuesSummary();
   }
 
   Future<Map<String, dynamic>> _fetchModels() async {
@@ -43,6 +45,26 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       return jsonDecode(utf8.decode(res.bodyBytes));
     } catch (_) {
       return {'has_plan': false};
+    }
+  }
+
+  Future<List<Map<String, String>>> _fetchIssuesSummary() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$kApiBaseUrl/projects/${widget.projectKey}/issues/summary'))
+          .timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) return const [];
+      final d = jsonDecode(utf8.decode(res.bodyBytes));
+      final items = (d['items'] as List? ?? const []);
+      return items
+          .whereType<Map<String, dynamic>>()
+          .map((e) => {
+                'model': (e['model'] ?? '').toString(),
+                'summary': (e['summary'] ?? '').toString(),
+              })
+          .toList();
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -107,7 +129,11 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
 
           final total = models.length;
           final avgProgress = total > 0
-              ? (models.fold<int>(0, (s, m) => s + ((m['progress'] as num?)?.toInt() ?? 0)) / total).round()
+              ? (models.fold<int>(0, (s, m) {
+                      final po = (m['po_qty'] as num?)?.toInt() ?? 0;
+                      final sh = (m['shipped_qty'] as num?)?.toInt() ?? 0;
+                      return s + (po > 0 ? ((sh * 100) / po).round() : 0);
+                    }) / total).round()
               : 0;
           final delayed = models.where((m) => m['status'] == '지연').length;
           final watched = models.where((m) => m['status'] == '주의').length;
@@ -123,6 +149,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
               setState(() {
                 _modelsFuture = _fetchModels();
                 _planFuture = _fetchWeeklyPlan();
+                _summaryFuture = _fetchIssuesSummary();
               });
             },
             child: ListView(
@@ -207,7 +234,21 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   }
 
   Widget _buildIssueSection(List<Map<String, dynamic>> models) {
-    final issues = models.where((m) => m['status'] == '지연' || m['status'] == '주의').toList();
+    // issues 텍스트가 실제로 있는 모델만 추출
+    final withIssues = models
+        .where((m) => (m['issues'] ?? '').toString().trim().isNotEmpty)
+        .toList();
+    // 이슈 라인 총 개수 (모델별 여러 줄 가능)
+    final totalLines = withIssues.fold<int>(
+        0,
+        (s, m) =>
+            s +
+            (m['issues'] ?? '')
+                .toString()
+                .split('\n')
+                .where((l) => l.trim().isNotEmpty)
+                .length);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -229,30 +270,88 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 color: const Color(0xFFFEE2E2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text('${issues.length}',
+              child: Text('$totalLines',
                   style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFDC2626))),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFDC2626))),
             ),
           ]),
           const SizedBox(height: 10),
-          if (issues.isEmpty)
-            const Text('이슈가 없습니다', style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)))
-          else
-            ...issues.map((m) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(children: [
-                    Icon(Icons.circle,
-                        size: 8,
-                        color: m['status'] == '지연'
-                            ? const Color(0xFFDC2626)
-                            : const Color(0xFFD97706)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text('${m['name']} — ${m['status']}',
-                          style: const TextStyle(fontSize: 13)),
+          // ── AI 모델별 요약 (같은 모델은 한 묶음)
+          FutureBuilder<List<Map<String, String>>>(
+            future: _summaryFuture,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Center(
+                    child: SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
+                );
+              }
+              final items = snap.data ?? const [];
+              // 같은 모델명끼리 합치기
+              final groups = <String, List<String>>{};
+              for (final it in items) {
+                final mk = (it['model'] ?? '').trim();
+                if (mk.isEmpty) continue;
+                final ls = (it['summary'] ?? '')
+                    .split('\n')
+                    .where((l) => l.trim().isNotEmpty)
+                    .toList();
+                groups.putIfAbsent(mk, () => []).addAll(ls);
+              }
+              if (groups.isEmpty) {
+                return const Text('이슈가 없습니다',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)));
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final e in groups.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(e.key,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6B7280))),
+                          const SizedBox(height: 4),
+                          for (final line in e.value)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: Icon(Icons.circle,
+                                        size: 5, color: Color(0xFFDC2626)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(line.trim(),
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            height: 1.45,
+                                            color: Color(0xFF374151))),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ]),
-                )),
+                ],
+              );
+            },
+          )
         ],
       ),
     );

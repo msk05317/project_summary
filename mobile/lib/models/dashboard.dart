@@ -32,6 +32,9 @@ class DashboardCard {
   // 헤드라인 텍스트 (현재 응답에서는 대부분 빈 문자열로 옴)
   final String headline;
 
+  // 실제 진행률 (출하/PO 기반, 없을 수 있음)
+  final int? progress;
+
   const DashboardCard({
     required this.projectKey,
     required this.projectLabel,
@@ -42,6 +45,7 @@ class DashboardCard {
     this.dueDateMin,
     this.reportDate,
     this.headline = '',
+    this.progress,
   });
 
   factory DashboardCard.fromJson(Map<String, dynamic> j) {
@@ -58,6 +62,7 @@ class DashboardCard {
       dueDateMin: j['due_date_min']?.toString(),
       reportDate: j['report_date']?.toString(),
       summaryBullets: bullets,
+      progress: (j['progress'] as num?)?.toInt(),
       headline: (j['headline'] ?? '').toString(),
     );
   }
