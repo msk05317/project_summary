@@ -1851,6 +1851,7 @@ def dashboard():
                 "doc_id": f"models:{_pk}:{_m.get('id')}",
                 "product": _m.get("id") or _m.get("name") or "",
                 "status": _m.get("status") or "BLACK",
+                "progress": round((_m.get("shipped_qty") or 0) * 100 / (_m.get("po_qty") or 1)) if (_m.get("po_qty") or 0) > 0 else 0,
                 "headline": _first_issue,
                 "summary_bullets": [
                     f"PO 수량: {_m.get('po_qty', 0)} / 출하완료: {_m.get('shipped_qty', 0)} / 잔여: {_remaining}",
