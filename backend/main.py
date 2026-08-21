@@ -1816,6 +1816,9 @@ def dashboard():
         # enrich (project_key 가 있으면 division/label 등 자동 채움)
         note_cards = [enrich_card(c) for c in note_cards]
 
+        # 🟢 오래된 이슈 카드 필터링 (사급자재/오웬 최종승인)
+        note_cards = [c for c in note_cards if not any(kw in json.dumps(c, ensure_ascii=False) for kw in ['사급자재', '오웬 최종승인'])]
+
         # 대시보드는 노트 카드만 표시 (PPT 카드는 관리자용 텍스트 추출 도구로만)
         cards = note_cards
     except Exception as _e:
