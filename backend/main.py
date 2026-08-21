@@ -2230,6 +2230,8 @@ def _save_models(data: dict) -> None:
     data["updated_at"] = datetime.now().isoformat()
     with open(MODELS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    _pj = {k: len(v.get("models", [])) for k, v in data.get("projects", {}).items()}
+    print(f"[save_models] wrote {MODELS_FILE} | projects={len(_pj)} | {_pj}")
 
 
 def _normalize_model(raw: dict, existing_ids: set) -> dict | None:
@@ -18111,4 +18113,4 @@ def admin_put_status_note(project_key: str, payload: dict, _admin: int = Depends
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
