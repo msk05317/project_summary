@@ -1701,6 +1701,9 @@ def dashboard():
 
     # 🟢 카드별로 division/project 분류 정보 enrichment (기존 필드 변경 없음)
     cards = [enrich_card(c) for c in cards]
+    
+    # 🟢 오래된 이슈 카드 필터링 (사급자재/오웬 최종승인)
+    cards = [c for c in cards if not any(kw in json.dumps(c, ensure_ascii=False) for kw in ['사급자재', '오웬 최종승인'])]
 
     # 🟢 주간 보고 노트 카드도 대시보드에 포함
     # 같은 project_key 가 PPT/노트 양쪽에 있으면 노트 카드를 우선
