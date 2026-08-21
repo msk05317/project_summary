@@ -1820,6 +1820,36 @@ def dashboard():
     cards = deduped
 
     # 🟢 모델 단위 그룹핑 (신규 필드, 옛 cards 는 호환을 위해 그대로 유지)
+    # --- ESS 합성 카드 주입 (models.json → dashboard 카드) ---
+    _models_data = _load_models()
+    _ess_projects = {"sdi": "SDI", "fluence": "FLUENCE", "epc_power": "EPC POWER"}
+    for _pk, _label in _ess_projects.items():
+        for _m in _models_data.get("projects", {}).get(_pk, {}).get("models", []):
+            _issues_txt = (_m.get("issues") or "").strip()
+            _first_issue = _issues_txt.splitlines()[0] if _issues_txt else ""
+            _remaining = (_m.get("po_qty") or 0) - (_m.get("shipped_qty") or 0)
+            cards.append({
+                "doc_id": f"models:{_pk}:{_m.get('id')}",
+                "product": _m.get("id") or _m.get("name") or "",
+                "status": _m.get("status") or "BLACK",
+                "headline": _first_issue,
+                "summary_bullets": [
+                    f"PO 수량: {_m.get('po_qty', 0)} / 출하완료: {_m.get('shipped_qty', 0)} / 잔여: {_remaining}",
+                    f"납기: {_m.get('due_text') or '-'}",
+                ] + ([f"이슈: {_issues_txt}"] if _issues_txt else []),
+                "due_date_min": None,
+                "report_date": None,
+                "report_family": "models",
+                "project_key": _pk,
+                "project_id": _pk,
+                "project_label": _label,
+                "project_badge": _label,
+                "division_id": "ess",
+                "division_label": "ESS사업부",
+                "from_note": False,
+            })
+    # --- 주입 끝 ---
+
     grouped_cards = _group_dashboard_cards(cards)
 
     return {"cards": cards, "grouped_cards": grouped_cards}
