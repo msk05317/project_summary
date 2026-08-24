@@ -11243,15 +11243,12 @@ window.renderAdminV2ByDivision = function(){
         fetch('/projects').then(function(r){ return r.json(); }).then(function(d){
           var projs = (d.projects || []).filter(function(x){ return x.division_id === divId; });
           var projSel = document.getElementById('mdl-proj-select');
-          if (projSel && projs.length > 0) {
-            projSel.innerHTML = projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
-            var firstKey = projs[0].key || projs[0].project_id || projs[0].id;
-            projSel.value = firstKey;
-            _currentProjectKey = firstKey;
+          if (projSel) {
+            projSel.innerHTML = '<option value="">프로젝트 선택...</option>' + projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
+            projSel.value = '';
+            _currentProjectKey = '';
             var tb = document.getElementById('mdl-table-box');
-            if (tb) loadModels(firstKey, tb);
-            if (typeof loadTypes === 'function') loadTypes(firstKey);
-            if (typeof loadStatusNote === 'function') loadStatusNote(firstKey);
+            if (tb) tb.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
           }
         }).catch(function(){});
       });
@@ -11498,7 +11495,10 @@ window.renderAdminV2ByDivision = function(){
     sel.addEventListener('change', function() {
       window._modelsData = [];
       window._projIsEss = ['sdi', 'fluence', 'epc_power'].includes(sel.value);
-      loadModels(sel.value, tableBox);
+      if (!sel.value) {
+        tableBox.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
+        return;
+      }
       loadModels(sel.value, tableBox);
       loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
     });
@@ -11519,15 +11519,11 @@ window.renderAdminV2ByDivision = function(){
         var projs = (d.projects || []).filter(function(x){ return x.division_id === divId; });
         var sel = document.getElementById('mdl-proj-select');
         if (sel) {
-          sel.innerHTML = projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
-          if (projs.length > 0) {
-            _currentProjectKey = projs[0].key || projs[0].project_id || projs[0].id;
-            sel.value = _currentProjectKey;
-            // 모델 목록 로드
-            var tb = document.getElementById('mdl-table-box');
-            if (tb) loadModels(_currentProjectKey, tb);
-            loadTypes(_currentProjectKey);
-          }
+          sel.innerHTML = '<option value="">프로젝트 선택...</option>' + projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
+          sel.value = '';
+          _currentProjectKey = '';
+          var tb = document.getElementById('mdl-table-box');
+          if (tb) tb.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
         }
         renderModelsPage();
       }).catch(function(){ renderModelsPage(); });
