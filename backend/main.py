@@ -5335,7 +5335,13 @@ def admin_v2_page(admin_auth: Optional[str] = Cookie(default=None)):
     return HTMLResponse(_ADMIN_V2_HTML)
 
 
-_ADMIN_V2_HTML = """<!DOCTYPE html>
+import os
+_ADMIN_V2_HTML_PATH = os.path.join(os.path.dirname(__file__), 'admin_v2.html')
+if os.path.exists(_ADMIN_V2_HTML_PATH):
+    with open(_ADMIN_V2_HTML_PATH, 'r', encoding='utf-8') as f:
+        _ADMIN_V2_HTML = f.read()
+else:
+    _ADMIN_V2_HTML = """<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -10924,7 +10930,7 @@ window.renderAdminV2ByDivision = function(){
         const hasActual = (s.actual || '').trim() !== '';
         const hasStatus = (s.status || '').trim() !== '';
         // status가 '미승인'이나 '미제출'이면 완료 아님
-        const isDone = hasActual && s.status !== '미승인' && s.status !== '미제출';
+        const isDone = (hasActual || s.status === '완료') && s.status !== '미승인' && s.status !== '미제출';
         const isCurrent = !isDone && !hasStatus && d.current_stage === s.name;
         html += '<div class="mdl-proc-row' + (isCurrent ? ' current' : '') + '" data-step-key="' + s.key + '">' +
           '<span class="mdl-proc-icon ' + (isDone ? 'done' : (isCurrent ? 'doing' : 'todo')) + '" ' +
@@ -11185,6 +11191,36 @@ window.renderAdminV2ByDivision = function(){
         } catch(e) { alert('❌ ' + e.message); }
       };
     }
+    
+    // 프로세스 초기화 버튼
+    var resetBtn = document.getElementById('mdl-proc-reset-btn');
+    if (resetBtn) {
+      resetBtn.onclick = function() {
+        if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요.'); return; }
+        if (!confirm('⚠️ 모든 모델의 프로세스를 초기화하시겠습니까?\n\n예상일, 실제일, 상태가 모두 비워집니다.')) return;
+        
+        var msgEl = document.getElementById('mdl-save-msg');
+        if (msgEl) { msgEl.textContent = '초기화 중...'; msgEl.className = 'mdl-save-msg'; }
+        
+        // 한 번의 API 호출로 전체 초기화 (JSON 손상 방지)
+        fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/process/reset-all',
+          { method: 'POST', credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(res) {
+            if (res.ok) {
+              if (msgEl) { msgEl.textContent = '✅ ' + res.reset_count + '개 모델 프로세스 초기화 완료'; msgEl.className = 'mdl-save-msg ok'; }
+              // 목록 새로고침
+              var tb = document.getElementById('mdl-table-box');
+              if (tb) loadModels(_currentProjectKey, tb);
+            } else {
+              if (msgEl) { msgEl.textContent = '❌ 초기화 실패: ' + (res.detail || ''); msgEl.className = 'mdl-save-msg err'; }
+            }
+          })
+          .catch(function(e) {
+            if (msgEl) { msgEl.textContent = '❌ 초기화 실패: ' + e.message; msgEl.className = 'mdl-save-msg err'; }
+          });
+      };
+    }
   };
 
   window.loadModels = function loadModels(projectKey, container) {
@@ -11322,6 +11358,7 @@ window.renderAdminV2ByDivision = function(){
           '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls" style="display:none;">' +
           '<button type="button" class="mdl-btn" id="mdl-proc-excel-btn" style="background:#7C3AED;color:#fff;">📅 프로세스 엑셀</button>' +
           '<input type="file" id="mdl-proc-excel-input" accept=".xlsx,.xls" style="display:none;">' +
+          '<button type="button" class="mdl-btn" id="mdl-proc-reset-btn" style="background:#DC2626;color:#fff;">🔄 프로세스 초기화</button>' +
             '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
             '<span id="mdl-save-msg" class="mdl-save-msg"></span>' +
           '</div>' +
@@ -18397,6 +18434,30 @@ def admin_mark_process_up_to(project_key: str, model_id: str, payload: dict, _ad
     raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
 
 
+@app.post("/admin/projects/{project_key}/process/reset-all")
+def admin_reset_all_process(project_key: str, _admin: int = Depends(get_admin_session)):
+    """프로젝트 전체 개발 모델 프로세스 초기화: 한 번에 처리하여 JSON 손상 방지"""
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    
+    reset_count = 0
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and m.get("group") == "개발":
+            proc = _ensure_process(m)
+            for s in proc:
+                s["expected"] = ""
+                s["actual"] = ""
+                s["status"] = ""
+            m["progress"] = _process_progress(proc)
+            reset_count += 1
+    
+    if reset_count > 0:
+        _save_models(data)
+    
+    return {"ok": True, "project_key": _key, "reset_count": reset_count, "message": f"{reset_count}개 모델 프로세스 초기화 완료"}
+
+
 @app.post("/admin/projects/{project_key}/models/{model_id}/process/mark-done")
 def admin_mark_process_done(project_key: str, model_id: str, _admin: int = Depends(get_admin_session)):
     """개발 모델 13단계 전부 완료 처리 — actual을 오늘 날짜로 채움"""
@@ -18450,6 +18511,12 @@ def admin_put_model_process(project_key: str, model_id: str, payload: dict, _adm
                 continue
             step["expected"] = str(inc.get("expected") or "").strip()[:10]
             step["actual"] = str(inc.get("actual") or "").strip()[:10]
+            # status 필드도 저장 (빈 문자열이면 기존 status 유지)
+            inc_status = str(inc.get("status") or "").strip()
+            if inc_status:
+                step["status"] = inc_status
+            elif "status" not in step:
+                step["status"] = ""
     target["progress"] = _process_progress(proc)
     _save_models(data)
     return {"ok": True, "model_id": model_id, "progress": target["progress"], "dev_type": target.get("dev_type")}
