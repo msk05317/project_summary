@@ -10951,8 +10951,7 @@ window.renderAdminV2ByDivision = function(){
             else st += 'background:#ECFDF5;color:#059669;border-color:#A7F3D0;';
             return '<select class="mdl-proc-status-sel" data-step-key="' + s.key + '" style="' + st + '">';
           })() +
-            '<option value="">' + (s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'))) + '</option>' +
-            '<option value="완료"' + (s.status === '완료' ? ' selected' : '') + '>완료</option>' +
+            '<option value="완료"' + ((s.status === '완료' || (!s.status && isDone)) ? ' selected' : '') + '>완료</option>' +
             '<option value="미승인"' + (s.status === '미승인' ? ' selected' : '') + '>미승인</option>' +
             '<option value="미제출"' + (s.status === '미제출' ? ' selected' : '') + '>미제출</option>' +
             '<option value="대기"' + (s.status === '대기' ? ' selected' : '') + '>대기</option>' +
@@ -18322,7 +18321,7 @@ def admin_set_step_status(project_key: str, model_id: str, payload: dict, _admin
     
     if not step_key:
         raise HTTPException(status_code=400, detail="step_key가 필요합니다.")
-    if status not in ("", "미승인", "미제출", "대기", "진행중"):
+    if status not in ("", "완료", "미승인", "미제출", "대기", "진행중"):
         raise HTTPException(status_code=400, detail="유효하지 않은 상태입니다.")
 
     data = _load_models()
@@ -18346,6 +18345,7 @@ def admin_set_step_status(project_key: str, model_id: str, payload: dict, _admin
                     # 상태가 "미승인"이나 "미제출"이면 actual 비움
                     if status in ("미승인", "미제출"):
                         s["actual"] = ""
+                    # "완료"는 상태만 변경하고 actual은 그대로 유지 (사용자가 직접 입력)
                     _save_models(data)
                     return {"ok": True, "model_id": model_id, "step_key": step_key, "status": status}
             raise HTTPException(status_code=400, detail=f"단계를 찾을 수 없습니다: {step_key}")
