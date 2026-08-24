@@ -10896,18 +10896,41 @@ window.renderAdminV2ByDivision = function(){
           g[0] + '<span class="mdl-proc-cnt">' + steps.length + '단계</span></div>';
       steps.forEach(function(s) {
         num++;
-        const isDone = (s.actual || '').trim() !== '';
-        const isCurrent = !isDone && d.current_stage === s.name;
+        const hasActual = (s.actual || '').trim() !== '';
+        const hasStatus = (s.status || '').trim() !== '';
+        // status가 '미승인'이나 '미제출'이면 완료 아님
+        const isDone = hasActual && s.status !== '미승인' && s.status !== '미제출';
+        const isCurrent = !isDone && !hasStatus && d.current_stage === s.name;
         html += '<div class="mdl-proc-row' + (isCurrent ? ' current' : '') + '" data-step-key="' + s.key + '">' +
-          '<span class="mdl-proc-icon ' + (isDone ? 'done' : (isCurrent ? 'doing' : 'todo')) + '">' +
-            (isDone ? '✓' : (isCurrent ? '●' : '○')) + '</span>' +
+          '<span class="mdl-proc-icon ' + (isDone ? 'done' : (isCurrent ? 'doing' : 'todo')) + '" ' +
+            'style="' + (s.status === '미승인' ? 'color:#DC2626;' : 
+             (s.status === '미제출' ? 'color:#D97706;' : '')) + '">' +
+            (isDone ? '✓' : (isCurrent ? '●' : (s.status === '미승인' ? '✗' : (s.status === '미제출' ? '!' : '○')))) + '</span>' +
           '<span class="mdl-proc-name">' + ('0' + num).slice(-2) + ' ' + s.name + '</span>' +
           '<span class="mdl-proc-dates">' +
             '<label>예상 <input type="date" data-f="expected" value="' + (s.expected || '') + '"></label>' +
             '<label>실제 <input type="date" data-f="actual" value="' + (s.actual || '') + '"></label>' +
           '</span>' +
-          '<span class="mdl-proc-status ' + (isDone ? 'done' : (isCurrent ? 'doing' : '')) + '">' +
-            (isDone ? '완료' : (isCurrent ? '진행중' : '대기')) + '</span>' +
+          '<span class="mdl-proc-status ' + (isDone ? 'done' : (isCurrent ? 'doing' : '')) + '" ' +
+            'style="' + (s.status === '미승인' ? 'color:#DC2626;font-weight:800;' : 
+             (s.status === '미제출' ? 'color:#D97706;font-weight:800;' : 
+              (s.status === '진행중' ? 'color:#2563EB;font-weight:800;' : ''))) + '">' +
+            (s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'))) + '</span>' +
+          (function() {
+            var st = 'padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #E5E7EB;border-radius:8px;margin-left:8px;cursor:pointer;outline:none;min-width:90px;text-align:center;';
+            if (s.status === '미승인') st += 'background:#FEE2E2;color:#DC2626;border-color:#FECACA;';
+            else if (s.status === '미제출') st += 'background:#FEF3C7;color:#D97706;border-color:#FDE68A;';
+            else if (s.status === '진행중' || (!s.status && isCurrent)) st += 'background:#DBEAFE;color:#2563EB;border-color:#93C5FD;';
+            else if (s.status === '대기' || (!s.status && !isDone && !isCurrent)) st += 'background:#F3F4F6;color:#6B7280;border-color:#E5E7EB;';
+            else st += 'background:#ECFDF5;color:#059669;border-color:#A7F3D0;';
+            return '<select class="mdl-proc-status-sel" data-step-key="' + s.key + '" style="' + st + '">';
+          })() +
+            '<option value="">' + (s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'))) + '</option>' +
+            '<option value="미승인"' + (s.status === '미승인' ? ' selected' : '') + '>미승인</option>' +
+            '<option value="미제출"' + (s.status === '미제출' ? ' selected' : '') + '>미제출</option>' +
+            '<option value="대기"' + (s.status === '대기' ? ' selected' : '') + '>대기</option>' +
+            '<option value="진행중"' + (s.status === '진행중' ? ' selected' : '') + '>진행중</option>' +
+          '</select>' +
         '</div>';
       });
       html += '</div>';
@@ -10917,6 +10940,32 @@ window.renderAdminV2ByDivision = function(){
 
     document.getElementById('mdl-proc-back').addEventListener('click', function() {
       renderTable(tableBox);
+    });
+
+    // 단계 상태 변경 핸들러
+    tableBox.querySelectorAll('.mdl-proc-status-sel').forEach(function(sel) {
+      sel.addEventListener('change', async function() {
+        const stepKey = sel.dataset.stepKey;
+        const status = sel.value;
+        const msgEl = document.getElementById('mdl-proc-msg');
+        if (msgEl) { msgEl.textContent = '처리 중...'; }
+        try {
+          const r = await fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) +
+            '/models/' + encodeURIComponent(d.model_id) + '/process/step-status',
+            { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin', body: JSON.stringify({ step_key: stepKey, status: status }) });
+          const d2 = await r.json();
+          if (d2.detail) throw new Error(d2.detail);
+          if (msgEl) { msgEl.textContent = '✅ 상태 변경: ' + (status || '기본'); msgEl.className = 'mdl-save-msg ok'; }
+          // 화면 전체 새로고침 (왼쪽 텍스트도 업데이트)
+          const r2 = await fetch('/projects/' + encodeURIComponent(_currentProjectKey) +
+            '/models/' + encodeURIComponent(d.model_id) + '/process', { credentials: 'same-origin' });
+          const fresh = await r2.json();
+          if (!fresh.detail) renderProcessEditor(fresh);
+        } catch (e) {
+          if (msgEl) { msgEl.textContent = '❌ ' + e.message; msgEl.className = 'mdl-save-msg err'; }
+        }
+      });
     });
 
     document.getElementById('mdl-proc-save').addEventListener('click', function() {
@@ -11076,6 +11125,34 @@ window.renderAdminV2ByDivision = function(){
         }
       } catch(e) { alert('❌ ' + e.message); }
     }
+
+    // 프로세스 엑셀 업로드
+    var procBtn = document.getElementById('mdl-proc-excel-btn');
+    var procInput = document.getElementById('mdl-proc-excel-input');
+    if (procBtn && procInput) {
+      procBtn.onclick = function(){ procInput.click(); };
+      procInput.onchange = async function(){
+        if (!procInput.files || !procInput.files[0]) return;
+        var f = procInput.files[0];
+        procInput.value = '';
+        if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요.'); return; }
+        var fd = new FormData();
+        fd.append('file', f);
+        try {
+          var r = await fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/process/import-xlsx',
+            { method: 'POST', body: fd, credentials: 'same-origin' });
+          var d = await r.json();
+          if (r.ok && d.ok) {
+            alert('✅ ' + d.matched + '개 모델 프로세스 반영' +
+              (d.skipped_count ? '\\n건너뜀: ' + d.skipped.slice(0,5).join(', ') + (d.skipped_count > 5 ? ' 외 ' + (d.skipped_count-5) + '개' : '') : ''));
+            var tb = document.getElementById('mdl-table-box');
+            if (tb) loadModels(_currentProjectKey, tb);
+          } else {
+            alert('❌ 실패: ' + (d.detail || '알 수 없는 오류'));
+          }
+        } catch(e) { alert('❌ ' + e.message); }
+      };
+    }
   };
 
   window.loadModels = function loadModels(projectKey, container) {
@@ -11207,6 +11284,8 @@ window.renderAdminV2ByDivision = function(){
           '<button type="button" class="mdl-btn" id="mdl-excel-btn" style="background:#059669;color:#fff;">📥 엑셀 업로드</button>' +
           '<button type="button" class="mdl-btn" id="mdl-excel-tpl-btn" style="background:#6B7280;color:#fff;">📄 양식 다운로드</button>' +
           '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls" style="display:none;">' +
+          '<button type="button" class="mdl-btn" id="mdl-proc-excel-btn" style="background:#7C3AED;color:#fff;">📅 프로세스 엑셀</button>' +
+          '<input type="file" id="mdl-proc-excel-input" accept=".xlsx,.xls" style="display:none;">' +
             '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
             '<span id="mdl-save-msg" class="mdl-save-msg"></span>' +
           '</div>' +
@@ -17982,7 +18061,7 @@ DEV_PROCESS_STEPS = [
 ]
 
 def _default_process() -> list:
-    return [{"key": k, "name": n, "group": g, "expected": "", "actual": ""} for k, n, g in DEV_PROCESS_STEPS]
+    return [{"key": k, "name": n, "group": g, "expected": "", "actual": "", "status": ""} for k, n, g in DEV_PROCESS_STEPS]
 
 def _model_key_alias(project_key: str) -> str:
     _alias = {"havaplate": "hrva_plate", "hrvaplate": "hrva_plate", "hrva-plate": "hrva_plate"}
@@ -18074,6 +18153,236 @@ def get_model_process(project_key: str, model_id: str):
                 "issues": m.get("issues") or "",
             }
     raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
+@app.post("/admin/projects/{project_key}/process/import-xlsx")
+async def admin_import_process_xlsx(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
+    """엑셀(Process Schedule 형식) 업로드 → 개발 모델 process 자동 채우기"""
+    from datetime import datetime, date
+    _key = _model_key_alias(project_key)
+
+    # 엑셀 헤더(영문) -> 백엔드 step key 매핑 (순서 = 엑셀 컬럼 순서)
+    STEP_MAP = [
+        ("fa_po", "FA PO"),
+        ("material_order", "Material Order"),
+        ("incoming", "Material Receiving"),
+        ("machining", "Machining (Assembly)"),
+        ("la_incoming", "LA Receiving"),
+        ("lair_write", "LAIR Preparation"),
+        ("lair_approval", "LAIR Approval"),
+        ("source_inspection", "Source Inspection"),
+        ("fair_write", "FAIR Preparation"),
+        ("fair_approval", "FAIR Approval"),
+        ("lap_test", "LAP Test"),
+        ("cdr", "CDR"),
+        ("final_approval", "Final Approval Complete"),
+    ]
+
+    try:
+        from openpyxl import load_workbook
+        import io
+        content = await file.read()
+        wb = load_workbook(io.BytesIO(content), data_only=True)
+        ws = wb[wb.sheetnames[0]]
+
+        def _to_date_str(v):
+            if v is None:
+                return ""
+            s = str(v).strip()
+            if not s or s.lower() in ("nan", "none"):
+                return ""
+            if isinstance(v, (datetime, date)):
+                return v.strftime("%Y-%m-%d")
+            # "2025-05-05 00:00:00" 형태
+            if len(s) >= 10 and s[4] == "-":
+                return s[:10]
+            return s  # "In stock" 등 텍스트도 완료로 간주하기 위해 보존
+
+        # 헤더: row1 = 단계명, row2 = Planned/Actual
+        hdr_steps = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+        hdr_kind  = [ws.cell(2, c).value for c in range(1, ws.max_column + 1)]
+
+        # Part Number 컬럼 위치
+        part_col = None
+        for c in range(1, ws.max_column + 1):
+            if str(ws.cell(1, c).value or "").strip().lower() in ("part number", "part_number", "partnumber"):
+                part_col = c
+                break
+        if part_col is None:
+            raise HTTPException(status_code=400, detail="엑셀에 'Part Number' 컬럼이 없습니다.")
+
+        # 단계별 (planned_col, actual_col) 매핑: 헤더 텍스트 포함으로 찾기
+        step_cols = []
+        cur_step_idx = -1
+        for c in range(1, ws.max_column + 1):
+            hv = str(hdr_steps[c - 1] or "").strip()
+            kv = str(hdr_kind[c - 1] or "").strip().lower()
+            # 단계명 셀인지 (숫자로 시작)
+            if hv and hv[0].isdigit():
+                cur_step_idx += 1
+            if cur_step_idx >= 0 and kv in ("planned", "actual"):
+                while len(step_cols) <= cur_step_idx:
+                    step_cols.append({})
+                step_cols[cur_step_idx][kv] = c
+
+        data = _load_models()
+        proj = data.get("projects", {}).get(_key, {})
+        models_by_id = {}
+        for m in proj.get("models", []):
+            if isinstance(m, dict):
+                for cand in {str(m.get("id") or "").strip().lower(), str(m.get("name") or "").strip().lower()}:
+                    if cand:
+                        models_by_id[cand] = m
+
+        matched, skipped = 0, []
+        for r in range(3, ws.max_row + 1):
+            part = str(ws.cell(r, part_col).value or "").strip()
+            if not part:
+                continue
+            m = models_by_id.get(part.lower())
+            if m is None:
+                skipped.append(part)
+                continue
+            if m.get("group") != "개발":
+                skipped.append(part + " (양산)")
+                continue
+            proc = _ensure_process(m)
+            for i, (skey, _label) in enumerate(STEP_MAP):
+                if i >= len(step_cols):
+                    break
+                cols = step_cols[i]
+                pcol, acol = cols.get("planned"), cols.get("actual")
+                planned = _to_date_str(ws.cell(r, pcol).value) if pcol else ""
+                actual = _to_date_str(ws.cell(r, acol).value) if acol else ""
+                if planned and not str(proc[i].get("expected") or "").strip():
+                    proc[i]["expected"] = planned
+                if actual and not str(proc[i].get("actual") or "").strip():
+                    proc[i]["actual"] = actual
+            # 진행률 재계산
+            done = sum(1 for s in proc if str(s.get("actual") or "").strip())
+            m["progress"] = round(done / len(proc) * 100)
+            matched += 1
+
+        _save_models(data)
+        return {
+            "ok": True,
+            "project_key": _key,
+            "matched": matched,
+            "skipped": skipped[:20],
+            "skipped_count": len(skipped),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"엑셀 처리 실패: {e}")
+
+
+@app.post("/admin/projects/{project_key}/models/{model_id}/process/step-status")
+def admin_set_step_status(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """특정 단계의 상태를 명시적으로 설정 (미승인/미제출/대기 등)"""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    step_key = (payload.get("step_key") or "").strip()
+    status = (payload.get("status") or "").strip()
+    
+    if not step_key:
+        raise HTTPException(status_code=400, detail="step_key가 필요합니다.")
+    if status not in ("", "미승인", "미제출", "대기", "진행중"):
+        raise HTTPException(status_code=400, detail="유효하지 않은 상태입니다.")
+
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            if m.get("group") != "개발":
+                raise HTTPException(status_code=400, detail="개발 모델만 처리 가능합니다.")
+            proc = _ensure_process(m)
+            
+            # __all__ 특수 처리: 모든 단계 상태 초기화
+            if step_key == "__all__":
+                for s in proc:
+                    s["status"] = ""
+                _save_models(data)
+                return {"ok": True, "model_id": model_id, "step_key": "__all__", "status": "초기화"}
+            
+            for s in proc:
+                if s.get("key") == step_key:
+                    s["status"] = status
+                    # 상태가 "미승인"이나 "미제출"이면 actual 비움
+                    if status in ("미승인", "미제출"):
+                        s["actual"] = ""
+                    _save_models(data)
+                    return {"ok": True, "model_id": model_id, "step_key": step_key, "status": status}
+            raise HTTPException(status_code=400, detail=f"단계를 찾을 수 없습니다: {step_key}")
+    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
+
+@app.post("/admin/projects/{project_key}/models/{model_id}/process/mark-up-to")
+def admin_mark_process_up_to(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
+    """지정 단계까지 모든 이전 단계 완료 처리 (순서 무관하게 최근 승인 기준)"""
+    from urllib.parse import unquote
+    from datetime import date
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    step_key = (payload.get("step_key") or "").strip()
+    if not step_key:
+        raise HTTPException(status_code=400, detail="step_key가 필요합니다.")
+
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            if m.get("group") != "개발":
+                raise HTTPException(status_code=400, detail="개발 모델만 처리 가능합니다.")
+            proc = _ensure_process(m)
+
+            # step_key 위치 찾기
+            target_idx = None
+            for i, s in enumerate(proc):
+                if s.get("key") == step_key:
+                    target_idx = i
+                    break
+            if target_idx is None:
+                raise HTTPException(status_code=400, detail=f"단계를 찾을 수 없습니다: {step_key}")
+
+            today = date.today().isoformat()
+            # target_idx까지 모든 단계 완료 (이후는 그대로)
+            for i in range(target_idx + 1):
+                if not str(proc[i].get("actual") or "").strip():
+                    proc[i]["actual"] = today
+
+            # 진행률 재계산
+            done = sum(1 for s in proc if str(s.get("actual") or "").strip())
+            m["progress"] = round(done / len(proc) * 100)
+            _save_models(data)
+            return {"ok": True, "model_id": model_id, "up_to": step_key, "done": done, "total": len(proc), "progress": m["progress"]}
+    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
+
+@app.post("/admin/projects/{project_key}/models/{model_id}/process/mark-done")
+def admin_mark_process_done(project_key: str, model_id: str, _admin: int = Depends(get_admin_session)):
+    """개발 모델 13단계 전부 완료 처리 — actual을 오늘 날짜로 채움"""
+    from urllib.parse import unquote
+    from datetime import date
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            if m.get("group") != "개발":
+                raise HTTPException(status_code=400, detail="개발 모델만 처리 가능합니다.")
+            proc = _ensure_process(m)
+            today = date.today().isoformat()
+            for s in proc:
+                if not str(s.get("actual") or "").strip():
+                    s["actual"] = today
+            m["progress"] = 100
+            m["status"] = "정상"
+            _save_models(data)
+            return {"ok": True, "model_id": model_id, "done": len(proc), "total": len(proc), "progress": 100}
+    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
 
 @app.put("/admin/projects/{project_key}/models/{model_id}/process")
 def admin_put_model_process(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
