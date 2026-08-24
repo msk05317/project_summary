@@ -11156,6 +11156,13 @@ window.renderAdminV2ByDivision = function(){
   };
 
   window.loadModels = function loadModels(projectKey, container) {
+    if (!projectKey) {
+      _currentProjectKey = '';
+      if (container) {
+        container.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
+      }
+      return;
+    }
     if (!projectKey) { window._modelsData = []; renderTable(container); return; }
     _currentProjectKey = projectKey;
     loadTypes(projectKey);
