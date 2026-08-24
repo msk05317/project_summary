@@ -4419,6 +4419,19 @@ def list_projects():
     return {"projects": projects}
 @app.get("/admin/models/template")
 def admin_models_template(_admin: int = Depends(get_admin_session)):
+    """업로드된 모델 추가 양식 파일을 그대로 반환"""
+    from fastapi.responses import FileResponse
+    import os
+    
+    template_path = "uploads/model_add_template.xlsx"
+    if os.path.exists(template_path):
+        return FileResponse(
+            template_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="모델 추가 양식.xlsx"
+        )
+    
+    # 파일이 없으면 기존 방식으로 동적 생성 (fallback)
     from io import BytesIO
     from openpyxl import Workbook
     wb = Workbook()
