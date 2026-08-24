@@ -11005,7 +11005,8 @@ window.renderAdminV2ByDivision = function(){
         steps.push({
           key: row.dataset.stepKey,
           expected: row.querySelector('[data-f="expected"]').value || '',
-          actual: row.querySelector('[data-f="actual"]').value || ''
+          actual: row.querySelector('[data-f="actual"]').value || '',
+          status: row.querySelector('.mdl-proc-status-sel') ? row.querySelector('.mdl-proc-status-sel').value : ''
         });
       });
       const msg = document.getElementById('mdl-proc-msg');
@@ -18111,12 +18112,14 @@ def _ensure_process(m: dict) -> list:
 def _process_progress(proc: list) -> int:
     if not proc:
         return 0
-    done = sum(1 for s in proc if str(s.get("actual") or "").strip())
+    # actual이 있거나 status가 '완료'면 완료로 인식
+    done = sum(1 for s in proc if str(s.get("actual") or "").strip() or s.get("status") == "완료")
     return round(done / len(proc) * 100)
 
 def _process_current(proc: list):
     for s in proc:
-        if not str(s.get("actual") or "").strip():
+        # actual이 있거나 status가 '완료'면 완료로 인식하고 다음 단계로
+        if not str(s.get("actual") or "").strip() and s.get("status") != "완료":
             return s.get("name") or "", str(s.get("expected") or "")
     return "최종 승인 완료", ""
 
