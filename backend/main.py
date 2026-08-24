@@ -18071,6 +18071,7 @@ def get_model_process(project_key: str, model_id: str):
                 "progress": _process_progress(proc),
                 "current_stage": stage,
                 "current_expected": expected,
+                "issues": m.get("issues") or "",
             }
     raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
 
