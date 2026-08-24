@@ -128,10 +128,10 @@ window._normalizeAiNumberedHtml = function(html){
       continue;
     }
     // "1)" "2." 등 새 항목 시작
-    var m = text.match(/^(\\d+)[)\\.]\s+(.*)$/);
+    var m = text.match(/^(\d+)[)\.]\s+(.*)$/);
     if (m) {
       // 새 항목 시작 - raw에서 "숫자)" 또는 "숫자." 부분 제거
-      var stripped = raw.replace(/^(\s|&nbsp;|\\u00A0)*\\d+[)\\.]\s*/, '');
+      var stripped = raw.replace(/^(\s|&nbsp;|\u00A0)*\d+[)\.]\s*/, '');
       if (current !== null) items.push(current);
       current = stripped;
     } else {
@@ -708,9 +708,9 @@ window._attachAutoListBehavior = function(el){
   }
 
   function _detectExistingListLine(line){
-    var m = line.match(/^(\s*)(\\d+)([\\)\\.])\s+(.*)$/);
+    var m = line.match(/^(\s*)(\d+)([\)\.])\s+(.*)$/);
     if (m) return { type: 'num', indent: m[1], num: parseInt(m[2],10), sep: m[3], content: m[4] };
-    m = line.match(/^(\s*)([-*\\u00B7])\s+(.*)$/);
+    m = line.match(/^(\s*)([-*\u00B7])\s+(.*)$/);
     if (m) return { type: 'bullet', indent: m[1], bullet: m[2], content: m[3] };
     return null;
   }
@@ -1724,7 +1724,7 @@ window.renderAdminV2ByDivision = function(){
         }
         // 마지막 fallback: URL/hash에서 division 추출
         if (!divIdFromTarget) {
-          const m = location.hash.match(/division[=/]([\\w-]+)/);
+          const m = location.hash.match(/division[=/]([\w-]+)/);
           if (m) divIdFromTarget = m[1];
         }
 
@@ -2169,12 +2169,12 @@ window.renderAdminV2ByDivision = function(){
                       +   '<span style="font-weight:700;font-size:12px;line-height:1;color:#111827;">형광</span>'
                       +   '<span class="word-color-preview" style="display:inline-block;width:12px;height:8px;border-radius:3px;background:#FFF3B0;border:1px solid #E5E7EB;"></span>'
                       +   '</button>'
-                      +   '<button type="button" data-cmd="justifyLeft" title="왼쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"17\" y1=\"10\" x2=\"3\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"17\" y1=\"18\" x2=\"3\" y2=\"18\"></line></svg></button>'
-                      +   '<button type="button" data-cmd="justifyCenter" title="가운데 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"10\" x2=\"6\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"18\" y1=\"18\" x2=\"6\" y2=\"18\"></line></svg></button>'
-                      +   '<button type="button" data-cmd="justifyRight" title="오른쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"21\" y1=\"10\" x2=\"7\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"21\" y1=\"18\" x2=\"7\" y2=\"18\"></line></svg></button>'
-                      +   '<button type="button" data-cmd="outdent" title="내어쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"7 8 3 12 7 16\"></polyline><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"></line><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"></line><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"></line></svg></button>'
-                      +   '<button type="button" data-cmd="indent" title="들여쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"3 8 7 12 3 16\"></polyline><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"></line><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"></line><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"></line></svg></button>'
-                      +   '<button type="button" data-cmd="insertUnorderedList" title="글머리 기호" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"></line><circle cx=\"4\" cy=\"6\" r=\"1.5\" fill=\"#4b5563\"></circle><circle cx=\"4\" cy=\"12\" r=\"1.5\" fill=\"#4b5563\"></circle><circle cx=\"4\" cy=\"18\" r=\"1.5\" fill=\"#4b5563\"></circle></svg></button>'
+                      +   '<button type="button" data-cmd="justifyLeft" title="왼쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg></button>'
+                      +   '<button type="button" data-cmd="justifyCenter" title="가운데 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="10" x2="6" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="18" y1="18" x2="6" y2="18"></line></svg></button>'
+                      +   '<button type="button" data-cmd="justifyRight" title="오른쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="7" y2="18"></line></svg></button>'
+                      +   '<button type="button" data-cmd="outdent" title="내어쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 8 3 12 7 16"></polyline><line x1="21" y1="12" x2="11" y2="12"></line><line x1="21" y1="6" x2="11" y2="6"></line><line x1="21" y1="18" x2="11" y2="18"></line></svg></button>'
+                      +   '<button type="button" data-cmd="indent" title="들여쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 8 7 12 3 16"></polyline><line x1="21" y1="12" x2="11" y2="12"></line><line x1="21" y1="6" x2="11" y2="6"></line><line x1="21" y1="18" x2="11" y2="18"></line></svg></button>'
+                      +   '<button type="button" data-cmd="insertUnorderedList" title="글머리 기호" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="4" cy="6" r="1.5" fill="#4b5563"></circle><circle cx="4" cy="12" r="1.5" fill="#4b5563"></circle><circle cx="4" cy="18" r="1.5" fill="#4b5563"></circle></svg></button>'
                       +   '<select data-list-style="ul" title="불릿 종류" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
                       +     '<option value="disc">●</option>'
                       +     '<option value="circle">○</option>'
@@ -2187,7 +2187,7 @@ window.renderAdminV2ByDivision = function(){
                       +     '<option value="ov-diamond">◆</option>'
                       +     '<option value="ov-dot">·</option>'
                       +   '</select>'
-                      +   '<button type="button" data-cmd="insertOrderedList" title="번호 매기기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"10\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"10\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"10\" y1=\"18\" x2=\"21\" y2=\"18\"></line><text x=\"2\" y=\"8\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">1</text><text x=\"2\" y=\"14\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">2</text><text x=\"2\" y=\"20\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">3</text></svg></button>'
+                      +   '<button type="button" data-cmd="insertOrderedList" title="번호 매기기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2" y="8" font-size="6" fill="#4b5563" stroke="none" font-family="Arial" font-weight="700">1</text><text x="2" y="14" font-size="6" fill="#4b5563" stroke="none" font-family="Arial" font-weight="700">2</text><text x="2" y="20" font-size="6" fill="#4b5563" stroke="none" font-family="Arial" font-weight="700">3</text></svg></button>'
                       +   '<select data-list-style="ol" title="번호 종류 (오른쪽 클릭으로 이어/재시작)" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
                       +     '<option value="decimal">1.</option>'
                       +     '<option value="ov-circled">①</option>'
@@ -4521,7 +4521,7 @@ window.renderAdminV2ByDivision = function(){
       };
 
       window._addSectionFlow = function(){
-        const raw = prompt('추가할 섹션명을 입력하세요\n(예: 현황, 주차별 출하실적, 주차별 계획, 주요내용, 이슈/리스크, 요청사항)');
+        const raw = prompt('추가할 섹션명을 입력하세요\\n(예: 현황, 주차별 출하실적, 주차별 계획, 주요내용, 이슈/리스크, 요청사항)');
         if (raw === null) return;
         const name = String(raw || '').trim();
         if (!name) { alert('섹션명을 입력해주세요'); return; }
@@ -4542,10 +4542,10 @@ window.renderAdminV2ByDivision = function(){
             return _normSectionName(s.title) === _normSectionName(canonical);
           });
           if (existingIdx >= 0) {
-            const ok = confirm('이미 "' + canonical + '" 섹션이 있습니다.\n이 섹션으로 대체하시겠습니까?\n\n[확인] 기존 섹션 사용 (추가 안 함)\n[취소] 그래도 "' + name + '"으로 추가');
+            const ok = confirm('이미 "' + canonical + '" 섹션이 있습니다.\\n이 섹션으로 대체하시겠습니까?\\n\\n[확인] 기존 섹션 사용 (추가 안 함)\\n[취소] 그래도 "' + name + '"으로 추가');
             if (ok) return;
           } else {
-            const useCanonical = confirm('"' + name + '" 은(는) 표준명 "' + canonical + '"와 유사합니다.\n표준명으로 추가할까요?\n\n[확인] "' + canonical + '"로 추가\n[취소] 입력한 그대로 "' + name + '"으로 추가');
+            const useCanonical = confirm('"' + name + '" 은(는) 표준명 "' + canonical + '"와 유사합니다.\\n표준명으로 추가할까요?\\n\\n[확인] "' + canonical + '"로 추가\\n[취소] 입력한 그대로 "' + name + '"으로 추가');
             if (useCanonical) {
               sectionsState.push({id: _genSecId(), title: canonical, kind: 'mixed', blocks: []});
               _markSectionsDirty();
@@ -4852,7 +4852,7 @@ window.renderAdminV2ByDivision = function(){
         // display_title에서 프로젝트명만 추출: " · W## 주간보고" 앞까지
         let newProjectName = newLabel;
         let newWeek = null;
-        const m = newLabel.match(/^(.*?)(?:\s*·\s*W(\\d+)\s*주간보고)?\s*$/);
+        const m = newLabel.match(/^(.*?)(?:\s*·\s*W(\d+)\s*주간보고)?\s*$/);
         if (m) {
           newProjectName = (m[1] || '').trim();
           if (m[2]) newWeek = parseInt(m[2], 10);
@@ -5614,11 +5614,12 @@ window.renderAdminV2ByDivision = function(){
             else st += 'background:#ECFDF5;color:#059669;border-color:#A7F3D0;';
             return '<select class="mdl-proc-status-sel" data-step-key="' + s.key + '" style="' + st + '">';
           })() +
-            '<option value="완료"' + ((s.status === '완료' || (!s.status && isDone)) ? ' selected' : '') + '>완료</option>' +
-            '<option value="미승인"' + (s.status === '미승인' ? ' selected' : '') + '>미승인</option>' +
-            '<option value="미제출"' + (s.status === '미제출' ? ' selected' : '') + '>미제출</option>' +
-            '<option value="대기"' + (s.status === '대기' ? ' selected' : '') + '>대기</option>' +
-            '<option value="진행중"' + (s.status === '진행중' ? ' selected' : '') + '>진행중</option>' +
+            (function(){
+            var eff = s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'));
+            return ['완료','미승인','미제출','대기','진행중'].map(function(v){
+              return '<option value="' + v + '"' + (eff === v ? ' selected' : '') + '>' + v + '</option>';
+            }).join('');
+          })() +
           '</select>' +
         '</div>';
       });
@@ -5839,7 +5840,7 @@ window.renderAdminV2ByDivision = function(){
           var d = await r.json();
           if (r.ok && d.ok) {
             alert('✅ ' + d.matched + '개 모델 프로세스 반영' +
-              (d.skipped_count ? '\n건너뜀: ' + d.skipped.slice(0,5).join(', ') + (d.skipped_count > 5 ? ' 외 ' + (d.skipped_count-5) + '개' : '') : ''));
+              (d.skipped_count ? '\\n건너뜀: ' + d.skipped.slice(0,5).join(', ') + (d.skipped_count > 5 ? ' 외 ' + (d.skipped_count-5) + '개' : '') : ''));
             var tb = document.getElementById('mdl-table-box');
             if (tb) loadModels(_currentProjectKey, tb);
           } else {

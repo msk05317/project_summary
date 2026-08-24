@@ -10957,11 +10957,12 @@ window.renderAdminV2ByDivision = function(){
             else st += 'background:#ECFDF5;color:#059669;border-color:#A7F3D0;';
             return '<select class="mdl-proc-status-sel" data-step-key="' + s.key + '" style="' + st + '">';
           })() +
-            '<option value="완료"' + ((s.status === '완료' || (!s.status && isDone)) ? ' selected' : '') + '>완료</option>' +
-            '<option value="미승인"' + (s.status === '미승인' ? ' selected' : '') + '>미승인</option>' +
-            '<option value="미제출"' + (s.status === '미제출' ? ' selected' : '') + '>미제출</option>' +
-            '<option value="대기"' + (s.status === '대기' ? ' selected' : '') + '>대기</option>' +
-            '<option value="진행중"' + (s.status === '진행중' ? ' selected' : '') + '>진행중</option>' +
+            (function(){
+            var eff = s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'));
+            return ['완료','미승인','미제출','대기','진행중'].map(function(v){
+              return '<option value="' + v + '"' + (eff === v ? ' selected' : '') + '>' + v + '</option>';
+            }).join('');
+          })() +
           '</select>' +
         '</div>';
       });
