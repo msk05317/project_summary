@@ -18212,7 +18212,9 @@ def get_model_process(project_key: str, model_id: str):
                 raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
             proc = _ensure_process(m)
             _save_models(data)
-            done = sum(1 for s in proc if str(s.get("actual") or "").strip())
+            done = sum(1 for s in proc
+                       if (str(s.get("actual") or "").strip() or str(s.get("status") or "") == "완료")
+                       and str(s.get("status") or "") not in ("미승인", "미제출"))
             stage, expected = _process_current(proc)
             return {
                 "model_id": model_id,
