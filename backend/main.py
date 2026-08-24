@@ -17,6 +17,9 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Response, Cookie, Depends
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -458,7 +461,6 @@ from chart_extractor import extract_charts_from_pptx
 # =========================================================
 # 환경 변수
 # =========================================================
-load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 UPLOAD_PASSWORD = os.getenv("UPLOAD_PASSWORD", "1234")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
@@ -16140,15 +16142,70 @@ function renderNotePreview(cards) {
 
 @app.post("/chat")
 async def chat(payload: dict):
-    """
-    RAG 챗봇 엔드포인트
-    입력: {"message": "질문 텍스트", "top_k": 5}
-    출력: {"answer": "...", "sources": [{project_label, division_id, ...}]}
-    """
+    """models.json 기반 챗봇"""
     message = (payload or {}).get("message", "").strip()
-    top_k = int((payload or {}).get("top_k", 5))
     if not message:
         return {"answer": "", "sources": [], "error": "empty message"}
+
+    # 음성 오인식 보정
+    corrected = message
+    try:
+        from difflib import SequenceMatcher
+        import unicodedata, re as _re2
+        
+        def _sim(a, b):
+            c = SequenceMatcher(None, a, b).ratio()
+            j = SequenceMatcher(None, unicodedata.normalize("NFKD", a), unicodedata.normalize("NFKD", b)).ratio()
+            return max(c, j)
+        
+        voice_aliases = _load_learned_aliases().get("aliases", {})
+        words = _re2.findall(r'[가-힣a-zA-Z0-9]+', message)
+        for w in words:
+            wl = w.lower()
+            if wl in voice_aliases:
+                corrected = corrected.replace(w, voice_aliases[wl])
+                print(f"[chat] '{w}' → '{voice_aliases[wl]}'")
+    except Exception as e:
+        print(f"[chat] 보정 오류: {e}")
+
+    # models.json 조회
+    try:
+        data = _load_models()
+        projects = data.get("projects", {})
+        
+        stats = []
+        for pk, proj in projects.items():
+            models = proj.get("models", [])
+            mass = sum(1 for m in models if m.get("group") == "양산")
+            dev = sum(1 for m in models if m.get("group") == "개발")
+            label = next((p.get("label") for p in _cl.get_projects(visible_only=True) if p.get("id") == pk), pk)
+            stats.append({"key": pk, "label": label, "mass": mass, "dev": dev, "total": len(models)})
+        
+        # 관련 프로젝트 필터
+        msg_lower = corrected.lower()
+        relevant = [s for s in stats if s["label"].lower() in msg_lower or s["key"].lower() in msg_lower] or stats[:3]
+        
+        context = "\n".join([f"{s['label']}: 양산 {s['mass']}종, 개발 {s['dev']}종, 총 {s['total']}종" for s in relevant])
+        
+        if client:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "반도체 프로젝트 데이터 기반으로 정확히 답변. 숫자는 원문 유지. 간결하게 2문장 이내."},
+                    {"role": "user", "content": f"[데이터]\n{context}\n\n[질문] {corrected}"}
+                ],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            answer = resp.choices[0].message.content or ""
+        else:
+            answer = f"조회 결과: {context}"
+        
+        return {"answer": answer, "sources": relevant}
+    except Exception as e:
+        return {"answer": "", "sources": [], "error": str(e)}
+
+
 
     if not _vs.is_ready():
         return {
