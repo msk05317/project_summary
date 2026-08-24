@@ -10721,6 +10721,16 @@ window.renderAdminV2ByDivision = function(){
   }
 
   window.renderTable = function renderTable(container) {
+    // 프로세스 편집에서 돌아올 때 툴바·노트·유형바 복원
+    ['mdl-toolbar', 'mdl-note-card', 'mdl-types-bar'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = '';
+    });
+    // 이전 저장 메시지 초기화 (편집 화면에서 남은 것 방지)
+    ['mdl-save-msg', 'mdl-proc-msg', 'mdl-note-msg'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) { el.textContent = ''; el.className = 'mdl-save-msg'; }
+    });
     // ESS 프로젝트 동기 강제 판별 (fetch 레이스 컨디션 방지)
     var _pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) || '';
     if (['sdi','fluence','epc_power'].indexOf(_pk) >= 0) { _projIsEss = true; }
@@ -10866,21 +10876,23 @@ window.renderAdminV2ByDivision = function(){
   function renderProcessEditor(d) {
     const tableBox = document.getElementById('mdl-table-box');
     if (!tableBox) return;
+    // 목록용 툴바·노트·유형바 숨기기 (프로세스 편집 중에는 불필요)
+    ['mdl-toolbar', 'mdl-note-card', 'mdl-types-bar'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
     const groups = [['발주', '#DBEAFE', '#1D4ED8'], ['제작·검사', '#FEF3C7', '#B45309'], ['승인', '#EDE9FE', '#7C3AED']];
 
     let html = '<div class="mdl-proc">' +
       '<div class="mdl-proc-head">' +
         '<button type="button" class="mdl-btn mdl-btn-back" id="mdl-proc-back">← 목록으로</button>' +
         '<span class="mdl-proc-title">' + d.model_name + ' · 개발 Process 입력</span>' +
-        '<select id="mdl-proc-devtype" class="mdl-select" style="min-width:90px">' +
-          '<option value="HVM"' + (d.dev_type === 'HVM' ? ' selected' : '') + '>HVM</option>' +
-          '<option value="RPM"' + (d.dev_type === 'RPM' ? ' selected' : '') + '>RPM</option>' +
-        '</select>' +
+
         '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-proc-save">저장</button>' +
         '<span id="mdl-proc-msg" class="mdl-save-msg"></span>' +
       '</div>' +
       '<div class="mdl-proc-summary">' +
-        '<div class="mdl-proc-card"><div class="lbl">개발 유형</div><div class="val">' + d.dev_type + '</div></div>' +
+        '<div class="mdl-proc-card"><div class="lbl">개발 유형</div><div class="val">' + (d.dev_type || 'HVM') + '</div></div>' +
         '<div class="mdl-proc-card"><div class="lbl">진행률</div><div class="val">' + d.done + ' / ' + d.total + ' 단계</div>' +
           '<div class="mdl-proc-bar"><div class="mdl-proc-fill" style="width:' + d.progress + '%"></div></div></div>' +
         '<div class="mdl-proc-card"><div class="lbl">다음 단계</div><div class="val">' + d.current_stage + '</div>' +
@@ -10918,7 +10930,8 @@ window.renderAdminV2ByDivision = function(){
             (s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'))) + '</span>' +
           (function() {
             var st = 'padding:6px 12px;font-size:12px;font-weight:600;border:1px solid #E5E7EB;border-radius:8px;margin-left:8px;cursor:pointer;outline:none;min-width:90px;text-align:center;';
-            if (s.status === '미승인') st += 'background:#FEE2E2;color:#DC2626;border-color:#FECACA;';
+            if (s.status === '완료' || (!s.status && isDone)) st += 'background:#ECFDF5;color:#059669;border-color:#A7F3D0;';
+            else if (s.status === '미승인') st += 'background:#FEE2E2;color:#DC2626;border-color:#FECACA;';
             else if (s.status === '미제출') st += 'background:#FEF3C7;color:#D97706;border-color:#FDE68A;';
             else if (s.status === '진행중' || (!s.status && isCurrent)) st += 'background:#DBEAFE;color:#2563EB;border-color:#93C5FD;';
             else if (s.status === '대기' || (!s.status && !isDone && !isCurrent)) st += 'background:#F3F4F6;color:#6B7280;border-color:#E5E7EB;';
@@ -10926,6 +10939,7 @@ window.renderAdminV2ByDivision = function(){
             return '<select class="mdl-proc-status-sel" data-step-key="' + s.key + '" style="' + st + '">';
           })() +
             '<option value="">' + (s.status || (isDone ? '완료' : (isCurrent ? '진행중' : '대기'))) + '</option>' +
+            '<option value="완료"' + (s.status === '완료' ? ' selected' : '') + '>완료</option>' +
             '<option value="미승인"' + (s.status === '미승인' ? ' selected' : '') + '>미승인</option>' +
             '<option value="미제출"' + (s.status === '미제출' ? ' selected' : '') + '>미제출</option>' +
             '<option value="대기"' + (s.status === '대기' ? ' selected' : '') + '>대기</option>' +
@@ -10939,6 +10953,11 @@ window.renderAdminV2ByDivision = function(){
     tableBox.innerHTML = html;
 
     document.getElementById('mdl-proc-back').addEventListener('click', function() {
+      // 메시지 초기화 후 목록 복귀
+      ['mdl-save-msg', 'mdl-proc-msg', 'mdl-note-msg'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) { el.textContent = ''; el.className = 'mdl-save-msg'; }
+      });
       renderTable(tableBox);
     });
 
@@ -10981,7 +11000,7 @@ window.renderAdminV2ByDivision = function(){
       fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(d.model_id) + '/process', {
         method: 'PUT', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dev_type: document.getElementById('mdl-proc-devtype').value, steps: steps })
+        body: JSON.stringify({ dev_type: (d.dev_type || 'HVM'), steps: steps })
       })
         .then(function(r) { return r.json(); })
         .then(function(res) {
@@ -11275,7 +11294,7 @@ window.renderAdminV2ByDivision = function(){
         '</div>' +
 
         '<div class="mdl-pane" data-mpane="list">' +
-          '<div class="mdl-note-card">' +
+          '<div class="mdl-note-card" id="mdl-note-card">' +
             '<div class="mdl-note-row">' +
               '<div class="mdl-note-label">프로젝트 현황</div>' +
               '<button type="button" class="mdl-btn mdl-btn-note-save" id="mdl-note-save">저장</button>' +
@@ -11283,7 +11302,7 @@ window.renderAdminV2ByDivision = function(){
             '<textarea id="mdl-status-note" rows="3" placeholder="프로젝트 현황을 입력하세요 (앱에 표시됩니다)"></textarea>' +
             '<div id="mdl-note-msg" class="mdl-save-msg"></div>' +
           '</div>' +
-          '<div class="mdl-actions">' +
+          '<div class="mdl-actions" id="mdl-toolbar">' +
             '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
           '<button type="button" class="mdl-btn" id="mdl-excel-btn" style="background:#059669;color:#fff;">📥 엑셀 업로드</button>' +
           '<button type="button" class="mdl-btn" id="mdl-excel-tpl-btn" style="background:#6B7280;color:#fff;">📄 양식 다운로드</button>' +
