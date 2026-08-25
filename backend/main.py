@@ -1859,7 +1859,7 @@ def dashboard():
                 "doc_id": f"models:{_pk}:{_m.get('id')}",
                 "product": _m.get("id") or _m.get("name") or "",
                 "status": _m.get("status") or "BLACK",
-                "progress": round((_m.get("shipped_qty") or 0) * 100 / (_m.get("po_qty") or 1)) if (_m.get("po_qty") or 0) > 0 else 0,
+                "progress": _model_progress(_m),
                 "headline": _first_issue,
                 "summary_bullets": [
                     f"PO 수량: {_m.get('po_qty', 0)} / 출하완료: {_m.get('shipped_qty', 0)} / 잔여: {_remaining}",
@@ -16134,7 +16134,245 @@ function renderNotePreview(cards) {
 <script src="/static/excel_drop.js"></script>
 <script src="/static/photo_drop.js">
     
-    </script>
+    
+// 주차별 계획 입력 페이지 — 기존 박스 유지 + 모델별 입력 박스 추가
+window.showWeeklyPlanPage = function(projectKey) {
+  var container = document.getElementById('mdl-table-box');
+  if (!container) return;
+  
+  var today = new Date();
+  var currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+  
+  // 기존 흰색 박스 (엑셀 업로드 + 주차별 표)는 그대로 유지
+  var existingContent = container.innerHTML;
+  
+  // 새로운 모델별 입력 박스 추가
+  var newBoxHtml = '<div style="margin-top:20px;padding:20px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;box-shadow:0 1px 3px rgba(0,0,0,0.1);">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #e0e0e0;">' +
+      '<h4 style="margin:0;font-size:16px;font-weight:600;color:#111827;">📝 모델별 주차별 계획 입력</h4>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<select id="wp-month-select" style="padding:6px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;background:#fff;">' +
+          '<option value="2026-08">2026년 8월</option>' +
+          '<option value="2026-09">2026년 9월</option>' +
+          '<option value="2026-10">2026년 10월</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    
+    '<div id="wp-models-list" style="display:flex;flex-direction:column;gap:12px;">' +
+      '<div style="text-align:center;padding:40px;color:#6B7280;">로딩 중...</div>' +
+    '</div>' +
+  '</div>';
+  
+  container.innerHTML = existingContent + newBoxHtml;
+  
+  // 월 변경 시
+  document.getElementById('wp-month-select').onchange = function() {
+    loadAllModelsWeeklyPlan(projectKey, this.value);
+  };
+  
+  // 초기 로드
+  loadAllModelsWeeklyPlan(projectKey, currentMonth);
+};
+
+function loadAllModelsWeeklyPlan(projectKey, month) {
+  var container = document.getElementById('wp-models-list');
+  if (!container) return;
+  
+  container.innerHTML = '<div style="text-align:center;padding:40px;color:#6B7280;">로딩 중...</div>';
+  
+  fetch('/projects/' + encodeURIComponent(projectKey) + '/models')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var models = (d.models || []).filter(function(m) { return m.group === '양산'; });
+      
+      if (models.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#6B7280;font-size:14px;">양산 모델이 없습니다</div>';
+        return;
+      }
+      
+      var html = '';
+      models.forEach(function(m, idx) {
+        html += '<div class="wp-model-card" style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;transition:all 0.2s;">' +
+          '<div class="wp-model-header" style="background:#F9FAFB;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #E5E7EB;" onclick="toggleWpModel(' + idx + ')">' +
+            '<div style="display:flex;align-items:center;gap:12px;">' +
+              '<div style="width:32px;height:32px;background:#3B82F6;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:12px;">' + (idx + 1) + '</div>' +
+              '<div>' +
+                '<div style="font-weight:600;font-size:14px;color:#111827;">' + (m.name || m.id) + '</div>' +
+                '<div style="font-size:12px;color:#6B7280;">' + m.id + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px;">' +
+              '<span id="wp-status-' + idx + '" style="font-size:12px;color:#6B7280;">로딩 중...</span>' +
+              '<span id="wp-toggle-' + idx + '" style="color:#6B7280;font-size:14px;transition:transform 0.2s;">▼</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="wp-model-body" id="wp-body-' + idx + '" style="display:none;padding:16px;background:#fff;">' +
+            '<div class="wp-loading" style="text-align:center;padding:20px;color:#6B7280;font-size:13px;">데이터 로딩 중...</div>' +
+          '</div>' +
+        '</div>';
+      });
+      
+      container.innerHTML = html;
+      
+      // 각 모델 데이터 로드
+      models.forEach(function(m, idx) {
+        loadModelWeeklyData(projectKey, m.id, month, idx);
+      });
+    });
+}
+
+function toggleWpModel(idx) {
+  var body = document.getElementById('wp-body-' + idx);
+  var toggle = document.getElementById('wp-toggle-' + idx);
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    toggle.style.transform = 'rotate(180deg)';
+  } else {
+    body.style.display = 'none';
+    toggle.style.transform = 'rotate(0deg)';
+  }
+}
+
+function loadModelWeeklyData(projectKey, modelId, month, idx) {
+  var body = document.getElementById('wp-body-' + idx);
+  var status = document.getElementById('wp-status-' + idx);
+  
+  fetch('/projects/' + encodeURIComponent(projectKey) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan?month=' + month)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.detail) {
+        body.innerHTML = '<div style="color:#DC2626;padding:20px;text-align:center;font-size:13px;">' + d.detail + '</div>';
+        status.textContent = '오류';
+        status.style.color = '#DC2626';
+        return;
+      }
+      
+      // 상태 업데이트
+      var totalPlan = d.month_total_plan || 0;
+      var totalActual = d.month_total_actual || 0;
+      var progress = totalPlan > 0 ? Math.round(totalActual / totalPlan * 100) : 0;
+      status.textContent = '진행률 ' + progress + '%';
+      status.style.color = progress > 0 ? '#059669' : '#6B7280';
+      
+      var html = '<div style="overflow-x:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead>' +
+            '<tr style="background:#F9FAFB;">' +
+              '<th style="padding:10px 12px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">주차</th>' +
+              '<th style="padding:10px 12px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">계획</th>' +
+              '<th style="padding:10px 12px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">실적</th>' +
+              '<th style="padding:10px 12px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">잔여</th>' +
+              '<th style="padding:10px 12px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">진행률</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>';
+      
+      d.weeks.forEach(function(w) {
+        var prog = w.plan > 0 ? Math.round(w.actual / w.plan * 100) : 0;
+        var progColor = prog === 100 ? '#059669' : prog > 0 ? '#2563EB' : '#6B7280';
+        html += '<tr style="transition:background 0.15s;" onmouseover="this.style.background=\'#F9FAFB\'" onmouseout="this.style.background=\'#fff\'">' +
+          '<td style="padding:10px 12px;border:1px solid #E5E7EB;font-weight:600;color:#111827;">' + w.week + '</td>' +
+          '<td style="padding:10px 12px;border:1px solid #E5E7EB;">' +
+            '<input type="number" class="wp-plan-input" data-model-idx="' + idx + '" data-week="' + w.week + '" value="' + w.plan + '" style="width:70px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center;" min="0">' +
+          '</td>' +
+          '<td style="padding:10px 12px;border:1px solid #E5E7EB;">' +
+            '<input type="number" class="wp-actual-input" data-model-idx="' + idx + '" data-week="' + w.week + '" value="' + w.actual + '" style="width:70px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center;" min="0">' +
+          '</td>' +
+          '<td style="padding:10px 12px;border:1px solid #E5E7EB;color:#6B7280;">' + w.remaining + '</td>' +
+          '<td style="padding:10px 12px;border:1px solid #E5E7EB;font-weight:600;color:' + progColor + '">' + prog + '%</td>' +
+        '</tr>';
+      });
+      
+      html += '</tbody>' +
+          '<tfoot>' +
+            '<tr style="background:#F3F4F6;font-weight:600;">' +
+              '<td style="padding:10px 12px;border:1px solid #E5E7EB;color:#111827;">총계</td>' +
+              '<td style="padding:10px 12px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-plan-' + idx + '">' + d.month_total_plan + '</td>' +
+              '<td style="padding:10px 12px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-actual-' + idx + '">' + d.month_total_actual + '</td>' +
+              '<td style="padding:10px 12px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-remaining-' + idx + '">' + d.month_remaining + '</td>' +
+              '<td style="padding:10px 12px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-progress-' + idx + '">' + d.progress + '%</td>' +
+            '</tr>' +
+          '</tfoot>' +
+        '</table>' +
+      '</div>' +
+      '<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button type="button" class="mdl-btn" onclick="saveWpModelPlan(\'' + projectKey + '\', \'' + modelId + '\', \'' + month + '\', ' + idx + ')" style="background:#2563EB;color:#fff;padding:8px 16px;font-size:13px;border-radius:6px;border:none;cursor:pointer;font-weight:500;transition:background 0.2s;" onmouseover="this.style.background=\'#1D4ED8\'" onmouseout="this.style.background=\'#2563EB\'">💾 저장</button>' +
+        '<button type="button" class="mdl-btn" onclick="resetWpModelPlan(' + idx + ')" style="background:#DC2626;color:#fff;padding:8px 16px;font-size:13px;border-radius:6px;border:none;cursor:pointer;font-weight:500;transition:background 0.2s;" onmouseover="this.style.background=\'#B91C1C\'" onmouseout="this.style.background=\'#DC2626\'">🔄 초기화</button>' +
+      '</div>';
+      
+      body.innerHTML = html;
+      
+      // 실시간 합계 계산
+      function updateTotals() {
+        var plans = document.querySelectorAll('.wp-plan-input[data-model-idx="' + idx + '"]');
+        var actuals = document.querySelectorAll('.wp-actual-input[data-model-idx="' + idx + '"]');
+        var tp = 0, ta = 0;
+        plans.forEach(function(p) { tp += parseInt(p.value) || 0; });
+        actuals.forEach(function(a) { ta += parseInt(a.value) || 0; });
+        var remaining = Math.max(0, tp - ta);
+        var prog = tp > 0 ? Math.round(ta / tp * 100) : 0;
+        
+        document.getElementById('wp-total-plan-' + idx).textContent = tp;
+        document.getElementById('wp-total-actual-' + idx).textContent = ta;
+        document.getElementById('wp-total-remaining-' + idx).textContent = remaining;
+        document.getElementById('wp-total-progress-' + idx).textContent = prog + '%';
+        
+        // 상태 업데이트
+        status.textContent = '진행률 ' + prog + '%';
+        status.style.color = prog > 0 ? '#059669' : '#6B7280';
+      }
+      
+      document.querySelectorAll('.wp-plan-input[data-model-idx="' + idx + '"], .wp-actual-input[data-model-idx="' + idx + '"]').forEach(function(input) {
+        input.onchange = updateTotals;
+        input.oninput = updateTotals;
+      });
+    });
+}
+
+function saveWpModelPlan(projectKey, modelId, month, idx) {
+  var weeks = {};
+  document.querySelectorAll('.wp-plan-input[data-model-idx="' + idx + '"]').forEach(function(p) {
+    var week = p.dataset.week;
+    var actual = document.querySelector('.wp-actual-input[data-model-idx="' + idx + '"][data-week="' + week + '"]').value;
+    weeks[week] = { plan: parseInt(p.value) || 0, actual: parseInt(actual) || 0 };
+  });
+  
+  fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ month: month, weeks: weeks })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      // 성공 메시지 (토스트)
+      var toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#059669;color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:9999;';
+      toast.textContent = '✅ 저장 완료 (진행률: ' + d.progress + '%)';
+      document.body.appendChild(toast);
+      setTimeout(function() { toast.remove(); }, 3000);
+      
+      // 데이터 다시 로드
+      loadModelWeeklyData(projectKey, modelId, month, idx);
+    } else {
+      alert('❌ 저장 실패: ' + (d.detail || '알 수 없는 오류'));
+    }
+  });
+}
+
+function resetWpModelPlan(idx) {
+  if (!confirm('⚠️ 모든 주차의 계획과 실적을 0으로 초기화하시겠습니까?')) return;
+  document.querySelectorAll('.wp-plan-input[data-model-idx="' + idx + '"], .wp-actual-input[data-model-idx="' + idx + '"]').forEach(function(input) {
+    input.value = 0;
+  });
+  // 합계 업데이트 트리거
+  var firstInput = document.querySelector('.wp-plan-input[data-model-idx="' + idx + '"]');
+  if (firstInput) firstInput.onchange();
+}
+
+</script>
 </body>
 
 </html>
@@ -18289,12 +18527,107 @@ def _ensure_process(m: dict) -> list:
         m["process"] = proc
     return proc
 
+
+def _ensure_mass_progress(weekly_plan, month=None):
+    """양산 모델 weekly_plan 기반 진행률(%)"""
+    import datetime as _dt
+    if not weekly_plan:
+        return 0.0
+    if month is None:
+        month = _dt.date.today().strftime("%Y-%m")
+    bucket = weekly_plan.get(month) or (weekly_plan.get(list(weekly_plan.keys())[0]) if weekly_plan else None)
+    if not bucket:
+        return 0.0
+    tp = sum(int(w.get("plan") or 0) for w in bucket.values())
+    ta = sum(int(w.get("actual") or 0) for w in bucket.values())
+    return round(min(100.0, ta / tp * 100), 1) if tp > 0 else 0.0
+
+
+def _get_month_weeks(month):
+    """YYYY-MM 월의 ISO 주차 목록 자동 계산"""
+    import datetime as _dt
+    y, m = map(int, month.split("-"))
+    first = _dt.date(y, m, 1)
+    last = (_dt.date(y + 1, 1, 1) if m == 12 else _dt.date(y, m + 1, 1)) - _dt.timedelta(days=1)
+    weeks, seen, cur = [], set(), first
+    while cur <= last:
+        iso_year, iso_week, _ = cur.isocalendar()
+        key = f"W{iso_week:02d}"
+        if key not in seen:
+            seen.add(key)
+            weeks.append(key)
+        cur += _dt.timedelta(days=1)
+    return weeks
+
 def _process_progress(proc: list) -> int:
     if not proc:
         return 0
     # actual이 있거나 status가 '완료'면 완료로 인식
     done = sum(1 for s in proc if str(s.get("actual") or "").strip() or s.get("status") == "완료")
     return round(done / len(proc) * 100)
+
+
+
+def _model_progress(m: dict) -> int:
+    """모델 1개 진행률: 양산=출하/PO, 개발=프로세스 완료율 (0~100)"""
+    if str(m.get('group') or '') == '양산':
+        po = float(m.get('po_qty') or 0)
+        sh = float(m.get('shipped_qty') or 0)
+        return round(min(100.0, sh / po * 100.0)) if po > 0 else 0
+    proc = m.get('process') or []
+    if proc:
+        done = sum(1 for s in proc
+                   if (str(s.get('actual') or '').strip() or str(s.get('status') or '') == '완료')
+                   and str(s.get('status') or '') not in ('미승인', '미제출'))
+        return round(done / len(proc) * 100)
+    return int(m.get('progress') or 0)
+
+def _combined_project_progress(proj: dict) -> float:
+    """양산(출하/PO) + 개발(프로세스) 가중 평균 진행률"""
+    models = (proj or {}).get('models', []) or []
+    vals = []
+    for m in models:
+        if str(m.get('group') or '') == '양산':
+            po = float(m.get('po_qty') or 0)
+            sh = float(m.get('shipped_qty') or 0)
+            vals.append(min(100.0, sh / po * 100.0) if po > 0 else 0.0)
+        else:
+            proc = m.get('process') or []
+            if proc:
+                vals.append(float(_process_progress(proc) or 0))
+            else:
+                vals.append(float(m.get('progress') or 0))
+    return round(sum(vals) / len(vals), 1) if vals else 0.0
+
+
+def _inject_weekly_summary(m: dict) -> dict:
+    """양산 모델: weekly_plan이 있으면 앱 표시용 요약 텍스트 생성 (앱 수정 불필요)"""
+    if str(m.get('group') or '') != '양산':
+        return m
+    wp = m.get('weekly_plan') or {}
+    if not wp:
+        return m
+    from datetime import datetime as _dt
+    month = _dt.now().strftime('%Y-%m')
+    weeks = wp.get(month) or {}
+    if not weeks:
+        # 가장 최근 월 사용
+        latest = sorted(wp.keys())[-1] if wp.keys() else None
+        if latest:
+            month, weeks = latest, wp[latest]
+    if not weeks:
+        return m
+    plan = sum(int((v or {}).get('plan') or 0) for v in weeks.values())
+    actual = sum(int((v or {}).get('actual') or 0) for v in weeks.values())
+    remain = plan - actual
+    pct = round(actual / plan * 100, 1) if plan > 0 else 0
+    summary = f"{month} 주차계획: 계획 {plan} / 실적 {actual} / 잔여 {remain} ({pct}%)"
+    # due_text가 비어 있으면 채우고, 있으면 덧붙임
+    if not str(m.get('due_text') or '').strip():
+        m['due_text'] = summary
+    m['weekly_summary'] = summary
+    m['weekly_progress'] = pct
+    return m
 
 def _process_current(proc: list):
     for s in proc:
@@ -18329,7 +18662,7 @@ def get_project_models_detail(project_key: str):
             continue
         if m.get("group") == "개발" and (not isinstance(m.get("process"), list) or len(m.get("process")) != 13):
             changed = True
-        enriched.append(_enrich_model(m))
+        enriched.append(_inject_weekly_summary(_enrich_model(m)))
     if changed:
         _save_models(data)
     enriched.sort(key=lambda x: 0 if x.get("group") == "양산" else 1)
@@ -18340,6 +18673,66 @@ def get_project_models_detail(project_key: str):
         "status_note": proj.get("status_note") or "",
         "models": enriched,
     }
+
+
+@app.get("/projects/{project_key}/models/{model_id}/weekly-plan")
+def get_weekly_plan(project_key: str, model_id: str, month: str = None):
+    """양산 모델 월별 주차별 계획/실적 조회"""
+    from urllib.parse import unquote
+    import datetime as _dt
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    if not month:
+        month = _dt.date.today().strftime("%Y-%m")
+    weeks = _get_month_weeks(month)
+    target = next((m for m in proj.get("models", [])
+                   if (m.get("id") or "").lower() == model_id.lower()), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    bucket = (target.get("weekly_plan") or {}).get(month, {})
+    rows, tp, ta = [], 0, 0
+    for w in weeks:
+        v = bucket.get(w, {"plan": 0, "actual": 0})
+        p, a = int(v.get("plan") or 0), int(v.get("actual") or 0)
+        rows.append({"week": w, "plan": p, "actual": a, "remaining": max(0, p - a)})
+        tp += p
+        ta += a
+    return {"model_id": model_id, "model_name": target.get("name"), "month": month,
+            "weeks": rows, "month_total_plan": tp, "month_total_actual": ta,
+            "month_remaining": max(0, tp - ta),
+            "progress": _ensure_mass_progress(target.get("weekly_plan") or {}, month)}
+
+
+@app.put("/admin/projects/{project_key}/models/{model_id}/weekly-plan")
+def put_weekly_plan(project_key: str, model_id: str, payload: dict,
+                    _admin: int = Depends(get_admin_session)):
+    """월별 주차별 계획/실적 저장"""
+    from urllib.parse import unquote
+    import datetime as _dt
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    month = (payload.get("month") or "").strip() or _dt.date.today().strftime("%Y-%m")
+    weeks_in = payload.get("weeks") or {}
+    data = _load_models()
+    proj = data.get("projects", {}).setdefault(_key, {"models": []})
+    target = next((m for m in proj.get("models", [])
+                   if (m.get("id") or "").lower() == model_id.lower()), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    if target.get("group") != "양산":
+        raise HTTPException(status_code=400, detail="양산 모델만 주차별 계획이 있습니다.")
+    cur = target.setdefault("weekly_plan", {})
+    bucket = {}
+    for w in _get_month_weeks(month):
+        wp = weeks_in.get(w, {})
+        bucket[w] = {"plan": int(wp.get("plan") or 0), "actual": int(wp.get("actual") or 0)}
+    cur[month] = bucket
+    target["weekly_progress"] = _ensure_mass_progress(cur, month)
+    _save_models(data)
+    return {"ok": True, "model_id": model_id, "month": month, "progress": target["weekly_progress"]}
+
 
 @app.get("/projects/{project_key}/models/{model_id}/process")
 def get_model_process(project_key: str, model_id: str):
