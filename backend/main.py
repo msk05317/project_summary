@@ -18650,7 +18650,7 @@ def _process_current(proc: list):
     return "최종 승인 완료", ""
 
 def _enrich_model(m: dict) -> dict:
-    out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues")}
+    out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "weekly_plan", "weekly_progress", "weekly_summary")}
     if m.get("group") == "개발":
         proc = _ensure_process(m)
         out["dev_type"] = m.get("dev_type") or ""
