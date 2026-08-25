@@ -16142,7 +16142,7 @@ function renderNotePreview(cards) {
 
 @app.post("/chat")
 async def chat(payload: dict):
-    """models.json 기반 챗봇"""
+    """admin v2 전체 데이터 기반 챗봇"""
     message = (payload or {}).get("message", "").strip()
     if not message:
         return {"answer": "", "sources": [], "error": "empty message"}
@@ -16168,42 +16168,127 @@ async def chat(payload: dict):
     except Exception as e:
         print(f"[chat] 보정 오류: {e}")
 
-    # models.json 조회
+    # models.json 전체 데이터 수집
     try:
         data = _load_models()
         projects = data.get("projects", {})
         
-        stats = []
-        for pk, proj in projects.items():
-            models = proj.get("models", [])
-            mass = sum(1 for m in models if m.get("group") == "양산")
-            dev = sum(1 for m in models if m.get("group") == "개발")
-            label = next((p.get("label") for p in _cl.get_projects(visible_only=True) if p.get("id") == pk), pk)
-            stats.append({"key": pk, "label": label, "mass": mass, "dev": dev, "total": len(models)})
+        # 질문 유형 파악
+        is_issue = any(k in corrected for k in ['이슈', '문제', '이상', '지연', '리스크', 'issue'])
+        is_process = any(k in corrected for k in ['프로세스', '공정', '단계', '진행률', '완료', 'process'])
+        is_weekly = any(k in corrected for k in ['주간', '계획', 'weekly', 'plan', '스케줄'])
+        is_status = any(k in corrected for k in ['현황', '상태', 'status', 'note'])
+        is_price = any(k in corrected for k in ['판가', '재료비', '가격', 'price', 'cost'])
         
-        # 관련 프로젝트 필터
+        context_parts = []
+        relevant_projects = []
+        
         msg_lower = corrected.lower()
-        relevant = [s for s in stats if s["label"].lower() in msg_lower or s["key"].lower() in msg_lower] or stats[:3]
         
-        context = "\n".join([f"{s['label']}: 양산 {s['mass']}종, 개발 {s['dev']}종, 총 {s['total']}종" for s in relevant])
+        for pk, proj in projects.items():
+            proj_info = next((p for p in _cl.get_projects(visible_only=True) if p.get("id") == pk), None)
+            label = proj_info.get("label", pk) if proj_info else pk
+            
+            if label.lower() not in msg_lower and pk.lower() not in msg_lower:
+                continue
+            
+            relevant_projects.append({"key": pk, "label": label})
+            
+            models = proj.get("models", [])
+            mass = [m for m in models if m.get("group") == "양산"]
+            dev = [m for m in models if m.get("group") == "개발"]
+            
+            ctx = f"=== {label} ({pk}) ==="
+            ctx += f"모델 수: 양산 {len(mass)}종, 개발 {len(dev)}종, 총 {len(models)}종"
+            
+            progresses = [m.get("progress", 0) for m in models if m.get("progress") is not None]
+            if progresses:
+                avg_prog = sum(progresses) / len(progresses)
+                ctx += f"평균 진행률: {avg_prog:.1f}%"
+            
+            if proj.get("status_note"):
+                ctx += f"현황: {proj['status_note']}"
+            
+            if proj.get("weekly_plan"):
+                wp = proj["weekly_plan"]
+                if isinstance(wp, dict):
+                    ctx += f"주간 계획: {wp.get('title', '')} - {wp.get('content', '')[:100]}"
+                else:
+                    ctx += f"주간 계획: {str(wp)[:100]}"
+            
+            if proj.get("types"):
+                ctx += f"유형: {', '.join(proj['types'])}"
+            
+            issue_models = [m for m in models if m.get("issues", "").strip()]
+            if issue_models:
+                ctx += f"이슈 있는 모델 ({len(issue_models)}개):"
+                for m in issue_models[:5]:
+                    ctx += f"  - {m.get('name')}: {m.get('issues')[:80]}"
+            
+            if is_process and dev:
+                ctx += "개발 모델 진행률:"
+                for m in dev[:5]:
+                    prog = m.get("progress", 0)
+                    proc = m.get("process", [])
+                    done = sum(1 for s in proc if s.get("actual") or s.get("status") == "완료")
+                    total = len(proc)
+                    ctx += f"  - {m.get('name')}: {prog}% ({done}/{total} 단계 완료)"
+            
+            if is_price:
+                price_models = [m for m in models if m.get("price") or m.get("material_cost")]
+                if price_models:
+                    ctx += "가격 정보:"
+                    for m in price_models[:5]:
+                        p = m.get("price", 0)
+                        c = m.get("material_cost", 0)
+                        margin = ((p - c) / p * 100) if p > 0 else 0
+                        ctx += f"  - {m.get('name')}: 판가 ${p:,}, 재료비 ${c:,}, 마진 {margin:.1f}%"
+            
+            context_parts.append(ctx)
+        
+        if not context_parts:
+            context_parts.append("=== 전체 프로젝트 요약 ===")
+            for pk, proj in projects.items():
+                models = proj.get("models", [])
+                mass = sum(1 for m in models if m.get("group") == "양산")
+                dev = sum(1 for m in models if m.get("group") == "개발")
+                label = next((p.get("label") for p in _cl.get_projects(visible_only=True) if p.get("id") == pk), pk)
+                context_parts.append(f"{label}: 양산 {mass}종, 개발 {dev}종")
+        
+        context = "\n".join(context_parts)
+        
+        system_prompt = (
+            "너는 반도체 사업부의 프로젝트 관리 어시스턴트다. "
+            "주어진 [데이터]만을 근거로 사용자의 질문에 한국어로 정확하고 상세하게 답한다. "
+            "규칙: 1) 데이터에 없는 내용은 추측하지 말 것 2) 숫자·모델명·날짜는 원문 그대로 유지 "
+            "3) 이슈/진행률/가격 등 질문에 해당하는 정보를 모두 포함 "
+            "4) 5문장 이내로 간결하게 5) 마지막에 '(근거: 프로젝트명)' 형태로 인용 표시."
+        )
+        
+        user_prompt = f"[데이터]\n{context}\n\n[질문]\n{corrected}"
         
         if client:
             resp = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "반도체 프로젝트 데이터 기반으로 정확히 답변. 숫자는 원문 유지. 간결하게 2문장 이내."},
-                    {"role": "user", "content": f"[데이터]\n{context}\n\n[질문] {corrected}"}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=200,
+                max_tokens=500,
             )
             answer = resp.choices[0].message.content or ""
         else:
-            answer = f"조회 결과: {context}"
+            answer = f"조회 결과:\n{context[:500]}"
         
-        return {"answer": answer, "sources": relevant}
+        return {
+            "answer": answer,
+            "sources": relevant_projects,
+            "corrected_query": corrected if corrected != message else None
+        }
+        
     except Exception as e:
-        return {"answer": "", "sources": [], "error": str(e)}
+        return {"answer": "", "sources": [], "error": f"chat_failed: {e}"}
 
 
 
