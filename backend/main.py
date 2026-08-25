@@ -368,6 +368,16 @@ def enrich_card(card: dict) -> dict:
         card["project_id"] = project_id
         card["project_label"] = project.get("label") if project else None
         card["project_badge"] = _cl.badge_label_for_project(project_id)
+
+        # progress 없는 카드(notes 기반) → models.json 통합 진행률로 채움
+        if card.get("progress") is None and project_id:
+            try:
+                _md = _load_models()
+                _proj = (_md.get("projects", {}) or {}).get(project_id, {})
+                if _proj.get("models"):
+                    card["progress"] = _combined_project_progress(_proj)
+            except Exception:
+                pass
     except Exception as e:
         # 어떤 이유로든 분류 실패해도 응답이 깨지지 않게
         card.setdefault("division_id", None)
@@ -18549,13 +18559,16 @@ def _get_month_weeks(month):
     y, m = map(int, month.split("-"))
     first = _dt.date(y, m, 1)
     last = (_dt.date(y + 1, 1, 1) if m == 12 else _dt.date(y, m + 1, 1)) - _dt.timedelta(days=1)
-    weeks, seen, cur = [], set(), first
+    # ISO 규칙: 그 주의 목요일이 이 달에 속하면 그 달의 주차 (8월 → W32~W35)
+    weeks, seen = [], set()
+    cur = first
     while cur <= last:
-        iso_year, iso_week, _ = cur.isocalendar()
-        key = f"W{iso_week:02d}"
-        if key not in seen:
-            seen.add(key)
-            weeks.append(key)
+        if cur.weekday() == 3:  # 목요일
+            iso_year, iso_week, _ = cur.isocalendar()
+            key = f"W{iso_week:02d}"
+            if key not in seen:
+                seen.add(key)
+                weeks.append(key)
         cur += _dt.timedelta(days=1)
     return weeks
 
@@ -18730,6 +18743,13 @@ def put_weekly_plan(project_key: str, model_id: str, payload: dict,
         bucket[w] = {"plan": int(wp.get("plan") or 0), "actual": int(wp.get("actual") or 0)}
     cur[month] = bucket
     target["weekly_progress"] = _ensure_mass_progress(cur, month)
+    # ── 앱 표시용 필드 자동 반영 (po_qty/shipped_qty/due_text) ──
+    _plan_total = sum(v["plan"] for v in bucket.values())
+    _act_total = sum(v["actual"] for v in bucket.values())
+    if _plan_total > 0 or _act_total > 0:
+        target["po_qty"] = _plan_total
+        target["shipped_qty"] = _act_total
+        target["due_text"] = f"{month} 주차계획 · 잔여 {_plan_total - _act_total}개"
     _save_models(data)
     return {"ok": True, "model_id": model_id, "month": month, "progress": target["weekly_progress"]}
 
