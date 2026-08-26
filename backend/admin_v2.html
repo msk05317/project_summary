@@ -5595,7 +5595,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
             'style="' + (s.status === '미승인' ? 'color:#DC2626;' : 
              (s.status === '미제출' ? 'color:#D97706;' : '')) + '">' +
             (isDone ? '✓' : (isCurrent ? '●' : (s.status === '미승인' ? '✗' : (s.status === '미제출' ? '!' : '○')))) + '</span>' +
-          '<span class="mdl-proc-name">' + ('0' + num).slice(-2) + ' ' + s.name + '</span>' +
+          '<span class="mdl-proc-name">' + (/^\d/.test(s.name) ? s.name : ('0' + num).slice(-2) + ' ' + s.name) + '</span>' +
           '<span class="mdl-proc-dates">' +
             '<label>예상 <input type="date" data-f="expected" value="' + (s.expected || '') + '"></label>' +
             '<label>실제 <input type="date" data-f="actual" value="' + (s.actual || '') + '"></label>' +
