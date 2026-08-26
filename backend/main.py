@@ -18564,10 +18564,12 @@ def _model_key_alias(project_key: str) -> str:
 
 def _ensure_process(m: dict) -> list:
     proc = m.get("process")
-    # 12단계(프레임) 또는 13단계(기본) 커스텀 프로세스는 유지
-    if not isinstance(proc, list) or len(proc) not in (12, 13, 14, 15):
-        proc = _default_process()
-        m["process"] = proc
+    # process가 이미 있고 리스트면 그대로 사용
+    if isinstance(proc, list) and len(proc) > 0:
+        return proc
+    # 없으면 기본값
+    proc = _default_process()
+    m["process"] = proc
     return proc
 
 
