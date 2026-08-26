@@ -1711,6 +1711,8 @@ def dashboard():
                 "project_key": project_key,  # ← 추가
             })
 
+
+
     # 🟢 카드별로 division/project 분류 정보 enrichment (기존 필드 변경 없음)
     cards = [enrich_card(c) for c in cards]
     
@@ -1859,6 +1861,36 @@ def dashboard():
     # 🟢 모델 단위 그룹핑 (신규 필드, 옛 cards 는 호환을 위해 그대로 유지)
     # --- ESS 합성 카드 주입 (models.json → dashboard 카드) ---
     _models_data = _load_models()
+    # --- 반도체 frame 카드 주입 ---
+    _semi_frame_projects = {"frame": "프레임"}
+    for _pk, _label in _semi_frame_projects.items():
+        for _m in _models_data.get("projects", {}).get(_pk, {}).get("models", []):
+            if _m.get("group") != "개발":
+                continue
+            _issues_txt = (_m.get("issues") or "").strip()
+            _first_issue = _issues_txt.splitlines()[0] if _issues_txt else ""
+            cards.append({
+                "doc_id": f"models:{_pk}:{_m.get('id')}",
+                "product": _m.get("id") or _m.get("name") or "",
+                "status": _m.get("status") or "BLACK",
+                "progress": _model_progress(_m),
+                "headline": _first_issue,
+                "summary_bullets": [
+                    f"진행률: {_m.get('progress', 0)}%",
+                    f"개발 타입: {_m.get('dev_type', 'HVM')}",
+                ] + ([f"이슈: {_issues_txt}"] if _issues_txt else []),
+                "due_date_min": _parse_due_text(_m.get("due_text") or ""),
+                "report_date": "2026-08-26",
+                "report_family": "models",
+                "project_key": _pk,
+                "project_id": _pk,
+                "project_label": _label,
+                "project_badge": _label,
+                "division_id": "semiconductor",
+                "division_label": "반도체사업부",
+                "from_note": False,
+            })
+    # --- frame 주입 끝 ---
     _ess_projects = {"sdi": "SDI", "fluence": "FLUENCE", "epc_power": "EPC POWER"}
     for _pk, _label in _ess_projects.items():
         for _m in _models_data.get("projects", {}).get(_pk, {}).get("models", []):

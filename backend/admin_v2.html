@@ -128,10 +128,10 @@ window._normalizeAiNumberedHtml = function(html){
       continue;
     }
     // "1)" "2." 등 새 항목 시작
-    var m = text.match(/^(\d+)[)\.]\s+(.*)$/);
+    var m = text.match(/^(\d+)[)\\.]\\s+(.*)$/);
     if (m) {
       // 새 항목 시작 - raw에서 "숫자)" 또는 "숫자." 부분 제거
-      var stripped = raw.replace(/^(\s|&nbsp;|\u00A0)*\d+[)\.]\s*/, '');
+      var stripped = raw.replace(/^(\s|&nbsp;|\\u00A0)*\\d+[)\\.]\\s*/, '');
       if (current !== null) items.push(current);
       current = stripped;
     } else {
@@ -708,9 +708,9 @@ window._attachAutoListBehavior = function(el){
   }
 
   function _detectExistingListLine(line){
-    var m = line.match(/^(\s*)(\d+)([\)\.])\s+(.*)$/);
+    var m = line.match(/^(\s*)(\\d+)([\\)\\.])\\s+(.*)$/);
     if (m) return { type: 'num', indent: m[1], num: parseInt(m[2],10), sep: m[3], content: m[4] };
-    m = line.match(/^(\s*)([-*\u00B7])\s+(.*)$/);
+    m = line.match(/^(\s*)([-*\\u00B7])\\s+(.*)$/);
     if (m) return { type: 'bullet', indent: m[1], bullet: m[2], content: m[3] };
     return null;
   }
@@ -2169,12 +2169,12 @@ window.renderAdminV2ByDivision = function(){
                       +   '<span style="font-weight:700;font-size:12px;line-height:1;color:#111827;">형광</span>'
                       +   '<span class="word-color-preview" style="display:inline-block;width:12px;height:8px;border-radius:3px;background:#FFF3B0;border:1px solid #E5E7EB;"></span>'
                       +   '</button>'
-                      +   '<button type="button" data-cmd="justifyLeft" title="왼쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="17" y1="18" x2="3" y2="18"></line></svg></button>'
-                      +   '<button type="button" data-cmd="justifyCenter" title="가운데 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="10" x2="6" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="18" y1="18" x2="6" y2="18"></line></svg></button>'
-                      +   '<button type="button" data-cmd="justifyRight" title="오른쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="7" y2="18"></line></svg></button>'
-                      +   '<button type="button" data-cmd="outdent" title="내어쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 8 3 12 7 16"></polyline><line x1="21" y1="12" x2="11" y2="12"></line><line x1="21" y1="6" x2="11" y2="6"></line><line x1="21" y1="18" x2="11" y2="18"></line></svg></button>'
-                      +   '<button type="button" data-cmd="indent" title="들여쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 8 7 12 3 16"></polyline><line x1="21" y1="12" x2="11" y2="12"></line><line x1="21" y1="6" x2="11" y2="6"></line><line x1="21" y1="18" x2="11" y2="18"></line></svg></button>'
-                      +   '<button type="button" data-cmd="insertUnorderedList" title="글머리 기호" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="4" cy="6" r="1.5" fill="#4b5563"></circle><circle cx="4" cy="12" r="1.5" fill="#4b5563"></circle><circle cx="4" cy="18" r="1.5" fill="#4b5563"></circle></svg></button>'
+                      +   '<button type="button" data-cmd="justifyLeft" title="왼쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"17\" y1=\"10\" x2=\"3\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"17\" y1=\"18\" x2=\"3\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="justifyCenter" title="가운데 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"10\" x2=\"6\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"18\" y1=\"18\" x2=\"6\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="justifyRight" title="오른쪽 정렬" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"21\" y1=\"10\" x2=\"7\" y2=\"10\"></line><line x1=\"21\" y1=\"6\" x2=\"3\" y2=\"6\"></line><line x1=\"21\" y1=\"14\" x2=\"3\" y2=\"14\"></line><line x1=\"21\" y1=\"18\" x2=\"7\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="outdent" title="내어쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"7 8 3 12 7 16\"></polyline><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"></line><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"></line><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="indent" title="들여쓰기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"3 8 7 12 3 16\"></polyline><line x1=\"21\" y1=\"12\" x2=\"11\" y2=\"12\"></line><line x1=\"21\" y1=\"6\" x2=\"11\" y2=\"6\"></line><line x1=\"21\" y1=\"18\" x2=\"11\" y2=\"18\"></line></svg></button>'
+                      +   '<button type="button" data-cmd="insertUnorderedList" title="글머리 기호" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"></line><circle cx=\"4\" cy=\"6\" r=\"1.5\" fill=\"#4b5563\"></circle><circle cx=\"4\" cy=\"12\" r=\"1.5\" fill=\"#4b5563\"></circle><circle cx=\"4\" cy=\"18\" r=\"1.5\" fill=\"#4b5563\"></circle></svg></button>'
                       +   '<select data-list-style="ul" title="불릿 종류" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
                       +     '<option value="disc">●</option>'
                       +     '<option value="circle">○</option>'
@@ -2187,7 +2187,7 @@ window.renderAdminV2ByDivision = function(){
                       +     '<option value="ov-diamond">◆</option>'
                       +     '<option value="ov-dot">·</option>'
                       +   '</select>'
-                      +   '<button type="button" data-cmd="insertOrderedList" title="번호 매기기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2" y="8" font-size="6" fill="#4b5563" stroke="none" font-family="Arial" font-weight="700">1</text><text x="2" y="14" font-size="6" fill="#4b5563" stroke="none" font-family="Arial" font-weight="700">2</text><text x="2" y="20" font-size="6" fill="#4b5563" stroke="none" font-family="Arial" font-weight="700">3</text></svg></button>'
+                      +   '<button type="button" data-cmd="insertOrderedList" title="번호 매기기" style="width:28px;height:26px;border:1px solid #D9E3F1;background:#fff;border-radius:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b5563\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"10\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"10\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"10\" y1=\"18\" x2=\"21\" y2=\"18\"></line><text x=\"2\" y=\"8\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">1</text><text x=\"2\" y=\"14\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">2</text><text x=\"2\" y=\"20\" font-size=\"6\" fill=\"#4b5563\" stroke=\"none\" font-family=\"Arial\" font-weight=\"700\">3</text></svg></button>'
                       +   '<select data-list-style="ol" title="번호 종류 (오른쪽 클릭으로 이어/재시작)" style="border:1px solid #D9E3F1;border-radius:6px;padding:2px 4px;background:#fff;font-size:12px;cursor:pointer;">'
                       +     '<option value="decimal">1.</option>'
                       +     '<option value="ov-circled">①</option>'
@@ -2262,8 +2262,8 @@ window.renderAdminV2ByDivision = function(){
                 if (b && b.kind === 'file') {
                   const fname = b.file_name || '(파일)';
                   const url = b.url || '';
-                  const isImage = /\\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(fname);
-                  const isExcel = /\\.(xlsx|xls)$/i.test(fname);
+                  const isImage = /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(fname);
+                  const isExcel = /\.(xlsx|xls)$/i.test(fname);
                   const previewHtml = (isImage && url)
                     ? '<div style="margin:8px 0;text-align:center;"><img src="' + url + '" alt="' + fname + '" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid #E6EBF2;"></div>'
                     : (isExcel && url)
@@ -4852,7 +4852,7 @@ window.renderAdminV2ByDivision = function(){
         // display_title에서 프로젝트명만 추출: " · W## 주간보고" 앞까지
         let newProjectName = newLabel;
         let newWeek = null;
-        const m = newLabel.match(/^(.*?)(?:\s*·\s*W(\d+)\s*주간보고)?\s*$/);
+        const m = newLabel.match(/^(.*?)(?:\s*·\\s*W(\\d+)\\s*주간보고)?\\s*$/);
         if (m) {
           newProjectName = (m[1] || '').trim();
           if (m[2]) newWeek = parseInt(m[2], 10);
@@ -5539,7 +5539,8 @@ window.renderAdminV2ByDivision = function(){
   }
 
   function openProcessEditor(modelId) {
-    if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요'); return; }
+    _currentProjectKey = _currentProjectKey || (function(){var s=document.querySelector('#mdl-proj-select')||document.querySelector('select[id*="proj"]');return (s&&s.value)||'';})();
+if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(modelId) + '/process', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -5744,7 +5745,8 @@ window.renderAdminV2ByDivision = function(){
 
   function saveTypes() {
     var projKey = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) || '';
-    if (!projKey) { alert('프로젝트를 먼저 선택하세요'); return; }
+    projKey = projKey || (function(){var s=document.querySelector('#mdl-proj-select')||document.querySelector('select[id*="proj"]');return (s&&s.value)||'';})();
+if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     fetch('/admin/projects/' + encodeURIComponent(projKey) + '/types', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -6039,6 +6041,15 @@ window.renderAdminV2ByDivision = function(){
               '<button type="button" class="mdl-btn mdl-btn-del" id="mdl-weekly-delete" style="display:none">🗑️ 삭제</button>' +
             '</div>' +
             '<div id="mdl-weekly-preview" class="mdl-weekly-preview"></div>' +
+          // 모델별 주차별 계획 입력 (엑셀 아래)
+          '<div class="mdl-model-weekly-section" style="margin-top:24px;padding-top:20px;border-top:2px solid #E5E7EB;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+              '<h4 style="margin:0;font-size:15px;font-weight:700;color:#111827;">📝 모델별 주차별 계획 입력 (양산)</h4>' +
+              '<select id="wp-month-sel" style="padding:7px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:#fff;"></select>' +
+            '</div>' +
+            '<div id="wp-models-list"></div>' +
+          '</div>' +
+
           '</div>' +
         '</div>' +
       '</div>';
@@ -6166,7 +6177,8 @@ window.renderAdminV2ByDivision = function(){
     const noteSaveBtn = document.getElementById('mdl-note-save');
     if (noteSaveBtn) {
       noteSaveBtn.addEventListener('click', function() {
-        if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요'); return; }
+        _currentProjectKey = _currentProjectKey || (function(){var s=document.querySelector('#mdl-proj-select')||document.querySelector('select[id*="proj"]');return (s&&s.value)||'';})();
+if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         const noteEl = document.getElementById('mdl-status-note');
         const msg = document.getElementById('mdl-note-msg');
         fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/status-note', {
@@ -6254,6 +6266,485 @@ window.renderAdminV2ByDivision = function(){
         }
         renderModelsPage();
       }).catch(function(){ renderModelsPage(); });
+    }
+  });
+})();
+</script>
+
+
+
+
+<script>
+// ===== 주차별 계획: 모델별 개별 입력 (MutationObserver 방식) =====
+(function(){
+  var _wpMonth = new Date().toISOString().slice(0,7);
+
+  function _wpFindWeeklyTable() {
+    var tbl = null;
+    var tables = document.querySelectorAll('table');
+    for (var i = 0; i < tables.length; i++) {
+      if (tables[i].textContent.indexOf('PO수량') >= 0) { tbl = tables[i]; break; }
+    }
+    return tbl;
+  }
+
+  function _wpFindCardAncestor(el) {
+    var cur = el;
+    while (cur && cur.parentElement) {
+      var s = cur.getAttribute && cur.getAttribute('style') || '';
+      if (s.indexOf('border-radius') >= 0 && (s.indexOf('background') >= 0 || s.indexOf('#fff') >= 0 || s.indexOf('white') >= 0)) {
+        return cur;
+      }
+      cur = cur.parentElement;
+    }
+    // 폴백: 테이블의 상위 3단계
+    cur = el;
+    for (var k = 0; k < 3 && cur.parentElement; k++) cur = cur.parentElement;
+    return cur;
+  }
+
+  function _wpTryInject() {
+    if (document.getElementById('wp-model-entry-box')) return;
+    var tbl = _wpFindWeeklyTable();
+    if (!tbl) return;
+    var card = _wpFindWeeklyTable() ? _wpFindCardAncestor(tbl) : null;
+    if (!card || !card.parentElement) return;
+
+    var box = document.createElement('div');
+    box.id = 'wp-model-entry-box';
+    box.style.cssText = 'margin-top:16px;padding:20px;background:#fff;border-radius:12px;border:1px solid #E5E7EB;box-shadow:0 1px 3px rgba(0,0,0,0.06);';
+    box.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #E5E7EB;">' +
+        '<h4 style="margin:0;font-size:15px;font-weight:700;color:#111827;">📝 모델별 주차별 계획 입력 (양산)</h4>' +
+        '<select id="wp-month-sel" style="padding:7px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:#fff;"></select>' +
+      '</div>' +
+      '<div id="wp-models-list"></div>';
+    card.parentElement.insertBefore(box, card.nextSibling);
+
+    var sel = document.getElementById('wp-month-sel');
+    var base = new Date();
+    for (var off = -2; off <= 2; off++) {
+      var d = new Date(base.getFullYear(), base.getMonth() + off, 1);
+      var mv = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      var opt = document.createElement('option');
+      opt.value = mv;
+      opt.textContent = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월';
+      if (mv === _wpMonth) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.onchange = function(){ _wpMonth = this.value; _wpLoadModels(); };
+    _wpLoadModels();
+  }
+
+  function _wpLoadModels() {
+    var list = document.getElementById('wp-models-list');
+    if (!list) return;
+    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    if (!pk) {
+      // 프로젝트 선택 안 됐으면 드롭다운에서 가져오기
+      var projSel = document.getElementById('mdl-proj-select');
+      if (projSel && projSel.value) {
+        pk = projSel.value;
+        _currentProjectKey = pk;
+      } else {
+        list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">프로젝트를 먼저 선택하세요</div>';
+        return;
+      }
+    }
+    list.innerHTML = '<div style="text-align:center;padding:24px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
+
+    fetch('/projects/' + encodeURIComponent(pk) + '/models', { credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var models = (d.models || []).filter(function(m){ return m.group === '양산'; });
+        if (!models.length) {
+          list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">양산 모델이 없습니다</div>';
+          return;
+        }
+        list.innerHTML = '';
+        models.forEach(function(m, idx){
+          var card = document.createElement('div');
+          card.style.cssText = 'border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#fff;';
+          card.innerHTML =
+            '<div style="background:#F9FAFB;padding:11px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;" data-wp-idx="' + idx + '">' +
+              '<div style="display:flex;align-items:center;gap:10px;">' +
+                '<span style="width:24px;height:24px;background:#2563EB;border-radius:6px;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;">' + (idx + 1) + '</span>' +
+                '<strong style="font-size:13px;color:#111827;">' + (m.name || m.id) + '</strong>' +
+              '</div>' +
+              '<span style="display:inline-flex;gap:10px;align-items:center;">' +
+                '<span id="wp-prog-' + idx + '" style="font-size:12px;color:#6B7280;">-</span>' +
+                '<span id="wp-arrow-' + idx + '" style="color:#9CA3AF;transition:transform .2s;display:inline-block;">▼</span>' +
+              '</span>' +
+            '</div>' +
+            '<div id="wp-body-' + idx + '" style="display:none;padding:14px;"></div>';
+          list.appendChild(card);
+          card.querySelector('[data-wp-idx]').onclick = function(){
+            var body = document.getElementById('wp-body-' + idx);
+            var arrow = document.getElementById('wp-arrow-' + idx);
+            var open = body.style.display !== 'none';
+            body.style.display = open ? 'none' : 'block';
+            arrow.style.transform = open ? '' : 'rotate(180deg)';
+            if (!open && !body.dataset.loaded) _wpLoadOne(pk, m.id, idx);
+          };
+        });
+      });
+  }
+
+  function _wpLoadOne(pk, modelId, idx) {
+    var body = document.getElementById('wp-body-' + idx);
+    body.innerHTML = '<div style="text-align:center;padding:14px;color:#9CA3AF;font-size:12px;">로딩 중...</div>';
+    fetch('/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan?month=' + _wpMonth, { credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.detail) { body.innerHTML = '<div style="color:#DC2626;padding:12px;font-size:12px;">' + d.detail + '</div>'; return; }
+        body.dataset.loaded = '1';
+        document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + (d.progress || 0) + '%';
+
+        var rows = '';
+        d.weeks.forEach(function(w){
+          var prog = w.plan > 0 ? Math.round(w.actual / w.plan * 100) : 0;
+          rows +=
+            '<tr>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-weight:600;font-size:12px;">' + w.week + '</td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;"><input type="number" min="0" value="' + w.plan + '" class="wp-in-plan" data-week="' + w.week + '" style="width:62px;padding:5px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;text-align:center;"></td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;"><input type="number" min="0" value="' + w.actual + '" class="wp-in-act" data-week="' + w.week + '" style="width:62px;padding:5px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;text-align:center;"></td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;color:#6B7280;font-size:12px;" id="wp-rem-' + idx + '-' + w.week + '">' + w.remaining + '</td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:12px;font-weight:600;color:' + (prog > 0 ? '#059669' : '#9CA3AF') + ';" id="wp-pct-' + idx + '-' + w.week + '">' + prog + '%</td>' +
+            '</tr>';
+        });
+
+        body.innerHTML =
+          '<table style="width:100%;border-collapse:collapse;">' +
+            '<thead><tr style="background:#F3F4F6;">' +
+              '<th style="padding:7px 10px;border:1px solid #E5E7EB;text-align:left;font-size:12px;">주차</th>' +
+              '<th style="padding:7px 10px;border:1px solid #E5E7EB;text-align:left;font-size:12px;">계획</th>' +
+              '<th style="padding:7px 10px;border:1px solid #E5E7EB;text-align:left;font-size:12px;">실적</th>' +
+              '<th style="padding:7px 10px;border:1px solid #E5E7EB;text-align:left;font-size:12px;">잔여</th>' +
+              '<th style="padding:7px 10px;border:1px solid #E5E7EB;text-align:left;font-size:12px;">진행률</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+            '<tfoot><tr style="background:#F9FAFB;font-weight:700;">' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:12px;">총계</td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:12px;" id="wp-tp-' + idx + '">' + d.month_total_plan + '</td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:12px;" id="wp-ta-' + idx + '">' + d.month_total_actual + '</td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:12px;" id="wp-tr-' + idx + '">' + d.month_remaining + '</td>' +
+              '<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:12px;" id="wp-tg-' + idx + '">' + (d.progress || 0) + '%</td>' +
+            '</tr></tfoot>' +
+          '</table>' +
+          '<div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button id="wp-save-' + idx + '" style="background:#2563EB;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">💾 저장</button>' +
+            '<button id="wp-reset-' + idx + '" style="background:#fff;color:#DC2626;border:1px solid #FECACA;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">🔄 초기화</button>' +
+          '</div>';
+
+        function recalc(){
+          var tp = 0, ta = 0;
+          body.querySelectorAll('.wp-in-plan').forEach(function(p){
+            var w = p.dataset.week;
+            var a = body.querySelector('.wp-in-act[data-week="' + w + '"]');
+            var pv = parseInt(p.value) || 0, av = parseInt(a.value) || 0;
+            tp += pv; ta += av;
+            document.getElementById('wp-rem-' + idx + '-' + w).textContent = Math.max(0, pv - av);
+            var pct = pv > 0 ? Math.round(av / pv * 100) : 0;
+            var pc = document.getElementById('wp-pct-' + idx + '-' + w);
+            pc.textContent = pct + '%';
+            pc.style.color = pct > 0 ? '#059669' : '#9CA3AF';
+          });
+          document.getElementById('wp-tp-' + idx).textContent = tp;
+          document.getElementById('wp-ta-' + idx).textContent = ta;
+          document.getElementById('wp-tr-' + idx).textContent = Math.max(0, tp - ta);
+          var gp = tp > 0 ? Math.round(ta / tp * 100) : 0;
+          document.getElementById('wp-tg-' + idx).textContent = gp + '%';
+          document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + gp + '%';
+        }
+        body.querySelectorAll('input').forEach(function(inp){ inp.oninput = recalc; });
+
+        document.getElementById('wp-save-' + idx).onclick = function(){
+          var weeks = {};
+          body.querySelectorAll('.wp-in-plan').forEach(function(p){
+            var w = p.dataset.week;
+            var a = body.querySelector('.wp-in-act[data-week="' + w + '"]');
+            weeks[w] = { plan: parseInt(p.value) || 0, actual: parseInt(a.value) || 0 };
+          });
+          fetch('/admin/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+            body: JSON.stringify({ month: _wpMonth, weeks: weeks })
+          }).then(function(r){ return r.json(); }).then(function(res){
+            if (res.ok) {
+              var t = document.createElement('div');
+              t.style.cssText = 'position:fixed;top:20px;right:20px;background:#059669;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+              t.textContent = '✅ ' + modelId + ' 저장 완료 (진행률 ' + res.progress + '%)';
+              document.body.appendChild(t);
+              setTimeout(function(){ t.remove(); }, 2500);
+            } else {
+              alert('❌ 저장 실패: ' + (res.detail || '오류'));
+            }
+          });
+        };
+        document.getElementById('wp-reset-' + idx).onclick = function(){
+          if (!confirm('⚠️ 이 모델의 모든 주차 계획/실적을 0으로 초기화할까요?')) return;
+          body.querySelectorAll('input').forEach(function(inp){ inp.value = 0; });
+          recalc();
+        };
+      });
+  }
+
+  // MutationObserver: PO수량 표가 DOM에 나타날 때마다 자동 주입
+  var _wpTimer = null;
+  var observer = new MutationObserver(function(){
+    if (_wpTimer) clearTimeout(_wpTimer);
+    _wpTimer = setTimeout(_wpTryInject, 400);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // 최초 1회 즉시 시도
+  setTimeout(_wpTryInject, 1500);
+
+  // 전역 노출 (콘솔/외부 접근용)
+  window._wpLoadModels = _wpLoadModels;
+  window._wpTryInject = (typeof _wpTryInject !== "undefined") ? _wpTryInject : null;
+})();
+</script>
+
+
+<script>
+// 모델별 주차별 계획 입력 기능
+(function(){
+  var _wpMonth = new Date().toISOString().slice(0,7);
+  var _wpModels = [];
+
+  // 프로젝트 변경 감지
+  var _lastProjectKey = '';
+  function watchProjectChange() {
+    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    if (pk && pk !== _lastProjectKey) {
+      _lastProjectKey = pk;
+      loadModelList();
+    }
+  }
+  setInterval(watchProjectChange, 1000);
+
+  function initMonthSelect() {
+    var sel = document.getElementById('wp-month-sel');
+    if (!sel) return;
+    sel.innerHTML = '';
+    var base = new Date();
+    for (var off = -2; off <= 2; off++) {
+      var d = new Date(base.getFullYear(), base.getMonth() + off, 1);
+      var mv = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      var opt = document.createElement('option');
+      opt.value = mv;
+      opt.textContent = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월';
+      if (mv === _wpMonth) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.onchange = function() { _wpMonth = this.value; loadModelList(); };
+  }
+
+  function loadModelList() {
+    var list = document.getElementById('wp-models-list');
+    if (!list) return;
+    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    if (!pk) {
+      list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">프로젝트를 먼저 선택하세요</div>';
+      return;
+    }
+    list.innerHTML = '<div style="text-align:center;padding:24px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
+
+    fetch('/projects/' + encodeURIComponent(pk) + '/models', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _wpModels = (d.models || []).filter(function(m) { return m.group === '양산'; });
+        if (!_wpModels.length) {
+          list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">양산 모델이 없습니다</div>';
+          return;
+        }
+        renderModelCards();
+      });
+  }
+
+  function renderModelCards() {
+    var list = document.getElementById('wp-models-list');
+    list.innerHTML = '';
+    _wpModels.forEach(function(m, idx) {
+      var card = document.createElement('div');
+      card.style.cssText = 'border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.05);';
+      card.innerHTML =
+        '<div style="background:#F9FAFB;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background 0.15s;" data-idx="' + idx + '" onmouseover="this.style.background=\'#F3F4F6\'" onmouseout="this.style.background=\'#F9FAFB\'">' +
+          '<div style="display:flex;align-items:center;gap:12px;">' +
+            '<span style="width:28px;height:28px;background:#2563EB;border-radius:6px;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + (idx + 1) + '</span>' +
+            '<div>' +
+              '<div style="font-weight:600;font-size:14px;color:#111827;">' + (m.name || m.id) + '</div>' +
+              '<div style="font-size:12px;color:#6B7280;">' + m.id + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px;">' +
+            '<span id="wp-prog-' + idx + '" style="font-size:12px;color:#6B7280;font-weight:500;">-</span>' +
+            '<span id="wp-arrow-' + idx + '" style="color:#9CA3AF;transition:transform 0.2s;display:inline-block;">▼</span>' +
+          '</div>' +
+        '</div>' +
+        '<div id="wp-body-' + idx + '" style="display:none;padding:16px;background:#fff;border-top:1px solid #E5E7EB;"></div>';
+      list.appendChild(card);
+
+      card.querySelector('[data-idx]').onclick = function() {
+        var body = document.getElementById('wp-body-' + idx);
+        var arrow = document.getElementById('wp-arrow-' + idx);
+        var open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        arrow.style.transform = open ? '' : 'rotate(180deg)';
+        if (!open && !body.dataset.loaded) loadModelWeeklyData(m.id, idx);
+      };
+    });
+  }
+
+  function loadModelWeeklyData(modelId, idx) {
+    var body = document.getElementById('wp-body-' + idx);
+    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    body.innerHTML = '<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
+
+    fetch('/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan?month=' + _wpMonth, { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.detail) {
+          body.innerHTML = '<div style="color:#DC2626;padding:12px;font-size:13px;">' + d.detail + '</div>';
+          return;
+        }
+        body.dataset.loaded = '1';
+        document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + (d.progress || 0) + '%';
+        document.getElementById('wp-prog-' + idx).style.color = (d.progress > 0) ? '#059669' : '#6B7280';
+
+        var rows = '';
+        d.weeks.forEach(function(w) {
+          var prog = w.plan > 0 ? Math.round(w.actual / w.plan * 100) : 0;
+          var progColor = prog === 100 ? '#059669' : prog > 0 ? '#2563EB' : '#9CA3AF';
+          rows += '<tr>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;font-weight:600;font-size:13px;color:#111827;">' + w.week + '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;">' +
+              '<input type="number" min="0" value="' + w.plan + '" class="wp-plan" data-week="' + w.week + '" style="width:70px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center;transition:border-color 0.15s;" onfocus="this.style.borderColor=\'#2563EB\'" onblur="this.style.borderColor=\'#D1D5DB\'">' +
+            '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;">' +
+              '<input type="number" min="0" value="' + w.actual + '" class="wp-actual" data-week="' + w.week + '" style="width:70px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center;transition:border-color 0.15s;" onfocus="this.style.borderColor=\'#2563EB\'" onblur="this.style.borderColor=\'#D1D5DB\'">' +
+            '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;color:#6B7280;font-size:13px;" id="wp-rem-' + idx + '-' + w.week + '">' + w.remaining + '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;font-weight:600;font-size:13px;color:' + progColor + ';" id="wp-pct-' + idx + '-' + w.week + '">' + prog + '%</td>' +
+          '</tr>';
+        });
+
+        body.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="background:#F3F4F6;">' +
+            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">주차</th>' +
+            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">계획</th>' +
+            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">실적</th>' +
+            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">잔여</th>' +
+            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">진행률</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+          '<tfoot><tr style="background:#F9FAFB;font-weight:700;">' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;">총계</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-plan-' + idx + '">' + d.month_total_plan + '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-actual-' + idx + '">' + d.month_total_actual + '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-rem-' + idx + '">' + d.month_remaining + '</td>' +
+            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-prog-' + idx + '">' + (d.progress || 0) + '%</td>' +
+          '</tr></tfoot>' +
+        '</table></div>' +
+        '<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">' +
+          '<button id="wp-save-' + idx + '" style="background:#2563EB;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#1D4ED8\'" onmouseout="this.style.background=\'#2563EB\'">💾 저장</button>' +
+          '<button id="wp-reset-' + idx + '" style="background:#fff;color:#DC2626;border:1px solid #FECACA;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background=\'#FEF2F2\'" onmouseout="this.style.background=\'#fff\'">🔄 초기화</button>' +
+        '</div>';
+
+        function recalc() {
+          var tp = 0, ta = 0;
+          body.querySelectorAll('.wp-plan').forEach(function(p) {
+            var w = p.dataset.week;
+            var a = body.querySelector('.wp-actual[data-week="' + w + '"]');
+            var pv = parseInt(p.value) || 0, av = parseInt(a.value) || 0;
+            tp += pv; ta += av;
+            document.getElementById('wp-rem-' + idx + '-' + w).textContent = Math.max(0, pv - av);
+            var pct = pv > 0 ? Math.round(av / pv * 100) : 0;
+            var pc = document.getElementById('wp-pct-' + idx + '-' + w);
+            pc.textContent = pct + '%';
+            pc.style.color = pct > 0 ? '#059669' : '#9CA3AF';
+          });
+          document.getElementById('wp-total-plan-' + idx).textContent = tp;
+          document.getElementById('wp-total-actual-' + idx).textContent = ta;
+          document.getElementById('wp-total-rem-' + idx).textContent = Math.max(0, tp - ta);
+          var gp = tp > 0 ? Math.round(ta / tp * 100) : 0;
+          document.getElementById('wp-total-prog-' + idx).textContent = gp + '%';
+          document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + gp + '%';
+          document.getElementById('wp-prog-' + idx).style.color = gp > 0 ? '#059669' : '#6B7280';
+        }
+        body.querySelectorAll('input').forEach(function(inp) { inp.oninput = recalc; });
+
+        document.getElementById('wp-save-' + idx).onclick = function() {
+          var weeks = {};
+          body.querySelectorAll('.wp-plan').forEach(function(p) {
+            var w = p.dataset.week;
+            var a = body.querySelector('.wp-actual[data-week="' + w + '"]');
+            weeks[w] = { plan: parseInt(p.value) || 0, actual: parseInt(a.value) || 0 };
+          });
+
+          fetch('/admin/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ month: _wpMonth, weeks: weeks })
+          }).then(function(r) { return r.json(); }).then(function(res) {
+            if (res.ok) {
+              var toast = document.createElement('div');
+              toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#059669;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease;';
+              toast.textContent = '✅ ' + modelId + ' 저장 완료 (진행률 ' + res.progress + '%)';
+              document.body.appendChild(toast);
+              setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() { toast.remove(); }, 300); }, 2500);
+            } else {
+              alert('❌ 저장 실패: ' + (res.detail || '오류'));
+            }
+          });
+        };
+
+        document.getElementById('wp-reset-' + idx).onclick = function() {
+          if (!confirm('⚠️ 이 모델의 모든 주차 계획/실적을 0으로 초기화할까요?')) return;
+          body.querySelectorAll('input').forEach(function(inp) { inp.value = 0; });
+          recalc();
+        };
+      });
+  }
+
+  // 초기화
+  setTimeout(function() {
+    initMonthSelect();
+    loadModelList();
+  }, 300);
+})();
+</script>
+
+
+<script>
+// wpAutoKick: 입력 박스가 보이면 프로젝트 감지 후 모델 목록 자동 로드
+(function(){
+  var _kicked = false;
+  setInterval(function(){
+    var list = document.getElementById('wp-models-list');
+    if (!list) return;
+    var stuck = list.textContent.indexOf('프로젝트를 먼저 선택하세요') >= 0
+             || list.textContent.indexOf('불러오는 중') >= 0
+             || list.textContent.indexOf('로딩 중') >= 0;
+    if (!stuck) { _kicked = false; return; }
+    var sel = document.getElementById('mdl-proj-select');
+    if (sel && sel.value && !_kicked) {
+      _kicked = true;
+      if (typeof _currentProjectKey !== 'undefined') { try { _currentProjectKey = sel.value; } catch(e){} }
+      if (typeof window._wpLoadModels === 'function') { try { window._wpLoadModels(); } catch(e){ console.warn(e); } }
+      setTimeout(function(){ _kicked = false; }, 3000);
+    }
+  }, 1200);
+  // 프로젝트 바꾸면 즉시 재로드
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.id === 'mdl-proj-select') {
+      var list = document.getElementById('wp-models-list');
+      if (list) {
+        list.innerHTML = '<div style="text-align:center;padding:24px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
+        if (typeof _currentProjectKey !== 'undefined') { try { _currentProjectKey = e.target.value; } catch(err){} }
+        setTimeout(function(){ if (typeof window._wpLoadModels === 'function') window._wpLoadModels(); }, 200);
+      }
     }
   });
 })();
