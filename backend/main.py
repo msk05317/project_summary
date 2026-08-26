@@ -2269,20 +2269,14 @@ MODELS_FILE = DATA_DIR / "models.json"
 
 def _load_models() -> dict:
     import os
-    # /app/models.json (Docker 이미지, git 커밋됨) 우선 읽기
-    # /data/models.json (볼륨, 초기화될 수 있음)은 fallback
-    candidates = ["/app/models.json", MODELS_FILE]
-    for path in candidates:
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # 파워박스 15단계가 있으면 정상 데이터
-                    pb = data.get("projects", {}).get("powerbox", {}).get("models", [])
-                    if pb and len(pb[0].get("process", [])) == 15:
-                        return data
-            except Exception:
-                continue
+    # /app/models.json만 읽기 (Docker 이미지, git 커밋됨)
+    path = "/app/models.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[load_models] ERROR: {e}")
     return {"version": 1, "updated_at": None, "projects": {}}
 
 
