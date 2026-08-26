@@ -1862,7 +1862,7 @@ def dashboard():
     # --- ESS 합성 카드 주입 (models.json → dashboard 카드) ---
     _models_data = _load_models()
     # --- 반도체 frame 카드 주입 ---
-    _semi_frame_projects = {"frame": "프레임"}
+    _semi_frame_projects = {"frame": "프레임", "powerbox": "파워박스", "major_module": "메이저모듈"}
     for _pk, _label in _semi_frame_projects.items():
         for _m in _models_data.get("projects", {}).get(_pk, {}).get("models", []):
             if _m.get("group") != "개발":
@@ -12854,7 +12854,7 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             entry["dev_type"] = dev_type
             proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
-            entry["process"] = proc if isinstance(proc, list) and len(proc) == 13 else _default_process()
+            entry["process"] = proc if isinstance(proc, list) and len(proc) in (12, 13) else _default_process()
         normalized.append(entry)
 
     normalized.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
@@ -18564,7 +18564,8 @@ def _model_key_alias(project_key: str) -> str:
 
 def _ensure_process(m: dict) -> list:
     proc = m.get("process")
-    if not isinstance(proc, list) or len(proc) != 13:
+    # 12단계(프레임) 또는 13단계(기본) 커스텀 프로세스는 유지
+    if not isinstance(proc, list) or len(proc) not in (12, 13, 14, 15):
         proc = _default_process()
         m["process"] = proc
     return proc
@@ -18685,6 +18686,7 @@ def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "weekly_plan", "weekly_progress", "weekly_summary")}
     if m.get("group") == "개발":
         proc = _ensure_process(m)
+        out["process"] = proc
         out["dev_type"] = m.get("dev_type") or ""
         out["progress"] = _process_progress(proc)
         stage, expected = _process_current(proc)
@@ -18705,7 +18707,7 @@ def get_project_models_detail(project_key: str):
     for m in proj.get("models", []):
         if not isinstance(m, dict):
             continue
-        if m.get("group") == "개발" and (not isinstance(m.get("process"), list) or len(m.get("process")) != 13):
+        if m.get("group") == "개발" and (not isinstance(m.get("process"), list) or len(m.get("process")) not in (12, 13, 14, 15)):
             changed = True
         enriched.append(_inject_weekly_summary(_enrich_model(m)))
     if changed:
