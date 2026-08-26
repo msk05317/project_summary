@@ -2268,9 +2268,10 @@ MODELS_FILE = DATA_DIR / "models.json"
 
 
 def _load_models() -> dict:
-    # /data/models.json이 없거나 초기화된 경우 /app/models.json (Docker 이미지) 사용
     import os
-    candidates = [MODELS_FILE, "/app/models.json"]
+    # /app/models.json (Docker 이미지, git 커밋됨) 우선 읽기
+    # /data/models.json (볼륨, 초기화될 수 있음)은 fallback
+    candidates = ["/app/models.json", MODELS_FILE]
     for path in candidates:
         if os.path.exists(path):
             try:
