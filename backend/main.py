@@ -2269,14 +2269,16 @@ MODELS_FILE = DATA_DIR / "models.json"
 
 def _load_models() -> dict:
     import os
-    # /app/models.json만 읽기 (Docker 이미지, git 커밋됨)
-    path = "/app/models.json"
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[load_models] ERROR: {e}")
+    # /data/models.json (볼륨, 운영 데이터) 우선 읽기
+    # /app/models.json (Docker 이미지, 초기 데이터)는 fallback
+    candidates = [MODELS_FILE, "/app/models.json"]
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                continue
     return {"version": 1, "updated_at": None, "projects": {}}
 
 
