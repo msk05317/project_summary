@@ -5541,7 +5541,7 @@ window.renderAdminV2ByDivision = function(){
   function openProcessEditor(modelId) {
     _currentProjectKey = _currentProjectKey || (function(){var s=document.querySelector('#mdl-proj-select')||document.querySelector('select[id*="proj"]');return (s&&s.value)||'';})();
 if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
-    fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(modelId) + '/process', { credentials: 'same-origin' })
+    fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(modelId) + '/process', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.detail) { alert(d.detail); return; }

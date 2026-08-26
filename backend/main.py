@@ -19075,6 +19075,40 @@ def admin_mark_process_done(project_key: str, model_id: str, _admin: int = Depen
     raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
 
 
+@app.get("/admin/projects/{project_key}/models/{model_id}/process")
+def admin_get_model_process(project_key: str, model_id: str):
+    """앱용 개발 승인 프로세스 조회"""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            if m.get("group") != "개발":
+                raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
+            proc = _ensure_process(m)
+            _save_models(data)
+            done = sum(1 for s in proc
+                       if (str(s.get("actual") or "").strip() or str(s.get("status") or "") == "완료")
+                       and str(s.get("status") or "") not in ("미승인", "미제출"))
+            stage, expected = _process_current(proc)
+            return {
+                "model_id": model_id,
+                "model_name": m.get("name") or model_id,
+                "dev_type": m.get("dev_type") or "",
+                "steps": proc,
+                "done": done,
+                "total": len(proc),
+                "progress": _process_progress(proc),
+                "current_stage": stage,
+                "current_expected": expected,
+                "issues": m.get("issues") or "",
+            }
+    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+
+
+
 @app.put("/admin/projects/{project_key}/models/{model_id}/process")
 def admin_put_model_process(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
     """admin용 프로세스 저장: {"dev_type": "HVM", "steps": [{"key","expected","actual"}, ...]}"""
