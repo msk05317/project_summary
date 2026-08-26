@@ -5304,6 +5304,31 @@ window.renderAdminV2ByDivision = function(){
 
   window._modelsData = [];
   var _projTypes = [];
+
+  function loadProjectTypes(projectKey) {
+    if (!projectKey) {
+      _projTypes = [];
+      renderTypeChips();
+      return;
+    }
+    fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/types')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _projTypes = (d && d.types) ? d.types : [];
+        // 모델 데이터의 dev_type 병합
+        (window._modelsData || []).forEach(function(m) {
+          var v = (m.dev_type || '').trim();
+          if (v && v.toLowerCase() !== 'none' && _projTypes.indexOf(v) === -1) {
+            _projTypes.push(v);
+          }
+        });
+        renderTypeChips();
+        var tableBox = document.getElementById('mdl-table-box');
+        if (tableBox) renderTable(document.getElementById("mdl-table-box"));
+      })
+      .catch(function(e) { console.warn('유형 로드 오류:', e); });
+  }
+
   window._projIsEss = false;
   var _currentProjectKey = '';
 
@@ -5349,16 +5374,19 @@ window.renderAdminV2ByDivision = function(){
       if (!m) return;
       const g = r.querySelector('[data-field="group"]');
       if (g) m.group = g.value;
+      const pn = r.querySelector('[data-field="part_number"]');
       const poq = r.querySelector('[data-field="po_qty"]');
       const shq = r.querySelector('[data-field="shipped_qty"]');
       const duet = r.querySelector('[data-field="due_text"]');
       const iss = r.querySelector('[data-field="issues"]');
+      // part_number는 개발 3종(powerbox/major_module/frame)에서만 존재
       // ESS 필드 값 할당 (누락됐던 부분)
       if (poq) m.po_qty = parseInt(poq.value || '0', 10) || 0;
       if (shq) m.shipped_qty = parseInt(shq.value || '0', 10) || 0;
       if (duet) m.due_text = duet.value || '';
       if (iss) m.issues = iss.value || '';
       const dt = r.querySelector('[data-field="dev_type"]');
+      if (pn) m.part_number = pn.value;
       if (dt) m.dev_type = dt.value;
       const st = r.querySelector('[data-field="status"]');
       if (st) m.status = st.value;
@@ -5428,6 +5456,8 @@ window.renderAdminV2ByDivision = function(){
 
     let html = '<table class="mdl-table"><thead><tr>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
+      ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
+        ? '<th>파트넘버</th>' : '') +
       (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th><th style="width:56px">관리</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>이슈사항</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
@@ -5444,12 +5474,26 @@ window.renderAdminV2ByDivision = function(){
         const isDev = g === '개발';
         const devType = (m.dev_type || '').toUpperCase();
         html += '<tr data-model-id="' + m.id + '">' +
+          ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
+          ? '<td class="mdl-col-pn"><input data-field="part_number" value="' + (m.part_number || m.id) + '" style="width:110px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:11px;font-family:monospace;font-weight:600;" /></td>' : '') +
           '<td class="mdl-td-name">' + m.name + '</td>' +
           '<td><select data-field="group">' +
             '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
             '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
           '</select></td>' +
-          '<td><input data-field="dev_type" value="' + (m.dev_type || '') + '" list="mdl-type-list" placeholder="유형" style="width:80px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;" /></td>' +
+          '<td><select data-field="dev_type" style="width:90px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;background:#fff;">' +
+            '<option value=""></option>' +
+            (function(){
+              var cur = (m.dev_type || '').trim();
+              var list = (_projTypes || []).slice();
+              var html = '';
+              if (cur && cur.toLowerCase() !== 'none' && list.indexOf(cur) === -1) {
+                html += '<option value="' + cur + '" selected disabled style="color:#999;">' + cur + ' (미등록)</option>';
+              }
+              html += list.map(function(t){ return '<option value="' + t + '"' + (cur === t ? ' selected' : '') + '>' + t + '</option>'; }).join('');
+              return html;
+            })() +
+          '</select></td>' +
           (_projIsEss ?
   '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
   '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
@@ -5635,7 +5679,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         var el = document.getElementById(id);
         if (el) { el.textContent = ''; el.className = 'mdl-save-msg'; }
       });
-      renderTable(tableBox);
+      renderTable(document.getElementById("mdl-table-box"));
     });
 
     // 단계 상태 변경 핸들러
@@ -5712,14 +5756,15 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
 
   // ── 프로젝트별 유형 관리 ──
   function loadTypes(projectKey) {
-    if (!projectKey) { _projTypes = []; renderTypeChips(); return; }
-    fetch('/projects/' + encodeURIComponent(projectKey) + '/types')
+    if (!projectKey) return;
+    fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/types')
       .then(function(r) { return r.ok ? r.json() : { types: ['HVM', 'RPM'] }; })
       .then(function(d) {
         _projTypes = (d && d.types) ? d.types : [];
         renderTypeChips();
+        renderTable(document.getElementById("mdl-table-box"));
       })
-      .catch(function() { _projTypes = []; renderTypeChips(); });
+      .catch(function(e) { console.warn('유형 로드 오류:', e); });
   }
 
   function renderTypeChips() {
@@ -5756,7 +5801,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       .then(function() {
         renderTypeChips();
         var tableBox = document.getElementById('mdl-table-box');
-        if (tableBox) renderTable(tableBox); // datalist 갱신
+        if (tableBox) renderTable(document.getElementById("mdl-table-box")); // datalist 갱신
       })
       .catch(function(e) { alert('유형 저장 실패: ' + e.message); });
   }
@@ -5935,7 +5980,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       if (statusEl) { statusEl.textContent = '✅ 저장 완료 (' + (d.count || 0) + '개)'; statusEl.className = 'mdl-status ok'; }
       // 저장 성공: window._modelsData는 이미 sync된 상태 → renderTable만 호출 (재조회 X, 부드러운 UX)
       var tableBox = document.getElementById('mdl-table-box');
-      if (tableBox) renderTable(tableBox);
+      if (tableBox) renderTable(document.getElementById("mdl-table-box"));
     })
     .catch(function(e) {
       if (statusEl) { statusEl.textContent = '❌ 저장 실패: ' + e.message; statusEl.className = 'mdl-status err'; }
@@ -5959,8 +6004,27 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
   }
 
   // 사이드바 사업부 변경 시 프로젝트 목록 갱신 (전역)
-  document.addEventListener('DOMContentLoaded', function() {
-    var sidebarSel = document.getElementById('v2-division-select');
+  
+
+  function _allDevTypes() {
+    var set = {};
+    (_projTypes || []).forEach(function(t){ if (t && t.trim()) set[t.trim()] = 1; });
+    (window._modelsData || []).forEach(function(m){
+      var v = (m.dev_type || '').trim();
+      if (v && v.toLowerCase() !== 'none') set[v] = 1;
+    });
+    return Object.keys(set).sort();
+  }
+
+  function _getCurrentProjectKey() {
+    if (window._currentProjectKey) return window._currentProjectKey;
+    var sel = document.getElementById('mdl-proj-select');
+    if (sel && sel.value) return sel.value;
+    return '';
+  }
+
+document.addEventListener('DOMContentLoaded', function() {
+var sidebarSel = document.getElementById('v2-division-select');
     if (sidebarSel) {
       sidebarSel.addEventListener('change', function() {
         // 사업부 변경 시 모델 관리 페이지 다시 렌더링
@@ -6013,10 +6077,9 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
           '</div>' +
           '<div class="mdl-actions" id="mdl-toolbar">' +
             '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
-          '<button type="button" class="mdl-btn" id="mdl-excel-btn" style="background:#059669;color:#fff;">📥 엑셀 업로드</button>' +
-          '<button type="button" class="mdl-btn" id="mdl-excel-tpl-btn" style="background:#6B7280;color:#fff;">📄 양식 다운로드</button>' +
+          '<button type="button" class="mdl-btn" id="mdl-excel-btn" style="background:#059669;color:#fff;">📥 엑셀 업로드</button>' +'<button type="button" class="mdl-btn" id="mdl-excel-tpl-btn" style="background:#6B7280;color:#fff;">📄 양식 다운로드</button>' +
           '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls" style="display:none;">' +
-          '<button type="button" class="mdl-btn" id="mdl-proc-excel-btn" style="background:#7C3AED;color:#fff;">📅 프로세스 엑셀</button>' +
+          '<button type="button" class="mdl-btn" id="mdl-proc-excel-btn" style="background:#7C3AED;color:#fff;">📅 개발 프로세스 엑셀 업로드</button>' +
           '<input type="file" id="mdl-proc-excel-input" accept=".xlsx,.xls" style="display:none;">' +
           '<button type="button" class="mdl-btn" id="mdl-proc-reset-btn" style="background:#DC2626;color:#fff;">🔄 프로세스 초기화</button>' +
             '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
@@ -6203,8 +6266,13 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         alert('이미 존재하는 모델명입니다');
         return;
       }
-      window._modelsData.push({ id: trimmed, name: trimmed, group: '양산', status: '정상', progress: 0, price: 0, material_cost: 0 });
-      renderTable(tableBox);
+      var partNum = '';
+      var _pk = window._currentProjectKey || '';
+      if (_pk === 'powerbox' || _pk === 'major_module' || _pk === 'frame') {
+        partNum = (prompt('파트넘버 (예: 853-XXXXX-XXX)') || '').trim();
+      }
+      window._modelsData.push({ id: trimmed, name: trimmed, part_number: partNum || trimmed, group: '양산', status: '정상', progress: 0, price: 0, material_cost: 0 });
+      renderTable(document.getElementById("mdl-table-box"));
     });
 
     var sidebarSel = document.getElementById('v2-division-select');

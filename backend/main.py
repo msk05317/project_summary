@@ -5383,7 +5383,7 @@ def admin_v2_page(admin_auth: Optional[str] = Cookie(default=None)):
     if not _verify_session(admin_auth):
         return RedirectResponse(url="/admin/login?next=/admin/v2", status_code=302)
     """OneView Admin v2 — 시안 기반 새 관리자 페이지."""
-    return HTMLResponse(_ADMIN_V2_HTML)
+    return HTMLResponse(open(_ADMIN_V2_HTML_PATH, encoding='utf-8').read())
 
 
 import os
@@ -12889,6 +12889,11 @@ def get_project_types(project_key: str):
     return {"project_key": project_key, "types": _get_project_types(project_key)}
 
 
+@app.get("/admin/projects/{project_key}/types")
+def get_admin_project_types(project_key: str, _admin: int = Depends(get_admin_session)):
+    return {"project_key": project_key, "types": _get_project_types(project_key)}
+
+
 @app.put("/admin/projects/{project_key}/types")
 def save_project_types(project_key: str, payload: dict):
     """프로젝트별 유형 목록 저장"""
@@ -19165,6 +19170,117 @@ def admin_put_status_note(project_key: str, payload: dict, _admin: int = Depends
     proj["status_note"] = str(payload.get("note") or "").strip()
     _save_models(data)
     return {"ok": True, "project_key": _key}
+
+
+
+@app.post("/admin/projects/{project_key}/price-import-xlsx")
+async def admin_price_import_xlsx(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
+    """파워박스 판가/재료비 엑셀 업로드 (PBX/MajorModule/EMA 시트 자동 인식)"""
+    if project_key != "powerbox":
+        raise HTTPException(status_code=400, detail="파워박스 프로젝트에서만 사용 가능합니다.")
+    import io
+    import openpyxl
+    try:
+        raw = await file.read()
+        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀 읽기 실패: {e}")
+
+    COL = {
+        "id_match": ["파트넘버", "모델"],
+        "name": ["모델명", "모델"],
+        "group": ["구분"],
+        "dev_type": ["유형"],
+        "price": ["판가"],
+        "material_cost": ["재료비"],
+    }
+
+    def find_col(headers, candidates):
+        for h_idx, h in enumerate(headers):
+            hn = str(h or "").strip()
+            for c in candidates:
+                if hn == c:
+                    return h_idx
+        return None
+
+    def num(v):
+        if v is None:
+            return 0
+        s = str(v).replace(",", "").strip()
+        try:
+            return int(float(s))
+        except Exception:
+            return 0
+
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault("powerbox", {"models": []})
+    if "models" not in proj:
+        proj["models"] = []
+
+    updated = added = skipped = 0
+
+    for sheet_name in wb.sheetnames:
+        if sheet_name not in ("PBX", "MajorModule", "EMA"):
+            continue
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 2:
+            continue
+        headers = rows[1]
+        col_id = find_col(headers, COL["id_match"])
+        col_name = find_col(headers, COL["name"])
+        col_grp = find_col(headers, COL["group"])
+        col_dt = find_col(headers, COL["dev_type"])
+        col_pr = find_col(headers, COL["price"])
+        col_mc = find_col(headers, COL["material_cost"])
+        if col_id is None:
+            continue
+
+        for r in rows[2:]:
+            mid = str(r[col_id] if col_id < len(r) else "" or "").strip()
+            if mid in ("", "-", "None"):
+                skipped += 1
+                continue
+            name = str(r[col_name] if col_name is not None and col_name < len(r) else "").strip()
+            if name.lower() in ("none", "nan", "null", ""):
+                name = mid
+            grp = str(r[col_grp] if col_grp is not None and col_grp < len(r) else "").strip()
+            if grp.lower() in ("none", "nan", "null", ""):
+                grp = "양산"
+            dvt = str(r[col_dt] if col_dt is not None and col_dt < len(r) else "").strip()
+            if dvt.lower() in ("none", "nan", "null"):
+                dvt = ""
+            pr = num(r[col_pr]) if col_pr is not None and col_pr < len(r) else 0
+            mc = num(r[col_mc]) if col_mc is not None and col_mc < len(r) else 0
+            if not dvt:
+                dvt = "PBX" if sheet_name == "PBX" else ("EMA" if sheet_name == "EMA" else "HVM")
+
+            target = None
+            for m in proj["models"]:
+                if (m.get("part_number") or "").strip() == mid or (m.get("id") or "").strip() == mid:
+                    target = m
+                    break
+            if not target:
+                proj["models"].append({
+                    "id": mid, "name": name, "part_number": mid,
+                    "group": grp, "dev_type": dvt, "status": "정상",
+                    "progress": 0, "price": pr, "material_cost": mc,
+                    "po_qty": 0, "shipped_qty": 0, "due_text": "", "issues": "",
+                    "process": []
+                })
+                added += 1
+            else:
+                target["name"] = name
+                target["part_number"] = mid
+                target["group"] = grp
+                target["dev_type"] = dvt
+                target["price"] = pr
+                target["material_cost"] = mc
+                updated += 1
+
+    _save_models(data)
+    return {"ok": True, "updated": updated, "added": added, "skipped": skipped}
+
 
 
 
