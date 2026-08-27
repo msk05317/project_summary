@@ -16435,47 +16435,42 @@ function resetWpModelPlan(idx) {
 @app.post("/chat")
 async def chat(payload: dict):
     """admin v2 전체 데이터 기반 챗봇"""
-    session_id = (payload or {}).get("session_id", "default").strip() or "default"
-    history = (payload or {}).get("history") or []  # [{"role":"user","content":"..."}, ...]
-    
-    # 세션별 마지막 컨텍스트 기억 (전역)
-    global _CHAT_SESSIONS
-    if '_CHAT_SESSIONS' not in globals():
-        _CHAT_SESSIONS = {}
-    sess = _CHAT_SESSIONS.setdefault(session_id, {})
-    
-    # 이전 히스토리에서 마지막 프로젝트/주차 추출 (후속 질문 보강용)
-    last_project = sess.get("last_project")
-    last_week = sess.get("last_week")
-    
-    # 현재 메시지에 프로젝트/주차 없으면 이전 것 사용
-    import re as _re3
-    week_m = _re3.search(r'W(\d{2})', message, _re3.I)
-    if week_m:
-        last_week = f"W{week_m.group(1)}"
-    elif last_week:
-        message = f"{message} ({last_week} 기준)"
-    
-    # 프로젝트 키워드 매칭 (하바플레이트 등)
-    proj_keywords = {"하바플레이트": "hrva_plate", "hrva": "hrva_plate", "plate": "hrva_plate"}
-    msg_lower = message.lower()
-    found_proj = None
-    for kw, pk in proj_keywords.items():
-        if kw in msg_lower:
-            found_proj = pk
-            break
-    if found_proj:
-        last_project = found_proj
-    elif last_project:
-        message = f"[{last_project}] {message}"
-        msg_lower = message.lower()
-    
-    # 세션에 저장
-    sess["last_project"] = last_project
-    sess["last_week"] = last_week
     message = (payload or {}).get("message", "").strip()
     if not message:
         return {"answer": "", "sources": [], "error": "empty message"}
+
+    session_id = ((payload or {}).get("session_id") or "default").strip() or "default"
+
+    # 세션별 마지막 컨텍스트 기억 (프로세스 전역)
+    global _CHAT_SESSIONS
+    try:
+        _CHAT_SESSIONS
+    except NameError:
+        _CHAT_SESSIONS = {}
+    sess = _CHAT_SESSIONS.setdefault(session_id, {})
+    last_project = sess.get("last_project")
+    last_week = sess.get("last_week")
+
+    # 현재 메시지에서 주차/프로젝트 추출, 없으면 세션 값 사용
+    import re as _re3
+    week_m = _re3.search(r"W(\d{2})", message, _re3.I)
+    if week_m:
+        last_week = "W" + week_m.group(1)
+    proj_keywords = {"하바플레이트": "hrva_plate", "hrva": "hrva_plate"}
+    msg_lower_pre = message.lower()
+    for kw, pk in proj_keywords.items():
+        if kw in msg_lower_pre or kw in message:
+            last_project = pk
+            break
+
+    # 후속 질문 보강: 프로젝트/주차 없으면 세션 값을 메시지에 태깅
+    if last_project and "hrva_plate" not in msg_lower_pre and "하바플레이트" not in message:
+        message = f"[project:{last_project}] {message}"
+    if last_week and not week_m:
+        message = f"{message} ({last_week} 기준)"
+
+    sess["last_project"] = last_project
+    sess["last_week"] = last_week
 
     # 음성 오인식 보정
     corrected = message
