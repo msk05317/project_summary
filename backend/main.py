@@ -16508,6 +16508,89 @@ async def chat(payload: dict):
                 else:
                     ctx += f"주간 계획: {str(wp)[:100]}"
             
+            # weekly_summary (양산/개발 그룹별 주차 현황 + 매출)
+            ws = proj.get("weekly_summary") or {}
+            if ws:
+                ctx += f"주차별 현황 (PO/실적/잔량): "
+                for gname in ["양산", "개발"]:
+                    g = ws.get(gname) or {}
+                    if g:
+                        ctx += f"{gname} PO {g.get('po_qty',0)} / 실적 {g.get('actual_total',0)} / 잔량 {g.get('remaining',0)}; "
+                ctx += "주차별: "
+                weeks_map = {}
+                for gname in ["양산", "개발"]:
+                    g = ws.get(gname) or {}
+                    for wname, wv in (g.get("weeks") or {}).items():
+                        weeks_map.setdefault(wname, {})[gname] = wv
+                for wname in ["W32", "W33", "W34", "W35"]:
+                    wcell = weeks_map.get(wname) or {}
+                    m = wcell.get("양산") or {}
+                    d = wcell.get("개발") or {}
+                    if m or d:
+                        ctx += f"{wname} 양산 {m.get('plan',0)}/{m.get('actual',0)}, 개발 {d.get('plan',0)}/{d.get('actual',0)}; "
+                if (ws.get("개발") or {}).get("price_fixed"):
+                    ctx += f"개발 단가 고정 ${ws['개발']['price_fixed']}; "
+            
+            # 주차별 매출 (weekly-revenue v2)
+            try:
+                # 같은 프로세스 내 직접 계산 (HTTP 호출 X → 타임아웃 원천 차단)
+                import datetime as _dt
+                month = _dt.date.today().strftime("%Y-%m")
+                weeks = ["W32", "W33", "W34", "W35"]
+                
+                # 양산: 모델별 weekly_plan × price 합산
+                mass_plan, mass_act, mass_rev = 0, 0, 0
+                mass_weekly = {}
+                for m in models:
+                    if m.get("group") != "양산":
+                        continue
+                    wp = (m.get("weekly_plan") or {}).get(month, {})
+                    price = m.get("price") or 0
+                    for w in weeks:
+                        cell = wp.get(w, {"plan": 0, "actual": 0})
+                        p, a = cell.get("plan", 0), cell.get("actual", 0)
+                        mass_weekly[w] = mass_weekly.get(w, {"plan": 0, "actual": 0, "revenue": 0})
+                        mass_weekly[w]["plan"] += p
+                        mass_weekly[w]["actual"] += a
+                        mass_weekly[w]["revenue"] += a * price
+                        mass_plan += p
+                        mass_act += a
+                        mass_rev += a * price
+                
+                # 개발: 그룹 weekly_summary 사용 (단가 $3,400)
+                DEV_PRICE = 3400
+                dev_ws = (proj.get("weekly_summary") or {}).get("개발") or {}
+                dev_weekly = dev_ws.get("weeks") or {}
+                dev_plan, dev_act, dev_rev = 0, 0, 0
+                for w in weeks:
+                    cell = dev_weekly.get(w, {"plan": 0, "actual": 0})
+                    p, a = cell.get("plan", 0), cell.get("actual", 0)
+                    dev_plan += p
+                    dev_act += a
+                    dev_rev += a * DEV_PRICE
+                
+                ctx += f"주차별 매출 ({month}): "
+                for w in weeks:
+                    mv = mass_weekly.get(w, {"plan":0,"actual":0,"revenue":0})
+                    dv = dev_weekly.get(w, {"plan":0,"actual":0})
+                    d_rev = dv.get("actual", 0) * DEV_PRICE
+                    ctx += f"{w} 양산 {mv['plan']}/{mv['actual']} ${mv['revenue']:,}, 개발 {dv.get('plan',0)}/{dv.get('actual',0)} ${d_rev:,}; "
+                ctx += f"합계: 양산 {mass_plan}/{mass_act} ${mass_rev:,}, 개발 {dev_plan}/{dev_act} ${dev_rev:,}, 전체 매출 ${mass_rev + dev_rev:,}"
+                ctx += " [규칙: 양산 매출은 각 모델별 판가(price) × 실적의 합산이며 절대 $3,400 고정 단가 아님. 개발만 $3,400 고정.]"
+            except Exception as e:
+                print(f"[chat] weekly 계산 실패 {pk}: {e}")
+                if rev.get("groups"):
+                    m_rev = rev["groups"].get("양산", {})
+                    d_rev = rev["groups"].get("개발", {})
+                    ctx += f"주차별 매출 ({rev.get('month','')}): "
+                    for w in rev.get("weeks", []):
+                        mv = m_rev.get("weeks", {}).get(w, {})
+                        dv = d_rev.get("weeks", {}).get(w, {})
+                        ctx += f"{w} 양산 {mv.get('plan',0)}/{mv.get('actual',0)} ${mv.get('revenue',0):,}, 개발 {dv.get('plan',0)}/{dv.get('actual',0)} ${dv.get('revenue',0):,}; "
+                    ctx += f"합계: 양산 {m_rev.get('total',{}).get('plan',0)}/{m_rev.get('total',{}).get('actual',0)} ${m_rev.get('total',{}).get('revenue',0):,}, 개발 {d_rev.get('total',{}).get('plan',0)}/{d_rev.get('total',{}).get('actual',0)} ${d_rev.get('total',{}).get('revenue',0):,}, 전체 매출 ${rev.get('combined_revenue',0):,}"
+            except Exception as e:
+                print(f"[chat] weekly-revenue 로드 실패 {pk}: {e}")
+            
             if proj.get("types"):
                 ctx += f"유형: {', '.join(proj['types'])}"
             

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-27T12:00:51.555645",
+  "updated_at": "2026-08-27T15:10:56.230441",
   "projects": {
     "cup": {
       "models": [
@@ -4105,10 +4105,31 @@
           "status": "정상",
           "price": 2765,
           "material_cost": 0,
-          "po_qty": 0,
-          "shipped_qty": 0,
-          "due_text": "",
-          "issues": ""
+          "po_qty": 48,
+          "shipped_qty": 56,
+          "due_text": "2026-08 주차계획 · 잔여 -8개",
+          "issues": "",
+          "weekly_plan": {
+            "2026-08": {
+              "W32": {
+                "plan": 20,
+                "actual": 31
+              },
+              "W33": {
+                "plan": 8,
+                "actual": 11
+              },
+              "W34": {
+                "plan": 20,
+                "actual": 14
+              },
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          },
+          "weekly_progress": 100.0
         },
         {
           "id": "839-272117-005",
@@ -4118,10 +4139,31 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 0,
-          "shipped_qty": 0,
-          "due_text": "",
-          "issues": ""
+          "po_qty": 54,
+          "shipped_qty": 1,
+          "due_text": "2026-08 주차계획 · 잔여 53개",
+          "issues": "",
+          "weekly_plan": {
+            "2026-08": {
+              "W32": {
+                "plan": 16,
+                "actual": 0
+              },
+              "W33": {
+                "plan": 8,
+                "actual": 1
+              },
+              "W34": {
+                "plan": 10,
+                "actual": 0
+              },
+              "W35": {
+                "plan": 20,
+                "actual": 0
+              }
+            }
+          },
+          "weekly_progress": 1.9
         },
         {
           "id": "839-272117-006",
@@ -4144,9 +4186,9 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 0,
+          "po_qty": 7,
           "shipped_qty": 0,
-          "due_text": "",
+          "due_text": "2026-08 주차계획 · 잔여 7개",
           "issues": ""
         },
         {
@@ -4235,31 +4277,10 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 100,
-          "shipped_qty": 103,
-          "due_text": "2026-08 주차계획 · 잔여 -3개",
-          "issues": "",
-          "weekly_plan": {
-            "2026-08": {
-              "W32": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W33": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W34": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W35": {
-                "plan": 0,
-                "actual": 0
-              }
-            }
-          },
-          "weekly_progress": 0.0
+          "po_qty": 0,
+          "shipped_qty": 0,
+          "due_text": "",
+          "issues": ""
         },
         {
           "id": "713-C08288-001",
@@ -9153,8 +9174,8 @@
       },
       "weekly_plan": {
         "file_name": "하바플레이트.xlsx",
-        "uploaded_at": "2026-08-27T11:01:49.427876",
-        "photo_ref": "hrva_plate/plan_2026-08-27_a0958661.png"
+        "uploaded_at": "2026-08-27T15:10:56.230437",
+        "photo_ref": "hrva_plate/plan_2026-08-27_1da29a78.png"
       }
     },
     "plating_cell": {
