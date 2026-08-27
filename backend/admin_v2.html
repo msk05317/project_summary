@@ -6309,6 +6309,14 @@ var sidebarSel = document.getElementById('v2-division-select');
       weeklyStatus.className = 'mdl-weekly-status';
       const fd = new FormData();
       fd.append('file', file);
+      // 양산/개발 그룹 데이터도 함께 업로드 (weekly_summary 갱신)
+      const fd2 = new FormData();
+      fd2.append('file', file);
+      fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-summary-import', {
+        method: 'POST', credentials: 'same-origin', body: fd2
+      }).then(function(r) { return r.json(); })
+        .then(function(d) { console.log('summary-import:', d); })
+        .catch(function(e) { console.warn('summary-import 실패:', e); });
       fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', {
         method: 'POST', credentials: 'same-origin', body: fd
       })
