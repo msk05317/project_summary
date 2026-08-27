@@ -16672,6 +16672,44 @@ async def chat(payload: dict):
             "3) 이슈/진행률/가격 등 질문에 해당하는 정보를 모두 포함 "
             "4) 5문장 이내로 간결하게 5) 마지막에 '(근거: 프로젝트명)' 형태로 인용 표시."
         )
+
+        # ── 예측/전망 질문 감지 + 통계 자동 계산 ──
+        is_forecast = any(k in corrected for k in ['예상', '전망', '다음주', '다음 주', '앞으로', '추세', '리스크', '완료 가능'])
+        forecast_note = ""
+        if is_forecast and last_project:
+            try:
+                import datetime as _dtf
+                fmonth = _dtf.date.today().strftime("%Y-%m")
+                fdata = _load_models()
+                fproj = fdata.get("projects", {}).get(last_project, {})
+                fmodels = fproj.get("models", [])
+                fweeks = ["W32", "W33", "W34", "W35"]
+                mass_weekly = {}
+                for w in fweeks:
+                    tp, ta = 0, 0
+                    for m in fmodels:
+                        if m.get("group") != "양산":
+                            continue
+                        wp = (m.get("weekly_plan") or {}).get(fmonth, {})
+                        cell = wp.get(w, {})
+                        tp += cell.get("plan", 0)
+                        ta += cell.get("actual", 0)
+                    mass_weekly[w] = {"plan": tp, "actual": ta}
+                vals = [v["actual"] for v in mass_weekly.values() if v["actual"] > 0]
+                plans = [v["plan"] for v in mass_weekly.values() if v["plan"] > 0]
+                if len(vals) >= 2:
+                    avg_a = sum(vals) / len(vals)
+                    avg_p = sum(plans) / len(plans) if plans else 0
+                    achieve = round(vals[-1] / plans[-1] * 100) if plans and plans[-1] > 0 else 0
+                    forecast_note = f" [예측통계: 최근 {len(vals)}주 양산 평균 실적 {avg_a:.0f}대, 평균 계획 {avg_p:.0f}대, 최근 달성률 {achieve}%.]"
+                elif len(vals) == 1:
+                    forecast_note = f" [예측통계: 데이터 1주뿐 ({vals[0]}대). 추세 판단 불가.]"
+                else:
+                    forecast_note = " [예측통계: 주차별 실적 데이터 없음. 예측 불가.]"
+            except Exception as e:
+                print(f"[chat] 예측 계산 오류: {e}")
+        system_prompt += forecast_note
+
         
         user_prompt = f"[데이터]\n{context}\n\n[질문]\n{corrected}"
         
