@@ -16609,7 +16609,7 @@ async def chat(payload: dict):
                     d_rev = dv.get("actual", 0) * DEV_PRICE
                     ctx += f"{w} 양산 {mv['plan']}/{mv['actual']} ${mv['revenue']:,}, 개발 {dv.get('plan',0)}/{dv.get('actual',0)} ${d_rev:,}; "
                 ctx += f"합계: 양산 {mass_plan}/{mass_act} ${mass_rev:,}, 개발 {dev_plan}/{dev_act} ${dev_rev:,}, 전체 매출 ${mass_rev + dev_rev:,}"
-                ctx += " [규칙: 양산 매출은 각 모델별 판가(price) × 실적의 합산이며 절대 $3,400 고정 단가 아님. 개발만 $3,400 고정.]"
+                ctx += " [규칙: 양산 매출은 각 모델별 판가(price) × 실적의 합산이며 절대 $3,400 고정 단가 아님. 개발만 $3,400 고정. 응답은 2~3문장으로 간결하게. 출처에 없는 숫자는 절대 만들지 마. 계획=PO/plan, 실적=actual 구별 필수.]"
             except Exception as e:
                 print(f"[chat] weekly 계산 실패 {pk}: {e}")
                 if rev.get("groups"):
