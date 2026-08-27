@@ -18834,344 +18834,20 @@ def get_model_process(project_key: str, model_id: str):
             }
     raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
 
-@app.post("/admin/projects/{project_key}/process/import-xlsx")
-async def admin_import_process_xlsx(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
-    """엑셀(Process Schedule 형식) 업로드 → 개발 모델 process 자동 채우기"""
-    from datetime import datetime, date
-    _key = _model_key_alias(project_key)
+# ── 파워박스 프로세스 엑셀: 시트별 템플릿 ──
+_PB_SHEET_STEPS = {
+    'majormodule': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','Source Inspection','FAIR 작성','FAIR 승인','PRR 작성','PRR 승인','최종 승인'],
+    'pbx':  ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','LA 입고','LAIR 작성','LAIR 승인','Source Inspection','FAIR 작성','FAIR 승인','PRR','최종 승인'],
+    'ema':  ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','LA 입고','LAIR 작성','LAIR 승인','Source Inspection','FAIR 작성','FAIR 승인','CDR','최종 승인'],
+}
 
-    # 엑셀 헤더(영문) -> 백엔드 step key 매핑 (순서 = 엑셀 컬럼 순서)
-    STEP_MAP = [
-        ("fa_po", "FA PO"),
-        ("material_order", "Material Order"),
-        ("incoming", "Material Receiving"),
-        ("machining", "Machining (Assembly)"),
-        ("la_incoming", "LA Receiving"),
-        ("lair_write", "LAIR Preparation"),
-        ("lair_approval", "LAIR Approval"),
-        ("source_inspection", "Source Inspection"),
-        ("fair_write", "FAIR Preparation"),
-        ("fair_approval", "FAIR Approval"),
-        ("lap_test", "LAP Test"),
-        ("cdr", "CDR"),
-        ("final_approval", "Final Approval Complete"),
-    ]
-
-    try:
-        from openpyxl import load_workbook
-        import io
-        content = await file.read()
-        wb = load_workbook(io.BytesIO(content), data_only=True)
-        ws = wb[wb.sheetnames[0]]
-
-        def _to_date_str(v):
-            if v is None:
-                return ""
-            s = str(v).strip()
-            if not s or s.lower() in ("nan", "none"):
-                return ""
-            if isinstance(v, (datetime, date)):
-                return v.strftime("%Y-%m-%d")
-            # "2025-05-05 00:00:00" 형태
-            if len(s) >= 10 and s[4] == "-":
-                return s[:10]
-            return s  # "In stock" 등 텍스트도 완료로 간주하기 위해 보존
-
-        # 헤더: row1 = 단계명, row2 = Planned/Actual
-        hdr_steps = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
-        hdr_kind  = [ws.cell(2, c).value for c in range(1, ws.max_column + 1)]
-
-        # Part Number 컬럼 위치
-        part_col = None
-        for c in range(1, ws.max_column + 1):
-            if str(ws.cell(1, c).value or "").strip().lower() in ("part number", "part_number", "partnumber"):
-                part_col = c
-                break
-        if part_col is None:
-            raise HTTPException(status_code=400, detail="엑셀에 'Part Number' 컬럼이 없습니다.")
-
-        # 단계별 (planned_col, actual_col) 매핑: 헤더 텍스트 포함으로 찾기
-        step_cols = []
-        cur_step_idx = -1
-        for c in range(1, ws.max_column + 1):
-            hv = str(hdr_steps[c - 1] or "").strip()
-            kv = str(hdr_kind[c - 1] or "").strip().lower()
-            # 단계명 셀인지 (숫자로 시작)
-            if hv and hv[0].isdigit():
-                cur_step_idx += 1
-            if cur_step_idx >= 0 and kv in ("planned", "actual"):
-                while len(step_cols) <= cur_step_idx:
-                    step_cols.append({})
-                step_cols[cur_step_idx][kv] = c
-
-        data = _load_models()
-        proj = data.get("projects", {}).get(_key, {})
-        models_by_id = {}
-        for m in proj.get("models", []):
-            if isinstance(m, dict):
-                for cand in {str(m.get("id") or "").strip().lower(), str(m.get("name") or "").strip().lower()}:
-                    if cand:
-                        models_by_id[cand] = m
-
-        matched, skipped = 0, []
-        for r in range(3, ws.max_row + 1):
-            part = str(ws.cell(r, part_col).value or "").strip()
-            if not part:
-                continue
-            m = models_by_id.get(part.lower())
-            if m is None:
-                skipped.append(part)
-                continue
-            if m.get("group") != "개발":
-                skipped.append(part + " (양산)")
-                continue
-            proc = _ensure_process(m)
-            for i, (skey, _label) in enumerate(STEP_MAP):
-                if i >= len(step_cols):
-                    break
-                cols = step_cols[i]
-                pcol, acol = cols.get("planned"), cols.get("actual")
-                planned = _to_date_str(ws.cell(r, pcol).value) if pcol else ""
-                actual = _to_date_str(ws.cell(r, acol).value) if acol else ""
-                if planned and not str(proc[i].get("expected") or "").strip():
-                    proc[i]["expected"] = planned
-                if actual and not str(proc[i].get("actual") or "").strip():
-                    proc[i]["actual"] = actual
-            # 진행률 재계산
-            done = sum(1 for s in proc if str(s.get("actual") or "").strip())
-            m["progress"] = round(done / len(proc) * 100)
-            matched += 1
-
-        _save_models(data)
-        return {
-            "ok": True,
-            "project_key": _key,
-            "matched": matched,
-            "skipped": skipped[:20],
-            "skipped_count": len(skipped),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"엑셀 처리 실패: {e}")
-
-
-@app.post("/admin/projects/{project_key}/models/{model_id}/process/step-status")
-def admin_set_step_status(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
-    """특정 단계의 상태를 명시적으로 설정 (미승인/미제출/대기 등)"""
-    from urllib.parse import unquote
-    model_id = unquote(model_id)
-    _key = _model_key_alias(project_key)
-    step_key = (payload.get("step_key") or "").strip()
-    status = (payload.get("status") or "").strip()
-    
-    if not step_key:
-        raise HTTPException(status_code=400, detail="step_key가 필요합니다.")
-    if status not in ("", "완료", "미승인", "미제출", "대기", "진행중"):
-        raise HTTPException(status_code=400, detail="유효하지 않은 상태입니다.")
-
-    data = _load_models()
-    proj = data.get("projects", {}).get(_key, {})
-    for m in proj.get("models", []):
-        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
-            if m.get("group") != "개발":
-                raise HTTPException(status_code=400, detail="개발 모델만 처리 가능합니다.")
-            proc = _ensure_process(m)
-            
-            # __all__ 특수 처리: 모든 단계 상태 초기화
-            if step_key == "__all__":
-                for s in proc:
-                    s["status"] = ""
-                _save_models(data)
-                return {"ok": True, "model_id": model_id, "step_key": "__all__", "status": "초기화"}
-            
-            for s in proc:
-                if s.get("key") == step_key:
-                    s["status"] = status
-                    # 상태가 "미승인"이나 "미제출"이면 actual 비움
-                    if status in ("미승인", "미제출"):
-                        s["actual"] = ""
-                    # "완료"는 상태만 변경하고 actual은 그대로 유지 (사용자가 직접 입력)
-                    _save_models(data)
-                    return {"ok": True, "model_id": model_id, "step_key": step_key, "status": status}
-            raise HTTPException(status_code=400, detail=f"단계를 찾을 수 없습니다: {step_key}")
-    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
-
-
-@app.post("/admin/projects/{project_key}/models/{model_id}/process/mark-up-to")
-def admin_mark_process_up_to(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
-    """지정 단계까지 모든 이전 단계 완료 처리 (순서 무관하게 최근 승인 기준)"""
-    from urllib.parse import unquote
-    from datetime import date
-    model_id = unquote(model_id)
-    _key = _model_key_alias(project_key)
-    step_key = (payload.get("step_key") or "").strip()
-    if not step_key:
-        raise HTTPException(status_code=400, detail="step_key가 필요합니다.")
-
-    data = _load_models()
-    proj = data.get("projects", {}).get(_key, {})
-    for m in proj.get("models", []):
-        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
-            if m.get("group") != "개발":
-                raise HTTPException(status_code=400, detail="개발 모델만 처리 가능합니다.")
-            proc = _ensure_process(m)
-
-            # step_key 위치 찾기
-            target_idx = None
-            for i, s in enumerate(proc):
-                if s.get("key") == step_key:
-                    target_idx = i
-                    break
-            if target_idx is None:
-                raise HTTPException(status_code=400, detail=f"단계를 찾을 수 없습니다: {step_key}")
-
-            today = date.today().isoformat()
-            # target_idx까지 모든 단계 완료 (이후는 그대로)
-            for i in range(target_idx + 1):
-                if not str(proc[i].get("actual") or "").strip():
-                    proc[i]["actual"] = today
-
-            # 진행률 재계산
-            done = sum(1 for s in proc if str(s.get("actual") or "").strip())
-            m["progress"] = round(done / len(proc) * 100)
-            _save_models(data)
-            return {"ok": True, "model_id": model_id, "up_to": step_key, "done": done, "total": len(proc), "progress": m["progress"]}
-    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
-
-
-@app.post("/admin/projects/{project_key}/process/reset-all")
-def admin_reset_all_process(project_key: str, _admin: int = Depends(get_admin_session)):
-    """프로젝트 전체 개발 모델 프로세스 초기화: 한 번에 처리하여 JSON 손상 방지"""
-    _key = _model_key_alias(project_key)
-    data = _load_models()
-    proj = data.get("projects", {}).get(_key, {})
-    
-    reset_count = 0
-    for m in proj.get("models", []):
-        if isinstance(m, dict) and m.get("group") == "개발":
-            proc = _ensure_process(m)
-            for s in proc:
-                s["expected"] = ""
-                s["actual"] = ""
-                s["status"] = ""
-            m["progress"] = _process_progress(proc)
-            reset_count += 1
-    
-    if reset_count > 0:
-        _save_models(data)
-    
-    return {"ok": True, "project_key": _key, "reset_count": reset_count, "message": f"{reset_count}개 모델 프로세스 초기화 완료"}
-
-
-@app.post("/admin/projects/{project_key}/models/{model_id}/process/mark-done")
-def admin_mark_process_done(project_key: str, model_id: str, _admin: int = Depends(get_admin_session)):
-    """개발 모델 13단계 전부 완료 처리 — actual을 오늘 날짜로 채움"""
-    from urllib.parse import unquote
-    from datetime import date
-    model_id = unquote(model_id)
-    _key = _model_key_alias(project_key)
-    data = _load_models()
-    proj = data.get("projects", {}).get(_key, {})
-    for m in proj.get("models", []):
-        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
-            if m.get("group") != "개발":
-                raise HTTPException(status_code=400, detail="개발 모델만 처리 가능합니다.")
-            proc = _ensure_process(m)
-            today = date.today().isoformat()
-            for s in proc:
-                if not str(s.get("actual") or "").strip():
-                    s["actual"] = today
-            m["progress"] = 100
-            m["status"] = "정상"
-            _save_models(data)
-            return {"ok": True, "model_id": model_id, "done": len(proc), "total": len(proc), "progress": 100}
-    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
-
-
-@app.get("/admin/projects/{project_key}/models/{model_id}/process")
-def admin_get_model_process(project_key: str, model_id: str):
-    """앱용 개발 승인 프로세스 조회"""
-    from urllib.parse import unquote
-    model_id = unquote(model_id)
-    _key = _model_key_alias(project_key)
-    data = _load_models()
-    proj = data.get("projects", {}).get(_key, {})
-    for m in proj.get("models", []):
-        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
-            if m.get("group") != "개발":
-                raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
-            proc = _ensure_process(m)
-            _save_models(data)
-            done = sum(1 for s in proc
-                       if (str(s.get("actual") or "").strip() or str(s.get("status") or "") == "완료")
-                       and str(s.get("status") or "") not in ("미승인", "미제출"))
-            stage, expected = _process_current(proc)
-            return {
-                "model_id": model_id,
-                "model_name": m.get("name") or model_id,
-                "dev_type": m.get("dev_type") or "",
-                "steps": proc,
-                "done": done,
-                "total": len(proc),
-                "progress": _process_progress(proc),
-                "current_stage": stage,
-                "current_expected": expected,
-                "issues": m.get("issues") or "",
-            }
-    raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
-
-
-
-@app.put("/admin/projects/{project_key}/models/{model_id}/process")
-def admin_put_model_process(project_key: str, model_id: str, payload: dict, _admin: int = Depends(get_admin_session)):
-    """admin용 프로세스 저장: {"dev_type": "HVM", "steps": [{"key","expected","actual"}, ...]}"""
-    from urllib.parse import unquote
-    model_id = unquote(model_id)
-    _key = _model_key_alias(project_key)
-    data = _load_models()
-    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
-    target = None
-    for m in proj.get("models", []):
-        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
-            target = m
-            break
-    if target is None:
-        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
-    dt = str(payload.get("dev_type") or "").strip().upper()
-    if dt in ("HVM", "RPM"):
-        target["dev_type"] = dt
-    proc = _ensure_process(target)
-    incoming = payload.get("steps")
-    if isinstance(incoming, list):
-        by_key = {s.get("key"): s for s in incoming if isinstance(s, dict)}
-        for step in proc:
-            inc = by_key.get(step.get("key"))
-            if inc is None:
-                continue
-            step["expected"] = str(inc.get("expected") or "").strip()[:10]
-            step["actual"] = str(inc.get("actual") or "").strip()[:10]
-            # status 필드도 저장 (빈 문자열이면 기존 status 유지)
-            inc_status = str(inc.get("status") or "").strip()
-            if inc_status:
-                step["status"] = inc_status
-            elif "status" not in step:
-                step["status"] = ""
-    target["progress"] = _process_progress(proc)
-    _save_models(data)
-    return {"ok": True, "model_id": model_id, "progress": target["progress"], "dev_type": target.get("dev_type")}
-
-@app.put("/admin/projects/{project_key}/status-note")
-def admin_put_status_note(project_key: str, payload: dict, _admin: int = Depends(get_admin_session)):
-    """프로젝트 현황 텍스트 저장: {"note": "..."}"""
-    _key = _model_key_alias(project_key)
-    data = _load_models()
-    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
-    proj["status_note"] = str(payload.get("note") or "").strip()
-    _save_models(data)
-    return {"ok": True, "project_key": _key}
-
-
+def _pb_cell_str(v):
+    import datetime as _dt
+    if v is None: return ''
+    if isinstance(v, (_dt.datetime, _dt.date)): return v.strftime('%Y-%m-%d')
+    s = str(v).strip()
+    if s.startswith('='): return ''   # 수식은 무시
+    return s
 
 @app.post("/admin/projects/{project_key}/price-import-xlsx")
 async def admin_price_import_xlsx(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
@@ -19283,6 +18959,188 @@ async def admin_price_import_xlsx(project_key: str, file: UploadFile = File(...)
 
 
 
+
+
+@app.post("/admin/projects/{project_key}/import-xlsx")
+@app.post("/admin/projects/{project_key}/process/import-xlsx")
+async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
+    """통합 업로드: MajorModule/PBX/EMA 시트 자동 인식, 프로세스+가격 한번에"""
+    import io, openpyxl, re as _re
+    data = _load_models()
+    applied, skipped = [], []
+    raw = await file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+    
+    _PB = {
+        'majormodule': {'proj': 'major_module', 'steps': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','Source Inspection','FAIR 작성','FAIR 승인','PRR 작성','PRR 승인','최종 승인'], 'price': False, 'dt': ''},
+        'pbx': {'proj': 'powerbox', 'steps': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','LA 입고','LAIR 작성','LAIR 승인','Source Inspection','FAIR 작성','FAIR 승인','PRR','최종 승인'], 'price': True, 'dt': ''},
+        'ema': {'proj': 'powerbox', 'steps': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','LA 입고','LAIR 작성','LAIR 승인','Source Inspection','FAIR 작성','FAIR 승인','CDR','최종 승인'], 'price': False, 'dt': 'EMA'},
+    }
+    
+    def _pn(s): return _re.sub(r'\s+', '', str(s or '')).strip()
+    def _cs(v):
+        import datetime
+        if v is None: return ''
+        if isinstance(v, (datetime.datetime, datetime.date)): return v.strftime('%Y-%m-%d')
+        s = str(v).strip()
+        return '' if s.startswith('=') else s
+    
+    for skey, cfg in _PB.items():
+        ws = next((wb[n] for n in wb.sheetnames if n.strip().lower() == skey), None)
+        if not ws: continue
+        proj = data.get('projects', {}).get(cfg['proj'])
+        if not proj: continue
+        models = proj.get('models', [])
+        for row in ws.iter_rows(min_row=3, values_only=True):
+            pn = _pn(row[1] if len(row) > 1 else None)
+            if not pn: continue
+            m = next((x for x in models if _pn(x.get('part_number')) == pn or _pn(x.get('id')) == pn), None)
+            if not m: skipped.append(f"{skey}:{pn}"); continue
+            steps, done = [], 0
+            for i, sname in enumerate(cfg['steps']):
+                p, a = 3 + i * 2, 4 + i * 2
+                planned = _cs(row[p] if len(row) > p else None)
+                actual = _cs(row[a] if len(row) > a else None)
+                status = '완료' if actual else ''
+                if status == '완료': done += 1
+                steps.append({'key': f'step_{i+1}', 'name': f'{i+1:02d} {sname}', 'group': '발주' if i < 3 else ('제작·검사' if i < len(cfg['steps'])-5 else '승인'), 'expected': planned, 'actual': actual, 'status': status})
+            m['process'] = steps
+            m['progress'] = round(done / len(cfg['steps']) * 100)
+            if cfg['dt']: m['dev_type'] = cfg['dt']
+            applied.append(f"{skey}:{pn}")
+            if cfg['price']:
+                price, mcost = _cs(row[28] if len(row) > 28 else ''), _cs(row[29] if len(row) > 29 else '')
+                if price.replace('.','').isdigit(): m['price'] = int(float(price))
+                if mcost.replace('.','').isdigit(): m['material_cost'] = int(float(mcost))
+    _save_models(data)
+    return {'ok': True, 'applied': len(applied), 'skipped': len(skipped), 'detail': {'applied': applied[:10], 'skipped': skipped[:10]}}
+
+
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+
+@app.post("/admin/projects/{project_key}/weekly-summary-import")
+async def admin_import_weekly_summary(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
+    """하바플레이트 주차별 현황 엑셀 업로드 (양산/개발 총량 구조).
+    행5=양산, 행6=개발 / F~M열 = W32~W35 계획·실적 / P열=다음달 계획"""
+    import io, openpyxl
+    if project_key != "hrva_plate":
+        raise HTTPException(status_code=400, detail="현재 하바플레이트만 지원합니다.")
+    data = _load_models()
+    proj = data.get("projects", {}).get(project_key)
+    if not proj:
+        raise HTTPException(status_code=404, detail="프로젝트 없음")
+    raw = await file.read()
+    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+    ws = wb.worksheets[0]
+
+    def _num(v):
+        try: return int(float(v)) if v not in (None, "") else 0
+        except Exception: return 0
+
+    summary = {}
+    for row_idx, label in [(5, "양산"), (6, "개발")]:
+        row = [c.value for c in ws[row_idx]]
+        weeks = {}
+        # F(5)=7월 → W32계획=G(6), 실적=H(7) / W33=I(8)·J(9) / W34=K(10)·L(11) / W35=M(12)·N(13)
+        for w_i, wname in enumerate(["W32", "W33", "W34", "W35"]):
+            weeks[wname] = {"plan": _num(row[6 + w_i*2]), "actual": _num(row[7 + w_i*2])}
+        summary[label] = {
+            "po_qty": _num(row[2]),
+            "actual_total": _num(row[3]),
+            "remaining": _num(row[4]),
+            "weeks": weeks,
+            "next_month_plan": _num(row[15]),
+            "month_note": str(row[16] or "")[:100] if len(row) > 16 else "",
+        }
+    summary["개발"]["price_fixed"] = 3400   # 개발 판가 고정
+    proj["weekly_summary"] = summary
+    _save_models(data)
+    return {"ok": True, "summary": {k: {"po": v["po_qty"], "done": v["actual_total"]} for k, v in summary.items() if isinstance(v, dict)}}
+
+
+@app.get("/projects/{project_key}/weekly-revenue")
+def get_weekly_revenue(project_key: str, month: str = None):
+    """주차별 현황+매출:
+    양산 = 모델별 weekly_plan 실적 합산 x 각 모델 판가
+    개발 = weekly_summary 그룹 실적 x $3,400 고정 (모델별 주차 데이터 없음)"""
+    import datetime as _dt
+    data = _load_models()
+    _key = _model_key_alias(project_key)
+    proj = data.get("projects", {}).get(_key)
+    if not proj: return {"detail": "프로젝트 없음"}
+    ws_data = proj.get("weekly_summary") or {}
+    if not month:
+        month = _dt.date.today().strftime("%Y-%m")
+
+    DEV_PRICE = 3400
+    # 주차 목록: weekly_summary 기준 (엑셀 업로드에서 온 W32~W35)
+    all_weeks = sorted({w for grp in ("양산", "개발") if grp in ws_data
+                        for w in (ws_data[grp].get("weeks") or {})})
+    if not all_weeks:
+        all_weeks = _get_month_weeks(month)
+
+    # ── 양산: 모델별 주차 실적 x 모델 판가 ──
+    yang_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0} for w in all_weeks}
+    yang_models_used = []
+    for m in proj.get("models", []):
+        if m.get("group") == "개발": continue
+        bucket = (m.get("weekly_plan") or {}).get(month) or {}
+        price = int(m.get("price") or 0)
+        used = False
+        for w in all_weeks:
+            cell = bucket.get(w) or {}
+            p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
+            yang_weeks[w]["plan"] += p
+            yang_weeks[w]["actual"] += a
+            yang_weeks[w]["revenue"] += a * price
+            if p or a: used = True
+        if used:
+            yang_models_used.append({"id": m.get("id"), "price": price,
+                "plan": sum(int((bucket.get(w) or {}).get("plan") or 0) for w in all_weeks),
+                "actual": sum(int((bucket.get(w) or {}).get("actual") or 0) for w in all_weeks)})
+    yang_total = {"plan": sum(v["plan"] for v in yang_weeks.values()),
+                  "actual": sum(v["actual"] for v in yang_weeks.values()),
+                  "revenue": sum(v["revenue"] for v in yang_weeks.values())}
+
+    # ── 개발: 그룹 실적 x 고정 단가 ──
+    dev_g = ws_data.get("개발") or {}
+    dev_weeks = {}
+    for w in all_weeks:
+        cell = (dev_g.get("weeks") or {}).get(w) or {}
+        p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
+        dev_weeks[w] = {"plan": p, "actual": a, "revenue": a * DEV_PRICE}
+    dev_total = {"plan": sum(v["plan"] for v in dev_weeks.values()),
+                 "actual": sum(v["actual"] for v in dev_weeks.values()),
+                 "revenue": sum(v["revenue"] for v in dev_weeks.values())}
+
+    combined = {w: {"plan": yang_weeks[w]["plan"] + dev_weeks[w]["plan"],
+                    "actual": yang_weeks[w]["actual"] + dev_weeks[w]["actual"],
+                    "revenue": yang_weeks[w]["revenue"] + dev_weeks[w]["revenue"]}
+                for w in all_weeks}
+
+    yang_g = ws_data.get("양산") or {}
+    return {
+        "month": month,
+        "start_week": all_weeks[0] if all_weeks else None,
+        "weeks": all_weeks,
+        "groups": {
+            "양산": {"po_qty": yang_g.get("po_qty", 0),
+                     "actual_total": yang_g.get("actual_total", 0),
+                     "remaining": yang_g.get("remaining", 0),
+                     "unit_price": None, "weeks": yang_weeks, "total": yang_total,
+                     "models_used": yang_models_used},
+            "개발": {"po_qty": dev_g.get("po_qty", 0),
+                     "actual_total": dev_g.get("actual_total", 0),
+                     "remaining": dev_g.get("remaining", 0),
+                     "unit_price": DEV_PRICE, "weeks": dev_weeks, "total": dev_total},
+        },
+        "combined": {"weeks": combined,
+                     "total": {"plan": yang_total["plan"] + dev_total["plan"],
+                               "actual": yang_total["actual"] + dev_total["actual"],
+                               "revenue": yang_total["revenue"] + dev_total["revenue"]}},
+        "note": "양산 = 모델별 판가 x 주차 실적 (모델별 주차 입력 기반), 개발 = 실적 x $3,400 고정.",
+    }
 
 if __name__ == "__main__":
     import uvicorn

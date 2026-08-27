@@ -5315,13 +5315,6 @@ window.renderAdminV2ByDivision = function(){
       .then(function(r) { return r.json(); })
       .then(function(d) {
         _projTypes = (d && d.types) ? d.types : [];
-        // 모델 데이터의 dev_type 병합
-        (window._modelsData || []).forEach(function(m) {
-          var v = (m.dev_type || '').trim();
-          if (v && v.toLowerCase() !== 'none' && _projTypes.indexOf(v) === -1) {
-            _projTypes.push(v);
-          }
-        });
         renderTypeChips();
         var tableBox = document.getElementById('mdl-table-box');
         if (tableBox) renderTable(document.getElementById("mdl-table-box"));
@@ -5487,9 +5480,7 @@ window.renderAdminV2ByDivision = function(){
               var cur = (m.dev_type || '').trim();
               var list = (_projTypes || []).slice();
               var html = '';
-              if (cur && cur.toLowerCase() !== 'none' && list.indexOf(cur) === -1) {
-                html += '<option value="' + cur + '" selected disabled style="color:#999;">' + cur + ' (미등록)</option>';
-              }
+              
               html += list.map(function(t){ return '<option value="' + t + '"' + (cur === t ? ' selected' : '') + '>' + t + '</option>'; }).join('');
               return html;
             })() +
@@ -5518,6 +5509,57 @@ window.renderAdminV2ByDivision = function(){
     html += '</tbody></table>';
     if (!window._modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     container.innerHTML = html;
+    
+    // 하바플레이트 주차별 현황 카드 추가
+    if (_currentProjectKey === 'hrva_plate') {
+      fetch('/projects/hrva_plate/weekly-revenue', { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (!d.weeks) return;
+          var card = document.createElement('div');
+          card.style.cssText = 'margin-top:24px;padding:20px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;';
+          var rows = '';
+          (d.weeks || []).forEach(function(w){
+            var y = (d.groups && d.groups['양산'] && d.groups['양산'].weeks && d.groups['양산'].weeks[w]) || {plan:0, actual:0, revenue:0};
+            var v = (d.groups && d.groups['개발'] && d.groups['개발'].weeks && d.groups['개발'].weeks[w]) || {plan:0, actual:0, revenue:0};
+            var c = (d.combined && d.combined.weeks && d.combined.weeks[w]) || {revenue:0};
+            var pct = y.plan > 0 ? Math.round(y.actual / y.plan * 100) : 0;
+            rows += '<tr>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;font-weight:600;">' + w + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + y.plan + ' / ' + y.actual + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">$' + (y.revenue || 0).toLocaleString() + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + v.plan + ' / ' + v.actual + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">$' + (v.revenue || 0).toLocaleString() + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;font-weight:700;color:#059669;">$' + (c.revenue || 0).toLocaleString() + '</td>' +
+            '</tr>';
+          });
+          card.innerHTML = 
+            '<h3 style="margin:0 0 16px;font-size:16px;font-weight:800;color:#111827;">📊 주차별 현황 (하바플레이트)</h3>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+              '<thead><tr style="background:#F9FAFB;">' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:left;">주차</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">계획</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">실적</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">달성률</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">매출</th>' +
+              '</tr></thead>' +
+              '<tbody>' + rows + '</tbody>' +
+              '<tfoot><tr style="background:#F3F4F6;font-weight:800;">' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;">합계</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + ((d.total && d.total.plan_qty) || 0) + '</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#059669;">' + ((d.total && d.total.actual_qty) || 0) + '</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + ((d.total && d.total.plan_qty > 0) ? Math.round(d.total.actual_qty / d.total.plan_qty * 100) : 0) + '%</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">$' + ((d.total && d.total.revenue) || 0).toLocaleString() + '</td>' +
+              '</tr></tfoot>' +
+            '</table>' +
+            '<div style="margin-top:12px;padding:12px;background:#F9FAFB;border-radius:8px;font-size:12px;color:#6B7280;">' +
+              '양산: PO ' + d.groups.양산.po_qty + '개 / 실적 ' + d.groups.양산.actual_total + '개 / 잔량 ' + d.groups.양산.remaining + '개<br>' +
+              '개발: PO ' + d.groups.개발.po_qty + '개 / 실적 ' + d.groups.개발.actual_total + '개 / 잔량 ' + d.groups.개발.remaining + '개 (판가 $3,400 고정)' +
+            '</div>';
+          container.appendChild(card);
+        });
+    }
+    
     container.querySelectorAll('.mdl-ess-qty').forEach(function(inp){
       inp.addEventListener('input', function(){
         var tr = inp.closest('tr');
@@ -6016,6 +6058,25 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     return Object.keys(set).sort();
   }
 
+  // 프로젝트 선택 시 모델 목록 로드
+  document.addEventListener('DOMContentLoaded', function() {
+    var projSel = document.getElementById('mdl-proj-select');
+    if (projSel) {
+      projSel.addEventListener('change', function() {
+        var pk = this.value;
+        _currentProjectKey = pk;
+        var tb = document.getElementById('mdl-table-box');
+        if (tb && pk) {
+          tb.innerHTML = '<div style="padding:40px;text-align:center;color:#9CA3AF;">로딩 중...</div>';
+          loadModels(pk, tb);
+          loadTypes(pk);
+        } else if (tb) {
+          tb.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
+        }
+      });
+    }
+  });
+
   function _getCurrentProjectKey() {
     if (window._currentProjectKey) return window._currentProjectKey;
     var sel = document.getElementById('mdl-proj-select');
@@ -6104,6 +6165,8 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<button type="button" class="mdl-btn mdl-btn-del" id="mdl-weekly-delete" style="display:none">🗑️ 삭제</button>' +
             '</div>' +
             '<div id="mdl-weekly-preview" class="mdl-weekly-preview"></div>' +
+          // 주차별 매출 요약 카드 (하바플레이트)
+          '<div id="mdl-revenue-card" style="display:none;margin-top:20px;padding:20px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;"></div>' +
           // 모델별 주차별 계획 입력 (엑셀 아래)
           '<div class="mdl-model-weekly-section" style="margin-top:24px;padding-top:20px;border-top:2px solid #E5E7EB;">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
@@ -6152,6 +6215,56 @@ var sidebarSel = document.getElementById('v2-division-select');
     }
 
     function loadWeeklyPlan(projectKey) {
+      // 주차별 매출 카드 (하바플레이트)
+      var revCard = document.getElementById('mdl-revenue-card');
+      if (revCard) {
+        if (projectKey === 'hrva_plate') {
+          revCard.style.display = 'block';
+          revCard.innerHTML = '<div style="text-align:center;padding:20px;color:#9CA3AF;">로딩 중...</div>';
+          fetch('/projects/hrva_plate/weekly-revenue', { credentials: 'same-origin' })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+              if (!d.groups) { revCard.innerHTML = '<div style="color:#9CA3AF;text-align:center;">' + (d.detail || '주차별 현황 데이터 없음') + '</div>'; return; }
+              function fmt(n){ return '$' + (n || 0).toLocaleString(); }
+              var html = '<h3 style="margin:0 0 16px;font-size:16px;font-weight:800;color:#111827;">💰 주차별 매출 현황</h3>' +
+                '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+                  '<thead><tr style="background:#F9FAFB;">' +
+                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:left;">주차</th>' +
+                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 계획/실적</th>' +
+                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 매출</th>' +
+                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 계획/실적</th>' +
+                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 매출</th>' +
+                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">주차 합계</th>' +
+                  '</tr></thead><tbody>';
+              (d.weeks || []).forEach(function(w){
+                var y = (d.groups['양산'] && d.groups['양산'].weeks && d.groups['양산'].weeks[w]) || {plan:0, actual:0, revenue:0};
+                var v = (d.groups['개발'] && d.groups['개발'].weeks && d.groups['개발'].weeks[w]) || {plan:0, actual:0, revenue:0};
+                var c = (d.combined && d.combined.weeks && d.combined.weeks[w]) || {revenue:0};
+                html += '<tr>' +
+                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;font-weight:600;">' + w + '</td>' +
+                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + y.plan + ' / ' + y.actual + '</td>' +
+                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(y.revenue) + '</td>' +
+                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + v.plan + ' / ' + v.actual + '</td>' +
+                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(v.revenue) + '</td>' +
+                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;font-weight:700;color:#059669;">' + fmt(c.revenue) + '</td></tr>';
+              });
+              var YT = d.groups['양산'] ? d.groups['양산'].total : {plan:0,actual:0,revenue:0};
+              var DT = d.groups['개발'] ? d.groups['개발'].total : {plan:0,actual:0,revenue:0};
+              var T = (d.combined && d.combined.total) || {revenue:0};
+              html += '<tr style="background:#F3F4F6;font-weight:800;">' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;">합계</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + YT.plan + ' / ' + YT.actual + '</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(YT.revenue) + '</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + DT.plan + ' / ' + DT.actual + '</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(DT.revenue) + '</td>' +
+                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#059669;">' + fmt(T.revenue) + '</td></tr></tbody></table>';
+              revCard.innerHTML = html;
+            })
+            .catch(function(){ revCard.innerHTML = '<div style="color:#DC2626;text-align:center;">로드 실패</div>'; });
+        } else {
+          revCard.style.display = 'none';
+        }
+      }
       if (!projectKey) {
         weeklyStatus.textContent = '프로젝트를 선택하세요';
         weeklyStatus.className = 'mdl-weekly-status';
@@ -6454,7 +6567,27 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
             arrow.style.transform = open ? '' : 'rotate(180deg)';
             if (!open && !body.dataset.loaded) _wpLoadOne(pk, m.id, idx);
           };
-        });
+
+   });
+
+        // 초기 진행률 표시 (저장된 weekly_plan 기반)
+        try {
+          models.forEach(function(m, idx) {
+            var wp = m.weekly_plan || {};
+            var bucket = wp[_wpMonth] || {};
+            var tp = 0, ta = 0;
+            Object.keys(bucket).forEach(function(w) {
+              var c = bucket[w] || {};
+              tp += (c.plan || 0);
+              ta += (c.actual || 0);
+            });
+            if (tp > 0) {
+              var prog = Math.round(ta / tp * 100);
+              var el = document.getElementById('wp-prog-' + idx);
+              if (el) el.textContent = '진행률 ' + prog + '%';
+            }
+          });
+        } catch(e) { console.warn('init prog:', e); }
       });
   }
 
@@ -6662,6 +6795,25 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         if (!open && !body.dataset.loaded) loadModelWeeklyData(m.id, idx);
       };
     });
+
+        // 초기 진행률 표시 (저장된 weekly_plan 기반)
+        try {
+          _wpModels.forEach(function(m, idx) {
+            var wp = m.weekly_plan || {};
+            var bucket = wp[_wpMonth] || {};
+            var tp = 0, ta = 0;
+            Object.keys(bucket).forEach(function(w) {
+              var c = bucket[w] || {};
+              tp += (c.plan || 0);
+              ta += (c.actual || 0);
+            });
+            if (tp > 0) {
+              var prog = Math.round(ta / tp * 100);
+              var el = document.getElementById('wp-prog-' + idx);
+              if (el) { el.textContent = '진행률 ' + prog + '%'; el.style.color = '#059669'; }
+            }
+          });
+        } catch(e) { console.warn('init prog:', e); }
   }
 
   function loadModelWeeklyData(modelId, idx) {

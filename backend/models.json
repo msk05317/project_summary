@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-26T21:10:05.267559",
+  "updated_at": "2026-08-27T12:00:51.555645",
   "projects": {
     "cup": {
       "models": [
@@ -4045,10 +4045,31 @@
           "status": "정상",
           "price": 3150,
           "material_cost": 0,
-          "po_qty": 0,
-          "shipped_qty": 0,
-          "due_text": "",
-          "issues": ""
+          "po_qty": 80,
+          "shipped_qty": 51,
+          "due_text": "2026-08 주차계획 · 잔여 29개",
+          "issues": "",
+          "weekly_plan": {
+            "2026-08": {
+              "W32": {
+                "plan": 20,
+                "actual": 10
+              },
+              "W33": {
+                "plan": 20,
+                "actual": 31
+              },
+              "W34": {
+                "plan": 20,
+                "actual": 10
+              },
+              "W35": {
+                "plan": 20,
+                "actual": 0
+              }
+            }
+          },
+          "weekly_progress": 63.7
         },
         {
           "id": "839-B74773-001",
@@ -4214,10 +4235,65 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 0,
-          "shipped_qty": 0,
-          "due_text": "",
-          "issues": ""
+          "po_qty": 100,
+          "shipped_qty": 103,
+          "due_text": "2026-08 주차계획 · 잔여 -3개",
+          "issues": "",
+          "weekly_plan": {
+            "2026-08": {
+              "W32": {
+                "plan": 0,
+                "actual": 0
+              },
+              "W33": {
+                "plan": 0,
+                "actual": 0
+              },
+              "W34": {
+                "plan": 0,
+                "actual": 0
+              },
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          },
+          "weekly_progress": 0.0
+        },
+        {
+          "id": "713-C08288-001",
+          "name": "713-C08288-001",
+          "group": "양산",
+          "progress": 0,
+          "status": "정상",
+          "price": 3400,
+          "material_cost": 0,
+          "po_qty": 100,
+          "shipped_qty": 103,
+          "due_text": "2026-08 주차계획 · 잔여 -3개",
+          "issues": "",
+          "weekly_plan": {
+            "2026-08": {
+              "W32": {
+                "plan": 20,
+                "actual": 20
+              },
+              "W33": {
+                "plan": 30,
+                "actual": 33
+              },
+              "W34": {
+                "plan": 20,
+                "actual": 50
+              },
+              "W35": {
+                "plan": 30,
+                "actual": 0
+              }
+            }
+          },
+          "weekly_progress": 100.0
         },
         {
           "id": "713-182341-009",
@@ -9021,10 +9097,65 @@
         }
       ],
       "status_note": "",
-      "types": [
-        "HVM",
-        "RPM"
-      ]
+      "types": [],
+      "weekly_summary": {
+        "양산": {
+          "po_qty": 3339,
+          "actual_total": 2558,
+          "remaining": 781,
+          "weeks": {
+            "W32": {
+              "plan": 76,
+              "actual": 61
+            },
+            "W33": {
+              "plan": 66,
+              "actual": 76
+            },
+            "W34": {
+              "plan": 71,
+              "actual": 0
+            },
+            "W35": {
+              "plan": 78,
+              "actual": 0
+            }
+          },
+          "next_month_plan": 240,
+          "month_note": "3월: 619 ▲\n4월: 231 ▲\n5월: 157 ▲\n6월: 364 ▲\n7월: 550 ▲\n-----------\nW32: 151 ▲\nW33: 55 ▲"
+        },
+        "개발": {
+          "po_qty": 921,
+          "actual_total": 691,
+          "remaining": 230,
+          "weeks": {
+            "W32": {
+              "plan": 8,
+              "actual": 9
+            },
+            "W33": {
+              "plan": 6,
+              "actual": 42
+            },
+            "W34": {
+              "plan": 20,
+              "actual": 0
+            },
+            "W35": {
+              "plan": 20,
+              "actual": 0
+            }
+          },
+          "next_month_plan": 130,
+          "month_note": "",
+          "price_fixed": 3400
+        }
+      },
+      "weekly_plan": {
+        "file_name": "하바플레이트.xlsx",
+        "uploaded_at": "2026-08-27T11:01:49.427876",
+        "photo_ref": "hrva_plate/plan_2026-08-27_a0958661.png"
+      }
     },
     "plating_cell": {
       "models": [],
@@ -9411,7 +9542,7 @@
           "id": "853-151282-200",
           "name": "VXT-AHM",
           "group": "개발",
-          "progress": 0,
+          "progress": 14,
           "status": "정상",
           "price": 9292,
           "material_cost": 7021,
@@ -9531,7 +9662,7 @@
           "id": "853-154168-706",
           "name": "Striker Oxide",
           "group": "개발",
-          "progress": 0,
+          "progress": 21,
           "status": "정상",
           "price": 11105,
           "material_cost": 7090,
@@ -9651,7 +9782,7 @@
           "id": "925-290073-614",
           "name": "VXT AHM HX",
           "group": "개발",
-          "progress": 0,
+          "progress": 29,
           "status": "정상",
           "price": 15359,
           "material_cost": 11387,
@@ -9771,7 +9902,7 @@
           "id": "853-244378-500",
           "name": "STRIKER CARBIDE CK",
           "group": "개발",
-          "progress": 0,
+          "progress": 7,
           "status": "정상",
           "price": 8167,
           "material_cost": 4625,
@@ -10011,7 +10142,7 @@
           "id": "575-B21019-XXXXX",
           "name": "RPDB",
           "group": "개발",
-          "progress": 0,
+          "progress": 29,
           "status": "정상",
           "price": 11348,
           "material_cost": 8918,
@@ -10131,7 +10262,7 @@
           "id": "575-B21661-XXXXX",
           "name": "CRPP",
           "group": "개발",
-          "progress": 0,
+          "progress": 29,
           "status": "정상",
           "price": 23691,
           "material_cost": 18303,
@@ -12059,7 +12190,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12179,7 +12310,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12299,7 +12430,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12419,7 +12550,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12539,7 +12670,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12659,7 +12790,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12779,7 +12910,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -12899,7 +13030,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13019,7 +13150,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13139,7 +13270,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13259,7 +13390,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13379,7 +13510,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13499,7 +13630,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13619,7 +13750,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13739,7 +13870,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13859,7 +13990,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -13979,7 +14110,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14099,7 +14230,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14219,7 +14350,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14339,7 +14470,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14459,7 +14590,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14579,7 +14710,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14699,7 +14830,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14819,7 +14950,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -14939,7 +15070,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -15059,7 +15190,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -15179,7 +15310,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -15299,7 +15430,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -15419,7 +15550,7 @@
           "shipped_qty": 0,
           "due_text": "",
           "issues": "",
-          "dev_type": "",
+          "dev_type": "EMA",
           "process": [
             {
               "key": "fa_po",
@@ -15670,15 +15801,15 @@
           "issues": "",
           "process": [
             {
-              "key": "step_01",
-              "name": "01 FA 발주",
+              "key": "step_1",
+              "name": "01 FA PO",
               "group": "발주",
               "expected": "",
               "actual": "완료",
               "status": "완료"
             },
             {
-              "key": "step_02",
+              "key": "step_2",
               "name": "02 자재 발주",
               "group": "발주",
               "expected": "",
@@ -15686,7 +15817,7 @@
               "status": "완료"
             },
             {
-              "key": "step_03",
+              "key": "step_3",
               "name": "03 자재 입고",
               "group": "발주",
               "expected": "",
@@ -15694,7 +15825,7 @@
               "status": "완료"
             },
             {
-              "key": "step_04",
+              "key": "step_4",
               "name": "04 CB",
               "group": "제작·검사",
               "expected": "",
@@ -15702,7 +15833,7 @@
               "status": "완료"
             },
             {
-              "key": "step_05",
+              "key": "step_5",
               "name": "05 BV1",
               "group": "제작·검사",
               "expected": "",
@@ -15710,7 +15841,7 @@
               "status": "완료"
             },
             {
-              "key": "step_06",
+              "key": "step_6",
               "name": "06 BV2",
               "group": "제작·검사",
               "expected": "",
@@ -15718,7 +15849,7 @@
               "status": "완료"
             },
             {
-              "key": "step_07",
+              "key": "step_7",
               "name": "07 Source Inspection",
               "group": "제작·검사",
               "expected": "",
@@ -15726,15 +15857,15 @@
               "status": "완료"
             },
             {
-              "key": "step_08",
+              "key": "step_8",
               "name": "08 FAIR 작성",
-              "group": "제작·검사",
+              "group": "승인",
               "expected": "",
               "actual": "완료",
               "status": "완료"
             },
             {
-              "key": "step_09",
+              "key": "step_9",
               "name": "09 FAIR 승인",
               "group": "승인",
               "expected": "",
@@ -15747,7 +15878,7 @@
               "group": "승인",
               "expected": "2026-08-28",
               "actual": "",
-              "status": "대기"
+              "status": ""
             },
             {
               "key": "step_11",
@@ -15755,7 +15886,7 @@
               "group": "승인",
               "expected": "2026-09-15",
               "actual": "",
-              "status": "대기"
+              "status": ""
             },
             {
               "key": "step_12",
@@ -15763,7 +15894,7 @@
               "group": "승인",
               "expected": "2026-09-30",
               "actual": "",
-              "status": "대기"
+              "status": ""
             }
           ],
           "part_number": "571-267153-XXXXX"
