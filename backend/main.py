@@ -16496,11 +16496,48 @@ async def chat(payload: dict):
             cur_wk = max(1, cur_wk + off)
             alias_hit = kw
             break
+    
+    # "총", "얼마", "매출" 질문도 프로젝트가 없으면 전체 프로젝트로 간주
+    if not alias_hit and any(k in message for k in ['총', '합계', '얼마', '매출', '실적', '나올', '어떨', '예상', '예측', '전망']):
+        # 프로젝트 미지정 → 전체 프로젝트 기준으로 자동 간주
+        if not last_project:
+            last_project = 'all'
+            sess['last_project'] = last_project
+        # 기준(무엇의 총액인지) 불명확 → 되묻기
+        # 기준 키워드: 이번주/금주/지난주/차주 등 주차 별칭, W숫자, 누적/여태/지금까지, 이번 달/이번달
+        _has_time_scope = (
+            bool(alias_hit) and alias_hit != 'implicit'
+            or bool(_re3.search(r'W\d{2}', message, _re3.I))
+            or any(k in message for k in ['누적', '여태', '지금까지', '올해', '이번 달', '이번달', '월간'])
+        )
+        _prev_had_scope = bool(sess.get('last_question_scope'))
+        if not _has_time_scope and not _prev_had_scope:
+            return {"answer": "어떤 기준의 총액이 궁금하신가요? (예: 이번 주 매출, 이번 달 누적, 여태까지 총 매출)", "sources": [], "corrected_query": None}
+        sess['last_question_scope'] = True
+        # 누적 질문이면 주차 태그 없이 진행, 아니면 이전 세션 주차 유지/오늘 기준
+        _is_cum_q = any(k in message for k in ['여태', '지금까지', '누적', '올해', '전체 기간'])
+        if not _is_cum_q:
+            if last_week and last_week in {'W32','W33','W34','W35'}:
+                cur_wk = int(last_week[1:])
+            else:
+                cur_wk = 35
+            last_week = f'W{cur_wk:02d}'
+            sess['last_week'] = last_week
+        alias_hit = 'implicit'
+        if f'[week:{last_week}]' not in message:
+            message = f'[week:{last_week}] ' + message
+        print(f'[chat] implicit alias → {last_week} (project={last_project})')
     if alias_hit:
         last_week = f'W{cur_wk:02d}'
         sess['last_week'] = last_week
         if f'[week:{last_week}]' not in message:
             message = f'[week:{last_week}] ' + message
+        # 명시적 alias: 프로젝트 미지정 시 전체로 자동 간주 ('몇 주차' 질문 제외)
+        _is_week_only = any(k in message for k in ['몇 주차', '몇주차', '몇 주', '몇주'])
+        _rev_kws = ['총', '합계', '얼마', '매출', '실적', '나올', '어떨', '예상', '예측', '전망', '출하']
+        if not last_project and any(k in message for k in _rev_kws) and not _is_week_only:
+            last_project = 'all'
+            sess['last_project'] = last_project
         print(f'[chat] alias {alias_hit!r} → {last_week} (project={last_project})')
     
     # ── 데이터 없는 주차는 LLM 우회하고 즉시 응답 ──
@@ -16645,9 +16682,25 @@ async def chat(payload: dict):
                     mv = mass_weekly.get(w, {"plan":0,"actual":0,"revenue":0})
                     dv = dev_weekly.get(w, {"plan":0,"actual":0})
                     d_rev = dv.get("actual", 0) * DEV_PRICE
-                    ctx += f"{w} 양산 {mv['plan']}/{mv['actual']} ${mv['revenue']:,}, 개발 {dv.get('plan',0)}/{dv.get('actual',0)} ${d_rev:,}; "
+                    
+                    # 양산: 실적 0이면 계획 기준 예상 매출로 표기
+                    _mp, _ma, _mr = mv['plan'], mv['actual'], mv['revenue']
+                    if _ma == 0 and _mp > 0:
+                        _m_price_est = round(_mr / _ma) if _ma > 0 else 3350
+                        _mr_show = f"실적0→계획{_mp}대 예상${_mp * _m_price_est:,}"
+                    else:
+                        _mr_show = f"${_mr:,}"
+                    
+                    # 개발: 실적 0이면 계획 기준 예상 매출로 표기
+                    _dp, _da = dv.get('plan',0), dv.get('actual',0)
+                    if _da == 0 and _dp > 0:
+                        _dr_show = f"실적0→계획{_dp}대 예상${_dp * DEV_PRICE:,}"
+                    else:
+                        _dr_show = f"${d_rev:,}"
+                    
+                    ctx += f"{w} 양산 {_mp}/{_ma} {_mr_show}, 개발 {_dp}/{_da} {_dr_show}; "
                 ctx += f"합계: 양산 {mass_plan}/{mass_act} ${mass_rev:,}, 개발 {dev_plan}/{dev_act} ${dev_rev:,}, 전체 매출 ${mass_rev + dev_rev:,}"
-                ctx += " [규칙: 양산 매출은 각 모델별 판가(price) × 실적의 합산이며 절대 $3,400 고정 단가 아님. 개발만 $3,400 고정. 응답은 2~3문장으로 간결하게. 출처에 없는 숫자는 절대 만들지 마. 계획=PO/plan, 실적=actual 구별 필수.]"
+                ctx += " [규칙: 양산 매출은 각 모델별 판가(price) × 실적의 합산이며 절대 $3,400 고정 단가 아님. 개발만 $3,400 고정. 응답은 2~3문장으로 간결하게. 출처에 없는 숫자는 절대 만들지 마. 계획=PO/plan, 실적=actual 구별 필수. 실적 0이면 절대 $0이라고 먼저 말하지 말고 계획 기준 예상 매출로 답변할 것.]"
             except Exception as e:
                 print(f"[chat] weekly 계산 실패 {pk}: {e}")
                 if rev.get("groups"):
@@ -16746,6 +16799,84 @@ async def chat(payload: dict):
                     forecast_note = " [예측통계: 주차별 실적 데이터 없음. 예측 불가.]"
             except Exception as e:
                 print(f"[chat] 예측 계산 오류: {e}")
+        # ── "몇 주차야" 질문 감지 → 주차 번호만 간결하게 응답 ──
+        if any(k in corrected for k in ['몇 주차', '몇주차', '몇 주', '몇주', '주차야', '주차야?', '주차 알려줘']):
+            answer = f"이번 주는 {last_week}입니다."
+            return {"answer": answer, "sources": [{"key": last_project, "label": "하바플레이트"}] if last_project == 'hrva_plate' else [], "corrected_query": None}
+        
+        # ── 누적 매출 질문 처리 ('여태까지', '지금까지', '누적', '올해') ──
+        _is_cumulative = any(k in message for k in ['여태', '지금까지', '누적', '올해', '전체 기간'])
+        if _is_cumulative and last_project in {'all', 'hrva_plate'}:
+            try:
+                _projs = ['hrva_plate'] if last_project == 'all' else [last_project]
+                _cum_rev = 0
+                _cum_detail = []
+                for _pk in _projs:
+                    _wrd = get_weekly_revenue(_pk, '2026-08')
+                    for _gname, _gkey in [('양산','양산'), ('개발','개발')]:
+                        _g = _wrd.get('groups',{}).get(_gkey,{})
+                        for _w, _wv in (_g.get('weeks') or {}).items():
+                            _cum_rev += _wv.get('revenue', 0)
+                    _tot = _wrd.get('combined',{}).get('total',{})
+                    _cum_detail.append(f"{_pk}: ${_tot.get('revenue', 0):,}")
+                _proj_label = '반도체사업부 전체' if last_project == 'all' else '하바플레이트'
+                system_prompt += (
+                    f" [누적 매출 (권위 데이터): 2026-08 기준 W32~W35 누적 실적 매출 합계는 ${_cum_rev:,}. "
+                    f"({_proj_label}) 이 값을 그대로 인용해서 답변할 것. 근거 표시 생략.]"
+                )
+                print(f"[chat] 누적 매출 주입: ${_cum_rev:,} ({_proj_label})")
+            except Exception as _e_cum:
+                print(f"[chat] 누적 매출 주입 실패: {_e_cum}")
+
+        # ── 전체 프로젝트 합계 계산 (project='all') ──
+        if alias_hit and last_project == 'all' and last_week in {'W32','W33','W34','W35'}:
+            try:
+                # 모든 프로젝트의 매출 합계 계산
+                _all_projects = ['hrva_plate']  # 현재는 하바플레이트만 있음, 추후 확장
+                _total_mass_rev = 0
+                _total_dev_rev = 0
+                _total_mass_plan_rev = 0
+                _total_dev_plan_rev = 0
+                
+                for _proj_key in _all_projects:
+                    _wr_data = get_weekly_revenue(_proj_key, '2026-08')
+                    _mg = _wr_data.get('groups',{}).get('양산',{})
+                    _dg = _wr_data.get('groups',{}).get('개발',{})
+                    _mw = _mg.get('weeks',{}).get(last_week,{})
+                    _dw = _dg.get('weeks',{}).get(last_week,{})
+                    
+                    _m_plan, _m_act, _m_rev = _mw.get('plan',0), _mw.get('actual',0), _mw.get('revenue',0)
+                    _d_plan, _d_act, _d_rev = _dw.get('plan',0), _dw.get('actual',0), _dw.get('revenue',0)
+                    
+                    _total_mass_rev += _m_rev
+                    _total_dev_rev += _d_rev
+                    
+                    # 계획 기준 예상 매출
+                    _m_price_est = round(_m_rev / _m_act) if _m_act > 0 else 3350
+                    _m_plan_rev = _m_plan * _m_price_est
+                    _d_plan_rev = _d_plan * 3400
+                    
+                    _total_mass_plan_rev += _m_plan_rev
+                    _total_dev_plan_rev += _d_plan_rev
+                
+                _total_actual_rev = _total_mass_rev + _total_dev_rev
+                _total_plan_rev = _total_mass_plan_rev + _total_dev_plan_rev
+                
+                # 답변 기준 결정 (전체 프로젝트)
+                if _total_actual_rev > 0:
+                    _all_basis = f"실적 기준 총 매출 ${_total_actual_rev:,} (양산 ${_total_mass_rev:,}, 개발 ${_total_dev_rev:,})"
+                elif _total_plan_rev > 0:
+                    _all_basis = f"실적 미발생, 계획 기준 예상 총 매출 ${_total_plan_rev:,} (양산 예상 ${_total_mass_plan_rev:,}, 개발 예상 ${_total_dev_plan_rev:,})"
+                else:
+                    _all_basis = "해당 주차 전체 프로젝트 계획/실적 모두 없음, 매출 $0"
+                system_prompt += (
+                    f" [전체 프로젝트 매출 (권위 데이터): {last_week} 주차 반도체사업부 전체 프로젝트 합계. {_all_basis}. "
+                    f"이 값을 그대로 인용해서 답변할 것. 근거 표시 생략.]"
+                )
+                print(f"[chat] 전체 프로젝트 주입: {last_week} 실적 ${_total_actual_rev:,}, 예상 ${_total_plan_rev:,}")
+            except Exception as _e_all:
+                print(f"[chat] 전체 프로젝트 주입 실패: {_e_all}")
+        
         # ── /weekly-revenue 직접 계산 결과를 last_week 컨텍스트로 강제 주입 ──
         if alias_hit and last_project == 'hrva_plate' and last_week in {'W32','W33','W34','W35'}:
             try:
@@ -16760,11 +16891,25 @@ async def chat(payload: dict):
                 _m_price_est = round(_m_rev / _m_act) if _m_act > 0 else 3350
                 _m_plan_rev = _m_plan * _m_price_est
                 _d_plan_rev = _d_plan * 3400
+                _total_actual_rev = _m_rev + _d_rev
+                _total_plan_rev = _m_plan_rev + _d_plan_rev
+                
+                # 시스템 프롬프트에 권위 데이터 주입
+                # 답변 기준 결정: 실적 있으면 실적 기준, 실적 0+계획 있으면 계획 기준, 둘 다 0이면 $0
+                if _m_act > 0 or _d_act > 0:
+                    _answer_basis = f"실적 기준 총 매출 ${_total_actual_rev:,} (양산 ${_m_rev:,}, 개발 ${_d_rev:,})"
+                elif _m_plan > 0 or _d_plan > 0:
+                    _answer_basis = f"실적 미발생, 계획 기준 예상 총 매출 ${_total_plan_rev:,} (양산 계획 {_m_plan}대 예상 ${_m_plan_rev:,}, 개발 계획 {_d_plan}대 예상 ${_d_plan_rev:,})"
+                else:
+                    _answer_basis = "해당 주차 계획/실적 모두 없음, 매출 $0"
                 system_prompt += (
-                    f" [주차별 매출 (권위 데이터 - 이 값만 사용): {last_week} "
-                    f"양산 계획 {_m_plan}대/실적 {_m_act}대/매출 ${_m_rev:,} (실적 0이면 계획기준 예상 ${_m_plan_rev:,}), "
-                    f"개발 계획 {_d_plan}대/실적 {_d_act}대/매출 ${_d_rev:,} (실적 0이면 계획기준 예상 ${_d_plan_rev:,}).]"
+                    f" [권위 데이터: {last_week} 주차 하바플레이트. {_answer_basis}. "
+                    f"원시값 - 양산: 계획 {_m_plan}대/실적 {_m_act}대/매출 ${_m_rev:,}, "
+                    f"개발: 계획 {_d_plan}대/실적 {_d_act}대/매출 ${_d_rev:,}. "
+                    f"이 값들을 그대로 인용할 것. 근거 표시 생략.]"
                 )
+                print(f"[chat] 답변기준: {_answer_basis}")
+                print(f"[chat] weekly-revenue 주입: {last_week} 양산 {_m_act}/{_m_plan} ${_m_rev:,}, 개발 {_d_act}/{_d_plan} ${_d_rev:,}")
             except Exception as _e_wr:
                 print(f"[chat] weekly_revenue 컨텍스트 주입 실패: {_e_wr}")
         system_prompt += forecast_note
@@ -16773,11 +16918,13 @@ async def chat(payload: dict):
             system_prompt += (
                 f" [필수규칙: (1) 사용자 질문에 [week:{last_week}] 태그가 있으면 "
                 f"오직 {last_week} 주차 데이터만 인용, 다른 주차 언급 금지. "
-                f"(2) 컨텍스트의 '주차별 매출' 섹션에 있는 plan/actual/revenue 값을 그대로 인용할 것 "
-                f"(weekly_summary가 아닌 '주차별 매출' 우선). "
-                f"(3) 실적(actual)이 0이면 '아직 실적 미발생'을 명시하고 계획(plan) 기준으로 예상 매출을 안내할 것 "
-                f"(예: '실적 미발생, 계획 70대 기준 예상 매출 $XXX'). "
-                f"(4) '종'이라는 단위 금지, '대'로 표기. (5) 답변은 2문장 이내로 간결하게.]"
+                f"(2) '권위 데이터' 섹션에 있는 plan/actual/revenue 값을 그대로 인용할 것 "
+                f"(다른 추정값 사용 금지). "
+                f"(3) 실적(actual)이 0이고 계획(plan)이 있으면 매출을 절대 $0이라고 답하지 말고, 반드시 '실적 미발생, 계획 기준 예상 매출 $XXX' 형태로 답변할 것. 계획도 0이고 실적도 0일 때만 $0이라고 답할 것. "
+                f"(4) '종'이라는 단위 금지, '대'로 표기. "
+                f"(5) '몇 주차야' 질문은 주차 번호만 답변하고 실적/매출 정보 제외. "
+                f"(6) 답변은 2문장 이내로 간결하게. "
+                f"(7) '(근거: ...)' 표시 생략.]"
             ) + " [최우선 규칙: 답변은 반드시 2문장 이내. 숫자와 결론만. '양산 15종, 개발 40종' 같은 배경 설명 절대 금지. 질문에 해당하는 주차/항목만 답할 것.]"
 
         
@@ -16794,6 +16941,9 @@ async def chat(payload: dict):
                 max_tokens=500,
             )
             answer = resp.choices[0].message.content or ""
+            # 근거 표시 강제 제거
+            import re as _re_clean1
+            answer = _re_clean1.sub(r'\(근거:\s*[^)]+\)', '', answer).strip()
         else:
             answer = f"조회 결과:\n{context[:500]}"
         
@@ -16858,6 +17008,9 @@ async def chat(payload: dict):
             max_tokens=500,
         )
         answer = (resp.choices[0].message.content or "").strip()
+        # 근거 표시 강제 제거
+        import re as _re_clean2
+        answer = _re_clean2.sub(r'\(근거:\s*[^)]+\)', '', answer).strip()
     except Exception as e:
         return {"answer": "", "sources": hits, "error": f"llm_failed: {e}"}
 
