@@ -16472,6 +16472,44 @@ async def chat(payload: dict):
     sess["last_project"] = last_project
     sess["last_week"] = last_week
 
+    # ── 한국어 주차 별칭 → ISO 주차 매핑 (오늘 = W35, 2026-08-27) ──
+    week_aliases = {
+        '이번주': 0, '금주': 0, '이번 주': 0, '금번주': 0, '지금주': 0, '이번주차': 0,
+        '차주': 1, '다음주': 1, '다음 주': 1, '내주': 1, '익주': 1,
+        '다다음주': 2, '내다음주': 2, '다다음 주': 2,
+        '지난주': -1, '지난 주': -1, '저번주': -1, '전주': -1, '직전주': -1,
+        '지지난주': -2, '전전주': -2,
+    }
+    try:
+
+        import datetime as _dt_wk
+
+        cur_wk = _dt_wk.date.today().isocalendar()[1]
+
+    except Exception:
+
+        cur_wk = 35
+    alias_hit = None
+    # 긴 키부터 매칭 ('다다음주'가 '다음주'보다 먼저 검사되도록)
+    for kw, off in sorted(week_aliases.items(), key=lambda x: -len(x[0])):
+        if kw in message:
+            cur_wk = max(1, cur_wk + off)
+            alias_hit = kw
+            break
+    if alias_hit:
+        last_week = f'W{cur_wk:02d}'
+        sess['last_week'] = last_week
+        if f'[week:{last_week}]' not in message:
+            message = f'[week:{last_week}] ' + message
+        print(f'[chat] alias {alias_hit!r} → {last_week} (project={last_project})')
+    
+    # ── 데이터 없는 주차는 LLM 우회하고 즉시 응답 ──
+    valid_weeks = {'W32', 'W33', 'W34', 'W35'}
+    if alias_hit and last_week not in valid_weeks:
+        _no_data_msg = f'해당 주차({last_week}) 데이터는 아직 등록되지 않았습니다. 현재 등록된 주차: W32, W33, W34, W35.'
+        _no_data_src = [{'key': last_project, 'label': '하바플레이트'}] if last_project == 'hrva_plate' else []
+        return {'answer': _no_data_msg, 'sources': _no_data_src, 'corrected_query': None}
+
     # 음성 오인식 보정
     corrected = message
     try:
@@ -16708,7 +16746,39 @@ async def chat(payload: dict):
                     forecast_note = " [예측통계: 주차별 실적 데이터 없음. 예측 불가.]"
             except Exception as e:
                 print(f"[chat] 예측 계산 오류: {e}")
+        # ── /weekly-revenue 직접 계산 결과를 last_week 컨텍스트로 강제 주입 ──
+        if alias_hit and last_project == 'hrva_plate' and last_week in {'W32','W33','W34','W35'}:
+            try:
+                _wr_data = get_weekly_revenue('hrva_plate', '2026-08')
+                _mg = _wr_data.get('groups',{}).get('양산',{})
+                _dg = _wr_data.get('groups',{}).get('개발',{})
+                _mw = _mg.get('weeks',{}).get(last_week,{})
+                _dw = _dg.get('weeks',{}).get(last_week,{})
+                _m_plan, _m_act, _m_rev = _mw.get('plan',0), _mw.get('actual',0), _mw.get('revenue',0)
+                _d_plan, _d_act, _d_rev = _dw.get('plan',0), _dw.get('actual',0), _dw.get('revenue',0)
+                # 계획 기준 예상 매출 (실적 0일 때용)
+                _m_price_est = round(_m_rev / _m_act) if _m_act > 0 else 3350
+                _m_plan_rev = _m_plan * _m_price_est
+                _d_plan_rev = _d_plan * 3400
+                system_prompt += (
+                    f" [주차별 매출 (권위 데이터 - 이 값만 사용): {last_week} "
+                    f"양산 계획 {_m_plan}대/실적 {_m_act}대/매출 ${_m_rev:,} (실적 0이면 계획기준 예상 ${_m_plan_rev:,}), "
+                    f"개발 계획 {_d_plan}대/실적 {_d_act}대/매출 ${_d_rev:,} (실적 0이면 계획기준 예상 ${_d_plan_rev:,}).]"
+                )
+            except Exception as _e_wr:
+                print(f"[chat] weekly_revenue 컨텍스트 주입 실패: {_e_wr}")
         system_prompt += forecast_note
+        # 주차 태그 강제 규칙
+        if alias_hit and last_week:
+            system_prompt += (
+                f" [필수규칙: (1) 사용자 질문에 [week:{last_week}] 태그가 있으면 "
+                f"오직 {last_week} 주차 데이터만 인용, 다른 주차 언급 금지. "
+                f"(2) 컨텍스트의 '주차별 매출' 섹션에 있는 plan/actual/revenue 값을 그대로 인용할 것 "
+                f"(weekly_summary가 아닌 '주차별 매출' 우선). "
+                f"(3) 실적(actual)이 0이면 '아직 실적 미발생'을 명시하고 계획(plan) 기준으로 예상 매출을 안내할 것 "
+                f"(예: '실적 미발생, 계획 70대 기준 예상 매출 $XXX'). "
+                f"(4) '종'이라는 단위 금지, '대'로 표기. (5) 답변은 2문장 이내로 간결하게.]"
+            ) + " [최우선 규칙: 답변은 반드시 2문장 이내. 숫자와 결론만. '양산 15종, 개발 40종' 같은 배경 설명 절대 금지. 질문에 해당하는 주차/항목만 답할 것.]"
 
         
         user_prompt = f"[데이터]\n{context}\n\n[질문]\n{corrected}"
