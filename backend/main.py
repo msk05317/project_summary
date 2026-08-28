@@ -16456,7 +16456,11 @@ async def chat(payload: dict):
     week_m = _re3.search(r"W(\d{2})", message, _re3.I)
     if week_m:
         last_week = "W" + week_m.group(1)
-    proj_keywords = {"하바플레이트": "hrva_plate", "hrva": "hrva_plate"}
+    proj_keywords = {
+        "하바플레이트": "hrva_plate", "하바 플레이트": "hrva_plate",
+        "하바플레잍": "hrva_plate", "하바 플레잍": "hrva_plate",
+        "하바": "hrva_plate", "hrva": "hrva_plate", "hava": "hrva_plate",
+    }
     msg_lower_pre = message.lower()
     for kw, pk in proj_keywords.items():
         if kw in msg_lower_pre or kw in message:
