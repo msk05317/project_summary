@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-31T09:58:00.060819",
+  "updated_at": "2026-08-31T10:13:58.377593",
   "projects": {
     "cup": {
       "models": [
@@ -4123,25 +4123,25 @@
           "material_cost": 0,
           "po_qty": 70,
           "shipped_qty": 0,
-          "due_text": "2026-09 주차계획 · 잔여 70개",
+          "due_text": "2026-08 주차계획 · 잔여 70개",
           "issues": "",
           "weekly_plan": {
             "2026-08": {
               "W32": {
-                "plan": 20,
-                "actual": 10
+                "plan": 10,
+                "actual": 0
               },
               "W33": {
                 "plan": 20,
-                "actual": 31
+                "actual": 0
               },
               "W34": {
                 "plan": 20,
-                "actual": 10
+                "actual": 0
               },
               "W35": {
                 "plan": 20,
-                "actual": 74
+                "actual": 0
               }
             },
             "2026-09": {
@@ -4206,16 +4206,16 @@
           "weekly_plan": {
             "2026-08": {
               "W32": {
-                "plan": 20,
-                "actual": 31
+                "plan": 0,
+                "actual": 0
               },
               "W33": {
-                "plan": 8,
-                "actual": 11
+                "plan": 0,
+                "actual": 0
               },
               "W34": {
-                "plan": 20,
-                "actual": 14
+                "plan": 0,
+                "actual": 0
               },
               "W35": {
                 "plan": 0,
@@ -4223,7 +4223,7 @@
               }
             }
           },
-          "weekly_progress": 100.0
+          "weekly_progress": 0.0
         },
         {
           "id": "839-272117-005",
@@ -4235,25 +4235,25 @@
           "material_cost": 0,
           "po_qty": 68,
           "shipped_qty": 0,
-          "due_text": "2026-09 주차계획 · 잔여 68개",
+          "due_text": "2026-08 주차계획 · 잔여 68개",
           "issues": "",
           "weekly_plan": {
             "2026-08": {
               "W32": {
-                "plan": 16,
+                "plan": 20,
                 "actual": 0
               },
               "W33": {
-                "plan": 8,
-                "actual": 1
+                "plan": 16,
+                "actual": 0
               },
               "W34": {
-                "plan": 10,
+                "plan": 16,
                 "actual": 0
               },
               "W35": {
-                "plan": 20,
-                "actual": 6
+                "plan": 16,
+                "actual": 0
               }
             },
             "2026-09": {
@@ -4287,7 +4287,7 @@
           "material_cost": 0,
           "po_qty": 22,
           "shipped_qty": 0,
-          "due_text": "2026-09 주차계획 · 잔여 22개",
+          "due_text": "2026-08 주차계획 · 잔여 22개",
           "issues": "",
           "weekly_plan": {
             "2026-09": {
@@ -4304,6 +4304,24 @@
                 "actual": 0
               },
               "W39": {
+                "plan": 0,
+                "actual": 0
+              }
+            },
+            "2026-08": {
+              "W32": {
+                "plan": 3,
+                "actual": 0
+              },
+              "W33": {
+                "plan": 19,
+                "actual": 0
+              },
+              "W34": {
+                "plan": 0,
+                "actual": 0
+              },
+              "W35": {
                 "plan": 0,
                 "actual": 0
               }
@@ -4509,25 +4527,25 @@
           "material_cost": 0,
           "po_qty": 80,
           "shipped_qty": 0,
-          "due_text": "2026-09 주차계획 · 잔여 80개",
+          "due_text": "2026-08 주차계획 · 잔여 80개",
           "issues": "",
           "weekly_plan": {
             "2026-08": {
               "W32": {
                 "plan": 20,
-                "actual": 20
+                "actual": 0
               },
               "W33": {
-                "plan": 30,
-                "actual": 33
+                "plan": 20,
+                "actual": 0
               },
               "W34": {
                 "plan": 20,
-                "actual": 50
+                "actual": 0
               },
               "W35": {
-                "plan": 30,
-                "actual": 70
+                "plan": 20,
+                "actual": 0
               }
             },
             "2026-09": {
