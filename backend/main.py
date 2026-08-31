@@ -17085,13 +17085,15 @@ async def chat(payload: dict):
                     f"이 값들을 반드시 그대로 인용할 것. message나 history에 포함된 다른 매출 수치는 모두 무시하고 오직 이 system_prompt의 값만 사용할 것. "
                     f"근거 표시 생략.]"
                 )
-                # message 완전 재작성 (매출 수치 완전 제거)
+                # message 완전 재작성 (매출 수치 완전 제거) — 단, 원본 질문은 보존
+                _orig_user_msg = message
                 message = f"{last_week} 주차 하바플레이트 매출을 알려주세요. system_prompt의 권위 데이터를 그대로 인용해주세요."
                 print(f"[chat] message 재작성 완료: {message}")
                 print(f"[chat] 답변기준: {_answer_basis}")
                 # ── LLM 우회: 권위 데이터로 답변 직접 반환 (LLM이 수치를 변조하는 문제 원천 차단) ──
                 if _m_act > 0 or _d_act > 0:
-                    _qty_only = any(k in message for k in ['수량', '몇 대', '몇대', '대수']) and '매출' not in message
+                    _qsrc = _orig_user_msg if '_orig_user_msg' in dir() else message
+                    _qty_only = any(k in _qsrc for k in ['수량', '몇 대', '몇대', '대수', '나갔', '나왔', '출하']) and '매출' not in _qsrc
                     if _qty_only:
                         _direct = (f"{last_week} 기준 양산 실적은 {_m_act}대, 개발 실적은 {_d_act}대입니다. "
                                    f"총 실적은 {_m_act + _d_act}대입니다.")
