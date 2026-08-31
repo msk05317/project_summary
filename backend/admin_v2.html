@@ -6983,7 +6983,12 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
 
   // 초기화
   setTimeout(function() {
-    initMonthSelect();
+    // loadModelList 완료 후 initMonthSelect 호출
+  setTimeout(function() {
+    if (typeof initMonthSelect === 'function') {
+      initMonthSelect();
+    }
+  }, 100);
     loadModelList();
   }, 300);
 })();
