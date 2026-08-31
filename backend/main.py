@@ -16206,9 +16206,12 @@ window.showWeeklyPlanPage = function(projectKey) {
       '<h4 style="margin:0;font-size:16px;font-weight:600;color:#111827;">📝 모델별 주차별 계획 입력</h4>' +
       '<div style="display:flex;gap:8px;">' +
         '<select id="wp-month-select" style="padding:6px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;background:#fff;">' +
+          '<option value="2026-06">2026년 6월</option>' +
+          '<option value="2026-07">2026년 7월</option>' +
           '<option value="2026-08">2026년 8월</option>' +
-          '<option value="2026-09">2026년 9월</option>' +
+          '<option value="2026-09" selected>2026년 9월</option>' +
           '<option value="2026-10">2026년 10월</option>' +
+          '<option value="2026-11">2026년 11월</option>' +
         '</select>' +
       '</div>' +
     '</div>' +
@@ -16235,7 +16238,7 @@ function loadAllModelsWeeklyPlan(projectKey, month) {
   
   container.innerHTML = '<div style="text-align:center;padding:40px;color:#6B7280;">로딩 중...</div>';
   
-  fetch('/projects/' + encodeURIComponent(projectKey) + '/models')
+  fetch('/projects/' + encodeURIComponent(projectKey) + '/models?month=' + encodeURIComponent(month))
     .then(function(r) { return r.json(); })
     .then(function(d) {
       var models = (d.models || []).filter(function(m) { return m.group === '양산'; });
@@ -16450,6 +16453,7 @@ async def chat(payload: dict):
     sess = _CHAT_SESSIONS.setdefault(session_id, {})
     last_project = sess.get("last_project")
     last_week = sess.get("last_week")
+    _month_context = ""  # 월 합계 컨텍스트 (월 키워드 있을 때만 채워짐)
 
     # 현재 메시지에서 주차/프로젝트 추출, 없으면 세션 값 사용
     import re as _re3
@@ -16539,7 +16543,6 @@ async def chat(payload: dict):
         _today = _dt_mod.now().date()
         _target_month_num = None
         _month_label = None
-        _month_context = ""  # 나중에 system_prompt에 추가할 변수
         if _month_match:
             _m = int(_month_match.group(1))
             _target_month_num = _m
@@ -19505,11 +19508,16 @@ def get_weekly_revenue(project_key: str, month: str = None):
         month = _dt.date.today().strftime("%Y-%m")
 
     DEV_PRICE = 3400
-    # 주차 목록: weekly_summary 기준 (엑셀 업로드에서 온 W32~W35)
-    all_weeks = sorted({w for grp in ("양산", "개발") if grp in ws_data
-                        for w in (ws_data[grp].get("weeks") or {})})
-    if not all_weeks:
+    # 주차 목록: 요청한 월 기준으로 필터링
+    if month:
+        # month 파라미터가 있으면 해당 월의 주차만 사용
         all_weeks = _get_month_weeks(month)
+    else:
+        # month 없으면 weekly_summary 기준
+        all_weeks = sorted({w for grp in ("양산", "개발") if grp in ws_data
+                            for w in (ws_data[grp].get("weeks") or {})})
+        if not all_weeks:
+            all_weeks = _get_month_weeks(month)
 
     # ── 양산: 모델별 주차 실적 x 모델 판가 ──
     yang_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0} for w in all_weeks}
