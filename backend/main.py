@@ -16520,6 +16520,11 @@ async def chat(payload: dict):
             or bool(_re3.search(r'\d{1,2}월', message))   # "8월" 같은 형태
             or any(k in message for k in ['누적', '여태', '지금까지', '올해', '이번 달', '이번달', '월간'])
         )
+        # 무의미/초단문 입력 가드
+        _bare = re.sub(r'\s+', '', message)
+        _has_meaning = bool(re.search(r'\d|매출|실적|계획|주차|진행|수량|얼마|몇|누적|모델', _bare))
+        if len(_bare) <= 2 or (len(_bare) <= 8 and not _has_meaning):
+            return {"answer": "무슨 말씀이신지 잘 모르겠어요. 예: '하바플레이트 35주차 매출'처럼 구체적으로 물어봐 주세요.", "sources": [], "corrected_query": None}
         _prev_had_scope = bool(sess.get('last_question_scope'))
         if not _has_time_scope and not _prev_had_scope:
             return {"answer": "어떤 기준의 총액이 궁금하신가요? (예: 이번 주 매출, 이번 달 누적, 여태까지 총 매출)", "sources": [], "corrected_query": None}
@@ -16966,6 +16971,8 @@ async def chat(payload: dict):
             except Exception as _e_wr:
                 print(f"[chat] weekly_revenue 컨텍스트 주입 실패: {_e_wr}")
         system_prompt += forecast_note
+        system_prompt += "\n(규칙) 수량 질문에는 반드시 실적(actual) 숫자만 답하세요. 계획(plan) 숫자를 실적인 것처럼 답하면 절대 안 됩니다. 실적이 0이면 0대라고 답하세요."
+        system_prompt += "\n(규칙) 출하·실적·매출 답변에서 PO 수량이나 PO 대비 표현은 절대 언급하지 마세요. 확정된 실적 수치만으로 답하세요. PO 데이터는 아직 연동 전입니다."
         # 월 컨텍스트 추가 (정의 전에 계산된 변수)
         if _month_context:
             system_prompt += _month_context
