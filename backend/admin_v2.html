@@ -6765,7 +6765,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       if (mv === _wpMonth) opt.selected = true;
       sel.appendChild(opt);
     }
-    sel.onchange = function() { _wpMonth = this.value; loadModelList(); };
+    sel.onchange = function() { _wpMonth = this.value; loadModelList(this.value); };
   };
   
   // 즉시 실행
@@ -6775,7 +6775,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     window.initMonthSelect();
   }
 
-  function loadModelList() {
+  function loadModelList(month) {
     var list = document.getElementById('wp-models-list');
     if (!list) return;
     var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
@@ -6785,7 +6785,9 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     }
     list.innerHTML = '<div style="text-align:center;padding:24px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
 
-    fetch('/projects/' + encodeURIComponent(pk) + '/models', { credentials: 'same-origin' })
+    var targetMonth = month || _wpMonth;
+    
+    fetch('/projects/' + encodeURIComponent(pk) + '/models?month=' + encodeURIComponent(targetMonth), { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         _wpModels = (d.models || []).filter(function(m) { return m.group === '양산'; });
