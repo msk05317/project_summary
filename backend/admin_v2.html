@@ -6607,7 +6607,26 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       .then(function(d){
         if (d.detail) { body.innerHTML = '<div style="color:#DC2626;padding:12px;font-size:12px;">' + d.detail + '</div>'; return; }
         body.dataset.loaded = '1';
-        document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + (d.progress || 0) + '%';
+        var progEl = document.getElementById('wp-prog-' + idx);
+        if (!progEl) {
+          // wp-prog- 요소가 없으면 생성
+          var card = document.getElementById('wp-model-card-' + idx);
+          if (card) {
+            var header = card.querySelector('.wp-model-header');
+            if (header) {
+              var statusSpan = header.querySelector('span[id^="wp-status-"]');
+              if (statusSpan) {
+                progEl = document.createElement('span');
+                progEl.id = 'wp-prog-' + idx;
+                progEl.style.cssText = 'font-size:12px;color:#059669;font-weight:600;margin-left:8px;';
+                statusSpan.parentNode.insertBefore(progEl, statusSpan.nextSibling);
+              }
+            }
+          }
+        }
+        if (progEl) {
+          progEl.textContent = '진행률 ' + (d.progress || 0) + '%';
+        }
 
         var rows = '';
         d.weeks.forEach(function(w){
@@ -6837,7 +6856,26 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           return;
         }
         body.dataset.loaded = '1';
-        document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + (d.progress || 0) + '%';
+        var progEl = document.getElementById('wp-prog-' + idx);
+        if (!progEl) {
+          // wp-prog- 요소가 없으면 생성
+          var card = document.getElementById('wp-model-card-' + idx);
+          if (card) {
+            var header = card.querySelector('.wp-model-header');
+            if (header) {
+              var statusSpan = header.querySelector('span[id^="wp-status-"]');
+              if (statusSpan) {
+                progEl = document.createElement('span');
+                progEl.id = 'wp-prog-' + idx;
+                progEl.style.cssText = 'font-size:12px;color:#059669;font-weight:600;margin-left:8px;';
+                statusSpan.parentNode.insertBefore(progEl, statusSpan.nextSibling);
+              }
+            }
+          }
+        }
+        if (progEl) {
+          progEl.textContent = '진행률 ' + (d.progress || 0) + '%';
+        }
         document.getElementById('wp-prog-' + idx).style.color = (d.progress > 0) ? '#059669' : '#6B7280';
 
         var rows = '';
