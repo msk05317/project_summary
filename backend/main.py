@@ -16512,6 +16512,8 @@ async def chat(payload: dict):
         _has_time_scope = (
             bool(alias_hit) and alias_hit != 'implicit'
             or bool(_re3.search(r'W\d{2}', message, _re3.I))
+            or bool(_re3.search(r'\d{1,2}주차', message))  # "34주차" 같은 형태
+            or bool(_re3.search(r'\d{1,2}월', message))   # "8월" 같은 형태
             or any(k in message for k in ['누적', '여태', '지금까지', '올해', '이번 달', '이번달', '월간'])
         )
         _prev_had_scope = bool(sess.get('last_question_scope'))
@@ -16531,6 +16533,50 @@ async def chat(payload: dict):
         if f'[week:{last_week}]' not in message:
             message = f'[week:{last_week}] ' + message
         print(f'[chat] implicit alias → {last_week} (project={last_project})')
+        
+        # ── 월 키워드 감지 시 월 합계 컨텍스트를 변수에 저장 (system_prompt 정의 전이라 직접 참조 불가) ──
+        _month_match = _re3.search(r'(\d{1,2})\s*월', message)
+        _today = _dt_mod.now().date()
+        _target_month_num = None
+        _month_label = None
+        _month_context = ""  # 나중에 system_prompt에 추가할 변수
+        if _month_match:
+            _m = int(_month_match.group(1))
+            _target_month_num = _m
+            _month_label = f"{_today.year}-{_m:02d}"
+        elif any(kw in message for kw in ['이번달', '이번 달', '이달']):
+            _target_month_num = _today.month
+            _month_label = f"{_today.year}-{_today.month:02d} (이번 달)"
+        elif any(kw in message for kw in ['지난달', '저번달', '전월']):
+            _prev = _today.month - 1 if _today.month > 1 else 12
+            _target_month_num = _prev
+            _month_label = f"{_today.year}-{_prev:02d} (지난 달)"
+        
+        # 월 키워드 있으면 월 합계 컨텍스트 계산 후 변수에 저장
+        if _target_month_num:
+            _month_str = f"{_today.year}-{_target_month_num:02d}"
+            try:
+                _proj_key = last_project if last_project != 'all' else 'hrva_plate'
+                _wr = get_weekly_revenue(_proj_key, _month_str)
+                _combined = _wr.get('combined', {})
+                _total_rev = _combined.get('total', {}).get('revenue', 0)
+                _weeks_list = _wr.get('weeks', [])
+                _week_details = []
+                for _w in _weeks_list:
+                    _wc = _combined.get('weeks', {}).get(_w, {})
+                    _week_details.append(f"{_w} 매출=${_wc.get('revenue',0):,}")
+                _month_context = (
+                    f" [월 합계 (권위 데이터, 주차 alias보다 우선): {_month_label} "
+                    f"총 누적 매출=${_total_rev:,}. "
+                    f"주차별 내역: {' / '.join(_week_details)}. "
+                    f"이 값들을 그대로 인용해서 답변할 것. "
+                    f"형식: '{_month_label} 총 매출은 $X,XXX입니다. (주차별: W32 $X / W33 $X / W34 $X / W35 $X)'. "
+                    f"근거 표시 생략.]"
+                )
+                print(f"[chat] 월 컨텍스트 계산 완료: {_month_label} 총매출=${_total_rev:,}")
+            except Exception as _e_mon:
+                print(f"[chat] 월 컨텍스트 계산 실패: {_e_mon}")
+        
     if alias_hit:
         last_week = f'W{cur_wk:02d}'
         sess['last_week'] = last_week
@@ -16917,6 +16963,10 @@ async def chat(payload: dict):
             except Exception as _e_wr:
                 print(f"[chat] weekly_revenue 컨텍스트 주입 실패: {_e_wr}")
         system_prompt += forecast_note
+        # 월 컨텍스트 추가 (정의 전에 계산된 변수)
+        if _month_context:
+            system_prompt += _month_context
+            print(f"[chat] 월 컨텍스트 주입 완료")
         # 주차 태그 강제 규칙
         if alias_hit and last_week:
             system_prompt += (
