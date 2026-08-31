@@ -16504,7 +16504,24 @@ async def chat(payload: dict):
             cur_wk = max(1, cur_wk + off)
             alias_hit = kw
             break
-    
+
+    # ── 명시적 주차 숫자 ("33주차" 또는 "W33") 별칭 매핑 추가 ──
+    if not alias_hit:
+        _m_explicit = _re3.search(r'(?<!\d)(\d{1,2})\s*주차', message)
+        if not _m_explicit:
+            _m_explicit = _re3.search(r'\bW\s*(\d{1,2})\b', message, _re3.I)
+        if _m_explicit:
+            try:
+                _n = int(_m_explicit.group(1))
+                if 1 <= _n <= 53:
+                    cur_wk = _n
+                    last_week = f'W{_n:02d}'
+                    sess['last_week'] = last_week
+                    alias_hit = f'explicit_W{_n:02d}'
+                    print(f'[chat] explicit week digits → W{_n:02d}')
+            except Exception:
+                pass
+
     # "총", "얼마", "매출" 질문도 프로젝트가 없으면 전체 프로젝트로 간주
     if not alias_hit and any(k in message for k in ['총', '합계', '얼마', '매출', '실적', '나올', '어떨', '예상', '예측', '전망']):
         # 프로젝트 미지정 → 전체 프로젝트 기준으로 자동 간주
@@ -16535,7 +16552,8 @@ async def chat(payload: dict):
             if last_week and last_week in {'W32','W33','W34','W35'}:
                 cur_wk = int(last_week[1:])
             else:
-                cur_wk = 35
+                # 세션에 저장된 주차가 없으면 오늘 주차 폴백 (방금 set한 경우 그대로 유지됨)
+                cur_wk = _dt_wk.date.today().isocalendar()[1]
             last_week = f'W{cur_wk:02d}'
             sess['last_week'] = last_week
         alias_hit = 'implicit'
