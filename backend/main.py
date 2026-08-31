@@ -19026,7 +19026,7 @@ def _ensure_mass_progress(weekly_plan, month=None):
         return 0.0
     if month is None:
         month = _dt.date.today().strftime("%Y-%m")
-    bucket = weekly_plan.get(month) or (weekly_plan.get(list(weekly_plan.keys())[0]) if weekly_plan else None)
+    bucket = weekly_plan.get(month)
     if not bucket:
         return 0.0
     tp = sum(int(w.get("plan") or 0) for w in bucket.values())
