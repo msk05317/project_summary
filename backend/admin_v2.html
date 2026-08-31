@@ -6767,13 +6767,6 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     }
     sel.onchange = function() { _wpMonth = this.value; loadModelList(this.value); };
   };
-  
-  // 즉시 실행
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', window.initMonthSelect);
-  } else {
-    window.initMonthSelect();
-  }
 
   function loadModelList(month) {
     var list = document.getElementById('wp-models-list');
