@@ -6751,7 +6751,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
   }
   setInterval(watchProjectChange, 1000);
 
-  function initMonthSelect() {
+  window.initMonthSelect = function() {
     var sel = document.getElementById('wp-month-sel');
     if (!sel) return;
     sel.innerHTML = '';
@@ -6766,6 +6766,13 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       sel.appendChild(opt);
     }
     sel.onchange = function() { _wpMonth = this.value; loadModelList(); };
+  };
+  
+  // 즉시 실행
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', window.initMonthSelect);
+  } else {
+    window.initMonthSelect();
   }
 
   function loadModelList() {
