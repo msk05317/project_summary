@@ -6682,11 +6682,11 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           document.getElementById('wp-tr-' + idx).textContent = Math.max(0, tp - ta);
           var gp = tp > 0 ? Math.round(ta / tp * 100) : 0;
           document.getElementById('wp-tg-' + idx).textContent = gp + '%';
-          document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + gp + '%';
+          var _pgEl=document.getElementById('wp-prog-' + idx);if(_pgEl){_pgEl.textContent = '진행률 ' + gp + '%';}
         }
         body.querySelectorAll('input').forEach(function(inp){ inp.oninput = recalc; });
 
-        document.getElementById('wp-save-' + idx).onclick = function(){
+        var _sbEl=document.getElementById('wp-save-' + idx);if(_sbEl)_sbEl.onclick = function(){
           var weeks = {};
           body.querySelectorAll('.wp-in-plan').forEach(function(p){
             var w = p.dataset.week;
@@ -6708,7 +6708,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
             }
           });
         };
-        document.getElementById('wp-reset-' + idx).onclick = function(){
+        var _rsEl=document.getElementById('wp-reset-' + idx);if(_rsEl)_rsEl.onclick = function(){
           if (!confirm('⚠️ 이 모델의 모든 주차 계획/실적을 0으로 초기화할까요?')) return;
           body.querySelectorAll('input').forEach(function(inp){ inp.value = 0; });
           recalc();
@@ -6878,7 +6878,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         if (progEl) {
           progEl.textContent = '진행률 ' + (d.progress || 0) + '%';
         }
-        document.getElementById('wp-prog-' + idx).style.color = (d.progress > 0) ? '#059669' : '#6B7280';
+        var _pgEl2=document.getElementById('wp-prog-' + idx);if(_pgEl2){_pgEl2.style.color = (d.progress > 0) ? '#059669' : '#6B7280';}
 
         var rows = '';
         d.weeks.forEach(function(w) {
@@ -6937,12 +6937,12 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           document.getElementById('wp-total-rem-' + idx).textContent = Math.max(0, tp - ta);
           var gp = tp > 0 ? Math.round(ta / tp * 100) : 0;
           document.getElementById('wp-total-prog-' + idx).textContent = gp + '%';
-          document.getElementById('wp-prog-' + idx).textContent = '진행률 ' + gp + '%';
-          document.getElementById('wp-prog-' + idx).style.color = gp > 0 ? '#059669' : '#6B7280';
+          var _pgEl=document.getElementById('wp-prog-' + idx);if(_pgEl){_pgEl.textContent = '진행률 ' + gp + '%';}
+          var _pgEl2=document.getElementById('wp-prog-' + idx);if(_pgEl2){_pgEl2.style.color = gp > 0 ? '#059669' : '#6B7280';}
         }
         body.querySelectorAll('input').forEach(function(inp) { inp.oninput = recalc; });
 
-        document.getElementById('wp-save-' + idx).onclick = function() {
+        var _sbEl=document.getElementById('wp-save-' + idx);if(_sbEl)_sbEl.onclick = function(){
           var weeks = {};
           body.querySelectorAll('.wp-plan').forEach(function(p) {
             var w = p.dataset.week;
@@ -6968,7 +6968,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           });
         };
 
-        document.getElementById('wp-reset-' + idx).onclick = function() {
+        var _rsEl=document.getElementById('wp-reset-' + idx);if(_rsEl)_rsEl.onclick = function(){
           if (!confirm('⚠️ 이 모델의 모든 주차 계획/실적을 0으로 초기화할까요?')) return;
           body.querySelectorAll('input').forEach(function(inp) { inp.value = 0; });
           recalc();
