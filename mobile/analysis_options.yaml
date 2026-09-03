@@ -9,6 +9,17 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# 우리 소스가 아닌 곳은 분석에서 제외한다.
+# - build/  : 플러그인 소스패키지(firebase_messaging 예제·테스트)까지 딸려와
+#             mockito 미설치로 error 수십 건이 잡혀 실제 문제를 가린다
+# - lib.bak_* : 예전 lib 백업 스냅샷
+analyzer:
+  exclude:
+    - build/**
+    - lib.bak_*/**
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

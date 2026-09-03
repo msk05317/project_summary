@@ -639,7 +639,7 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.zero,
             itemCount: months.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (_, i) {
               final m = months[i];
               final sel = m == month;
