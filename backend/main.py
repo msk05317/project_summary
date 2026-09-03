@@ -12880,8 +12880,19 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             "shipped_qty": max(0, int(m.get("shipped_qty") or 0)),
             "due_text": str(m.get("due_text") or ""),
             "issues": str(m.get("issues") or ""),
+            # 이슈와 별개로 자유롭게 적는 비고(메모)
+            "note": str(m.get("note") or ""),
         }
         old = old_map.get(mid) or {}
+        # 이 화면에서 편집하지 않는 값은 기존 것을 그대로 승계 (덮어써서 날아가지 않게)
+        for _keep in ("weekly_plan", "weekly_progress", "weekly_summary",
+                      "part_number", "current_expected", "current_stage"):
+            if m.get(_keep) is not None:
+                entry[_keep] = m.get(_keep)
+            elif old.get(_keep) is not None:
+                entry[_keep] = old.get(_keep)
+        if not str(entry.get("note") or "").strip() and old.get("note"):
+            entry["note"] = old.get("note")
         if group == "개발":
             dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             entry["dev_type"] = dev_type
@@ -19628,7 +19639,7 @@ def get_progress_trend(period: str = "week", points: int = 4, division_id: str =
 
 
 def _enrich_model(m: dict) -> dict:
-    out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "weekly_plan", "weekly_progress", "weekly_summary")}
+    out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "note", "part_number", "weekly_plan", "weekly_progress", "weekly_summary")}
     if m.get("group") == "개발":
         proc = _ensure_process(m)
         out["process"] = proc

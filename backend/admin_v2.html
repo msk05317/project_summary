@@ -5267,6 +5267,27 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-plan-card { background: #FFFFFF; border: 1px solid #E4E7EC; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }',
     '.mdl-empty { padding: 40px; text-align: center; color: #94A3B8; background: #FFFFFF; border-radius: 12px; border: 1px solid #E4E7EC; }',
     '.mdl-loading { padding: 40px; text-align: center; color: #94A3B8; }',
+      /* ═══ 모델 표 정리 (마지막 정의가 우선) ═══ */
+    '.mdl-table { border-spacing: 0 6px; }',
+    '.mdl-table th { padding: 6px 12px; font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.02em; text-transform: none; white-space: nowrap; }',
+    '.mdl-table th.mdl-th-num { text-align: right; }',
+    '.mdl-table td { padding: 10px 12px; box-shadow: none; border-color: #EDF0F4; }',
+    '.mdl-table tr[data-model-id]:hover td { background: #FBFCFE; }',
+    '.mdl-td-name { font-weight: 700; color: #0F172A; font-size: 13px; letter-spacing: -0.01em; }',
+    /* 입력칸: 평소엔 테두리 없이 값만 보이고, 포커스/호버 때만 드러나게 */
+    '.mdl-input { width: 96px; padding: 7px 10px; border: 1px solid transparent; border-radius: 6px; background: #F7F9FC; color: #0F172A; font-weight: 600; transition: border-color .12s, background .12s; }',
+    '.mdl-input:hover { background: #F1F5F9; }',
+    '.mdl-input:focus { background: #FFFFFF; border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.10); }',
+    '.mdl-memo { width: 190px; min-height: 34px; max-height: 96px; padding: 7px 10px; border: 1px solid transparent; border-radius: 6px; background: #F7F9FC; font-size: 12px; line-height: 1.45; color: #334155; font-family: inherit; resize: vertical; box-sizing: border-box; }',
+    '.mdl-memo::placeholder { color: #B6BECB; font-weight: 500; }',
+    '.mdl-memo:hover { background: #F1F5F9; }',
+    '.mdl-memo:focus { outline: none; background: #FFFFFF; border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.10); }',
+    '.mdl-td-ratio { color: #475569; font-weight: 700; text-align: right; }',
+    '.mdl-table select[data-field=\"group\"], .mdl-table select[data-field=\"dev_type\"] { border: 1px solid transparent; }',
+    '.mdl-table select[data-field=\"dev_type\"] { background: #F7F9FC !important; color: #334155; font-weight: 600; }',
+    '.mdl-table select:focus { outline: none; border-color: #2563EB; }',
+    '.mdl-group-row td { padding: 12px 6px 2px !important; }',
+    '.mdl-td-actions { white-space: nowrap; text-align: right; }',
     /* ── 프로세스 에디터 시안 ── */
     '.mdl-proc { max-width: 1080px; }',
     '.mdl-proc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }',
@@ -5372,12 +5393,14 @@ window.renderAdminV2ByDivision = function(){
       const shq = r.querySelector('[data-field="shipped_qty"]');
       const duet = r.querySelector('[data-field="due_text"]');
       const iss = r.querySelector('[data-field="issues"]');
+      const nte = r.querySelector('[data-field="note"]');
       // part_number는 개발 3종(powerbox/major_module/frame)에서만 존재
       // ESS 필드 값 할당 (누락됐던 부분)
       if (poq) m.po_qty = parseInt(poq.value || '0', 10) || 0;
       if (shq) m.shipped_qty = parseInt(shq.value || '0', 10) || 0;
       if (duet) m.due_text = duet.value || '';
       if (iss) m.issues = iss.value || '';
+      if (nte) m.note = nte.value || '';
       const dt = r.querySelector('[data-field="dev_type"]');
       if (pn) m.part_number = pn.value;
       if (dt) m.dev_type = dt.value;
@@ -5451,13 +5474,15 @@ window.renderAdminV2ByDivision = function(){
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
       ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
         ? '<th>파트넘버</th>' : '') +
-      (_projIsEss ? '<th>모델명</th><th>구분</th><th>유형</th><th>PO 수량</th><th>출하 완료</th><th>남은 수량</th><th>납기</th><th>이슈사항</th><th style="width:56px">관리</th>' : '<th>모델명</th><th>구분</th><th>유형</th><th>판가($)</th><th>재료비($)</th><th>재료비율</th><th>이슈사항</th><th>관리</th>') +
+      (_projIsEss
+        ? '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">출하 완료</th><th class="mdl-th-num">남은 수량</th><th>납기</th><th>이슈사항</th><th>비고</th><th style="width:56px">관리</th>'
+        : '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">판가($)</th><th class="mdl-th-num">재료비($)</th><th class="mdl-th-num">재료비율</th><th>이슈사항</th><th>비고</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
       const list = byGroup[g];
       if (!list.length) return;
-      html += '<tr class="mdl-group-row"><td colspan="7">' +
+      html += '<tr class="mdl-group-row"><td colspan="12">' +
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
         '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
       list.forEach(function(m) {
@@ -5490,12 +5515,14 @@ window.renderAdminV2ByDivision = function(){
   '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
   '<td data-field="remaining" class="mdl-td-ratio">' + Math.max(0, (m.po_qty || 0) - (m.shipped_qty || 0)) + '</td>' +
   '<td><input data-field="due_text" type="text" value="' + (m.due_text || '').replace(/"/g, '&quot;') + '" class="mdl-input" placeholder="예: 8월 24일" style="width:140px;"></td>' +
-  '<td><textarea data-field="issues" class="mdl-input" placeholder="이슈사항" style="width:220px;min-height:34px;font-size:12px;">' + (m.issues || '') + '</textarea></td>'
+  '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
+  '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 :
   '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
   '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
-  '<td><textarea data-field="issues" class="mdl-input" placeholder="이슈사항" style="width:180px;min-height:34px;font-size:12px;">' + (m.issues || '') + '</textarea></td>'
+  '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
+  '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 ) +
           (!_projIsEss ? '<td class="mdl-td-actions">' +
             '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
