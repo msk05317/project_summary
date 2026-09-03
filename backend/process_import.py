@@ -117,8 +117,11 @@ def parse_process_schedule(wb, sheet_name=None):
                 for raw in (raw_a, raw_p):
                     t = _s(raw)
                     if t and t.lower() not in NOT_DONE_TEXT and _as_date(raw) is None:
-                        status = "진행중"
                         notes.append(f"{no:02d} {name}: {t}")
+                        # 계획일이 잡혀 있을 때만 '진행중'으로 본다.
+                        # 계획도 없는데 코멘트만 있다고 진행중으로 표시하지 않는다.
+                        if exp:
+                            status = "진행중"
                         break
             cells.append({
                 "no": no,
