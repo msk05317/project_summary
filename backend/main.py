@@ -476,6 +476,24 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o")
 
 
+def _strip_useless_caveats(answer: str) -> str:
+    """'실적이 없는 주차도 있으니 주의가 필요합니다' 같은 군더더기 경고 문장 제거."""
+    import re as _re
+    if not answer:
+        return answer
+    pats = [
+        r"[^.\n]*실적이?\s*(없는|미등록)[^.\n]*(주의|참고|확인)[^.\n]*[.!]?",
+        r"[^.\n]*데이터가?\s*없는[^.\n]*(주의|참고)[^.\n]*[.!]?",
+        r"[^.\n]*주의가?\s*필요합니다[.!]?",
+        r"[^.\n]*참고\s*(?:하시|바랍)[^.\n]*[.!]?",
+    ]
+    out = answer
+    for p in pats:
+        out = _re.sub(p, "", out)
+    out = _re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 def _answer_number_mismatch(answer: str, allowed_amounts: set, allowed_qty: set):
     """답변에 들어간 금액/수량이 권위 데이터에 없는 값이면 그 값을 돌려준다.
     (없으면 None) — LLM 이 수치를 바꿔 말하는 것을 잡아내는 안전망."""
@@ -16824,8 +16842,36 @@ def _month_shipment_answer(project_key, month, mode='qty'):
         for m in ((grp.get('양산') or {}).get('models_used') or []):
             model_rows.append(m)
 
+        # 원본 주차 합계(weekly_summary)가 있으면 수량은 그쪽을 정본으로 쓴다
+        try:
+            _ws_g = ((_load_models().get('projects') or {}).get(_model_key_alias(k)) or {}) \
+                .get('weekly_summary') or {}
+            _ws_y = (_ws_g.get('양산') or {}).get('weeks') or {}
+            for w in wr.get('weeks') or []:
+                cell = _ws_y.get(w)
+                if not isinstance(cell, dict):
+                    continue
+                row = week_rows.setdefault(w, {'yp': 0, 'ya': 0, 'dp': 0, 'da': 0,
+                                               'rev': 0, 'prev': 0})
+                row['syp'] = row.get('syp', 0) + int(cell.get('plan') or 0)
+                row['sya'] = row.get('sya', 0) + int(cell.get('actual') or 0)
+        except Exception:
+            pass
+
     if not week_rows:
         return None
+
+    # 원본 합계가 하나라도 있으면 양산 수량 기준을 원본으로 전환
+    _has_src = any('sya' in v or 'syp' in v for v in week_rows.values())
+    if _has_src:
+        for v in week_rows.values():
+            v['yp'] = v.get('syp', v['yp'])
+            v['ya'] = v.get('sya', v['ya'])
+        _model_yang_actual = g_yang['actual']
+        g_yang['plan'] = sum(v['yp'] for v in week_rows.values())
+        g_yang['actual'] = sum(v['ya'] for v in week_rows.values())
+    else:
+        _model_yang_actual = g_yang['actual']
 
     if len(used_labels) > 2:
         label = f'반도체사업부 전체({len(used_labels)}개 프로젝트)'
@@ -16865,6 +16911,10 @@ def _month_shipment_answer(project_key, month, mode='qty'):
         for w in weeks_sorted:
             r = week_rows[w]
             lines.append(f"- {w}: 양산 {r['yp']}→{r['ya']}대 / 개발 {r['dp']}→{r['da']}대")
+        if _has_src and _model_yang_actual != g_yang['actual']:
+            lines.append(f"※ 양산 수량은 주간보고 원본 기준입니다. "
+                         f"모델별로 입력된 합계는 {_model_yang_actual}대라 "
+                         f"{abs(g_yang['actual'] - _model_yang_actual)}대 차이가 있습니다.")
         ms = sorted([m for m in model_rows if int(m.get('actual') or 0) > 0],
                     key=lambda x: -int(x.get('actual') or 0))
         if ms:
@@ -16946,12 +16996,18 @@ async def chat(payload: dict):
         sess['last_month'] = _scope_month
 
     _has_week_in_msg = bool(week_m) or bool(_re3.search(r'(?<!\d)\d{1,2}\s*주차', _user_text))
-    _followup_cue = any(k in _user_text for k in
-                        ['각각', '그럼', '그거', '그때', '거기서', '그 중', '그중', '세부', '자세히', '내역', '나눠'])
+    # 다른 기간 기준이 명시된 질문이면 월 컨텍스트를 이어받지 않는다
+    _other_scope = any(k in _user_text for k in
+                       ['이번주', '이번 주', '금주', '지난주', '지난 주', '저번주', '전주',
+                        '차주', '다음주', '다음 주', '다다음주',
+                        '누적', '여태', '지금까지', '올해', '전체 기간', '작년'])
     _qty_kw = any(k in _user_text for k in ['몇 대', '몇대', '대수', '수량', '출하량', '몇 개', '몇개', '출하'])
     _rev_kw = any(k in _user_text for k in ['매출', '금액', '얼마'])
-    if not _scope_month and not _has_week_in_msg and _followup_cue and sess.get('last_month'):
+    # 이전 질문이 특정 월이었으면, 뒤이은 수량/매출 질문은 같은 월을 기준으로 답한다
+    if not _scope_month and not _has_week_in_msg and not _other_scope \
+            and (_qty_kw or _rev_kw) and sess.get('last_month'):
         _scope_month = sess.get('last_month')
+        print(f"[chat] 후속 질문 → 직전 월 {_scope_month} 유지")
     if _scope_month and not _has_week_in_msg and (_qty_kw or _rev_kw):
         _mode_m = 'rev' if (_rev_kw and not _qty_kw) else 'qty'
         try:
@@ -17724,7 +17780,9 @@ async def chat(payload: dict):
                 answer = _direct_answer
         else:
             answer = _direct_answer or f"조회 결과:\n{context[:500]}"
-        
+
+        answer = _strip_useless_caveats(answer)
+
         return {
             "answer": answer,
             "sources": relevant_projects,
