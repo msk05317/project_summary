@@ -472,6 +472,31 @@ from chart_extractor import extract_charts_from_pptx
 # 환경 변수
 # =========================================================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# 챗봇 답변 모델. 환경변수로 교체 가능 (품질: gpt-4o > gpt-4o-mini, 비용은 반대)
+CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o")
+
+
+def _answer_number_mismatch(answer: str, allowed_amounts: set, allowed_qty: set):
+    """답변에 들어간 금액/수량이 권위 데이터에 없는 값이면 그 값을 돌려준다.
+    (없으면 None) — LLM 이 수치를 바꿔 말하는 것을 잡아내는 안전망."""
+    import re as _re
+    if not answer:
+        return None
+    for _m in _re.finditer(r"\$\s?([0-9][0-9,]*)", answer):
+        try:
+            v = int(_m.group(1).replace(",", ""))
+        except Exception:
+            continue
+        if allowed_amounts and v not in allowed_amounts:
+            return f"${v:,}"
+    for _m in _re.finditer(r"(?<![0-9,])([0-9][0-9,]*)\s*대", answer):
+        try:
+            v = int(_m.group(1).replace(",", ""))
+        except Exception:
+            continue
+        if allowed_qty and v not in allowed_qty:
+            return f"{v}대"
+    return None
 UPLOAD_PASSWORD = os.getenv("UPLOAD_PASSWORD", "1234")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
@@ -16838,11 +16863,31 @@ async def chat(payload: dict):
         
         system_prompt = (
             "너는 반도체 사업부의 프로젝트 관리 어시스턴트다. "
-            "주어진 [데이터]만을 근거로 사용자의 질문에 한국어로 정확하고 상세하게 답한다. "
-            "규칙: 1) 데이터에 없는 내용은 추측하지 말 것 2) 숫자·모델명·날짜는 원문 그대로 유지 "
-            "3) 이슈/진행률/가격 등 질문에 해당하는 정보를 모두 포함 "
-            "4) 5문장 이내로 간결하게 5) 마지막에 '(근거: 프로젝트명)' 형태로 인용 표시."
+            "주어진 [데이터]만을 근거로 한국어로 답한다.\n"
+            "\n[사실 규칙]\n"
+            "- 숫자·모델명·날짜는 [데이터]에 있는 값을 그대로 쓴다. 계산하거나 추정하지 않는다.\n"
+            "- '권위 데이터'로 표시된 값이 있으면 다른 어떤 수치보다 그 값을 우선한다.\n"
+            "- 계획(plan)과 실적(actual)을 반드시 구분한다. 수량 질문에는 실적만 답한다.\n"
+            "- [데이터]에 없으면 '해당 데이터는 아직 등록되지 않았습니다'라고 분명히 말한다. "
+            "모르는 것을 지어내지 않는다.\n"
+            "\n[답변 방식]\n"
+            "- 결론을 첫 문장에 쓴다. 그다음 필요한 만큼만 근거를 덧붙인다. 보통 2~4문장이면 충분하다.\n"
+            "- 어떤 기준의 숫자인지 밝힌다. 주차·계획/실적·기간 같은 전제가 있으면 문장 안에 자연스럽게 넣는다.\n"
+            "  예: 'W35 실적 기준 하바플레이트 양산 매출은 $296,850입니다.'\n"
+            "- 수치가 3개를 넘으면 줄바꿈으로 항목을 나눠 읽기 쉽게 쓴다.\n"
+            "- 질문에 답이 되는 내용만 쓴다. 묻지 않은 배경 설명이나 모델 종수 나열은 넣지 않는다.\n"
+            "- 사용자가 놓칠 수 있는 중요한 단서(실적 미발생, 데이터 일부 누락 등)가 있으면 한 문장으로 덧붙인다.\n"
+            "- 질문이 모호하면 임의로 넘겨짚지 말고 무엇이 필요한지 되묻는다.\n"
+            "\n[표기]\n"
+            "- 수량 단위는 '대'를 쓴다 ('종' 금지). 금액은 $1,234 형식.\n"
+            "- '(근거: ...)' 같은 인용 표시는 붙이지 않는다."
         )
+
+        # ── 답변 검증용: 권위 데이터로 만든 폴백 문장과 허용 수치 ──
+        # LLM 이 문장을 만들되, 금액/수량이 권위 데이터와 다르면 이 문장으로 되돌린다.
+        _direct_answer = None
+        _allowed_amounts = set()
+        _allowed_qty = set()
 
         # ── 주차별 실적/매출 합계 백엔드 직접 계산 (all 프로젝트 질문 대응) ──
         _week_stats_ctx = ""
@@ -17110,10 +17155,11 @@ async def chat(payload: dict):
                         _direct = (f"{last_week} 주차 하바플레이트의 양산 매출은 ${_m_rev:,.0f}, "
                                    f"개발 매출은 ${_d_rev:,.0f}입니다. 총 매출은 ${_total_actual_rev:,.0f}입니다. "
                                    f"양산 실적은 {_m_act}대, 개발 실적은 {_d_act}대입니다.")
-                    print(f"[chat] LLM 우회 직접 답변: {_direct}")
-                    return {"answer": _direct,
-                            "sources": [{"key": "hrva_plate", "label": "하바플레이트"}],
-                            "corrected_query": None}
+                    _direct_answer = _direct
+                    _allowed_amounts = {int(round(_m_rev)), int(round(_d_rev)),
+                                        int(round(_total_actual_rev))}
+                    _allowed_qty = {_m_act, _d_act, _m_act + _d_act, _m_plan, _d_plan}
+                    print(f"[chat] 권위 폴백 준비: {_direct}")
                 # 주차통계 블록이 이미 계산한 값이 있으면 우선 사용 (모델별 실제 단가 기반)
                 _has_ctx = bool(_week_stats_ctx) and "권위 데이터" in _week_stats_ctx
                 if _has_ctx:
@@ -17131,8 +17177,9 @@ async def chat(payload: dict):
             except Exception as _e_wr:
                 print(f"[chat] weekly_revenue 컨텍스트 주입 실패: {_e_wr}")
         system_prompt += _week_stats_ctx + forecast_note
-        system_prompt += "\n(규칙) 수량 질문에는 반드시 실적(actual) 숫자만 답하세요. 계획(plan) 숫자를 실적인 것처럼 답하면 절대 안 됩니다. 실적이 0이면 0대라고 답하세요."
-        system_prompt += "\n(규칙) 출하·실적·매출 답변에서 PO 수량이나 PO 대비 표현은 절대 언급하지 마세요. 확정된 실적 수치만으로 답하세요. PO 데이터는 아직 연동 전입니다."
+        system_prompt += ("\n(보강) 수량 질문에는 실적(actual)만 답한다. 실적이 0이면 '실적 0대'라고 명확히 말하고, "
+                          "계획이 있으면 '계획은 N대'라고 덧붙인다. "
+                          "PO 수량은 아직 연동 전 데이터이므로 출하·실적·매출 답변에서 언급하지 않는다.")
         # 월 컨텍스트 추가 (정의 전에 계산된 변수)
         if _month_context:
             system_prompt += _month_context
@@ -17140,36 +17187,41 @@ async def chat(payload: dict):
         # 주차 태그 강제 규칙
         if alias_hit and last_week:
             system_prompt += (
-                f" [필수규칙: (1) 사용자 질문에 [week:{last_week}] 태그가 있으면 "
-                f"오직 {last_week} 주차 데이터만 인용, 다른 주차 언급 금지. "
-                f"(2) '권위 데이터' 섹션에 있는 plan/actual/revenue 값을 그대로 인용할 것 "
-                f"(다른 추정값 사용 금지). "
-                f"(3) 실적(actual)이 0이고 계획(plan)이 있으면 매출을 절대 $0이라고 답하지 말고, 반드시 '실적 미발생, 계획 기준 예상 매출 $XXX' 형태로 답변할 것. 계획도 0이고 실적도 0일 때만 $0이라고 답할 것. "
-                f"(4) '종'이라는 단위 금지, '대'로 표기. "
-                f"(5) '몇 주차야' 질문은 주차 번호만 답변하고 실적/매출 정보 제외. "
-                f"(6) 답변은 2문장 이내로 간결하게. "
-                f"(7) '(근거: ...)' 표시 생략.]"
-            ) + " [최우선 규칙: 답변은 반드시 2문장 이내. 숫자와 결론만. '양산 15종, 개발 40종' 같은 배경 설명 절대 금지. 질문에 해당하는 주차/항목만 답할 것.]"
+                f"\n[{last_week} 주차 질문 규칙]\n"
+                f"- 이 질문은 {last_week} 기준이다. 다른 주차 수치는 인용하지 않는다.\n"
+                f"- '권위 데이터' 섹션의 plan/actual/revenue 값을 그대로 쓴다. 직접 계산하지 않는다.\n"
+                f"- 실적이 0이고 계획이 있으면 '{last_week} 실적은 아직 없고, 계획 기준 예상 매출은 $X입니다' 처럼 "
+                f"실적 미발생임을 먼저 밝힌 뒤 계획 기준 값을 말한다. 계획도 0일 때만 $0이라고 답한다.\n"
+                f"- '몇 주차야' 류 질문에는 주차 번호만 답하고 실적·매출은 붙이지 않는다."
+            )
 
         
         user_prompt = f"[데이터]\n{context}\n\n[질문]\n{corrected}"
         
         if client:
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=CHAT_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,
-                max_tokens=500,
+                temperature=0.15,
+                max_tokens=700,
             )
             answer = resp.choices[0].message.content or ""
             # 근거 표시 강제 제거
             import re as _re_clean1
             answer = _re_clean1.sub(r'\(근거:\s*[^)]+\)', '', answer).strip()
+            # ── 수치 검증: 권위 데이터에 없는 금액/수량을 말하면 폴백 문장으로 교체 ──
+            if _direct_answer:
+                _bad = _answer_number_mismatch(answer, _allowed_amounts, _allowed_qty)
+                if _bad:
+                    print(f"[chat] 수치 불일치 {_bad} → 권위 폴백 사용")
+                    answer = _direct_answer
+            if not answer.strip() and _direct_answer:
+                answer = _direct_answer
         else:
-            answer = f"조회 결과:\n{context[:500]}"
+            answer = _direct_answer or f"조회 결과:\n{context[:500]}"
         
         return {
             "answer": answer,
