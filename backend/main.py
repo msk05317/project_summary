@@ -20034,41 +20034,50 @@ def _ensure_mass_progress(weekly_plan, month=None):
     return round(min(100.0, ta / tp * 100), 1) if tp > 0 else 0.0
 
 
-def _get_month_weeks(month):
-    """YYYY-MM 월의 주차 목록.
-
-    기본은 ISO 규칙(그 주 목요일이 속한 달) → 8월 = W32~W35.
-    여기에 더해 '말일이 걸친 주'가 이 달에 3일 이상 포함되면 그 주도 넣는다.
-    (2026-09 는 9/28~9/30 이 W40 에 걸리므로 9월 = W36~W40)
-    """
+def _month_weeks_base(y, m):
+    """ISO 규칙(그 주 목요일이 속한 달) + 말일이 3일 이상 걸친 주."""
     import datetime as _dt
-    y, m = map(int, month.split("-"))
     first = _dt.date(y, m, 1)
     last = (_dt.date(y + 1, 1, 1) if m == 12 else _dt.date(y, m + 1, 1)) - _dt.timedelta(days=1)
     weeks, seen = [], set()
     cur = first
     while cur <= last:
         if cur.weekday() == 3:  # 목요일
-            iso_year, iso_week, _ = cur.isocalendar()
+            _, iso_week, _ = cur.isocalendar()
             key = f"W{iso_week:02d}"
             if key not in seen:
                 seen.add(key)
                 weeks.append(key)
         cur += _dt.timedelta(days=1)
 
-    # 말일이 속한 주가 아직 없고, 이 달에 3일 이상 걸쳐 있으면 마지막 주차로 추가
-    _, _w_last, _ = last.isocalendar()
-    _key_last = f"W{_w_last:02d}"
-    if _key_last not in seen:
-        _mon = last - _dt.timedelta(days=last.weekday())
-        _days = sum(1 for i in range(7)
-                    if first <= _mon + _dt.timedelta(days=i) <= last)
-        if _days >= 3:
-            weeks.append(_key_last)
+    _, w_last, _ = last.isocalendar()
+    key_last = f"W{w_last:02d}"
+    if key_last not in seen:
+        mon = last - _dt.timedelta(days=last.weekday())
+        days = sum(1 for i in range(7) if first <= mon + _dt.timedelta(days=i) <= last)
+        if days >= 3:
+            weeks.append(key_last)
     return weeks
 
+
+def _get_month_weeks(month):
+    """YYYY-MM 월의 주차 목록. 한 주차는 한 달에만 속한다.
+
+    - 기본: 그 주 목요일이 속한 달 (8월 = W32~W35)
+    - 말일이 3일 이상 걸친 주는 그 달의 마지막 주차로 추가 (9월 = W36~W40)
+    - 그렇게 앞 달이 가져간 주차는 다음 달에서 뺀다 (10월 = W41~W44)
+    """
+    y, m = map(int, month.split("-"))
+    weeks = _month_weeks_base(y, m)
+    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
+    prev = set(_month_weeks_base(py, pm))
+    while weeks and weeks[0] in prev:
+        weeks = weeks[1:]
+    return weeks
+
+
 def _month_of_week(week_label, year=None):
-    """'W33' → 그 주차가 속한 'YYYY-MM' 반환 (ISO 목요일 기준). 못 찾으면 None."""
+    """'W33' → 그 주차가 속한 'YYYY-MM'. _get_month_weeks 의 소유 규칙과 일치."""
     import datetime as _dt
     if not week_label:
         return None
@@ -20085,7 +20094,17 @@ def _month_of_week(week_label, year=None):
             thu = _dt.date.fromisocalendar(_y, n, 4)
         except Exception:
             continue
-        return f"{thu.year}-{thu.month:02d}"
+        key = f"W{n:02d}"
+        iso_month = f"{thu.year}-{thu.month:02d}"
+        # 앞 달이 이 주차를 가져갔으면(9월의 W40 처럼) 그 달을 돌려준다
+        py, pm = (thu.year - 1, 12) if thu.month == 1 else (thu.year, thu.month - 1)
+        prev_month = f"{py}-{pm:02d}"
+        try:
+            if key in _get_month_weeks(prev_month):
+                return prev_month
+        except Exception:
+            pass
+        return iso_month
     return None
 
 def _latest_data_month(project_key=None):
