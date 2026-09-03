@@ -86,13 +86,75 @@ class DashboardSummary {
   // GRAY/BLUE/BLACK 등 그 외 = 진행 중/대기 (현재 단계에서는 '진행 중' 으로 묶음)
   final int inProgress;
 
+  // 데이터 미등록 (프로젝트 단위 집계에서만 사용)
+  final int noData;
+
+  // 프로젝트 단위 집계 여부. true 면 KPI 첫 칸이 '미등록' 으로 바뀐다.
+  final bool byProject;
+
+  // 진행률을 외부(모델 실데이터)에서 계산해 넘길 때 사용.
+  final int? progressOverride;
+
+  // 첫 KPI 칸 라벨 ('전체' / '사업부' 등)
+  final String unitLabel;
+
   const DashboardSummary({
     required this.total,
     required this.delayed,
     required this.warning,
     required this.normal,
     required this.inProgress,
+    this.noData = 0,
+    this.byProject = false,
+    this.progressOverride,
+    this.unitLabel = '전체',
   });
+
+  /// 프로젝트 단위 요약.
+  /// - 전체(total) = 지연 + 주의 + 정상 (진행률 데이터가 있는 프로젝트)
+  /// - 진행률은 모델 실데이터 가중 평균(progress)을 그대로 사용 (없으면 '-')
+  factory DashboardSummary.fromProjects({
+    required int delayed,
+    required int warning,
+    required int normal,
+    required int noData,
+    required int? progress,
+  }) {
+    return DashboardSummary(
+      total: delayed + warning + normal,
+      delayed: delayed,
+      warning: warning,
+      normal: normal,
+      inProgress: 0,
+      noData: noData,
+      byProject: true,
+      progressOverride: progress,
+    );
+  }
+
+  /// 사업부 단위 요약.
+  /// - 전체(total) = 등록된 사업부 수 (데이터 없는 사업부 포함)
+  /// - 정상/주의/지연 = 데이터가 있는 사업부의 상태 분류
+  /// - 진행률은 모델 실데이터 가중 평균(progress)
+  factory DashboardSummary.fromDivisions({
+    required int delayed,
+    required int warning,
+    required int normal,
+    required int noData,
+    required int? progress,
+  }) {
+    return DashboardSummary(
+      total: delayed + warning + normal + noData,
+      delayed: delayed,
+      warning: warning,
+      normal: normal,
+      inProgress: 0,
+      noData: noData,
+      byProject: true,
+      progressOverride: progress,
+      unitLabel: '사업부',
+    );
+  }
 
   // 전체 진행률(%) 계산 (v2).
   //
@@ -106,6 +168,7 @@ class DashboardSummary {
   // 분모가 0(데이터 없음)이면 0 을 반환합니다.
   // - 화면에서 '-' 로 표시하려면 progressPercentOrNull 을 사용하세요.
   int get progressPercent {
+    if (progressOverride != null) return progressOverride!;
     if (total == 0) return 0;
     final numerator = normal + inProgress;
     return ((numerator / total) * 100).round();
@@ -114,6 +177,7 @@ class DashboardSummary {
   // 데이터가 없을 때 null 을 반환하는 버전.
   // - SummaryCard 에서 진행률을 '-' 로 표시할지, '0%' 로 표시할지 분기에 사용.
   int? get progressPercentOrNull {
+    if (byProject) return progressOverride;
     if (total == 0) return null;
     return progressPercent;
   }

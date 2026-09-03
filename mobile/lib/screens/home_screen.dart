@@ -24,6 +24,7 @@ import '../models/dashboard.dart';
 import '../services/divisions_service.dart';
 import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
+import '../services/progress_service.dart';
 import 'division_projects_screen.dart';
 import 'overall_status_screen.dart';
 import 'immediate_check_screen.dart';
@@ -71,6 +72,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // 대시보드 카드 비동기 결과 (KPI 계산에 사용).
   late Future<List<DashboardCard>> _dashboardFuture;
 
+  // 프로젝트별 진행률 요약 (모델 실데이터 기준).
+  late Future<ProgressSummary> _progressFuture;
+
   // 현재 선택된 하단 네비 탭. 첫 탭이 '홈'.
   AppNavTab _currentTab = AppNavTab.home;
 
@@ -83,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 화면 진입 시 즉시 모든 데이터를 받아옵니다.
     _divisionsFuture = DivisionsService.fetchAll();
     _dashboardFuture = DashboardService.fetchCards();
+    _progressFuture = ProgressService.fetch();
     _loadFavDivisions();
 
   }
@@ -92,9 +97,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _divisionsFuture = DivisionsService.fetchAll();
         _dashboardFuture = DashboardService.fetchCards();
+        _progressFuture = ProgressService.fetch();
     });
     _loadFavDivisions(); // 사업부 즐겨찾기 Set 로딩
-    await Future.wait([_divisionsFuture, _dashboardFuture]);
+    await Future.wait([_divisionsFuture, _dashboardFuture, _progressFuture]);
   }
 
   // 오늘 날짜를 한국식 표기로 변환합니다.
@@ -494,7 +500,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: _SummarySection(future: _dashboardFuture, onTap: _openOverallStatus),
+                      child: _SummarySection(
+                        future: _dashboardFuture,
+                        divisionsFuture: _divisionsFuture,
+                        progressFuture: _progressFuture,
+                        onTap: _openOverallStatus,
+                      ),
                     ),
 
                     // 즉시 확인 섹션 (시안 v2 신규)
@@ -611,9 +622,94 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 // /dashboard 응답을 받아 DashboardSummary 로 집계 후 SummaryCard 에 전달합니다.
 class _SummarySection extends StatelessWidget {
   final Future<List<DashboardCard>> future;
+  final Future<List<Division>> divisionsFuture;
+  final Future<ProgressSummary> progressFuture;
   final VoidCallback onTap;
 
-  const _SummarySection({required this.future, required this.onTap});
+  const _SummarySection({
+    required this.future,
+    required this.divisionsFuture,
+    required this.progressFuture,
+    required this.onTap,
+  });
+
+  /// 사업부 단위 요약 집계.
+  /// - 전체 = 등록된 사업부 수
+  /// - 상태(지연/주의/정상)는 사업부 안 프로젝트의 최악 상태 기준
+  ///   (진행률 데이터가 하나도 없는 사업부는 상태 분류에서 제외)
+  /// - 전체 진행률은 집계 대상 모델 가중 평균
+  DashboardSummary _summarize(
+    List<Division> divisions,
+    List<DashboardCard> cards,
+    ProgressSummary progress,
+  ) {
+    int rank(String s) {
+      switch (s.toUpperCase()) {
+        case 'RED':
+          return 3;
+        case 'YELLOW':
+        case 'ORANGE':
+          return 2;
+        default:
+          return 1;
+      }
+    }
+
+    final worstByKey = <String, String>{};
+    for (final c in cards) {
+      if (c.projectKey.isEmpty) continue;
+      final cur = worstByKey[c.projectKey];
+      if (cur == null || rank(c.status) > rank(cur)) {
+        worstByKey[c.projectKey] = c.status;
+      }
+    }
+
+    // 전체 사업부의 프로젝트 목록 (진행률 가중 평균용)
+    final keys = <String>{};
+    for (final d in divisions) {
+      for (final p in d.projects) {
+        if (p.id.isNotEmpty) keys.add(p.id);
+      }
+    }
+    keys.addAll(worstByKey.keys);
+
+    // ── 사업부 단위 집계 ──
+    // 전체 = 등록된 사업부 수, 상태는 사업부 안 프로젝트 중 최악 기준
+    var delayed = 0, warning = 0, normal = 0, noData = 0;
+    for (final d in divisions) {
+      final pKeys = d.projects
+          .map((p) => p.id)
+          .where((id) => id.isNotEmpty)
+          .toList();
+      final hasData = pKeys.any((k) => progress.of(k)?.hasData ?? false);
+      if (!hasData) {
+        noData++;
+        continue;
+      }
+      var worst = 1;
+      for (final k in pKeys) {
+        final st = worstByKey[k];
+        if (st == null) continue;
+        final r = rank(st);
+        if (r > worst) worst = r;
+      }
+      if (worst == 3) {
+        delayed++;
+      } else if (worst == 2) {
+        warning++;
+      } else {
+        normal++;
+      }
+    }
+
+    return DashboardSummary.fromDivisions(
+      delayed: delayed,
+      warning: warning,
+      normal: normal,
+      noData: noData,
+      progress: progress.weightedFor(keys),
+    );
+  }
   // SummaryCard 우측 상단 캡션 포맷터.
   // - "오늘 09:07 기준" 형태로 두 자리 패딩.
   String _formatSummaryCaption(DateTime now) {
@@ -648,18 +744,33 @@ class _SummarySection extends StatelessWidget {
         }
 
         final cards = snapshot.data ?? const <DashboardCard>[];
-        final summary = DashboardSummary.fromCards(cards);
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: SummaryCard(
-              summary: summary,
-              rightCaption: _formatSummaryCaption(DateTime.now()),
-            ),
-          ),
+        return FutureBuilder<List<Division>>(
+          future: divisionsFuture,
+          builder: (context, divSnap) {
+            return FutureBuilder<ProgressSummary>(
+              future: progressFuture,
+              builder: (context, progSnap) {
+                final divisions = divSnap.data ?? const <Division>[];
+                final progress = progSnap.data ?? ProgressSummary.empty;
+                final summary = divisions.isEmpty && progress.projects.isEmpty
+                    ? DashboardSummary.fromCards(cards)
+                    : _summarize(divisions, cards, progress);
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onTap,
+                    borderRadius: BorderRadius.circular(12),
+                    child: SummaryCard(
+                      summary: summary,
+                      rightCaption: _formatSummaryCaption(DateTime.now()),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         );
       },
     );

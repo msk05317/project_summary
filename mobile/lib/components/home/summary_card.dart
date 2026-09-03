@@ -93,8 +93,11 @@ class SummaryCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _KpiCell(
-                    value: summary.inProgress,
-                    label: '진행 중',
+                    // 프로젝트 단위 집계에서는 첫 칸이 '전체'(집계 대상 프로젝트)
+                    value: summary.byProject
+                        ? summary.total
+                        : summary.inProgress,
+                    label: summary.byProject ? summary.unitLabel : '진행 중',
                     color: AppColors.summaryInProgress,
                   ),
                 ),
