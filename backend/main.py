@@ -4569,7 +4569,22 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
         if header_row:
             break
     if not header_row or "name" not in col_map:
-        raise HTTPException(status_code=400, detail="양식 오류: '모델' 헤더를 찾을 수 없습니다.")
+        # 모델 템플릿이 아니라 '주간 보고 엑셀(W##.xlsx)' 일 수 있다 → 자동 판별해서 처리
+        try:
+            import hrva_import as _imp
+            _parsed = _imp.parse_workbook(wb)
+        except Exception:
+            _parsed = None
+        if _parsed and _parsed.get("models"):
+            _res = _apply_report_workbook(project_key, _parsed)
+            _res["auto_detected"] = "weekly_report"
+            print(f"[models/import] 주간보고 형식 자동 인식 → {_parsed.get('sheet')}")
+            return _res
+        raise HTTPException(
+            status_code=400,
+            detail="양식 오류: '모델' 헤더를 찾을 수 없습니다. "
+                   "주간 보고 엑셀(W##.xlsx)이라면 '주차별 계획' 탭의 '주간보고 업로드'를 사용하세요.",
+        )
 
     _key = project_key.strip()
     data = _load_models()
@@ -20028,6 +20043,13 @@ async def admin_import_weekly_report(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"엑셀 구조를 해석하지 못했습니다: {e}")
 
+    return _apply_report_workbook(project_key, parsed, dry_run=dry_run)
+
+
+def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False) -> dict:
+    """주간 보고 엑셀 파싱 결과를 models.json 에 병합한다.
+    엑셀을 정본으로 교체하되 기존 공정(process)/이슈(issues)는 ID 로 승계하고,
+    엑셀에 없는 월의 주차 데이터는 그대로 둔다."""
     new_models = parsed.get("models") or []
     if not new_models:
         raise HTTPException(status_code=400, detail="모델 블록을 찾지 못했습니다. 시트 구조를 확인해주세요.")
