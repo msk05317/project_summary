@@ -20026,11 +20026,19 @@ def _latest_data_month(project_key=None):
                     months.add(_mo)
     return max(months) if months else _dt.date.today().strftime("%Y-%m")
 
+def _process_step_done(s) -> bool:
+    """실적일이 있거나 상태가 '완료' 면 완료로 본다."""
+    s = s or {}
+    return bool(str(s.get("actual") or "").strip()) or s.get("status") == "완료"
+
+
 def _process_progress(proc: list) -> int:
     if not proc:
         return 0
-    # actual이 있거나 status가 '완료'면 완료로 인식
-    done = sum(1 for s in proc if str(s.get("actual") or "").strip() or s.get("status") == "완료")
+    # 최종 승인이 완료면 중간 단계 입력과 무관하게 100%
+    if _process_step_done(proc[-1]):
+        return 100
+    done = sum(1 for s in proc if _process_step_done(s))
     return round(done / len(proc) * 100)
 
 
@@ -20043,6 +20051,8 @@ def _model_progress(m: dict) -> int:
         return round(min(100.0, sh / po * 100.0)) if po > 0 else 0
     proc = m.get('process') or []
     if proc:
+        if _process_step_done(proc[-1]) and str(proc[-1].get('status') or '') not in ('미승인', '미제출'):
+            return 100
         done = sum(1 for s in proc
                    if (str(s.get('actual') or '').strip() or str(s.get('status') or '') == '완료')
                    and str(s.get('status') or '') not in ('미승인', '미제출'))
@@ -20107,6 +20117,9 @@ def _process_current(proc: list):
                    for k in ("expected", "actual", "status"))
 
     proc = proc or []
+    # 0) 최종 승인이 완료면 중간 단계와 무관하게 완료로 본다
+    if proc and _done(proc[-1]):
+        return "최종 승인 완료", ""
     # 1) 상태를 '진행중'으로 직접 지정한 단계
     for s in proc:
         if (s or {}).get("status") == "진행중" and not _done(s):
@@ -20544,6 +20557,8 @@ def get_model_process(project_key: str, model_id: str):
             done = sum(1 for s in proc
                        if (str(s.get("actual") or "").strip() or str(s.get("status") or "") == "완료")
                        and str(s.get("status") or "") not in ("미승인", "미제출"))
+            if _process_step_done(proc[-1]):
+                done = len(proc)
             stage, expected = _process_current(proc)
             return {
                 "model_id": model_id,
@@ -20596,8 +20611,7 @@ def admin_set_process_step_status(project_key: str, model_id: str, payload: dict
         raise HTTPException(status_code=404, detail=f"단계 '{step_key}' 를 찾을 수 없습니다.")
 
     step["status"] = status
-    if status == "완료" and not str(step.get("actual") or "").strip():
-        step["actual"] = _dt.date.today().isoformat()
+    # '완료'로 바꿔도 실적일을 임의로 채우지 않는다 (실제 날짜는 사용자가 입력)
     if status in ("", "대기", "진행중"):
         # 완료 취소면 실적일도 비운다 (진행률이 남아 있지 않게)
         step["actual"] = ""
