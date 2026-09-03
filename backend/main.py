@@ -19417,6 +19417,155 @@ def get_projects_progress_summary(division_id: str = None):
     }
 
 
+def _parse_any_date(v):
+    """'2026-08-13', '2026/08/13', '26-08-13', '8/13' 같은 값을 date 로."""
+    import datetime as _dt, re as _re
+    t = str(v or "").strip()
+    if not t:
+        return None
+    t = t.replace(".", "-").replace("/", "-")
+    m = _re.match(r"^(\d{2,4})-(\d{1,2})-(\d{1,2})", t)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if y < 100:
+            y += 2000
+        try:
+            return _dt.date(y, mo, d)
+        except Exception:
+            return None
+    m = _re.match(r"^(\d{1,2})-(\d{1,2})$", t)
+    if m:
+        try:
+            return _dt.date(_dt.date.today().year, int(m.group(1)), int(m.group(2)))
+        except Exception:
+            return None
+    return None
+
+
+def _week_end_date(month: str, week_label: str):
+    """'2026-08' + 'W33' → 그 ISO 주의 일요일(주 마감일)."""
+    import datetime as _dt
+    try:
+        y = int(str(month).split("-")[0])
+        n = int(str(week_label).upper().lstrip("W"))
+        return _dt.date.fromisocalendar(y, n, 7)
+    except Exception:
+        return None
+
+
+def _model_progress_asof(m: dict, cutoff):
+    """cutoff(date) 시점 기준 모델 진행률. 데이터 없으면 None."""
+    if not isinstance(m, dict):
+        return None
+    if m.get("group") == "개발":
+        proc = m.get("process") if isinstance(m.get("process"), list) else []
+        has_input = any(
+            str((s or {}).get(k) or "").strip()
+            for s in proc for k in ("expected", "actual", "status")
+        )
+        if not has_input or not proc:
+            return None
+        done = 0
+        for st in proc:
+            a = str((st or {}).get("actual") or "").strip()
+            is_done = bool(a) or str((st or {}).get("status") or "").strip() == "완료"
+            if not is_done:
+                continue
+            d = _parse_any_date(a)
+            # 날짜가 없는 완료('Complete', '완료' 등)는 시점을 알 수 없으므로
+            # 모든 구간에서 완료로 본다 (마지막 시점이 현재 진행률과 일치하도록)
+            if d is None or d <= cutoff:
+                done += 1
+        return round(done * 100 / len(proc))
+    try:
+        po = int(m.get("po_qty") or 0)
+    except Exception:
+        po = 0
+    if po <= 0:
+        return None
+    # 주차 실적 누적. 주차 입력 합계가 총 출하량에 못 미치면 그 차이는
+    # 주차 입력 이전에 나간 물량으로 보고 모든 시점에 기본값으로 깔아준다.
+    # (그래야 마지막 시점 값이 shipped_qty 기준 진행률과 정확히 일치)
+    weekly_all, weekly_asof = 0, 0
+    for month, weeks in ((m.get("weekly_plan") or {})).items():
+        for wk, cell in (weeks or {}).items():
+            try:
+                a = int((cell or {}).get("actual") or 0)
+            except Exception:
+                a = 0
+            weekly_all += a
+            end = _week_end_date(month, wk)
+            if end is not None and end <= cutoff:
+                weekly_asof += a
+    try:
+        shipped_total = int(m.get("shipped_qty") or 0)
+    except Exception:
+        shipped_total = 0
+    baseline = max(0, shipped_total - weekly_all)
+    return round((baseline + weekly_asof) * 100 / po)
+
+
+@app.get("/progress-trend")
+def get_progress_trend(period: str = "week", points: int = 4, division_id: str = None):
+    """진행률 추이. 주차별 실적(양산) / 공정 실적일(개발) 누적으로 과거 시점을 재구성한다.
+    period: day(최근 7일) | week(최근 N주) | month(최근 N개월)"""
+    import datetime as _dt
+    today = _dt.date.today()
+    cutoffs = []
+    if period == "day":
+        n = max(1, min(points or 7, 31))
+        for i in range(n - 1, -1, -1):
+            d = today - _dt.timedelta(days=i)
+            cutoffs.append((f"{d.month}/{d.day}", d))
+    elif period == "month":
+        n = max(1, min(points or 4, 12))
+        y, mo = today.year, today.month
+        seq = []
+        for _ in range(n):
+            seq.append((y, mo))
+            mo -= 1
+            if mo == 0:
+                y, mo = y - 1, 12
+        for y2, m2 in reversed(seq):
+            last = (_dt.date(y2 + 1, 1, 1) if m2 == 12 else _dt.date(y2, m2 + 1, 1)) - _dt.timedelta(days=1)
+            cutoffs.append((f"{m2}월", min(last, today)))
+    else:
+        n = max(1, min(points or 4, 26))
+        for i in range(n - 1, -1, -1):
+            d = today - _dt.timedelta(days=i * 7)
+            cutoffs.append((f"{d.month}/{d.day}", d))
+
+    data = _load_models()
+    models = []
+    for pk, proj in (data.get("projects") or {}).items():
+        if division_id:
+            try:
+                if _cl.derive_division_from_project(pk) != division_id:
+                    continue
+            except Exception:
+                pass
+        models.extend(proj.get("models") or [])
+
+    out = []
+    for label, cutoff in cutoffs:
+        vals = [v for v in (_model_progress_asof(m, cutoff) for m in models) if v is not None]
+        out.append({
+            "label": label,
+            "date": cutoff.isoformat(),
+            "value": round(sum(vals) / len(vals)) if vals else None,
+            "scored_count": len(vals),
+        })
+    _vals = [p["value"] for p in out if p["value"] is not None]
+    return {
+        "period": period,
+        "points": out,
+        "current": _vals[-1] if _vals else None,
+        "delta": (_vals[-1] - _vals[-2]) if len(_vals) >= 2 else None,
+        "delta_vs_average": (_vals[-1] - round(sum(_vals[:-1]) / len(_vals[:-1])))
+        if len(_vals) >= 2 else None,
+    }
+
+
 def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "weekly_plan", "weekly_progress", "weekly_summary")}
     if m.get("group") == "개발":
