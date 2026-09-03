@@ -5288,6 +5288,55 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-table select:focus { outline: none; border-color: #2563EB; }',
     '.mdl-group-row td { padding: 12px 6px 2px !important; }',
     '.mdl-td-actions { white-space: nowrap; text-align: right; }',
+      /* ═══ 모델 관리 툴바·선택·검색 (ergonomics) ═══ */
+    '.mdl-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin: 4px 0 14px; }',
+    '.mdl-bar .spacer { flex:1 1 auto; }',
+    '.ov-btn { height:36px; display:inline-flex; align-items:center; gap:6px; padding:0 14px; border:1px solid #D8DEE7; border-radius:8px; background:#fff; color:#334155; font-size:13px; font-weight:600; cursor:pointer; transition:background .12s,border-color .12s,box-shadow .12s; }',
+    '.ov-btn:hover { background:#F6F8FB; border-color:#C3CCD9; }',
+    '.ov-btn:active { background:#EEF2F7; }',
+    '.ov-btn:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,0.25); }',
+    '.ov-btn[disabled] { opacity:.45; cursor:not-allowed; }',
+    '.ov-btn-primary { background:#0F172A; border-color:#0F172A; color:#fff; }',
+    '.ov-btn-primary:hover { background:#1E293B; border-color:#1E293B; }',
+    '.ov-btn-danger { color:#DC2626; border-color:#F3C9C9; background:#fff; }',
+    '.ov-btn-danger:hover { background:#FEF2F2; border-color:#F0B4B4; }',
+    '.ov-btn-icon { width:32px; height:32px; padding:0; justify-content:center; border-color:transparent; background:transparent; color:#94A3B8; font-size:15px; }',
+    '.ov-btn-icon:hover { background:#FEF2F2; color:#DC2626; border-color:#F3C9C9; }',
+    /* 드롭다운 메뉴 */
+    '.ov-menu-wrap { position:relative; }',
+    '.ov-menu { position:absolute; top:40px; left:0; z-index:40; min-width:230px; padding:6px; background:#fff; border:1px solid #E2E8F0; border-radius:10px; box-shadow:0 12px 28px rgba(15,23,42,.12); }',
+    '.ov-menu[hidden] { display:none; }',
+    '.ov-menu button { display:flex; width:100%; align-items:center; gap:8px; padding:9px 10px; border:0; border-radius:7px; background:transparent; font-size:13px; font-weight:600; color:#334155; text-align:left; cursor:pointer; }',
+    '.ov-menu button:hover { background:#F1F5F9; }',
+    '.ov-menu .sep { height:1px; margin:6px 4px; background:#EDF0F4; }',
+    '.ov-menu .danger { color:#DC2626; }',
+    '.ov-menu .danger:hover { background:#FEF2F2; }',
+    /* 검색·필터 */
+    '.ov-search { position:relative; }',
+    '.ov-search input { height:36px; width:230px; padding:0 12px 0 32px; border:1px solid #D8DEE7; border-radius:8px; font-size:13px; background:#fff; box-sizing:border-box; }',
+    '.ov-search input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
+    '.ov-search .ico { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:13px; pointer-events:none; }',
+    '.ov-seg { display:inline-flex; padding:3px; background:#F1F5F9; border-radius:9px; }',
+    '.ov-seg button { height:30px; padding:0 14px; border:0; border-radius:7px; background:transparent; font-size:12px; font-weight:700; color:#64748B; cursor:pointer; }',
+    '.ov-seg button.on { background:#fff; color:#0F172A; box-shadow:0 1px 3px rgba(15,23,42,.10); }',
+    /* 선택 바 */
+    '.ov-selbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; padding:10px 14px; background:#EFF5FF; border:1px solid #CFE0FB; border-radius:10px; font-size:13px; color:#1E3A8A; font-weight:700; }',
+    '.ov-selbar[hidden] { display:none; }',
+    '.mdl-check { width:16px; height:16px; accent-color:#2563EB; cursor:pointer; }',
+    '.mdl-table th.mdl-th-chk, .mdl-table td.mdl-td-chk { width:38px; text-align:center; padding-left:10px; padding-right:0; }',
+    '.mdl-table tr.is-sel td { background:#F5F9FF; }',
+    /* 토스트 */
+    '.ov-toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:9999; display:flex; align-items:center; gap:14px; padding:12px 16px; background:#0F172A; color:#fff; border-radius:10px; box-shadow:0 12px 30px rgba(15,23,42,.28); font-size:13px; font-weight:600; }',
+    '.ov-toast button { border:0; background:transparent; color:#7DD3FC; font-size:13px; font-weight:800; cursor:pointer; padding:0; }',
+    '.mdl-table thead th { position:sticky; top:0; z-index:5; background:#FBFCFE; }',
+    '.mdl-empty-filter { padding:36px; text-align:center; color:#94A3B8; font-size:13px; }',
+    '.mdl-input, .mdl-table select { height:34px; box-sizing:border-box; }',
+    '.mdl-table select { padding:0 26px 0 10px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 9px center; }',
+    '.mdl-table select:hover { background-color:#F1F5F9; }',
+    '.mdl-table select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
+    '.mdl-memo { min-height:34px; }',
+    '.mdl-btn-process { height:32px; display:inline-flex; align-items:center; }',
+    '.mdl-note-card textarea { min-height:70px; }',
     /* ── 프로세스 에디터 시안 ── */
     '.mdl-proc { max-width: 1080px; }',
     '.mdl-proc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }',
@@ -5440,6 +5489,48 @@ window.renderAdminV2ByDivision = function(){
     inp.style.borderColor = c.fg;
   }
 
+  // ── 삭제(저장 전까지 되돌리기 가능) + 토스트 ──
+  window.mdlDeleteModels = function(ids, container) {
+    if (!ids || !ids.length) return;
+    var removed = (window._modelsData || []).filter(function(m) { return ids.indexOf(m.id) >= 0; });
+    if (!removed.length) return;
+    window._modelsData = (window._modelsData || []).filter(function(m) { return ids.indexOf(m.id) < 0; });
+    ids.forEach(function(id) { delete window._mdlSel[id]; });
+    window.renderTable(container || document.getElementById('mdl-table-box'));
+    window.mdlToast(
+      removed.length === 1 ? '[' + removed[0].id + '] 삭제됨' : removed.length + '개 삭제됨',
+      '실행취소',
+      function() {
+        window._modelsData = (window._modelsData || []).concat(removed);
+        window._modelsData.sort(function(a, b) {
+          return (a.group === '개발' ? 1 : 0) - (b.group === '개발' ? 1 : 0);
+        });
+        window.renderTable(container || document.getElementById('mdl-table-box'));
+      }
+    );
+    var msg = document.getElementById('mdl-save-msg');
+    if (msg) { msg.textContent = '저장해야 반영됩니다'; msg.style.color = '#B45309'; }
+  };
+
+  window.mdlToast = function(text, actionLabel, onAction) {
+    var old = document.getElementById('ov-toast');
+    if (old) old.remove();
+    var el = document.createElement('div');
+    el.id = 'ov-toast';
+    el.className = 'ov-toast';
+    el.innerHTML = '<span></span>';
+    el.firstChild.textContent = text;
+    if (actionLabel) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = actionLabel;
+      b.onclick = function() { el.remove(); if (onAction) onAction(); };
+      el.appendChild(b);
+    }
+    document.body.appendChild(el);
+    setTimeout(function() { if (el.parentNode) el.remove(); }, 7000);
+  };
+
   window.renderTable = function renderTable(container) {
     // 프로세스 편집에서 돌아올 때 툴바·노트·유형바 복원
     ['mdl-toolbar', 'mdl-note-card', 'mdl-types-bar'].forEach(function(id) {
@@ -5462,8 +5553,20 @@ window.renderAdminV2ByDivision = function(){
     } else {
       _projIsEss = false;
     }
+    // 검색·구분 필터 (전역 상태)
+    window._mdlQuery = window._mdlQuery || '';
+    window._mdlGroup = window._mdlGroup || 'all';
+    window._mdlSel = window._mdlSel || {};
+    var _q = (window._mdlQuery || '').trim().toLowerCase();
+    var _visible = (window._modelsData || []).filter(function(m) {
+      var g = (m.group === '개발') ? '개발' : '양산';
+      if (window._mdlGroup !== 'all' && g !== window._mdlGroup) return false;
+      if (!_q) return true;
+      return String(m.name || m.id || '').toLowerCase().indexOf(_q) >= 0;
+    });
+
     const byGroup = { '양산': [], '개발': [] };
-    (window._modelsData || []).forEach(function(m) {
+    _visible.forEach(function(m) {
       const g = (m.group === '개발') ? '개발' : '양산';
       byGroup[g].push(m);
     });
@@ -5471,6 +5574,7 @@ window.renderAdminV2ByDivision = function(){
     if (tabCount) tabCount.textContent = (window._modelsData || []).length;
 
     let html = '<table class="mdl-table"><thead><tr>' +
+      '<th class="mdl-th-chk"><input type="checkbox" class="mdl-check" id="mdl-check-all" title="전체 선택"></th>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
       ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
         ? '<th>파트넘버</th>' : '') +
@@ -5482,7 +5586,7 @@ window.renderAdminV2ByDivision = function(){
     ['양산', '개발'].forEach(function(g) {
       const list = byGroup[g];
       if (!list.length) return;
-      html += '<tr class="mdl-group-row"><td colspan="12">' +
+      html += '<tr class="mdl-group-row"><td colspan="13">' +
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
         '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
       list.forEach(function(m) {
@@ -5491,7 +5595,8 @@ window.renderAdminV2ByDivision = function(){
         const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
         const isDev = g === '개발';
         const devType = (m.dev_type || '').toUpperCase();
-        html += '<tr data-model-id="' + m.id + '">' +
+        html += '<tr data-model-id="' + m.id + '"' + (window._mdlSel[m.id] ? ' class="is-sel"' : '') + '>' +
+          '<td class="mdl-td-chk"><input type="checkbox" class="mdl-check mdl-row-chk"' + (window._mdlSel[m.id] ? ' checked' : '') + '></td>' +
           ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
           ? '<td class="mdl-col-pn"><input data-field="part_number" value="' + (m.part_number || m.id) + '" style="width:110px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:11px;font-family:monospace;font-weight:600;" /></td>' : '') +
           '<td class="mdl-td-name">' + m.name + '</td>' +
@@ -5528,13 +5633,17 @@ window.renderAdminV2ByDivision = function(){
             '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
             '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
             (isDev ? '<button type="button" class="mdl-btn mdl-btn-process mdl-row-process">Process 입력</button>' : '') +
-            '<button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button>' +
+            '<button type="button" class="ov-btn ov-btn-icon mdl-row-del" title="삭제">🗑</button>' +
           '</td>' : '<td class="mdl-td-actions"><input data-field="status" type="hidden" value="' + (m.status || '정상') + '"><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '"><button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>') + '</tr>';
       });
     });
 
     html += '</tbody></table>';
-    if (!window._modelsData.length) html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
+    if (!window._modelsData.length) {
+      html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
+    } else if (!_visible.length) {
+      html = '<div class="mdl-empty-filter">조건에 맞는 모델이 없습니다.<br>검색어나 구분 필터를 바꿔보세요.</div>';
+    }
     container.innerHTML = html;
     
     // 하바플레이트 주차별 현황 카드 추가
@@ -5636,12 +5745,51 @@ window.renderAdminV2ByDivision = function(){
         const tr = btn.closest('tr');
         const mid = tr ? tr.dataset.modelId : null;
         if (!mid) return;
-        if (confirm('[' + mid + '] 삭제하시겠습니까? (저장 버튼을 눌러야 반영됩니다)')) {
-          window._modelsData = window._modelsData.filter(function(m) { return m.id !== mid; });
-          renderTable(container);
-        }
+        window.mdlDeleteModels([mid], container);
       });
     });
+
+    // ── 체크박스 선택 ──
+    var chkAll = container.querySelector('#mdl-check-all');
+    var rowChks = container.querySelectorAll('.mdl-row-chk');
+    function refreshSelBar() {
+      var ids = Object.keys(window._mdlSel).filter(function(k) { return window._mdlSel[k]; });
+      var bar = document.getElementById('mdl-selbar');
+      var cnt = document.getElementById('mdl-sel-count');
+      if (bar) bar.hidden = ids.length === 0;
+      if (cnt) cnt.textContent = ids.length + '개 선택됨';
+      if (chkAll) {
+        var total = rowChks.length;
+        var on = 0;
+        rowChks.forEach(function(c) { if (c.checked) on++; });
+        chkAll.checked = total > 0 && on === total;
+        chkAll.indeterminate = on > 0 && on < total;
+      }
+    }
+    rowChks.forEach(function(c) {
+      c.addEventListener('change', function() {
+        var tr = c.closest('tr');
+        var mid = tr && tr.dataset.modelId;
+        if (!mid) return;
+        window._mdlSel[mid] = c.checked;
+        tr.classList.toggle('is-sel', c.checked);
+        refreshSelBar();
+      });
+    });
+    if (chkAll) {
+      chkAll.addEventListener('change', function() {
+        rowChks.forEach(function(c) {
+          c.checked = chkAll.checked;
+          var tr = c.closest('tr');
+          if (tr && tr.dataset.modelId) {
+            window._mdlSel[tr.dataset.modelId] = chkAll.checked;
+            tr.classList.toggle('is-sel', chkAll.checked);
+          }
+        });
+        refreshSelBar();
+      });
+    }
+    refreshSelBar();
 
     container.querySelectorAll('.mdl-row-process').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -6163,15 +6311,38 @@ var sidebarSel = document.getElementById('v2-division-select');
             '<textarea id="mdl-status-note" rows="3" placeholder="프로젝트 현황을 입력하세요 (앱에 표시됩니다)"></textarea>' +
             '<div id="mdl-note-msg" class="mdl-save-msg"></div>' +
           '</div>' +
-          '<div class="mdl-actions" id="mdl-toolbar">' +
-            '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-add-btn">＋ 모델 추가</button>' +
-          '<button type="button" class="mdl-btn" id="mdl-excel-btn" style="background:#059669;color:#fff;">📥 엑셀 업로드</button>' +'<button type="button" class="mdl-btn" id="mdl-excel-tpl-btn" style="background:#6B7280;color:#fff;">📄 양식 다운로드</button>' +
-          '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls" style="display:none;">' +
-          '<button type="button" class="mdl-btn" id="mdl-proc-excel-btn" style="background:#7C3AED;color:#fff;">📅 개발 프로세스 엑셀 업로드</button>' +
-          '<input type="file" id="mdl-proc-excel-input" accept=".xlsx,.xls" style="display:none;">' +
-          '<button type="button" class="mdl-btn" id="mdl-proc-reset-btn" style="background:#DC2626;color:#fff;">🔄 프로세스 초기화</button>' +
-            '<button type="button" class="mdl-btn mdl-btn-save" id="mdl-save-btn">저장</button>' +
+          '<div class="mdl-bar" id="mdl-toolbar">' +
+            '<button type="button" class="ov-btn" id="mdl-add-btn">＋ 모델 추가</button>' +
+            '<div class="ov-menu-wrap">' +
+              '<button type="button" class="ov-btn" id="mdl-import-btn" aria-haspopup="true" aria-expanded="false">📁 엑셀 ▾</button>' +
+              '<div class="ov-menu" id="mdl-import-menu" hidden>' +
+                '<button type="button" id="mdl-excel-btn">📥 모델·주간보고 엑셀 올리기</button>' +
+                '<button type="button" id="mdl-proc-excel-btn">📅 개발 프로세스 엑셀 올리기</button>' +
+                '<div class="sep"></div>' +
+                '<button type="button" id="mdl-excel-tpl-btn">📄 모델 양식 내려받기</button>' +
+                '<div class="sep"></div>' +
+                '<button type="button" class="danger" id="mdl-proc-reset-btn">🔄 프로세스 전체 초기화</button>' +
+              '</div>' +
+            '</div>' +
+            '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls,.xlsm" style="display:none;">' +
+            '<input type="file" id="mdl-proc-excel-input" accept=".xlsx,.xls,.xlsm" style="display:none;">' +
+            '<div class="ov-search"><span class="ico">🔍</span>' +
+              '<input type="search" id="mdl-search" placeholder="모델명 검색" autocomplete="off">' +
+            '</div>' +
+            '<div class="ov-seg" id="mdl-group-seg">' +
+              '<button type="button" data-g="all" class="on">전체</button>' +
+              '<button type="button" data-g="양산">양산</button>' +
+              '<button type="button" data-g="개발">개발</button>' +
+            '</div>' +
+            '<span class="spacer"></span>' +
             '<span id="mdl-save-msg" class="mdl-save-msg"></span>' +
+            '<button type="button" class="ov-btn ov-btn-primary" id="mdl-save-btn">💾 저장</button>' +
+          '</div>' +
+          '<div class="ov-selbar" id="mdl-selbar" hidden>' +
+            '<span id="mdl-sel-count">0개 선택됨</span>' +
+            '<span class="spacer" style="flex:1"></span>' +
+            '<button type="button" class="ov-btn ov-btn-danger" id="mdl-sel-del">선택 삭제</button>' +
+            '<button type="button" class="ov-btn" id="mdl-sel-clear">선택 해제</button>' +
           '</div>' +
           '<div id="mdl-types-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 4px;padding:10px 14px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;">' +
             '<span style="font-size:12px;font-weight:700;color:#374151;">유형:</span>' +
@@ -6388,6 +6559,82 @@ var sidebarSel = document.getElementById('v2-division-select');
       syncDomToData(tableBox);
       saveModels(saveMsg);
     });
+
+    // ── 엑셀 메뉴 (버튼 5개를 하나로 묶음) ──
+    var importBtn = document.getElementById('mdl-import-btn');
+    var importMenu = document.getElementById('mdl-import-menu');
+    if (importBtn && importMenu) {
+      importBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var willOpen = importMenu.hidden;
+        importMenu.hidden = !willOpen;
+        importBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      });
+      document.addEventListener('click', function() {
+        if (!importMenu.hidden) {
+          importMenu.hidden = true;
+          importBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+      importMenu.addEventListener('click', function(e) { e.stopPropagation(); });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !importMenu.hidden) {
+          importMenu.hidden = true;
+          importBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+      importMenu.querySelectorAll('button').forEach(function(b) {
+        b.addEventListener('click', function() {
+          importMenu.hidden = true;
+          importBtn.setAttribute('aria-expanded', 'false');
+        });
+      });
+    }
+
+    // ── 검색 (편집 중인 값은 먼저 보존) ──
+    var searchEl = document.getElementById('mdl-search');
+    if (searchEl) {
+      var _t = null;
+      searchEl.addEventListener('input', function() {
+        clearTimeout(_t);
+        _t = setTimeout(function() {
+          syncDomToData(tableBox);
+          window._mdlQuery = searchEl.value;
+          renderTable(tableBox);
+        }, 180);
+      });
+    }
+
+    // ── 구분 필터 ──
+    var seg = document.getElementById('mdl-group-seg');
+    if (seg) {
+      seg.addEventListener('click', function(e) {
+        var b = e.target.closest('button');
+        if (!b) return;
+        syncDomToData(tableBox);
+        window._mdlGroup = b.dataset.g;
+        seg.querySelectorAll('button').forEach(function(x) { x.classList.toggle('on', x === b); });
+        renderTable(tableBox);
+      });
+    }
+
+    // ── 선택 삭제 / 해제 ──
+    var selDel = document.getElementById('mdl-sel-del');
+    if (selDel) {
+      selDel.addEventListener('click', function() {
+        var ids = Object.keys(window._mdlSel || {}).filter(function(k) { return window._mdlSel[k]; });
+        if (!ids.length) return;
+        syncDomToData(tableBox);
+        window.mdlDeleteModels(ids, tableBox);
+      });
+    }
+    var selClear = document.getElementById('mdl-sel-clear');
+    if (selClear) {
+      selClear.addEventListener('click', function() {
+        window._mdlSel = {};
+        renderTable(tableBox);
+      });
+    }
 
     const noteSaveBtn = document.getElementById('mdl-note-save');
     if (noteSaveBtn) {
