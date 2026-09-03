@@ -144,6 +144,9 @@ def parse_workbook(wb, sheet_name=None, year=None):
         c_mat = _col(cols, "소재")
         c_devkind = _col(cols, "개발종류")
         c_devstage = _col(cols, "개발단계")
+        # 제출일 = 이미 제출한 날(실적), LAIR ECD = 예정일(계획)
+        c_submit = _col(cols, "제출일")
+        c_ecd = _col(cols, "LAIR ECD", "ECD")
 
         for r in range(hr + 1, len(grid)):
             row = grid[r]
@@ -172,10 +175,20 @@ def parse_workbook(wb, sheet_name=None, year=None):
             if c_devkind is not None and c_devkind < len(row):
                 dev_type = _s(row[c_devkind]).upper()
 
+            stage = _s(row[c_devstage]) if c_devstage is not None and c_devstage < len(row) else ""
+            stage_date, stage_kind = "", ""
+            if c_submit is not None and c_submit < len(row) and _date_text(row[c_submit]):
+                stage_date, stage_kind = _date_text(row[c_submit]), "actual"
+            elif c_ecd is not None and c_ecd < len(row) and _date_text(row[c_ecd]):
+                stage_date, stage_kind = _date_text(row[c_ecd]), "expected"
+
             models.append({
                 "id": mid,
                 "name": mid,
                 "group": group,
+                "dev_stage": stage.upper(),
+                "stage_date": stage_date,
+                "stage_date_kind": stage_kind,
                 "price": _price(row[c_price]) if c_price is not None and c_price < len(row) else 0,
                 "po_qty": _num(row[c_po]) if c_po is not None and c_po < len(row) else 0,
                 "shipped_qty": _num(row[c_ship]) if c_ship is not None and c_ship < len(row) else 0,

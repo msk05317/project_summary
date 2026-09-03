@@ -20030,6 +20030,47 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
                 price, mcost = _cs(row[28] if len(row) > 28 else ''), _cs(row[29] if len(row) > 29 else '')
                 if price.replace('.','').isdigit(): m['price'] = int(float(price))
                 if mcost.replace('.','').isdigit(): m['material_cost'] = int(float(mcost))
+    # ── 위 시트(pbx/ema/majormodule)가 하나도 안 걸리면 일반 Process Schedule 형식으로 처리 ──
+    if not applied:
+        import process_import as _pi
+        parsed = _pi.parse_process_schedule(wb)
+        rows = parsed.get('rows') or []
+        if not rows:
+            raise HTTPException(
+                status_code=400,
+                detail="프로세스 표를 찾지 못했습니다. 1행에 'Part Number' 와 '01 …' 형태의 단계 머리글이 있어야 합니다.",
+            )
+        _key = _model_key_alias(project_key)
+        proj = data.get('projects', {}).get(_key)
+        if not proj:
+            raise HTTPException(status_code=404, detail=f"프로젝트 '{_key}' 를 찾을 수 없습니다.")
+        models = proj.get('models', [])
+        for row in rows:
+            pn = _pn(row['part_number'])
+            m = next((x for x in models
+                      if _pn(x.get('part_number')) == pn or _pn(x.get('id')) == pn), None)
+            if not m:
+                skipped.append(pn)
+                continue
+            # 앱의 13단계 틀에 순서대로 채운다 (엑셀 단계 수가 달라도 있는 만큼만)
+            proc = _default_process()
+            cells = row['steps']
+            for i, st in enumerate(proc):
+                if i >= len(cells):
+                    break
+                st['expected'] = cells[i]['expected']
+                st['actual'] = cells[i]['actual']
+                st['status'] = cells[i]['status']
+            m['process'] = proc
+            m['progress'] = _process_progress(proc)
+            if m.get('group') != '개발':
+                m['group'] = '개발'
+            memo = ' · '.join([x for x in ([row.get('comment')] + (row.get('notes') or [])) if x])
+            if memo:
+                m['note'] = memo
+            applied.append(pn)
+        print(f"[process/import-xlsx] Process Schedule 형식 인식 → {_key} {len(applied)}종")
+
     _save_models(data)
     return {'ok': True, 'applied': len(applied), 'skipped': len(skipped), 'detail': {'applied': applied[:10], 'skipped': skipped[:10]}}
 
@@ -20210,7 +20251,29 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
         if nm["group"] == "개발":
             entry["dev_type"] = nm.get("dev_type") or old.get("dev_type") or ""
             proc = old.get("process")
-            entry["process"] = proc if isinstance(proc, list) and proc else _default_process()
+            proc = proc if isinstance(proc, list) and proc else _default_process()
+            # 개발단계(FAIR/LAIR) + 날짜를 해당 공정 단계에 자동 반영.
+            # 이미 공정 입력이 있으면 건드리지 않는다 (프로세스 엑셀이 정본).
+            _stage = (nm.get("dev_stage") or "").upper()
+            _sdate = nm.get("stage_date") or ""
+            _skind = nm.get("stage_date_kind") or ""
+            _step_key = {"FAIR": "fair_write", "LAIR": "lair_write"}.get(_stage)
+            if _step_key and _sdate:
+                _filled = any(str((st or {}).get(k) or "").strip()
+                              for st in proc for k in ("expected", "actual", "status"))
+                if not _filled:
+                    for st in proc:
+                        if st.get("key") != _step_key:
+                            continue
+                        if _skind == "actual":
+                            st["actual"] = _sdate
+                            st["status"] = "완료"
+                        else:
+                            st["expected"] = _sdate
+                            st["status"] = "진행중"
+                        break
+            entry["process"] = proc
+            entry["progress"] = _process_progress(proc)
         # 양산이어도 기존 공정 데이터는 지우지 않는다 (그룹이 바뀌어도 입력이 남도록)
         # 주차: 엑셀에 있는 월만 덮어쓰고 나머지 월은 보존
         if nm.get("weekly_plan"):
