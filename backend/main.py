@@ -16869,6 +16869,23 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False):
     month = _month_of_week(week) or _latest_data_month(project_key)
     if not month:
         return None
+    # W40 처럼 두 달에 걸친 주차는 데이터가 있는 쪽 달을 쓴다
+    try:
+        _cands = [month]
+        _y, _m = map(int, month.split('-'))
+        _pm = f"{_y - 1}-12" if _m == 1 else f"{_y}-{_m - 1:02d}"
+        _cands.append(_pm)
+        for _c in _cands:
+            _probe = get_weekly_revenue(
+                project_key if project_key and project_key != 'all' else 'hrva_plate', _c) or {}
+            _g = _probe.get('groups') or {}
+            _yc = ((_g.get('양산') or {}).get('weeks') or {}).get(week) or {}
+            _dc = ((_g.get('개발') or {}).get('weeks') or {}).get(week) or {}
+            if any(int(x.get(f) or 0) for x in (_yc, _dc) for f in ('plan', 'actual')):
+                month = _c
+                break
+    except Exception:
+        pass
 
     keys = []
     if project_key and project_key != 'all':
@@ -20018,12 +20035,16 @@ def _ensure_mass_progress(weekly_plan, month=None):
 
 
 def _get_month_weeks(month):
-    """YYYY-MM 월의 ISO 주차 목록 자동 계산"""
+    """YYYY-MM 월의 주차 목록.
+
+    기본은 ISO 규칙(그 주 목요일이 속한 달) → 8월 = W32~W35.
+    여기에 더해 '말일이 걸친 주'가 이 달에 3일 이상 포함되면 그 주도 넣는다.
+    (2026-09 는 9/28~9/30 이 W40 에 걸리므로 9월 = W36~W40)
+    """
     import datetime as _dt
     y, m = map(int, month.split("-"))
     first = _dt.date(y, m, 1)
     last = (_dt.date(y + 1, 1, 1) if m == 12 else _dt.date(y, m + 1, 1)) - _dt.timedelta(days=1)
-    # ISO 규칙: 그 주의 목요일이 이 달에 속하면 그 달의 주차 (8월 → W32~W35)
     weeks, seen = [], set()
     cur = first
     while cur <= last:
@@ -20034,6 +20055,16 @@ def _get_month_weeks(month):
                 seen.add(key)
                 weeks.append(key)
         cur += _dt.timedelta(days=1)
+
+    # 말일이 속한 주가 아직 없고, 이 달에 3일 이상 걸쳐 있으면 마지막 주차로 추가
+    _, _w_last, _ = last.isocalendar()
+    _key_last = f"W{_w_last:02d}"
+    if _key_last not in seen:
+        _mon = last - _dt.timedelta(days=last.weekday())
+        _days = sum(1 for i in range(7)
+                    if first <= _mon + _dt.timedelta(days=i) <= last)
+        if _days >= 3:
+            weeks.append(_key_last)
     return weeks
 
 def _month_of_week(week_label, year=None):
