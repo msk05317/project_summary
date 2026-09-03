@@ -6384,6 +6384,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
   window.loadModels = function loadModels(projectKey, container) {
     if (!projectKey) {
       _currentProjectKey = '';
+      window._currentProjectKey = '';
       if (container) {
         container.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
       }
@@ -6391,6 +6392,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     }
     if (!projectKey) { window._modelsData = []; renderTable(container); return; }
     _currentProjectKey = projectKey;
+    window._currentProjectKey = projectKey;
     loadTypes(projectKey);
     
     // ESS 여부 확인 후 모델 로드 및 테이블 렌더링
@@ -6476,6 +6478,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       projSel.addEventListener('change', function() {
         var pk = this.value;
         _currentProjectKey = pk;
+        window._currentProjectKey = pk;
         var tb = document.getElementById('mdl-table-box');
         if (tb && pk) {
           tb.innerHTML = '<div style="padding:40px;text-align:center;color:#9CA3AF;">로딩 중...</div>';
@@ -6511,6 +6514,7 @@ var sidebarSel = document.getElementById('v2-division-select');
             projSel.innerHTML = '<option value="">프로젝트 선택...</option>' + projs.map(function(p){ return '<option value="' + (p.key || p.project_id || p.id) + '">' + (p.label || p.project_label || p.key) + '</option>'; }).join('');
             projSel.value = '';
             _currentProjectKey = '';
+            window._currentProjectKey = '';
             var tb = document.getElementById('mdl-table-box');
             if (tb) tb.innerHTML = '<div style="padding:80px 20px;text-align:center;color:#94A3B8;font-size:14px;">상단에서 프로젝트를 선택하세요.</div>';
           }
@@ -7075,6 +7079,16 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
 
 
 <script>
+// 현재 선택된 프로젝트 키 (스코프가 달라도 항상 같은 값을 보게 한다)
+window._ovProjectKey = function() {
+  var pk = window._currentProjectKey || '';
+  if (!pk) {
+    var s = document.getElementById('mdl-proj-select');
+    if (s && s.value) pk = s.value;
+  }
+  return pk;
+};
+
 // ===== 주차별 계획: 모델별 개별 입력 (MutationObserver 방식) =====
 (function(){
   var _wpMonth = new Date().toISOString().slice(0,7);
@@ -7138,7 +7152,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     sel.onchange = function(){
       _wpMonth = this.value;
       _wpLoadModels();
-      if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard((typeof _currentProjectKey !== 'undefined' ? _currentProjectKey : ''), this.value); }
+      if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard(window._ovProjectKey(), this.value); }
     };
     _wpLoadModels();
   }
@@ -7146,7 +7160,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
   function _wpLoadModels() {
     var list = document.getElementById('wp-models-list');
     if (!list) return;
-    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    var pk = window._ovProjectKey();
     if (!pk) {
       // 프로젝트 선택 안 됐으면 드롭다운에서 가져오기
       var projSel = document.getElementById('mdl-proj-select');
@@ -7361,7 +7375,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
   // 프로젝트 변경 감지
   var _lastProjectKey = '';
   function watchProjectChange() {
-    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    var pk = window._ovProjectKey();
     if (pk && pk !== _lastProjectKey) {
       _lastProjectKey = pk;
       loadModelList();
@@ -7386,7 +7400,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     sel.onchange = function() {
       _wpMonth = this.value;
       loadModelList(this.value);
-      if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard((typeof _currentProjectKey !== 'undefined' ? _currentProjectKey : ''), this.value); }
+      if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard(window._ovProjectKey(), this.value); }
     };
   };
 
@@ -7398,7 +7412,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
   function loadModelList(month) {
     var list = document.getElementById('wp-models-list');
     if (!list) return;
-    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    var pk = window._ovProjectKey();
     if (!pk) {
       list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">프로젝트를 먼저 선택하세요</div>';
       return;
@@ -7483,7 +7497,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
 
   function loadModelWeeklyData(modelId, idx) {
     var body = document.getElementById('wp-body-' + idx);
-    var pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) ? _currentProjectKey : '';
+    var pk = window._ovProjectKey();
     body.innerHTML = '<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
 
     fetch('/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan?month=' + _wpMonth, { credentials: 'same-origin' })
