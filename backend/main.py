@@ -20520,6 +20520,46 @@ def get_project_models_detail(project_key: str):
     }
 
 
+# ─────────────────────────────────────────────────────────────
+# 모델 ID 에 '/' 가 들어가는 경우(예: 925-800083-711/-712) 경로 파라미터로는
+# 라우팅이 안 되므로(퍼센트 인코딩이 경로 매칭 전에 풀림), 쿼리 파라미터
+# 방식의 동일 기능 엔드포인트를 함께 제공한다.
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/projects/{project_key}/model-weekly-plan")
+def get_model_weekly_plan_q(project_key: str, model_id: str, month: str = None):
+    return get_weekly_plan(project_key, model_id, month)
+
+
+@app.put("/admin/projects/{project_key}/model-weekly-plan")
+def put_model_weekly_plan_q(project_key: str, model_id: str, payload: dict,
+                            _admin: int = Depends(get_admin_session)):
+    return put_weekly_plan(project_key, model_id, payload, _admin)
+
+
+@app.get("/projects/{project_key}/model-process")
+def get_model_process_q(project_key: str, model_id: str):
+    return get_model_process(project_key, model_id)
+
+
+@app.get("/admin/projects/{project_key}/model-process")
+def admin_get_model_process_q(project_key: str, model_id: str,
+                              _admin: int = Depends(get_admin_session)):
+    return admin_get_model_process(project_key, model_id, _admin)
+
+
+@app.put("/admin/projects/{project_key}/model-process")
+def admin_put_model_process_q(project_key: str, model_id: str, payload: dict,
+                              _admin: int = Depends(get_admin_session)):
+    return admin_put_model_process(project_key, model_id, payload, _admin)
+
+
+@app.post("/admin/projects/{project_key}/model-process/step-status")
+def admin_set_process_step_status_q(project_key: str, model_id: str, payload: dict,
+                                    _admin: int = Depends(get_admin_session)):
+    return admin_set_process_step_status(project_key, model_id, payload, _admin)
+
+
 @app.get("/projects/{project_key}/models/{model_id}/weekly-plan")
 def get_weekly_plan(project_key: str, model_id: str, month: str = None):
     """양산 모델 월별 주차별 계획/실적 조회"""

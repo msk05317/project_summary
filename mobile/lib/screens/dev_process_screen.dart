@@ -37,7 +37,7 @@ class _DevProcessScreenState extends State<DevProcessScreen> {
   Future<Map<String, dynamic>> _fetch() async {
     final res = await http
         .get(Uri.parse(
-            '$kApiBaseUrl/projects/${widget.projectKey}/models/${Uri.encodeComponent(widget.modelId)}/process'))
+            '$kApiBaseUrl/projects/${widget.projectKey}/model-process?model_id=${Uri.encodeComponent(widget.modelId)}'))
         .timeout(const Duration(seconds: 8));
     if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
     return jsonDecode(utf8.decode(res.bodyBytes));

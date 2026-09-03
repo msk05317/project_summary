@@ -6025,7 +6025,7 @@ window.renderAdminV2ByDivision = function(){
   function openProcessEditor(modelId) {
     _currentProjectKey = _currentProjectKey || (function(){var s=document.querySelector('#mdl-proj-select')||document.querySelector('select[id*="proj"]');return (s&&s.value)||'';})();
 if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
-    fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(modelId) + '/process', { credentials: 'same-origin' })
+    fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/model-process?model_id=' + encodeURIComponent(modelId), { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.detail) { alert(d.detail); return; }
@@ -6131,7 +6131,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         if (msgEl) { msgEl.textContent = '처리 중...'; }
         try {
           const r = await fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) +
-            '/models/' + encodeURIComponent(d.model_id) + '/process/step-status',
+            '/model-process/step-status?model_id=' + encodeURIComponent(d.model_id),
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
               credentials: 'same-origin', body: JSON.stringify({ step_key: stepKey, status: status }) });
           const d2 = await r.json();
@@ -6139,7 +6139,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           if (msgEl) { msgEl.textContent = '✅ 상태 변경: ' + (status || '기본'); msgEl.className = 'mdl-save-msg ok'; }
           // 화면 전체 새로고침 (왼쪽 텍스트도 업데이트)
           const r2 = await fetch('/projects/' + encodeURIComponent(_currentProjectKey) +
-            '/models/' + encodeURIComponent(d.model_id) + '/process', { credentials: 'same-origin' });
+            '/model-process?model_id=' + encodeURIComponent(d.model_id), { credentials: 'same-origin' });
           const fresh = await r2.json();
           if (!fresh.detail) renderProcessEditor(fresh);
         } catch (e) {
@@ -6159,7 +6159,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         });
       });
       const msg = document.getElementById('mdl-proc-msg');
-      fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(d.model_id) + '/process', {
+      fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/model-process?model_id=' + encodeURIComponent(d.model_id), {
         method: 'PUT', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dev_type: (d.dev_type || 'HVM'), steps: steps })
@@ -6172,7 +6172,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
             const m = window._modelsData.find(function(x) { return x.id === d.model_id; });
             if (m) { m.dev_type = res.dev_type; m.progress = res.progress; }
             // 저장 직후 서버 데이터로 화면 즉시 갱신 (체크 상태/진행률/다음 단계 반영)
-            fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/models/' + encodeURIComponent(d.model_id) + '/process', { credentials: 'same-origin' })
+            fetch('/projects/' + encodeURIComponent(_currentProjectKey) + '/model-process?model_id=' + encodeURIComponent(d.model_id), { credentials: 'same-origin' })
               .then(function(r2) { return r2.json(); })
               .then(function(d2) {
                 if (!d2.detail) renderProcessEditor(d2);
@@ -7234,7 +7234,7 @@ window._ovProjectKey = function() {
   function _wpLoadOne(pk, modelId, idx) {
     var body = document.getElementById('wp-body-' + idx);
     body.innerHTML = '<div style="text-align:center;padding:14px;color:#9CA3AF;font-size:12px;">로딩 중...</div>';
-    fetch('/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan?month=' + _wpMonth, { credentials: 'same-origin' })
+    fetch('/projects/' + encodeURIComponent(pk) + '/model-weekly-plan?model_id=' + encodeURIComponent(modelId) + '&month=' + encodeURIComponent(_wpMonth), { credentials: 'same-origin' })
       .then(function(r){ return r.json(); })
       .then(function(d){
         if (d.detail) { body.innerHTML = '<div style="color:#DC2626;padding:12px;font-size:12px;">' + d.detail + '</div>'; return; }
@@ -7325,7 +7325,7 @@ window._ovProjectKey = function() {
             var a = body.querySelector('.wp-in-act[data-week="' + w + '"]');
             weeks[w] = { plan: parseInt(p.value) || 0, actual: parseInt(a.value) || 0 };
           });
-          fetch('/admin/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan', {
+          fetch('/admin/projects/' + encodeURIComponent(pk) + '/model-weekly-plan?model_id=' + encodeURIComponent(modelId), {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
             body: JSON.stringify({ month: _wpMonth, weeks: weeks })
           }).then(function(r){ return r.json(); }).then(function(res){
@@ -7500,7 +7500,7 @@ window._ovProjectKey = function() {
     var pk = window._ovProjectKey();
     body.innerHTML = '<div style="text-align:center;padding:16px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
 
-    fetch('/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan?month=' + _wpMonth, { credentials: 'same-origin' })
+    fetch('/projects/' + encodeURIComponent(pk) + '/model-weekly-plan?model_id=' + encodeURIComponent(modelId) + '&month=' + encodeURIComponent(_wpMonth), { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.detail) {
@@ -7611,7 +7611,7 @@ window._ovProjectKey = function() {
             weeks[w] = { plan: parseInt(p.value) || 0, actual: parseInt(a.value) || 0 };
           });
 
-          fetch('/admin/projects/' + encodeURIComponent(pk) + '/models/' + encodeURIComponent(modelId) + '/weekly-plan', {
+          fetch('/admin/projects/' + encodeURIComponent(pk) + '/model-weekly-plan?model_id=' + encodeURIComponent(modelId), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
