@@ -17020,6 +17020,40 @@ async def chat(payload: dict):
             except Exception as e:
                 print(f"[chat] 예측 계산 오류: {e}")
         # ── "몇 주차야" 질문 감지 → 주차 번호만 간결하게 응답 ──
+        # ── 자주 묻는 질문은 데이터에서 바로 답한다 (LLM 우회) ──
+        # 주차·매출·수량 질문은 아래 기존 로직이 더 정확하므로 넘긴다.
+        _skip_intent = any(k in _user_text for k in ['매출', '수량', '얼마', '몇 대', '몇대', '대수', '출하량']) \
+            or bool(alias_hit)
+        if not _skip_intent:
+            try:
+                import chat_intents as _ci
+                _labels = []
+                try:
+                    _labels = [p.get('label') or p.get('id')
+                               for p in _cl.get_projects(visible_only=True)]
+                except Exception:
+                    pass
+                _plabel = next((p.get('label') for p in _cl.get_projects(visible_only=True)
+                                if p.get('id') == last_project), None) if last_project else None
+                _direct_ans = _ci.resolve(_user_text, last_project, {
+                    'load_models': _load_models,
+                    'process_progress': _process_progress,
+                    'process_current': _process_current,
+                    'known_weeks': _known_weeks,
+                    'project_label': _plabel or (last_project or ''),
+                    'project_labels': [x for x in _labels if x],
+                })
+                if _direct_ans:
+                    print(f"[chat] 정형 답변 매칭 → {_user_text[:30]}")
+                    return {
+                        'answer': _direct_ans,
+                        'sources': ([{'key': last_project, 'label': _plabel or last_project}]
+                                    if last_project and last_project != 'all' else []),
+                        'corrected_query': None,
+                    }
+            except Exception as _e_ci:
+                print(f"[chat] 정형 답변 실패(무시): {_e_ci}")
+
         if any(k in corrected for k in ['몇 주차', '몇주차', '몇 주', '몇주', '주차야', '주차야?', '주차 알려줘']):
             answer = f"이번 주는 {last_week}입니다."
             return {"answer": answer, "sources": [{"key": last_project, "label": "하바플레이트"}] if last_project == 'hrva_plate' else [], "corrected_query": None}
