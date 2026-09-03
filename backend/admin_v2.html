@@ -6607,6 +6607,33 @@ var sidebarSel = document.getElementById('v2-division-select');
         '</div>' +
       '</div>';
 
+    // 주차별 계획 탭의 월 드롭다운을 확실히 채운다
+    // (initMonthSelect 가 정의되기 전에 이 페이지가 그려지면 비어 있던 문제)
+    (function ensureMonthSel(tries) {
+      var msel = document.getElementById('wp-month-sel');
+      if (!msel) return;
+      if (typeof window.initMonthSelect === 'function') {
+        window.initMonthSelect();
+        if (!window._revMonth && msel.value) window._revMonth = msel.value;
+        if (typeof window.loadModelList === 'function') window.loadModelList(msel.value);
+        return;
+      }
+      if (msel.options.length === 0) {
+        var base = new Date();
+        var cur = base.getFullYear() + '-' + String(base.getMonth() + 1).padStart(2, '0');
+        var html = '';
+        for (var off = -2; off <= 2; off++) {
+          var d = new Date(base.getFullYear(), base.getMonth() + off, 1);
+          var mv = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+          html += '<option value="' + mv + '"' + (mv === cur ? ' selected' : '') + '>' +
+                  d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월</option>';
+        }
+        msel.innerHTML = html;
+        window._revMonth = cur;
+      }
+      if (tries > 0) setTimeout(function() { ensureMonthSel(tries - 1); }, 200);
+    })(15);
+
     // 탭 전환
     const tabs = content.querySelectorAll('.mdl-tab');
     const panes = content.querySelectorAll('.mdl-pane');
@@ -7321,6 +7348,8 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard((typeof _currentProjectKey !== 'undefined' ? _currentProjectKey : ''), this.value); }
     };
   };
+
+  window.loadModelList = function(month) { return loadModelList(month); };
 
   function loadModelList(month) {
     var list = document.getElementById('wp-models-list');
