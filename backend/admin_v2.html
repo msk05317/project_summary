@@ -5337,6 +5337,45 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-memo { min-height:34px; }',
     '.mdl-btn-process { height:32px; display:inline-flex; align-items:center; }',
     '.mdl-note-card textarea { min-height:70px; }',
+      /* ═══ 공용 카드·표 (주차별 계획 탭에서 사용) ═══ */
+    '.ov-card { background:#fff; border:1px solid #E4E7EC; border-radius:12px; padding:18px 20px; margin-bottom:16px; }',
+    '.ov-card-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }',
+    '.ov-card-title { font-size:14px; font-weight:800; color:#0F172A; letter-spacing:-0.01em; }',
+    '.ov-card-sub { font-size:12px; color:#94A3B8; font-weight:600; }',
+    '.ov-card-head .spacer { flex:1 1 auto; }',
+    '.ov-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }',
+    '.ov-table th { background:#FBFCFE; color:#94A3B8; font-size:11px; font-weight:700; text-align:left; padding:9px 12px; border-bottom:1px solid #EDF0F4; white-space:nowrap; }',
+    '.ov-table td { padding:10px 12px; border-bottom:1px solid #F3F5F9; color:#334155; }',
+    '.ov-table tbody tr:last-child td { border-bottom:0; }',
+    '.ov-table .num { text-align:right; font-variant-numeric:tabular-nums; }',
+    '.ov-table .strong { font-weight:700; color:#0F172A; }',
+    '.ov-table tr.is-total td { background:#F8FAFC; font-weight:800; color:#0F172A; border-top:1px solid #E4E7EC; }',
+    '.ov-table .money { color:#1D4ED8; font-weight:700; }',
+    '.ov-table .money-dev { color:#7C3AED; font-weight:700; }',
+    '.ov-table .money-sum { color:#059669; font-weight:800; }',
+    '.ov-table .muted { color:#94A3B8; }',
+    '.ov-wrap-x { overflow-x:auto; margin:0 -4px; padding:0 4px; }',
+    '.ov-num-input { width:76px; height:34px; padding:0 10px; border:1px solid transparent; border-radius:7px; background:#F7F9FC; font-size:13px; font-weight:600; text-align:center; color:#0F172A; box-sizing:border-box; }',
+    '.ov-num-input:hover { background:#F1F5F9; }',
+    '.ov-num-input:focus { outline:none; background:#fff; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
+    '.ov-select { height:36px; padding:0 30px 0 12px; border:1px solid #D8DEE7; border-radius:8px; background:#fff; font-size:13px; font-weight:600; color:#334155; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 11px center; }',
+    '.ov-select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
+    /* 모델 아코디언 */
+    '.wp-acc { border:1px solid #E4E7EC; border-radius:10px; overflow:hidden; margin-bottom:8px; background:#fff; }',
+    '.wp-acc.is-open { border-color:#C7D7F0; box-shadow:0 2px 10px rgba(15,23,42,.05); }',
+    '.wp-acc-head { display:flex; align-items:center; gap:12px; padding:11px 14px; cursor:pointer; background:#fff; transition:background .12s; }',
+    '.wp-acc-head:hover { background:#F8FAFC; }',
+    '.wp-acc.is-open .wp-acc-head { background:#F6F9FE; border-bottom:1px solid #E9EEF6; }',
+    '.wp-acc-no { width:26px; height:26px; flex:0 0 26px; display:flex; align-items:center; justify-content:center; border-radius:7px; background:#EEF2F8; color:#64748B; font-size:11px; font-weight:800; }',
+    '.wp-acc.is-open .wp-acc-no { background:#0F172A; color:#fff; }',
+    '.wp-acc-name { font-size:13px; font-weight:700; color:#0F172A; }',
+    '.wp-acc-prog { font-size:12px; font-weight:700; color:#64748B; }',
+    '.wp-acc-prog.on { color:#0F172A; }',
+    '.wp-acc-caret { color:#B6BECB; font-size:11px; transition:transform .18s; }',
+    '.wp-acc.is-open .wp-acc-caret { transform:rotate(180deg); }',
+    '.wp-acc-body { padding:14px; border-top:0; }',
+    '.wp-acc-body[hidden] { display:none; }',
+    '.wp-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }',
     /* ── 프로세스 에디터 시안 ── */
     '.mdl-proc { max-width: 1080px; }',
     '.mdl-proc-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }',
@@ -6355,25 +6394,28 @@ var sidebarSel = document.getElementById('v2-division-select');
         '</div>' +
 
         '<div class="mdl-pane" data-mpane="plan" hidden>' +
-          '<div class="mdl-plan-card">' +
-            '<div id="mdl-weekly-status" class="mdl-weekly-status">로딩 중...</div>' +
-            '<div class="mdl-weekly-actions">' +
+          '<div class="ov-card">' +
+            '<div class="ov-card-head">' +
+              '<span class="ov-card-title">주차별 계획 원본</span>' +
+              '<span id="mdl-weekly-status" class="mdl-weekly-status">로딩 중...</span>' +
+              '<span class="spacer"></span>' +
               '<input type="file" id="mdl-weekly-file" accept=".xlsx,.xls,.xlsm" style="display:none">' +
-              '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-weekly-upload">📁 엑셀 업로드</button>' +
-              '<button type="button" class="mdl-btn mdl-btn-del" id="mdl-weekly-delete" style="display:none">🗑️ 삭제</button>' +
+              '<button type="button" class="ov-btn" id="mdl-weekly-upload">📁 엑셀 올리기</button>' +
+              '<button type="button" class="ov-btn ov-btn-danger" id="mdl-weekly-delete" style="display:none">삭제</button>' +
             '</div>' +
             '<div id="mdl-weekly-preview" class="mdl-weekly-preview"></div>' +
+          '</div>' +
           // 주차별 매출 요약 카드 (하바플레이트)
-          '<div id="mdl-revenue-card" style="display:none;margin-top:20px;padding:20px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;"></div>' +
-          // 모델별 주차별 계획 입력 (엑셀 아래)
-          '<div class="mdl-model-weekly-section" style="margin-top:24px;padding-top:20px;border-top:2px solid #E5E7EB;">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
-              '<h4 style="margin:0;font-size:15px;font-weight:700;color:#111827;">📝 모델별 주차별 계획 입력 (양산)</h4>' +
-              '<select id="wp-month-sel" style="padding:7px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:#fff;"></select>' +
+          '<div id="mdl-revenue-card" class="ov-card" style="display:none;"></div>' +
+          // 모델별 주차별 계획 입력
+          '<div class="ov-card">' +
+            '<div class="ov-card-head">' +
+              '<span class="ov-card-title">모델별 주차별 계획</span>' +
+              '<span class="ov-card-sub">양산</span>' +
+              '<span class="spacer"></span>' +
+              '<select id="wp-month-sel" class="ov-select"></select>' +
             '</div>' +
             '<div id="wp-models-list"></div>' +
-          '</div>' +
-
           '</div>' +
         '</div>' +
       '</div>';
@@ -6428,38 +6470,41 @@ var sidebarSel = document.getElementById('v2-division-select');
         .then(function(d){
           if (!d.groups) { revCard.innerHTML = '<div style="color:#9CA3AF;text-align:center;">' + (d.detail || '주차별 현황 데이터 없음') + '</div>'; return; }
           function fmt(n){ return '$' + (n || 0).toLocaleString(); }
-          var html = '<h3 style="margin:0 0 16px;font-size:16px;font-weight:800;color:#111827;">💰 주차별 매출 현황 <span style="font-size:13px;font-weight:600;color:#6B7280;">(' + mLabel + ')</span></h3>' +
-            '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-              '<thead><tr style="background:#F9FAFB;">' +
-                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:left;">주차</th>' +
-                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 계획/실적</th>' +
-                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 매출</th>' +
-                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 계획/실적</th>' +
-                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 매출</th>' +
-                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">주차 합계</th>' +
+          var html = '<div class="ov-card-head">' +
+              '<span class="ov-card-title">주차별 매출 현황</span>' +
+              '<span class="ov-card-sub">' + mLabel + '</span>' +
+            '</div>' +
+            '<div class="ov-wrap-x"><table class="ov-table">' +
+              '<thead><tr>' +
+                '<th>주차</th>' +
+                '<th class="num">양산 계획/실적</th>' +
+                '<th class="num">양산 매출</th>' +
+                '<th class="num">개발 계획/실적</th>' +
+                '<th class="num">개발 매출</th>' +
+                '<th class="num">주차 합계</th>' +
               '</tr></thead><tbody>';
           (d.weeks || []).forEach(function(w){
             var y = (d.groups['양산'] && d.groups['양산'].weeks && d.groups['양산'].weeks[w]) || {plan:0, actual:0, revenue:0};
             var v = (d.groups['개발'] && d.groups['개발'].weeks && d.groups['개발'].weeks[w]) || {plan:0, actual:0, revenue:0};
             var c = (d.combined && d.combined.weeks && d.combined.weeks[w]) || {revenue:0};
             html += '<tr>' +
-              '<td style="padding:8px 12px;border:1px solid #E5E7EB;font-weight:600;">' + w + '</td>' +
-              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + y.plan + ' / ' + y.actual + '</td>' +
-              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(y.revenue) + '</td>' +
-              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + v.plan + ' / ' + v.actual + '</td>' +
-              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(v.revenue) + '</td>' +
-              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;font-weight:700;color:#059669;">' + fmt(c.revenue) + '</td></tr>';
+              '<td class="strong">' + w + '</td>' +
+              '<td class="num">' + y.plan + ' / ' + y.actual + '</td>' +
+              '<td class="num money">' + fmt(y.revenue) + '</td>' +
+              '<td class="num">' + v.plan + ' / ' + v.actual + '</td>' +
+              '<td class="num money-dev">' + fmt(v.revenue) + '</td>' +
+              '<td class="num money-sum">' + fmt(c.revenue) + '</td></tr>';
           });
           var YT = d.groups['양산'] ? d.groups['양산'].total : {plan:0,actual:0,revenue:0};
           var DT = d.groups['개발'] ? d.groups['개발'].total : {plan:0,actual:0,revenue:0};
           var T = (d.combined && d.combined.total) || {revenue:0};
-          html += '<tr style="background:#F3F4F6;font-weight:800;">' +
-            '<td style="padding:8px 12px;border:1px solid #E5E7EB;">합계</td>' +
-            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + YT.plan + ' / ' + YT.actual + '</td>' +
-            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(YT.revenue) + '</td>' +
-            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + DT.plan + ' / ' + DT.actual + '</td>' +
-            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(DT.revenue) + '</td>' +
-            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#059669;">' + fmt(T.revenue) + '</td></tr></tbody></table>';
+          html += '<tr class="is-total">' +
+            '<td>합계</td>' +
+            '<td class="num">' + YT.plan + ' / ' + YT.actual + '</td>' +
+            '<td class="num money">' + fmt(YT.revenue) + '</td>' +
+            '<td class="num">' + DT.plan + ' / ' + DT.actual + '</td>' +
+            '<td class="num money-dev">' + fmt(DT.revenue) + '</td>' +
+            '<td class="num money-sum">' + fmt(T.revenue) + '</td></tr></tbody></table></div>';
           revCard.innerHTML = html;
         })
         .catch(function(){ revCard.innerHTML = '<div style="color:#DC2626;text-align:center;">로드 실패</div>'; });
@@ -7086,31 +7131,30 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     list.innerHTML = '';
     _wpModels.forEach(function(m, idx) {
       var card = document.createElement('div');
-      card.style.cssText = 'border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;margin-bottom:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.05);';
+      card.className = 'wp-acc';
       card.innerHTML =
-        '<div style="background:#F9FAFB;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background 0.15s;" data-idx="' + idx + '" onmouseover="this.style.background=\'#F3F4F6\'" onmouseout="this.style.background=\'#F9FAFB\'">' +
-          '<div style="display:flex;align-items:center;gap:12px;">' +
-            '<span style="width:28px;height:28px;background:#2563EB;border-radius:6px;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + (idx + 1) + '</span>' +
-            '<div>' +
-              '<div style="font-weight:600;font-size:14px;color:#111827;">' + (m.name || m.id) + '</div>' +
-              '<div style="font-size:12px;color:#6B7280;">' + m.id + '</div>' +
-            '</div>' +
-          '</div>' +
-          '<div style="display:flex;align-items:center;gap:10px;">' +
-            '<span id="wp-prog-' + idx + '" style="font-size:12px;color:#6B7280;font-weight:500;">-</span>' +
-            '<span id="wp-arrow-' + idx + '" style="color:#9CA3AF;transition:transform 0.2s;display:inline-block;">▼</span>' +
-          '</div>' +
+        '<div class="wp-acc-head" data-idx="' + idx + '" role="button" tabindex="0" aria-expanded="false">' +
+          '<span class="wp-acc-no">' + (idx + 1) + '</span>' +
+          '<span class="wp-acc-name">' + (m.name || m.id) + '</span>' +
+          '<span style="flex:1 1 auto"></span>' +
+          '<span id="wp-prog-' + idx + '" class="wp-acc-prog">-</span>' +
+          '<span id="wp-arrow-' + idx + '" class="wp-acc-caret">▼</span>' +
         '</div>' +
-        '<div id="wp-body-' + idx + '" style="display:none;padding:16px;background:#fff;border-top:1px solid #E5E7EB;"></div>';
+        '<div id="wp-body-' + idx + '" class="wp-acc-body" hidden></div>';
       list.appendChild(card);
 
-      card.querySelector('[data-idx]').onclick = function() {
+      var head = card.querySelector('.wp-acc-head');
+      function toggle() {
         var body = document.getElementById('wp-body-' + idx);
-        var arrow = document.getElementById('wp-arrow-' + idx);
-        var open = body.style.display !== 'none';
-        body.style.display = open ? 'none' : 'block';
-        arrow.style.transform = open ? '' : 'rotate(180deg)';
+        var open = !body.hidden;
+        body.hidden = open;
+        card.classList.toggle('is-open', !open);
+        head.setAttribute('aria-expanded', open ? 'false' : 'true');
         if (!open && !body.dataset.loaded) loadModelWeeklyData(m.id, idx);
+      }
+      head.onclick = toggle;
+      head.onkeydown = function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
       };
     });
 
@@ -7167,45 +7211,38 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         if (progEl) {
           progEl.textContent = '진행률 ' + (d.progress || 0) + '%';
         }
-        var _pgEl2=document.getElementById('wp-prog-' + idx);if(_pgEl2){_pgEl2.style.color = (d.progress > 0) ? '#059669' : '#6B7280';}
+        var _pgEl2=document.getElementById('wp-prog-' + idx);if(_pgEl2){_pgEl2.classList.toggle('on', (d.progress || 0) > 0);_pgEl2.style.color='';}
 
         var rows = '';
         d.weeks.forEach(function(w) {
           var prog = w.plan > 0 ? Math.round(w.actual / w.plan * 100) : 0;
           var progColor = prog === 100 ? '#059669' : prog > 0 ? '#2563EB' : '#9CA3AF';
           rows += '<tr>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;font-weight:600;font-size:13px;color:#111827;">' + w.week + '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;">' +
-              '<input type="number" min="0" value="' + w.plan + '" class="wp-plan" data-week="' + w.week + '" style="width:70px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center;transition:border-color 0.15s;" onfocus="this.style.borderColor=\'#2563EB\'" onblur="this.style.borderColor=\'#D1D5DB\'">' +
-            '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;">' +
-              '<input type="number" min="0" value="' + w.actual + '" class="wp-actual" data-week="' + w.week + '" style="width:70px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center;transition:border-color 0.15s;" onfocus="this.style.borderColor=\'#2563EB\'" onblur="this.style.borderColor=\'#D1D5DB\'">' +
-            '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;color:#6B7280;font-size:13px;" id="wp-rem-' + idx + '-' + w.week + '">' + w.remaining + '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;font-weight:600;font-size:13px;color:' + progColor + ';" id="wp-pct-' + idx + '-' + w.week + '">' + prog + '%</td>' +
+            '<td class="strong">' + w.week + '</td>' +
+            '<td><input type="number" min="0" value="' + w.plan + '" class="wp-plan ov-num-input" data-week="' + w.week + '" aria-label="' + w.week + ' 계획"></td>' +
+            '<td><input type="number" min="0" value="' + w.actual + '" class="wp-actual ov-num-input" data-week="' + w.week + '" aria-label="' + w.week + ' 실적"></td>' +
+            '<td class="num muted" id="wp-rem-' + idx + '-' + w.week + '">' + w.remaining + '</td>' +
+            '<td class="num" style="font-weight:700;color:' + progColor + ';" id="wp-pct-' + idx + '-' + w.week + '">' + prog + '%</td>' +
           '</tr>';
         });
 
-        body.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-          '<thead><tr style="background:#F3F4F6;">' +
-            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">주차</th>' +
-            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">계획</th>' +
-            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">실적</th>' +
-            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">잔여</th>' +
-            '<th style="padding:10px;border:1px solid #E5E7EB;text-align:left;font-weight:600;color:#374151;">진행률</th>' +
+        body.innerHTML = '<div class="ov-wrap-x"><table class="ov-table">' +
+          '<thead><tr>' +
+            '<th>주차</th><th>계획</th><th>실적</th>' +
+            '<th class="num">잔여</th><th class="num">진행률</th>' +
           '</tr></thead>' +
           '<tbody>' + rows + '</tbody>' +
-          '<tfoot><tr style="background:#F9FAFB;font-weight:700;">' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;">총계</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-plan-' + idx + '">' + d.month_total_plan + '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-actual-' + idx + '">' + d.month_total_actual + '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-rem-' + idx + '">' + d.month_remaining + '</td>' +
-            '<td style="padding:10px;border:1px solid #E5E7EB;color:#111827;" id="wp-total-prog-' + idx + '">' + (d.progress || 0) + '%</td>' +
+          '<tfoot><tr class="is-total">' +
+            '<td>총계</td>' +
+            '<td id="wp-total-plan-' + idx + '">' + d.month_total_plan + '</td>' +
+            '<td id="wp-total-actual-' + idx + '">' + d.month_total_actual + '</td>' +
+            '<td class="num" id="wp-total-rem-' + idx + '">' + d.month_remaining + '</td>' +
+            '<td class="num" id="wp-total-prog-' + idx + '">' + (d.progress || 0) + '%</td>' +
           '</tr></tfoot>' +
         '</table></div>' +
-        '<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">' +
-          '<button id="wp-save-' + idx + '" style="background:#2563EB;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#1D4ED8\'" onmouseout="this.style.background=\'#2563EB\'">💾 저장</button>' +
-          '<button id="wp-reset-' + idx + '" style="background:#fff;color:#DC2626;border:1px solid #FECACA;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background=\'#FEF2F2\'" onmouseout="this.style.background=\'#fff\'">🔄 초기화</button>' +
+        '<div class="wp-foot">' +
+          '<button type="button" class="ov-btn ov-btn-danger" id="wp-reset-' + idx + '">초기화</button>' +
+          '<button type="button" class="ov-btn ov-btn-primary" id="wp-save-' + idx + '">저장</button>' +
         '</div>';
 
         function recalc() {
