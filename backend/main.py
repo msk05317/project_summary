@@ -17094,9 +17094,13 @@ async def chat(payload: dict):
                 if _m_act > 0 or _d_act > 0:
                     _qsrc = _orig_user_msg if '_orig_user_msg' in dir() else message
                     _qty_only = any(k in _qsrc for k in ['수량', '몇 대', '몇대', '대수', '나갔', '나왔', '출하']) and '매출' not in _qsrc
+                    _rev_only = ('매출' in _qsrc) and not any(k in _qsrc for k in ['수량', '몇 대', '몇대', '대수', '나갔', '나왔', '출하', '실적'])
                     if _qty_only:
                         _direct = (f"{last_week} 기준 양산 실적은 {_m_act}대, 개발 실적은 {_d_act}대입니다. "
                                    f"총 실적은 {_m_act + _d_act}대입니다.")
+                    elif _rev_only:
+                        _direct = (f"{last_week} 주차 하바플레이트의 양산 매출은 ${_m_rev:,.0f}, "
+                                   f"개발 매출은 ${_d_rev:,.0f}입니다. 총 매출은 ${_total_actual_rev:,.0f}입니다.")
                     else:
                         _direct = (f"{last_week} 주차 하바플레이트의 양산 매출은 ${_m_rev:,.0f}, "
                                    f"개발 매출은 ${_d_rev:,.0f}입니다. 총 매출은 ${_total_actual_rev:,.0f}입니다. "
