@@ -4050,7 +4050,7 @@ def _apply_plan_matrix(data, project_key, parsed):
             if n:
                 idx.setdefault(n, m)
 
-    matched, unmatched = [], []
+    matched, unmatched, created = [], [], []
     for row in (parsed.get("rows") or []):
         key = _norm_label(row.get("label"))
         target = idx.get(key)
@@ -4060,8 +4060,31 @@ def _apply_plan_matrix(data, project_key, parsed):
                     target = m
                     break
         if target is None:
-            unmatched.append(row)
-            continue
+            has_week = any((row.get("weeks") or {}).values())
+            # 집계 행(양산19종·개발22종 등)이 아니고 실제 주차 데이터가 있으면
+            # 엑셀에 보이는 그대로 새 양산 모델로 등록한다.
+            if row.get("is_aggregate") or not has_week:
+                unmatched.append(row)
+                continue
+            target = {
+                "id": row.get("label"),
+                "name": row.get("label"),
+                "group": "양산",
+                "dev_type": "",
+                "price": 0,
+                "material_cost": 0,
+                "po_qty": 0,
+                "shipped_qty": 0,
+                "status": "정상",
+                "progress": 0,
+            }
+            if row.get("site"):
+                target["site"] = row.get("site")
+            if row.get("stock") is not None:
+                target["stock"] = row.get("stock")
+            models.append(target)
+            idx.setdefault(key, target)
+            created.append(row.get("label"))
 
         wp = target.setdefault("weekly_plan", {})
         last_month = None
@@ -4129,7 +4152,9 @@ def _apply_plan_matrix(data, project_key, parsed):
                     tgt["actual"] += int((cell or {}).get("actual") or 0)
         weeks.update(agg)          # 이번 업로드에 있는 주차만 갱신
 
+    models.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
     return {"matched": matched,
+            "created": created,
             "unmatched": [r.get("label") for r in unmatched],
             "months": parsed.get("months") or []}
 
@@ -13372,7 +13397,7 @@ async def admin_upload_weekly_plan(
         if _parsed.get("rows"):
             _applied = _apply_plan_matrix(data, _key, _parsed)
             print(f"[weekly_plan] 자동 반영: 매칭 {len(_applied['matched'])}건, "
-                  f"미매칭 {_applied['unmatched']}")
+                  f"신규 {_applied.get('created')}, 미매칭 {_applied['unmatched']}")
     except Exception as _e_pm:
         print(f"[weekly_plan] 주차 데이터 자동 반영 실패(무시): {_e_pm}")
     proj["weekly_plan"] = {

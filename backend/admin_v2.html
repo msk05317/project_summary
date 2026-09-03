@@ -6823,8 +6823,12 @@ var sidebarSel = document.getElementById('v2-division-select');
                 msg += '모델 ' + ap.matched.length + '건 반영: ' +
                        ap.matched.map(function(x){ return x.model; }).join(', ');
               }
+              if (ap.created && ap.created.length) {
+                msg += (msg ? ' · ' : '') + '신규 모델 ' + ap.created.length + '건 등록: ' +
+                       ap.created.join(', ');
+              }
               if (ap.unmatched && ap.unmatched.length) {
-                msg += (msg ? ' · ' : '') + '모델 매칭 안 됨(합계로만 반영): ' + ap.unmatched.join(', ');
+                msg += (msg ? ' · ' : '') + '합계로만 반영: ' + ap.unmatched.join(', ');
               }
               if (msg && window.mdlToast) window.mdlToast(msg);
               else if (msg) console.log('[weekly-plan]', msg);
