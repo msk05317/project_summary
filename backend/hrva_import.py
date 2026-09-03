@@ -144,8 +144,6 @@ def parse_workbook(wb, sheet_name=None, year=None):
         c_mat = _col(cols, "소재")
         c_devkind = _col(cols, "개발종류")
         c_devstage = _col(cols, "개발단계")
-        c_due = _col(cols, "고객요청일", "제출일", "LAIR ECD")
-        c_done = _col(cols, "가공 완료", "가공완료")
 
         for r in range(hr + 1, len(grid)):
             row = grid[r]
@@ -169,12 +167,6 @@ def parse_workbook(wb, sheet_name=None, year=None):
                     t = _s(row[extra])
                     if t and not t.replace(".", "").isdigit():
                         note_parts.append(t)
-            if c_devstage is not None and c_devstage < len(row) and _s(row[c_devstage]):
-                note_parts.insert(0, f"[{_s(row[c_devstage])}]")
-            if c_due is not None and c_due < len(row) and _date_text(row[c_due]):
-                note_parts.append(f"요청일 {_date_text(row[c_due])}")
-            if c_done is not None and c_done < len(row) and _date_text(row[c_done]):
-                note_parts.append(f"가공완료 {_date_text(row[c_done])}")
 
             dev_type = ""
             if c_devkind is not None and c_devkind < len(row):
@@ -258,17 +250,28 @@ def parse_workbook(wb, sheet_name=None, year=None):
                 month = _month_of_week(wno, year)
                 if not month:
                     continue
+                raw_p = row[pc] if pc < len(row) else None
+                raw_a = row[ac] if ac < len(row) else None
+                # 두 칸 모두 비어 있으면 '입력 없음' → 버킷을 만들지 않는다
+                if _s(raw_p) in ("", "-") and _s(raw_a) in ("", "-"):
+                    continue
                 wmap.setdefault(month, {})[f"W{wno:02d}"] = {
-                    "plan": _num(row[pc]) if pc < len(row) else 0,
-                    "actual": _num(row[ac]) if ac < len(row) else 0,
+                    "plan": _num(raw_p),
+                    "actual": _num(raw_a),
                 }
+            # 값이 전부 0인 월도 제외 (계획도 실적도 없는 달)
+            wmap = {mo: wk for mo, wk in wmap.items()
+                    if any(c["plan"] or c["actual"] for c in wk.values())}
             if wmap:
                 weekly[mid] = wmap
 
             mm = {}
             for mon, ci in month_cols:
+                raw = row[ci] if ci < len(row) else None
+                if _s(raw) in ("", "-"):
+                    continue
                 y = year if mon <= cur_month else year - 1
-                mm[f"{y}-{mon:02d}"] = _num(row[ci]) if ci < len(row) else 0
+                mm[f"{y}-{mon:02d}"] = _num(raw)
             if mm:
                 monthly[mid] = mm
 

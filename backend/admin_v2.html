@@ -6193,6 +6193,8 @@ var sidebarSel = document.getElementById('v2-division-select');
               '</div>' +
               '<input type="file" id="mdl-report-file" accept=".xlsx,.xlsm" style="display:none">' +
               '<button type="button" class="mdl-btn mdl-btn-add" id="mdl-report-btn">📊 주간보고 업로드</button>' +
+              '<input type="file" id="mdl-restore-file" accept=".json" style="display:none">' +
+              '<button type="button" class="mdl-btn" id="mdl-restore-btn" style="background:#F1F5F9;color:#334155;">🛟 공정 복구</button>' +
             '</div>' +
             '<div id="mdl-report-result" style="margin-top:12px;"></div>' +
           '</div>' +
@@ -6449,6 +6451,69 @@ var sidebarSel = document.getElementById('v2-division-select');
             reportBox.innerHTML = '<div style="font-size:13px;color:#DC2626;">❌ ' + e.message + '</div>';
             reportFile.value = '';
           });
+      });
+    }
+
+    // ── 백업 JSON 에서 개발 공정 입력만 되살리기 ──
+    var restoreBtn = document.getElementById('mdl-restore-btn');
+    var restoreFile = document.getElementById('mdl-restore-file');
+    if (restoreBtn && restoreFile) {
+      restoreBtn.addEventListener('click', function() {
+        if (!sel.value) { alert('프로젝트를 먼저 선택하세요'); return; }
+        alert('백업 models.json 파일을 선택하세요.\n공정(Process) 입력만 복구하고 다른 값은 건드리지 않습니다.');
+        restoreFile.click();
+      });
+      restoreFile.addEventListener('change', function() {
+        var f = restoreFile.files && restoreFile.files[0];
+        if (!f) return;
+        var pk = sel.value;
+        var url = '/admin/projects/' + encodeURIComponent(pk) + '/process-restore';
+        function send(dry) {
+          var fd = new FormData();
+          fd.append('file', f);
+          fd.append('dry_run', dry ? 'true' : 'false');
+          return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); });
+        }
+        reportBox.innerHTML = '<div style="font-size:13px;color:#64748B;">백업 확인 중...</div>';
+        send(true).then(function(res) {
+          if (!res.ok || !res.d.ok) {
+            reportBox.innerHTML = '<div style="font-size:13px;color:#DC2626;">❌ ' + (res.d.detail || '복구 실패') + '</div>';
+            restoreFile.value = '';
+            return;
+          }
+          var d = res.d;
+          if (!(d.restored || []).length) {
+            reportBox.innerHTML = '<div style="font-size:13px;color:#64748B;">복구할 공정 입력이 없습니다. (현재 데이터가 이미 최신이거나 백업에 입력이 없음)</div>';
+            restoreFile.value = '';
+            return;
+          }
+          reportBox.innerHTML = '<div style="border:1px solid #E4E7EC;border-radius:10px;padding:14px;background:#F8FAFC;">' +
+            '<div style="font-size:13px;font-weight:700;color:#0F172A;">공정 복구 대상 ' + d.restored.length + '종</div>' +
+            '<div style="margin-top:6px;font-size:11px;color:#64748B;line-height:1.6;">' + d.restored.join(', ') + '</div>' +
+            (d.missing_in_current && d.missing_in_current.length
+              ? '<div style="margin-top:6px;font-size:11px;color:#94A3B8;">현재 목록에 없는 모델 ' + d.missing_in_current.length + '종은 건너뜁니다.</div>' : '') +
+            '<button type="button" id="mdl-restore-apply" class="mdl-btn mdl-btn-add" style="margin-top:12px;">복구 실행</button>' +
+            '<button type="button" id="mdl-restore-cancel" class="mdl-btn mdl-btn-del" style="margin-top:12px;margin-left:6px;">취소</button>' +
+          '</div>';
+          document.getElementById('mdl-restore-cancel').onclick = function() {
+            reportBox.innerHTML = ''; restoreFile.value = '';
+          };
+          document.getElementById('mdl-restore-apply').onclick = function() {
+            reportBox.innerHTML = '<div style="font-size:13px;color:#64748B;">복구 중...</div>';
+            send(false).then(function(r2) {
+              if (r2.ok && r2.d.ok) {
+                reportBox.innerHTML = '<div style="font-size:13px;color:#059669;font-weight:700;">✅ ' + (r2.d.restored || []).length + '종 공정 복구 완료</div>';
+                if (window.loadModels) window.loadModels(pk, document.getElementById('mdl-table-box'));
+              } else {
+                reportBox.innerHTML = '<div style="font-size:13px;color:#DC2626;">❌ ' + (r2.d.detail || '복구 실패') + '</div>';
+              }
+            }).finally(function() { restoreFile.value = ''; });
+          };
+        }).catch(function(e) {
+          reportBox.innerHTML = '<div style="font-size:13px;color:#DC2626;">❌ ' + e.message + '</div>';
+          restoreFile.value = '';
+        });
       });
     }
 

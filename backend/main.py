@@ -20013,6 +20013,70 @@ async def admin_import_weekly_summary(project_key: str, file: UploadFile = File(
     return {"ok": True, "summary": {k: {"po": v["po_qty"], "done": v["actual_total"]} for k, v in summary.items() if isinstance(v, dict)}}
 
 
+@app.post("/admin/projects/{project_key}/process-restore")
+async def admin_restore_process(
+    project_key: str,
+    file: UploadFile = File(...),
+    dry_run: bool = Form(default=False),
+    _admin: int = Depends(get_admin_session),
+):
+    """백업 models.json 에서 개발 공정(process) 입력만 골라 현재 데이터에 되살린다.
+    모델 ID 로 매칭하며, 계획일/실적일/상태가 하나라도 채워진 공정만 복구한다.
+    다른 필드(판가·PO·주차 등)는 건드리지 않는다."""
+    raw = await file.read()
+    try:
+        backup = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"JSON 을 읽을 수 없습니다: {e}")
+
+    _key = _model_key_alias(project_key)
+    src_proj = (backup.get("projects") or {}).get(_key) or {}
+    src_models = src_proj.get("models") or []
+    if not src_models:
+        raise HTTPException(status_code=400, detail=f"백업에 '{_key}' 프로젝트 모델이 없습니다.")
+
+    def _filled(proc):
+        if not isinstance(proc, list):
+            return 0
+        return sum(1 for st in proc
+                   if any(str((st or {}).get(k) or "").strip()
+                          for k in ("expected", "actual", "status")))
+
+    src_map = {str(m.get("id")): m.get("process") for m in src_models
+               if isinstance(m, dict) and _filled(m.get("process"))}
+
+    data = _load_models()
+    proj = (data.get("projects") or {}).get(_key)
+    if not proj:
+        raise HTTPException(status_code=404, detail="현재 데이터에 프로젝트가 없습니다.")
+
+    restored, skipped, missing = [], [], []
+    for m in proj.get("models") or []:
+        mid = str(m.get("id"))
+        if mid not in src_map:
+            continue
+        if _filled(m.get("process")) >= _filled(src_map[mid]):
+            skipped.append(mid)      # 현재 입력이 더 많거나 같으면 덮어쓰지 않는다
+            continue
+        if not dry_run:
+            m["process"] = src_map[mid]
+        restored.append(mid)
+    cur_ids = {str(m.get("id")) for m in proj.get("models") or []}
+    missing = [mid for mid in src_map if mid not in cur_ids]
+
+    if not dry_run and restored:
+        _save_models(data)
+        print(f"[process-restore] {_key}: {len(restored)}종 복구")
+
+    return {
+        "ok": True,
+        "restored": restored,
+        "skipped": skipped,
+        "missing_in_current": missing,
+        "dry_run": bool(dry_run),
+    }
+
+
 @app.post("/admin/projects/{project_key}/report-import")
 async def admin_import_weekly_report(
     project_key: str,
@@ -20086,8 +20150,7 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
             entry["dev_type"] = nm.get("dev_type") or old.get("dev_type") or ""
             proc = old.get("process")
             entry["process"] = proc if isinstance(proc, list) and proc else _default_process()
-        else:
-            entry.pop("process", None)
+        # 양산이어도 기존 공정 데이터는 지우지 않는다 (그룹이 바뀌어도 입력이 남도록)
         # 주차: 엑셀에 있는 월만 덮어쓰고 나머지 월은 보존
         if nm.get("weekly_plan"):
             wp = dict(old.get("weekly_plan") or {})
