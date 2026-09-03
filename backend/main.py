@@ -19998,6 +19998,113 @@ async def admin_import_weekly_summary(project_key: str, file: UploadFile = File(
     return {"ok": True, "summary": {k: {"po": v["po_qty"], "done": v["actual_total"]} for k, v in summary.items() if isinstance(v, dict)}}
 
 
+@app.post("/admin/projects/{project_key}/report-import")
+async def admin_import_weekly_report(
+    project_key: str,
+    file: UploadFile = File(...),
+    sheet: str = Form(default=""),
+    dry_run: bool = Form(default=False),
+    _admin: int = Depends(get_admin_session),
+):
+    """주간 보고 엑셀(W##.xlsx) 한 장으로 모델·판가·PO·출하·비고·주차별 계획을 한 번에 반영.
+
+    - 시트: W 번호가 가장 큰 것을 자동 선택 (sheet 로 지정 가능)
+    - 모델: 엑셀 기준으로 교체. 기존 공정(process)·이슈(issues)는 모델 ID 로 승계
+    - 주차: 엑셀에 있는 월만 갱신하고, 엑셀에 없는 월의 기존 데이터는 보존
+    - dry_run=true 면 저장하지 않고 변경 예정 내역만 돌려준다
+    """
+    import io as _io
+    import openpyxl
+    import hrva_import as _imp
+
+    raw = await file.read()
+    try:
+        wb = openpyxl.load_workbook(_io.BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+
+    try:
+        parsed = _imp.parse_workbook(wb, sheet_name=sheet or None)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀 구조를 해석하지 못했습니다: {e}")
+
+    new_models = parsed.get("models") or []
+    if not new_models:
+        raise HTTPException(status_code=400, detail="모델 블록을 찾지 못했습니다. 시트 구조를 확인해주세요.")
+
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {})
+    old_map = {str(m.get("id")): m for m in (proj.get("models") or []) if isinstance(m, dict)}
+
+    merged = []
+    added, updated = [], []
+    for nm in new_models:
+        mid = nm["id"]
+        old = old_map.get(mid) or {}
+        entry = dict(old)
+        entry.update({
+            "id": mid,
+            "name": nm.get("name") or mid,
+            "group": nm["group"],
+            "price": nm.get("price") or old.get("price") or 0,
+            "po_qty": nm.get("po_qty", 0),
+            "shipped_qty": nm.get("shipped_qty", 0),
+            "status": old.get("status") or "정상",
+            "material_cost": old.get("material_cost") or 0,
+        })
+        if nm.get("material"):
+            entry["material"] = nm["material"]
+        # 비고: 엑셀이 정본, 비어 있으면 기존 유지
+        if nm.get("note"):
+            entry["note"] = nm["note"]
+        # 이슈는 수기 입력이므로 건드리지 않는다
+        entry.setdefault("issues", old.get("issues") or "")
+        if nm["group"] == "개발":
+            entry["dev_type"] = nm.get("dev_type") or old.get("dev_type") or ""
+            proc = old.get("process")
+            entry["process"] = proc if isinstance(proc, list) and proc else _default_process()
+        else:
+            entry.pop("process", None)
+        # 주차: 엑셀에 있는 월만 덮어쓰고 나머지 월은 보존
+        if nm.get("weekly_plan"):
+            wp = dict(old.get("weekly_plan") or {})
+            wp.update(nm["weekly_plan"])
+            entry["weekly_plan"] = wp
+        if nm.get("monthly_actual"):
+            entry["monthly_actual"] = nm["monthly_actual"]
+        merged.append(entry)
+        (updated if mid in old_map else added).append(mid)
+
+    removed = [mid for mid in old_map if mid not in {m["id"] for m in merged}]
+    merged.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+
+    result = {
+        "ok": True,
+        "sheet": parsed.get("sheet"),
+        "counts": parsed.get("counts"),
+        "added": added,
+        "updated_count": len(updated),
+        "removed": removed,
+        "weekly_summary": {
+            k: {"po": v.get("po_qty"), "done": v.get("actual_total"),
+                "weeks": sorted((v.get("weeks") or {}).keys())}
+            for k, v in (parsed.get("weekly_summary") or {}).items()
+        },
+        "dry_run": bool(dry_run),
+    }
+    if dry_run:
+        return result
+
+    proj["models"] = merged
+    if parsed.get("weekly_summary"):
+        proj["weekly_summary"] = parsed["weekly_summary"]
+    _save_models(data)
+    print(f"[report-import] {_key} sheet={parsed.get('sheet')} "
+          f"models={len(merged)} added={len(added)} removed={len(removed)}")
+    return result
+
+
 @app.get("/projects/{project_key}/weekly-revenue")
 def get_weekly_revenue(project_key: str, month: str = None):
     """주차별 현황+매출:
