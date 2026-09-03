@@ -13260,6 +13260,29 @@ def save_project_types(project_key: str, payload: dict):
     return {"ok": True, "project_key": project_key, "types": types}
 
 
+# ─── 프로젝트 현황 메모 ───
+
+@app.get("/projects/{project_key}/status-note")
+def get_project_status_note(project_key: str):
+    _key = _model_key_alias(project_key)
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    return {"project_key": _key, "status_note": proj.get("status_note") or ""}
+
+
+@app.put("/admin/projects/{project_key}/status-note")
+def put_project_status_note(project_key: str, payload: dict,
+                            _admin: int = Depends(get_admin_session)):
+    """프로젝트 현황 메모 저장 (앱 프로젝트 화면에 표시)."""
+    note = str((payload or {}).get("note") or "").strip()
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    proj["status_note"] = note
+    _save_models(data)
+    print(f"[status-note] {_key}: {len(note)}자 저장")
+    return {"ok": True, "project_key": _key, "status_note": note}
+
+
 # ─── 주차별 계획 (프로젝트당 1개) ───
 
 @app.get("/projects/{project_key}/weekly-plan")

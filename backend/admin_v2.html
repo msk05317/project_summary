@@ -6972,10 +6972,15 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ note: noteEl ? noteEl.value : '' })
         })
-          .then(function(r) { return r.json(); })
-          .then(function(d) {
+          .then(function(r) { return r.json().then(function(d){ return { status: r.status, d: d }; }); })
+          .then(function(res) {
+            var d = res.d || {};
             if (d.ok) { msg.textContent = '✅ 현황 저장 완료'; msg.style.color = '#059669'; }
-            else { msg.textContent = '❌ 저장 실패'; msg.style.color = '#DC2626'; }
+            else {
+              msg.textContent = '❌ 저장 실패 (' + res.status + ') ' +
+                (typeof d.detail === 'string' ? d.detail : '');
+              msg.style.color = '#DC2626';
+            }
           })
           .catch(function(e) { msg.textContent = '❌ ' + e.message; msg.style.color = '#DC2626'; });
       });
