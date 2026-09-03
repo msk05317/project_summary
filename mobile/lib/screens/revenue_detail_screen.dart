@@ -48,14 +48,21 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
     });
   }
 
-  /// 이번 달을 기준으로 뒤로 4개월, 앞으로 1개월.
+  /// 매출 데이터가 시작되는 달. 이 앞은 전부 0원이라 보여줄 이유가 없다.
+  static const String _startMonth = '2026-08';
+
+  /// 데이터 시작 달 ~ 다음 달까지. (최대 12개)
   List<String> get _months {
     final now = DateTime.now();
-    final out = <String>[];
-    for (var i = -4; i <= 1; i++) {
-      final d = DateTime(now.year, now.month + i, 1);
+    final p = _startMonth.split('-');
+    var d = DateTime(int.parse(p[0]), int.parse(p[1]), 1);
+    final end = DateTime(now.year, now.month + 1, 1);
+    var out = <String>[];
+    while (!d.isAfter(end)) {
       out.add('${d.year}-${d.month.toString().padLeft(2, '0')}');
+      d = DateTime(d.year, d.month + 1, 1);
     }
+    if (out.length > 12) out = out.sublist(out.length - 12);
     if (!out.contains(_month)) out.insert(0, _month);
     return out;
   }
