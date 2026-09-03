@@ -6326,8 +6326,20 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
             { method: 'POST', body: fd, credentials: 'same-origin' });
           var d = await r.json();
           if (r.ok && d.ok) {
-            alert('✅ ' + d.matched + '개 모델 프로세스 반영' +
-              (d.skipped_count ? '\\n건너뜀: ' + d.skipped.slice(0,5).join(', ') + (d.skipped_count > 5 ? ' 외 ' + (d.skipped_count-5) + '개' : '') : ''));
+            var _ap = d.applied || 0;
+            var _sk = d.skipped || 0;
+            var _skList = (d.detail && d.detail.skipped) || [];
+            var _msg = _ap > 0
+              ? _ap + '개 모델의 개발 프로세스를 반영했습니다.'
+              : '반영된 모델이 없습니다. 엑셀의 파트번호가 등록된 모델과 일치하는지 확인해주세요.';
+            if (_sk > 0 && _skList.length) {
+              _msg += '\\n매칭 안 됨 ' + _sk + '건: ' + _skList.slice(0, 5).join(', ') +
+                      (_sk > 5 ? ' 외 ' + (_sk - 5) + '개' : '');
+            } else if (_sk > 0) {
+              _msg += '\\n매칭 안 됨: ' + _sk + '건';
+            }
+            if (window.mdlToast && _ap > 0 && _sk === 0) window.mdlToast('✅ ' + _msg);
+            else alert((_ap > 0 ? '✅ ' : '⚠️ ') + _msg);
             var tb = document.getElementById('mdl-table-box');
             if (tb) loadModels(_currentProjectKey, tb);
           } else {
