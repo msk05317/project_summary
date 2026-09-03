@@ -16798,6 +16798,96 @@ function resetWpModelPlan(idx) {
 </html>
 """
 
+def _week_shipment_answer(project_key, week, mode='qty'):
+    """주차 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
+    if not week:
+        return None
+    week = str(week).upper()
+    month = _month_of_week(week) or _latest_data_month(project_key)
+    if not month:
+        return None
+
+    keys = []
+    if project_key and project_key != 'all':
+        keys = [project_key]
+    else:
+        _d = _load_models()
+        for k, v in (_d.get('projects') or {}).items():
+            if (v.get('weekly_summary') or {}) or any((m.get('weekly_plan') or {})
+                                                      for m in (v.get('models') or [])):
+                keys.append(k)
+    if not keys:
+        return None
+
+    yp = ya = dp = da = 0
+    rev = prev = 0
+    used_labels = []
+    model_rows = []
+    _data = _load_models()
+    for k in keys:
+        wr = get_weekly_revenue(k, month) or {}
+        if week not in (wr.get('weeks') or []):
+            continue
+        grp = wr.get('groups') or {}
+        yc = ((grp.get('양산') or {}).get('weeks') or {}).get(week) or {}
+        dc = ((grp.get('개발') or {}).get('weeks') or {}).get(week) or {}
+        if not any(int(x.get(f) or 0) for x in (yc, dc) for f in ('plan', 'actual')):
+            continue
+        used_labels.append(PROJECT_LABELS.get(k, k))
+        _yp, _ya = int(yc.get('plan') or 0), int(yc.get('actual') or 0)
+        # 원본 주간보고 합계가 있으면 양산 수량은 그쪽을 정본으로
+        _src = ((_data.get('projects') or {}).get(_model_key_alias(k)) or {}) \
+            .get('weekly_summary') or {}
+        _sc = ((_src.get('양산') or {}).get('weeks') or {}).get(week)
+        if isinstance(_sc, dict):
+            _yp, _ya = int(_sc.get('plan') or 0), int(_sc.get('actual') or 0)
+        yp += _yp
+        ya += _ya
+        dp += int(dc.get('plan') or 0)
+        da += int(dc.get('actual') or 0)
+        rev += int(yc.get('revenue') or 0) + int(dc.get('revenue') or 0)
+        prev += int(yc.get('plan_revenue') or 0) + int(dc.get('plan_revenue') or 0)
+        for m in ((_data.get('projects') or {}).get(_model_key_alias(k)) or {}).get('models') or []:
+            if m.get('group') == '개발':
+                continue
+            cell = ((m.get('weekly_plan') or {}).get(month) or {}).get(week) or {}
+            _a = int(cell.get('actual') or 0)
+            if _a:
+                model_rows.append({'id': m.get('id') or m.get('name'), 'actual': _a})
+
+    if not used_labels:
+        return None
+
+    if len(used_labels) > 2:
+        label = f'반도체사업부 전체({len(used_labels)}개 프로젝트)'
+    else:
+        label = ' + '.join(used_labels)
+
+    lines = []
+    if mode == 'rev':
+        if rev > 0:
+            lines.append(f"{week}({month}) {label} 매출은 실적 기준 ${rev:,}입니다. "
+                         f"계획 기준 예상 매출은 ${prev:,}입니다.")
+        else:
+            lines.append(f"{week}({month}) {label}은 아직 실적이 없고, "
+                         f"계획 기준 예상 매출은 ${prev:,}입니다.")
+        lines.append(f"수량은 양산 {yp}→{ya}대 / 개발 {dp}→{da}대입니다. (계획 → 실적)")
+    else:
+        lines.append(f"{week}({month}) {label} 출하 실적은 총 {ya + da}대입니다. "
+                     f"(양산 {ya}대 / 개발 {da}대, 계획 {yp + dp}대)")
+        lines.append(f"매출로는 실적 ${rev:,} / 계획 기준 예상 ${prev:,}입니다.")
+        ms = sorted(model_rows, key=lambda x: -x['actual'])
+        if ms:
+            lines.append('')
+            lines.append(f'{week} 모델별 양산 출하 실적')
+            for m in ms[:10]:
+                lines.append(f"- {m['id']}: {m['actual']}대")
+            if len(ms) > 10:
+                lines.append(f"- 그 외 {len(ms) - 10}개 모델 합계 "
+                             f"{sum(x['actual'] for x in ms[10:])}대")
+    return '\n'.join(lines)
+
+
 def _month_shipment_answer(project_key, month, mode='qty'):
     """월 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     keys = []
@@ -16992,24 +17082,54 @@ async def chat(payload: dict):
         _pm = _today_m.month - 1 or 12
         _py = _today_m.year if _today_m.month > 1 else _today_m.year - 1
         _scope_month = f"{_py}-{_pm:02d}"
+    _week_num_in_msg = _re3.search(r'(?<!\d)(\d{1,2})\s*주차', _user_text)
+    _week_alias_in_msg = any(k in _user_text for k in
+                             ['이번주', '이번 주', '금주', '지난주', '지난 주', '저번주', '전주',
+                              '차주', '다음주', '다음 주', '다다음주', '지지난주', '전전주'])
+    _has_week_in_msg = bool(week_m) or bool(_week_num_in_msg) or _week_alias_in_msg
+    _cum_in_msg = any(k in _user_text for k in ['누적', '여태', '지금까지', '올해', '전체 기간', '작년'])
+    # 다른 기간 기준이 명시된 질문이면 이전 컨텍스트를 이어받지 않는다
+    _other_scope = _week_alias_in_msg or _cum_in_msg
+
+    # 이번 질문이 어떤 기준인지 기억해 둔다 (후속 질문이 같은 기준을 따라가도록)
+    if _has_week_in_msg:
+        sess['last_scope'] = 'week'
+        if _week_num_in_msg:
+            try:
+                sess['last_week'] = f"W{int(_week_num_in_msg.group(1)):02d}"
+            except Exception:
+                pass
+        elif week_m:
+            sess['last_week'] = 'W' + week_m.group(1)
+    elif _scope_month:
+        sess['last_scope'] = 'month'
     if _scope_month:
         sess['last_month'] = _scope_month
 
-    _has_week_in_msg = bool(week_m) or bool(_re3.search(r'(?<!\d)\d{1,2}\s*주차', _user_text))
-    # 다른 기간 기준이 명시된 질문이면 월 컨텍스트를 이어받지 않는다
-    _other_scope = any(k in _user_text for k in
-                       ['이번주', '이번 주', '금주', '지난주', '지난 주', '저번주', '전주',
-                        '차주', '다음주', '다음 주', '다다음주',
-                        '누적', '여태', '지금까지', '올해', '전체 기간', '작년'])
     _qty_kw = any(k in _user_text for k in ['몇 대', '몇대', '대수', '수량', '출하량', '몇 개', '몇개', '출하'])
     _rev_kw = any(k in _user_text for k in ['매출', '금액', '얼마'])
-    # 이전 질문이 특정 월이었으면, 뒤이은 수량/매출 질문은 같은 월을 기준으로 답한다
-    if not _scope_month and not _has_week_in_msg and not _other_scope \
-            and (_qty_kw or _rev_kw) and sess.get('last_month'):
-        _scope_month = sess.get('last_month')
-        print(f"[chat] 후속 질문 → 직전 월 {_scope_month} 유지")
+    _mode_m = 'rev' if (_rev_kw and not _qty_kw) else 'qty'
+
+    # ── 후속 질문: 직전 질문의 기준(주차 or 월)을 그대로 이어간다 ──
+    if not _scope_month and not _has_week_in_msg and not _other_scope and (_qty_kw or _rev_kw):
+        if sess.get('last_scope') == 'week' and sess.get('last_week'):
+            _wk_prev = sess.get('last_week')
+            try:
+                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m)
+            except Exception as _e_ws:
+                _ans_w = None
+                print(f"[chat] 주차 즉답 실패(무시): {_e_ws}")
+            if _ans_w:
+                sess['last_question_scope'] = True
+                print(f"[chat] 후속 질문 → 직전 주차 {_wk_prev} 유지 / {_mode_m}")
+                _src_w = ([{'key': last_project, 'label': PROJECT_LABELS.get(last_project, last_project)}]
+                          if last_project and last_project != 'all' else [])
+                return {'answer': _ans_w, 'sources': _src_w, 'corrected_query': None}
+        elif sess.get('last_month'):
+            _scope_month = sess.get('last_month')
+            print(f"[chat] 후속 질문 → 직전 월 {_scope_month} 유지")
+
     if _scope_month and not _has_week_in_msg and (_qty_kw or _rev_kw):
-        _mode_m = 'rev' if (_rev_kw and not _qty_kw) else 'qty'
         try:
             _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m)
         except Exception as _e_ms:
