@@ -4014,6 +4014,64 @@ async def admin_upload_note_photo(
 
 
 
+def _detect_marked_weeks(ws):
+    """엑셀에서 빨간(유채색) 굵은 테두리로 표시한 주차 라벨을 찾아 ['W35'] 형태로 반환."""
+    import re as _re
+    marked_cols = set()
+    for row in ws.iter_rows():
+        for cell in row:
+            try:
+                bd = cell.border
+            except Exception:
+                continue
+            if bd is None:
+                continue
+            for side in (bd.left, bd.right, bd.top, bd.bottom):
+                if side is None or not getattr(side, "style", None):
+                    continue
+                col = getattr(side, "color", None)
+                if col is None or getattr(col, "type", None) != "rgb":
+                    continue
+                v = col.rgb
+                if not isinstance(v, str):
+                    continue
+                if len(v) == 8:
+                    v = v[2:]
+                v = v.upper()
+                if v in ("000000", "FFFFFF"):
+                    continue
+                try:
+                    r_, g_, b_ = int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
+                except Exception:
+                    continue
+                if (max(r_, g_, b_) - min(r_, g_, b_)) > 40 or side.style in ("thick", "double"):
+                    marked_cols.add(cell.column)
+                    break
+    if not marked_cols:
+        return []
+
+    merged = {}
+    for rng in ws.merged_cells.ranges:
+        mc, mr, xc, xr = rng.bounds
+        merged[(mr, mc)] = (xr, xc)
+
+    weeks = []
+    for row in ws.iter_rows():
+        for cell in row:
+            t = str(cell.value or "").strip()
+            m = _re.match(r"^W\s*(\d{1,2})$", t, _re.I)
+            if not m:
+                continue
+            _xr, xc = merged.get((cell.row, cell.column), (cell.row, cell.column))
+            if set(range(cell.column, xc + 1)) & marked_cols:
+                try:
+                    weeks.append("W%02d" % int(m.group(1)))
+                except Exception:
+                    pass
+    out = sorted(set(weeks), key=lambda w: int(w[1:]))
+    return out
+
+
 def _excel_sheet_to_preview_data_url(ws):
     from io import BytesIO
     import base64
@@ -4268,6 +4326,59 @@ def _excel_sheet_to_preview_data_url(ws):
                     w, _ = text_size(line, use_font)
                     tx = x1 + max(4, (cell_w - w) // 2)
                     draw.text((tx, ty + li * line_h), line, fill=fc, font=use_font)
+
+    # ── 엑셀에서 강조한 테두리(빨간 박스 등) 재현 ──
+    def _side_rgb(side):
+        if side is None or not getattr(side, "style", None):
+            return None, None
+        col = getattr(side, "color", None)
+        rgb = None
+        if col is not None and getattr(col, "type", None) == "rgb" and isinstance(col.rgb, str):
+            v = col.rgb
+            if len(v) == 8:
+                v = v[2:]
+            rgb = v.upper()
+        return rgb, side.style
+
+    def _accent(rgb, style):
+        """색이 있거나 굵은 선이면 (색, 두께) 반환. 평범한 검정 얇은 선은 None."""
+        if not rgb or rgb in ("000000", "FFFFFF"):
+            return None
+        try:
+            r_, g_, b_ = int(rgb[0:2], 16), int(rgb[2:4], 16), int(rgb[4:6], 16)
+        except Exception:
+            return None
+        colorful = (max(r_, g_, b_) - min(r_, g_, b_)) > 40
+        heavy = style in ("thick", "double", "medium")
+        if not (colorful or heavy):
+            return None
+        return ("#" + rgb.lower(), 4 if style in ("thick", "double") else 3)
+
+    for r in range(min_row, max_row + 1):
+        for c in range(min_col, max_col + 1):
+            try:
+                bd = ws.cell(r, c).border
+            except Exception:
+                continue
+            if bd is None:
+                continue
+            bx1, by1 = xs[col_idx[c]], ys[row_idx[r]]
+            bx2, by2 = xs[col_idx[c] + 1] - 1, ys[row_idx[r] + 1] - 1
+            for _name, _side in (("left", bd.left), ("right", bd.right),
+                                 ("top", bd.top), ("bottom", bd.bottom)):
+                _rgb, _style = _side_rgb(_side)
+                _acc = _accent(_rgb, _style)
+                if not _acc:
+                    continue
+                _col, _w = _acc
+                if _name == "left":
+                    draw.line([(bx1, by1), (bx1, by2)], fill=_col, width=_w)
+                elif _name == "right":
+                    draw.line([(bx2, by1), (bx2, by2)], fill=_col, width=_w)
+                elif _name == "top":
+                    draw.line([(bx1, by1), (bx2, by1)], fill=_col, width=_w)
+                else:
+                    draw.line([(bx1, by2), (bx2, by2)], fill=_col, width=_w)
 
     # 마지막 흰 여백 소폭 trim
     try:
@@ -12981,6 +13092,7 @@ def get_weekly_plan(project_key: str):
         "file_name": plan.get("file_name"),
         "uploaded_at": plan.get("uploaded_at"),
         "photo_ref": _ref,
+        "marked_weeks": plan.get("marked_weeks") or [],
         "url": f"/note_photos/{_ref}" if _ref else None,
     }
 
@@ -13033,11 +13145,19 @@ async def admin_upload_weekly_plan(
             _delete_note_photo(old_ref)
         except Exception:
             pass
+    try:
+        _marked = _detect_marked_weeks(ws)
+    except Exception as _e_mw:
+        _marked = []
+        print(f"[weekly_plan] 표시 주차 감지 실패: {_e_mw}")
     proj["weekly_plan"] = {
         "file_name": orig_name,
         "uploaded_at": __import__("datetime").datetime.now().isoformat(),
         "photo_ref": photo_ref,
+        "marked_weeks": _marked,
     }
+    if _marked:
+        print(f"[weekly_plan] 표시 주차: {_marked}")
     _save_models(data)
     print(f"[weekly_plan] saved {_key}: {orig_name} -> {photo_ref}")
     return {

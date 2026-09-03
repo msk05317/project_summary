@@ -5582,6 +5582,10 @@ window.renderAdminV2ByDivision = function(){
     '.ov-table .money-dev { color:#7C3AED; font-weight:700; }',
     '.ov-table .money-sum { color:#059669; font-weight:800; }',
     '.ov-table .muted { color:#94A3B8; }',
+    '.ov-table tr.is-marked td { background:#FFF5F5; box-shadow:inset 0 1px 0 #EF4444, inset 0 -1px 0 #EF4444; }',
+    '.ov-table tr.is-marked td:first-child { box-shadow:inset 1px 0 0 #EF4444, inset 0 1px 0 #EF4444, inset 0 -1px 0 #EF4444; }',
+    '.ov-table tr.is-marked td:last-child { box-shadow:inset -1px 0 0 #EF4444, inset 0 1px 0 #EF4444, inset 0 -1px 0 #EF4444; }',
+    '.ov-mark { display:inline-block; margin-left:5px; padding:1px 6px; border-radius:99px; background:#EF4444; color:#fff; font-size:10px; font-weight:800; vertical-align:middle; }',
     '.ov-wrap-x { overflow-x:auto; margin:0 -4px; padding:0 4px; }',
     '.ov-num-input { width:76px; height:34px; padding:0 10px; border:1px solid transparent; border-radius:7px; background:#F7F9FC; font-size:13px; font-weight:600; text-align:center; color:#0F172A; box-sizing:border-box; }',
     '.ov-num-input:hover { background:#F1F5F9; }',
@@ -6674,8 +6678,9 @@ var sidebarSel = document.getElementById('v2-division-select');
             var c = (d.combined && d.combined.weeks && d.combined.weeks[w]) || {revenue:0};
             var cp = c.plan_revenue || 0;
             var cr = cp ? Math.round((c.revenue || 0) * 100 / cp) : null;
-            html += '<tr>' +
-              '<td class="strong">' + w + '</td>' +
+            var mk = (window._markedWeeks || []).indexOf(w) >= 0;
+            html += '<tr' + (mk ? ' class="is-marked"' : '') + '>' +
+              '<td class="strong">' + w + (mk ? ' <span class="ov-mark">기준</span>' : '') + '</td>' +
               '<td class="num">' + y.plan + ' / ' + y.actual + '</td>' +
               '<td class="num money">' + fmt(y.revenue) + '</td>' +
               '<td class="num">' + v.plan + ' / ' + v.actual + '</td>' +
@@ -6729,6 +6734,8 @@ var sidebarSel = document.getElementById('v2-division-select');
       fetch('/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
+          window._markedWeeks = d.marked_weeks || [];
+          window.renderRevenueCard(projectKey, null);
           if (d.has_plan && d.url) {
             weeklyStatus.textContent = '✅ ' + (d.file_name || '엑셀 파일') + ' (' + (d.uploaded_at || '').substring(0, 10) + ')';
             weeklyStatus.className = 'mdl-weekly-status ok';

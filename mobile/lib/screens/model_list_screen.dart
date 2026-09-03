@@ -446,6 +446,30 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
   Map<String, dynamic> get model => widget.model;
   String get projectName => widget.projectName;
   String _selMonth = '';
+  // 관리자 엑셀에서 빨간 박스로 표시한 '기준 주차'
+  List<String> _markedWeeks = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMarkedWeeks();
+  }
+
+  Future<void> _loadMarkedWeeks() async {
+    final key = (model['project_key'] ?? model['project_id'] ?? '').toString();
+    if (key.isEmpty) return;
+    try {
+      final res = await http
+          .get(Uri.parse('$kApiBaseUrl/projects/$key/weekly-plan'))
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode != 200) return;
+      final d = jsonDecode(utf8.decode(res.bodyBytes));
+      final mw = (d is Map) ? d['marked_weeks'] : null;
+      if (mw is List && mounted) {
+        setState(() => _markedWeeks = mw.map((e) => e.toString()).toList());
+      }
+    } catch (_) {}
+  }
 
   int get _poQty => (model['po_qty'] as num?)?.toInt() ?? 0;
   int get _shipped => (model['shipped_qty'] as num?)?.toInt() ?? 0;
@@ -562,12 +586,37 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
       final plan = (v is Map) ? ((v['plan'] as num?)?.toInt() ?? 0) : 0;
       final act = (v is Map) ? ((v['actual'] as num?)?.toInt() ?? 0) : 0;
       tp += plan; ta += act;
-      rows.add(DataRow(cells: [
-        DataCell(Text(w, style: const TextStyle(fontWeight: FontWeight.w700))),
-        DataCell(Text('$plan')),
-        DataCell(Text('$act', style: TextStyle(color: act > 0 ? const Color(0xFF059669) : Colors.black45, fontWeight: act > 0 ? FontWeight.w700 : FontWeight.normal))),
-        DataCell(Text('${plan - act}')),
-      ]));
+      final marked = _markedWeeks.contains(w);
+      rows.add(DataRow(
+        color: marked
+            ? WidgetStateProperty.all(const Color(0xFFFFF1F1))
+            : null,
+        cells: [
+          DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(w,
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: marked ? const Color(0xFFDC2626) : null)),
+            if (marked) ...[
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFDC2626),
+                    borderRadius: BorderRadius.circular(999)),
+                child: const Text('기준',
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+              ),
+            ],
+          ])),
+          DataCell(Text('$plan')),
+          DataCell(Text('$act', style: TextStyle(color: act > 0 ? const Color(0xFF059669) : Colors.black45, fontWeight: act > 0 ? FontWeight.w700 : FontWeight.normal))),
+          DataCell(Text('${plan - act}')),
+        ],
+      ));
     }
     rows.add(DataRow(cells: [
       const DataCell(Text('합계', style: TextStyle(fontWeight: FontWeight.w800))),
