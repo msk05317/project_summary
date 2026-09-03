@@ -6214,57 +6214,61 @@ var sidebarSel = document.getElementById('v2-division-select');
         .catch(function() {});
     }
 
-    function loadWeeklyPlan(projectKey) {
-      // 주차별 매출 카드 (하바플레이트)
+    // 주차별 매출 카드 (하바플레이트) — 선택한 월(wp-month-sel) 기준으로 렌더
+    window.renderRevenueCard = function(projectKey, month) {
       var revCard = document.getElementById('mdl-revenue-card');
-      if (revCard) {
-        if (projectKey === 'hrva_plate') {
-          revCard.style.display = 'block';
-          revCard.innerHTML = '<div style="text-align:center;padding:20px;color:#9CA3AF;">로딩 중...</div>';
-          fetch('/projects/hrva_plate/weekly-revenue', { credentials: 'same-origin' })
-            .then(function(r){ return r.json(); })
-            .then(function(d){
-              if (!d.groups) { revCard.innerHTML = '<div style="color:#9CA3AF;text-align:center;">' + (d.detail || '주차별 현황 데이터 없음') + '</div>'; return; }
-              function fmt(n){ return '$' + (n || 0).toLocaleString(); }
-              var html = '<h3 style="margin:0 0 16px;font-size:16px;font-weight:800;color:#111827;">💰 주차별 매출 현황</h3>' +
-                '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-                  '<thead><tr style="background:#F9FAFB;">' +
-                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:left;">주차</th>' +
-                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 계획/실적</th>' +
-                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 매출</th>' +
-                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 계획/실적</th>' +
-                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 매출</th>' +
-                    '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">주차 합계</th>' +
-                  '</tr></thead><tbody>';
-              (d.weeks || []).forEach(function(w){
-                var y = (d.groups['양산'] && d.groups['양산'].weeks && d.groups['양산'].weeks[w]) || {plan:0, actual:0, revenue:0};
-                var v = (d.groups['개발'] && d.groups['개발'].weeks && d.groups['개발'].weeks[w]) || {plan:0, actual:0, revenue:0};
-                var c = (d.combined && d.combined.weeks && d.combined.weeks[w]) || {revenue:0};
-                html += '<tr>' +
-                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;font-weight:600;">' + w + '</td>' +
-                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + y.plan + ' / ' + y.actual + '</td>' +
-                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(y.revenue) + '</td>' +
-                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + v.plan + ' / ' + v.actual + '</td>' +
-                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(v.revenue) + '</td>' +
-                  '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;font-weight:700;color:#059669;">' + fmt(c.revenue) + '</td></tr>';
-              });
-              var YT = d.groups['양산'] ? d.groups['양산'].total : {plan:0,actual:0,revenue:0};
-              var DT = d.groups['개발'] ? d.groups['개발'].total : {plan:0,actual:0,revenue:0};
-              var T = (d.combined && d.combined.total) || {revenue:0};
-              html += '<tr style="background:#F3F4F6;font-weight:800;">' +
-                '<td style="padding:8px 12px;border:1px solid #E5E7EB;">합계</td>' +
-                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + YT.plan + ' / ' + YT.actual + '</td>' +
-                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(YT.revenue) + '</td>' +
-                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + DT.plan + ' / ' + DT.actual + '</td>' +
-                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(DT.revenue) + '</td>' +
-                '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#059669;">' + fmt(T.revenue) + '</td></tr></tbody></table>';
-              revCard.innerHTML = html;
-            })
-            .catch(function(){ revCard.innerHTML = '<div style="color:#DC2626;text-align:center;">로드 실패</div>'; });
-        } else {
-          revCard.style.display = 'none';
-        }
-      }
+      if (!revCard) return;
+      if (projectKey !== 'hrva_plate') { revCard.style.display = 'none'; return; }
+      var selEl = document.getElementById('wp-month-sel');
+      var mth = month || window._revMonth || (selEl && selEl.value) || new Date().toISOString().slice(0, 7);
+      window._revMonth = mth;
+      var mLabel = mth.split('-')[0] + '년 ' + parseInt(mth.split('-')[1], 10) + '월';
+      revCard.style.display = 'block';
+      revCard.innerHTML = '<div style="text-align:center;padding:20px;color:#9CA3AF;">로딩 중...</div>';
+      fetch('/projects/hrva_plate/weekly-revenue?month=' + encodeURIComponent(mth), { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (!d.groups) { revCard.innerHTML = '<div style="color:#9CA3AF;text-align:center;">' + (d.detail || '주차별 현황 데이터 없음') + '</div>'; return; }
+          function fmt(n){ return '$' + (n || 0).toLocaleString(); }
+          var html = '<h3 style="margin:0 0 16px;font-size:16px;font-weight:800;color:#111827;">💰 주차별 매출 현황 <span style="font-size:13px;font-weight:600;color:#6B7280;">(' + mLabel + ')</span></h3>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+              '<thead><tr style="background:#F9FAFB;">' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:left;">주차</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 계획/실적</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">양산 매출</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 계획/실적</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">개발 매출</th>' +
+                '<th style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">주차 합계</th>' +
+              '</tr></thead><tbody>';
+          (d.weeks || []).forEach(function(w){
+            var y = (d.groups['양산'] && d.groups['양산'].weeks && d.groups['양산'].weeks[w]) || {plan:0, actual:0, revenue:0};
+            var v = (d.groups['개발'] && d.groups['개발'].weeks && d.groups['개발'].weeks[w]) || {plan:0, actual:0, revenue:0};
+            var c = (d.combined && d.combined.weeks && d.combined.weeks[w]) || {revenue:0};
+            html += '<tr>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;font-weight:600;">' + w + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + y.plan + ' / ' + y.actual + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(y.revenue) + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + v.plan + ' / ' + v.actual + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(v.revenue) + '</td>' +
+              '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;font-weight:700;color:#059669;">' + fmt(c.revenue) + '</td></tr>';
+          });
+          var YT = d.groups['양산'] ? d.groups['양산'].total : {plan:0,actual:0,revenue:0};
+          var DT = d.groups['개발'] ? d.groups['개발'].total : {plan:0,actual:0,revenue:0};
+          var T = (d.combined && d.combined.total) || {revenue:0};
+          html += '<tr style="background:#F3F4F6;font-weight:800;">' +
+            '<td style="padding:8px 12px;border:1px solid #E5E7EB;">합계</td>' +
+            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + YT.plan + ' / ' + YT.actual + '</td>' +
+            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#2563EB;">' + fmt(YT.revenue) + '</td>' +
+            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;">' + DT.plan + ' / ' + DT.actual + '</td>' +
+            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#7C3AED;">' + fmt(DT.revenue) + '</td>' +
+            '<td style="padding:8px 12px;border:1px solid #E5E7EB;text-align:right;color:#059669;">' + fmt(T.revenue) + '</td></tr></tbody></table>';
+          revCard.innerHTML = html;
+        })
+        .catch(function(){ revCard.innerHTML = '<div style="color:#DC2626;text-align:center;">로드 실패</div>'; });
+    };
+
+    function loadWeeklyPlan(projectKey) {
+      window.renderRevenueCard(projectKey, null);
       if (!projectKey) {
         weeklyStatus.textContent = '프로젝트를 선택하세요';
         weeklyStatus.className = 'mdl-weekly-status';
@@ -6521,7 +6525,11 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       if (mv === _wpMonth) opt.selected = true;
       sel.appendChild(opt);
     }
-    sel.onchange = function(){ _wpMonth = this.value; _wpLoadModels(); };
+    sel.onchange = function(){
+      _wpMonth = this.value;
+      _wpLoadModels();
+      if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard((typeof _currentProjectKey !== 'undefined' ? _currentProjectKey : ''), this.value); }
+    };
     _wpLoadModels();
   }
 
@@ -6765,7 +6773,11 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       if (mv === _wpMonth) opt.selected = true;
       sel.appendChild(opt);
     }
-    sel.onchange = function() { _wpMonth = this.value; loadModelList(this.value); };
+    sel.onchange = function() {
+      _wpMonth = this.value;
+      loadModelList(this.value);
+      if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard((typeof _currentProjectKey !== 'undefined' ? _currentProjectKey : ''), this.value); }
+    };
   };
 
   function loadModelList(month) {

@@ -16464,6 +16464,9 @@ async def chat(payload: dict):
         "하바플레이트": "hrva_plate", "하바 플레이트": "hrva_plate",
         "하바플레잍": "hrva_plate", "하바 플레잍": "hrva_plate",
         "하바": "hrva_plate", "hrva": "hrva_plate", "hava": "hrva_plate",
+        "하버": "hrva_plate", "하바플": "hrva_plate", "하바프": "hrva_plate",
+        "하바플래이트": "hrva_plate", "하바 플래이트": "hrva_plate",
+        "harbor": "hrva_plate", "harva": "hrva_plate", "hrva_plate": "hrva_plate",
     }
     msg_lower_pre = message.lower()
     for kw, pk in proj_keywords.items():
@@ -16665,7 +16668,8 @@ async def chat(payload: dict):
             proj_info = next((p for p in _cl.get_projects(visible_only=True) if p.get("id") == pk), None)
             label = proj_info.get("label", pk) if proj_info else pk
             
-            if label.lower() not in msg_lower and pk.lower() not in msg_lower:
+            if (label.lower() not in msg_lower and pk.lower() not in msg_lower
+                    and last_project not in ('all', pk)):
                 continue
             
             relevant_projects.append({"key": pk, "label": label})
@@ -16719,8 +16723,8 @@ async def chat(payload: dict):
             try:
                 # 같은 프로세스 내 직접 계산 (HTTP 호출 X → 타임아웃 원천 차단)
                 import datetime as _dt
-                month = _dt.date.today().strftime("%Y-%m")
-                weeks = ["W32", "W33", "W34", "W35"]
+                month = _month_of_week(last_week) or _latest_data_month(pk)
+                weeks = _get_month_weeks(month) or ["W32", "W33", "W34", "W35"]
                 
                 # 양산: 모델별 weekly_plan × price 합산
                 mass_plan, mass_act, mass_rev = 0, 0, 0
@@ -16944,7 +16948,7 @@ async def chat(payload: dict):
                 _cum_rev = 0
                 _cum_detail = []
                 for _pk in _projs:
-                    _wrd = get_weekly_revenue(_pk, '2026-08')
+                    _wrd = get_weekly_revenue(_pk, _month_of_week(last_week) or _latest_data_month(_pk))
                     for _gname, _gkey in [('양산','양산'), ('개발','개발')]:
                         _g = _wrd.get('groups',{}).get(_gkey,{})
                         for _w, _wv in (_g.get('weeks') or {}).items():
@@ -16971,7 +16975,7 @@ async def chat(payload: dict):
                 _total_dev_plan_rev = 0
                 
                 for _proj_key in _all_projects:
-                    _wr_data = get_weekly_revenue(_proj_key, '2026-08')
+                    _wr_data = get_weekly_revenue(_proj_key, _month_of_week(last_week) or _latest_data_month(_proj_key))
                     _mg = _wr_data.get('groups',{}).get('양산',{})
                     _dg = _wr_data.get('groups',{}).get('개발',{})
                     _mw = _mg.get('weeks',{}).get(last_week,{})
@@ -17010,9 +17014,10 @@ async def chat(payload: dict):
                 print(f"[chat] 전체 프로젝트 주입 실패: {_e_all}")
         
         # ── /weekly-revenue 직접 계산 결과를 last_week 컨텍스트로 강제 주입 ──
-        if alias_hit and last_project == 'hrva_plate' and last_week in {'W32','W33','W34','W35'}:
+        if alias_hit and last_project in ('hrva_plate', 'all') and last_week in {'W32','W33','W34','W35'}:
             try:
-                _wr_data = get_weekly_revenue('hrva_plate', '2026-08')
+                _wr_month = _month_of_week(last_week) or _latest_data_month('hrva_plate')
+                _wr_data = get_weekly_revenue('hrva_plate', _wr_month)
                 _mg = _wr_data.get('groups',{}).get('양산',{})
                 _dg = _wr_data.get('groups',{}).get('개발',{})
                 _mw = _mg.get('weeks',{}).get(last_week,{})
@@ -17032,7 +17037,7 @@ async def chat(payload: dict):
                     _total_plan = 0
                     for _m in _wdata.get('projects', {}).get('hrva_plate', {}).get('models', []):
                         if _m.get('group') != '양산': continue
-                        _wp = (_m.get('weekly_plan') or {}).get('2026-08', {})
+                        _wp = (_m.get('weekly_plan') or {}).get(_wr_month, {})
                         _cell = _wp.get(last_week, {})
                         _plan = int(_cell.get('plan') or 0)
                         _price = float(_m.get('price') or _m.get('unit_price') or 0)
@@ -19214,6 +19219,44 @@ def _get_month_weeks(month):
                 weeks.append(key)
         cur += _dt.timedelta(days=1)
     return weeks
+
+def _month_of_week(week_label, year=None):
+    """'W33' → 그 주차가 속한 'YYYY-MM' 반환 (ISO 목요일 기준). 못 찾으면 None."""
+    import datetime as _dt
+    if not week_label:
+        return None
+    try:
+        n = int(str(week_label).upper().lstrip('W'))
+    except Exception:
+        return None
+    if not (1 <= n <= 53):
+        return None
+    if year is None:
+        year = _dt.date.today().year
+    for _y in (year, year - 1):
+        try:
+            thu = _dt.date.fromisocalendar(_y, n, 4)
+        except Exception:
+            continue
+        return f"{thu.year}-{thu.month:02d}"
+    return None
+
+def _latest_data_month(project_key=None):
+    """모델 weekly_plan / weekly_summary에 데이터가 있는 가장 최근 'YYYY-MM'."""
+    import datetime as _dt
+    try:
+        data = _load_models()
+    except Exception:
+        return _dt.date.today().strftime("%Y-%m")
+    months = set()
+    for _pk, _proj in (data.get("projects") or {}).items():
+        if project_key and project_key not in ("all", _pk):
+            continue
+        for _m in (_proj.get("models") or []):
+            for _mo, _wk in ((_m.get("weekly_plan") or {})).items():
+                if any((c or {}).get("actual") or (c or {}).get("plan") for c in (_wk or {}).values()):
+                    months.add(_mo)
+    return max(months) if months else _dt.date.today().strftime("%Y-%m")
 
 def _process_progress(proc: list) -> int:
     if not proc:
