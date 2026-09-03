@@ -4014,6 +4014,108 @@ async def admin_upload_note_photo(
 
 
 
+def _norm_label(t):
+    import re as _re
+    return _re.sub(r"[^0-9A-Za-z가-힣]", "", str(t or "")).upper()
+
+
+def _apply_plan_matrix(data, project_key, parsed):
+    """'구분 x 주차' 엑셀을 모델별 주차 계획 + 프로젝트 주차 합계에 반영.
+    같은 월/주차가 이미 있으면 이번 업로드 값으로 덮어쓴다(최신 우선)."""
+    proj = data.setdefault("projects", {}).setdefault(project_key, {"models": []})
+    models = proj.setdefault("models", [])
+
+    idx = {}
+    for m in models:
+        for k in (m.get("name"), m.get("id"), m.get("part_number")):
+            n = _norm_label(k)
+            if n:
+                idx.setdefault(n, m)
+
+    matched, unmatched = [], []
+    for row in (parsed.get("rows") or []):
+        key = _norm_label(row.get("label"))
+        target = idx.get(key)
+        if target is None and len(key) >= 4:
+            for n, m in idx.items():
+                if n.startswith(key) or key.startswith(n):
+                    target = m
+                    break
+        if target is None:
+            unmatched.append(row)
+            continue
+
+        wp = target.setdefault("weekly_plan", {})
+        last_month = None
+        for month, weeks in (row.get("weeks") or {}).items():
+            bucket = wp.setdefault(month, {})
+            bucket.update(weeks)          # 최신 업로드가 덮어씀
+            if last_month is None or month > last_month:
+                last_month = month
+        for month, mv in (row.get("months") or {}).items():
+            if month in (row.get("weeks") or {}):
+                continue
+            if mv.get("plan"):
+                target.setdefault("monthly_plan", {})[month] = int(mv.get("plan") or 0)
+            if mv.get("actual"):
+                target.setdefault("monthly_actual", {})[month] = int(mv.get("actual") or 0)
+
+        # 엑셀의 누적 PO/출하는 참고용으로 보관 (진행률 규칙은 건드리지 않는다)
+        if row.get("po_qty"):
+            target["po_total"] = int(row["po_qty"])
+        if row.get("shipped_qty"):
+            target["shipped_total"] = int(row["shipped_qty"])
+        if row.get("remaining"):
+            target["remaining_total"] = int(row["remaining"])
+
+        if last_month:
+            _b = wp.get(last_month) or {}
+            _p = sum(int((v or {}).get("plan") or 0) for v in _b.values())
+            _a = sum(int((v or {}).get("actual") or 0) for v in _b.values())
+            if _p or _a:
+                target["po_qty"] = _p
+                target["shipped_qty"] = _a
+                target["due_text"] = f"{last_month} 주차계획 · 잔여 {_p - _a}개"
+            try:
+                target["weekly_progress"] = _ensure_mass_progress(wp, last_month)
+            except Exception:
+                pass
+        matched.append({"label": row.get("label"),
+                        "model": target.get("name") or target.get("id")})
+
+    # ── 프로젝트 주차 합계 (양산/개발) ──
+    ws_out = proj.setdefault("weekly_summary", {})
+    for row in (parsed.get("rows") or []):
+        grp = "개발" if "개발" in str(row.get("label") or "") else "양산"
+        g = ws_out.setdefault(grp, {})
+        g["po_qty"] = int(g.get("po_qty") or 0) + int(row.get("po_qty") or 0)
+        g["actual_total"] = int(g.get("actual_total") or 0) + int(row.get("shipped_qty") or 0)
+        g["remaining"] = int(g.get("remaining") or 0) + int(row.get("remaining") or 0)
+    # 합계는 이번 업로드 값으로 새로 계산 (누적 방지)
+    for grp in ("양산", "개발"):
+        rows_g = [r for r in (parsed.get("rows") or [])
+                  if ("개발" in str(r.get("label") or "")) == (grp == "개발")]
+        if not rows_g:
+            continue
+        g = ws_out.setdefault(grp, {})
+        g["po_qty"] = sum(int(r.get("po_qty") or 0) for r in rows_g)
+        g["actual_total"] = sum(int(r.get("shipped_qty") or 0) for r in rows_g)
+        g["remaining"] = sum(int(r.get("remaining") or 0) for r in rows_g)
+        weeks = g.setdefault("weeks", {})
+        agg = {}
+        for r in rows_g:
+            for _month, wk in (r.get("weeks") or {}).items():
+                for w, cell in wk.items():
+                    tgt = agg.setdefault(w, {"plan": 0, "actual": 0})
+                    tgt["plan"] += int((cell or {}).get("plan") or 0)
+                    tgt["actual"] += int((cell or {}).get("actual") or 0)
+        weeks.update(agg)          # 이번 업로드에 있는 주차만 갱신
+
+    return {"matched": matched,
+            "unmatched": [r.get("label") for r in unmatched],
+            "months": parsed.get("months") or []}
+
+
 def _detect_marked_weeks(ws):
     """엑셀에서 빨간(유채색) 굵은 테두리로 표시한 주차 라벨을 찾아 ['W35'] 형태로 반환."""
     import re as _re
@@ -13204,6 +13306,19 @@ async def admin_upload_weekly_plan(
     except Exception as _e_mw:
         _marked = []
         print(f"[weekly_plan] 표시 주차 감지 실패: {_e_mw}")
+
+    # ── '구분 x 주차' 표면 모델별 주차 계획까지 자동 반영 ──
+    _applied = None
+    try:
+        import plan_matrix_import as _pmi
+        _wb_fresh = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+        _parsed = _pmi.parse_plan_matrix(_wb_fresh)
+        if _parsed.get("rows"):
+            _applied = _apply_plan_matrix(data, _key, _parsed)
+            print(f"[weekly_plan] 자동 반영: 매칭 {len(_applied['matched'])}건, "
+                  f"미매칭 {_applied['unmatched']}")
+    except Exception as _e_pm:
+        print(f"[weekly_plan] 주차 데이터 자동 반영 실패(무시): {_e_pm}")
     proj["weekly_plan"] = {
         "file_name": orig_name,
         "uploaded_at": __import__("datetime").datetime.now().isoformat(),
@@ -13220,6 +13335,8 @@ async def admin_upload_weekly_plan(
         "file_name": orig_name,
         "photo_ref": photo_ref,
         "url": f"/note_photos/{photo_ref}",
+        "marked_weeks": _marked,
+        "applied": _applied,
     }
 
 
@@ -20156,6 +20273,8 @@ def get_weekly_plan(project_key: str, model_id: str, month: str = None):
     return {"model_id": model_id, "model_name": target.get("name"), "month": month,
             "weeks": rows, "month_total_plan": tp, "month_total_actual": ta,
             "month_remaining": max(0, tp - ta),
+            "excel_month_plan": (target.get("monthly_plan") or {}).get(month),
+            "excel_month_actual": (target.get("monthly_actual") or {}).get(month),
             "progress": _ensure_mass_progress(target.get("weekly_plan") or {}, month)}
 
 

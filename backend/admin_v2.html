@@ -6795,14 +6795,6 @@ var sidebarSel = document.getElementById('v2-division-select');
       weeklyStatus.className = 'mdl-weekly-status';
       const fd = new FormData();
       fd.append('file', file);
-      // 양산/개발 그룹 데이터도 함께 업로드 (weekly_summary 갱신)
-      const fd2 = new FormData();
-      fd2.append('file', file);
-      fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-summary-import', {
-        method: 'POST', credentials: 'same-origin', body: fd2
-      }).then(function(r) { return r.json(); })
-        .then(function(d) { console.log('summary-import:', d); })
-        .catch(function(e) { console.warn('summary-import 실패:', e); });
       fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', {
         method: 'POST', credentials: 'same-origin', body: fd
       })
@@ -6811,7 +6803,34 @@ var sidebarSel = document.getElementById('v2-division-select');
           if (res.ok && res.d.ok) {
             weeklyStatus.textContent = '✅ ' + (res.d.file_name || file.name);
             weeklyStatus.className = 'mdl-weekly-status ok';
+            var ap = res.d.applied;
+            if (ap) {
+              var msg = '';
+              if (ap.matched && ap.matched.length) {
+                msg += '모델 ' + ap.matched.length + '건 반영: ' +
+                       ap.matched.map(function(x){ return x.model; }).join(', ');
+              }
+              if (ap.unmatched && ap.unmatched.length) {
+                msg += (msg ? ' · ' : '') + '모델 매칭 안 됨(합계로만 반영): ' + ap.unmatched.join(', ');
+              }
+              if (msg && window.mdlToast) window.mdlToast(msg);
+              else if (msg) console.log('[weekly-plan]', msg);
+            }
             loadWeeklyPlan(projectKey);
+            if (typeof window.loadModelList === 'function') {
+              var msel2 = document.getElementById('wp-month-sel');
+              window.loadModelList(msel2 ? msel2.value : null);
+            }
+            // 하바플레이트는 기존 위치기반 요약 임포터를 순차로 한 번 더 태운다
+            if (projectKey === 'hrva_plate') {
+              var fd2 = new FormData();
+              fd2.append('file', file);
+              fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-summary-import', {
+                method: 'POST', credentials: 'same-origin', body: fd2
+              }).then(function(r) { return r.json(); })
+                .then(function(d) { console.log('summary-import:', d); window.renderRevenueCard(projectKey, null); })
+                .catch(function(e) { console.warn('summary-import 실패:', e); });
+            }
           } else {
             weeklyStatus.textContent = '❌ ' + (res.d.detail || '업로드 실패');
             weeklyStatus.className = 'mdl-weekly-status err';
@@ -7489,10 +7508,28 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
             '<td class="num" id="wp-total-prog-' + idx + '">' + (d.progress || 0) + '%</td>' +
           '</tr></tfoot>' +
         '</table></div>' +
+        ((d.excel_month_plan && !d.month_total_plan)
+          ? '<div id="wp-hint-' + idx + '" style="display:flex;align-items:center;gap:10px;margin-top:10px;padding:9px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;font-size:12px;color:#92400E;font-weight:600;">' +
+              '<span>엑셀에 ' + d.month.split("-")[1].replace(/^0/,"") + '월 계획 ' + d.excel_month_plan + '대가 있지만 주차별 배분이 없습니다.</span>' +
+              '<span style="flex:1"></span>' +
+              '<button type="button" class="ov-btn" id="wp-spread-' + idx + '" style="height:28px;padding:0 10px;font-size:12px;">주차 균등 분배</button>' +
+            '</div>'
+          : '') +
         '<div class="wp-foot">' +
           '<button type="button" class="ov-btn ov-btn-danger" id="wp-reset-' + idx + '">초기화</button>' +
           '<button type="button" class="ov-btn ov-btn-primary" id="wp-save-' + idx + '">저장</button>' +
         '</div>';
+
+        var _spEl = document.getElementById('wp-spread-' + idx);
+        if (_spEl) _spEl.onclick = function() {
+          var inputs = body.querySelectorAll('.wp-plan');
+          var n = inputs.length;
+          if (!n) return;
+          var total = parseInt(d.excel_month_plan) || 0;
+          var base = Math.floor(total / n), rest = total - base * n;
+          inputs.forEach(function(inp, i) { inp.value = base + (i < rest ? 1 : 0); });
+          recalc();
+        };
 
         function recalc() {
           var tp = 0, ta = 0;
