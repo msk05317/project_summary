@@ -55,9 +55,20 @@ def _filled_grid(ws):
     return grid
 
 
+def _month_of_week_iso(wno, year):
+    """ISO 주차 번호 → 그 주 목요일이 속한 'YYYY-MM'. 주차 번호가 정본."""
+    try:
+        thu = _dt.date.fromisocalendar(year, wno, 4)
+        return f"{thu.year}-{thu.month:02d}"
+    except Exception:
+        return None
+
+
 def _year_for_month(mon, today=None):
     today = today or _dt.date.today()
     y = today.year
+    if not mon:
+        return y
     if mon - today.month > 6:
         y -= 1
     elif today.month - mon > 6:
@@ -130,8 +141,12 @@ def find_layout(ws, grid):
                 if "합계" in t or "total" in t.lower():
                     is_total = True
         if month_no is None:
-            c = (act_c or c) + 1
-            continue
+            if week is None:
+                # 월도 주차도 못 찾은 열은 건너뛴다
+                c = (act_c or c) + 1
+                continue
+            # 주차 열은 월 머리글이 없어도 주차 번호로 월을 정한다
+            month_no = 0
         entry = (month_no, c, act_c)
         if week is not None:
             week_pairs.append((week,) + entry)
@@ -171,7 +186,9 @@ def parse_plan_matrix(wb, sheet_name=None, today=None):
         weeks = {}
         for wno, mon, pc, ac in week_pairs:
             y = _year_for_month(mon, today)
-            key = f"{y}-{mon:02d}"
+            # 월 머리글(병합 밴드)이 없거나 어긋나도 주차 번호가 정본이다.
+            # W32~W35 는 언제나 8월로 들어간다.
+            key = _month_of_week_iso(wno, y) or f"{y}-{mon:02d}"
             raw_p = ws.cell(r, pc).value
             raw_a = ws.cell(r, ac).value if ac else None
             if _s(raw_p) in ("", "-") and _s(raw_a) in ("", "-"):
