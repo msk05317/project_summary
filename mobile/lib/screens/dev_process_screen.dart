@@ -70,6 +70,11 @@ class _DevProcessScreenState extends State<DevProcessScreen> {
           final devType = (d['dev_type'] ?? 'HVM').toString();
           final currentStage = (d['current_stage'] ?? '').toString();
           final currentExpected = (d['current_expected'] ?? '').toString();
+          final issueLines = (d['issues'] ?? '')
+              .toString()
+              .split('\n')
+              .where((s) => s.trim().isNotEmpty)
+              .toList();
 
           int num0 = 0;
           return ListView(
@@ -116,13 +121,50 @@ class _DevProcessScreenState extends State<DevProcessScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '진행률 $done / $total 단계 · 다음 단계: $currentStage'
-                      '${currentExpected.isNotEmpty ? ' (예상 $currentExpected)' : ''}',
+                      currentStage.isEmpty
+                          ? '진행률 $done / $total 단계 · 일정 미등록'
+                          : '진행률 $done / $total 단계 · 다음 단계: $currentStage'
+                              '${currentExpected.isNotEmpty ? ' (예상 $currentExpected)' : ''}',
                       style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                     ),
                   ],
                 ),
               ),
+              // 이슈사항 카드 (이슈 있을 때만 표시)
+              if (issueLines.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('이슈사항',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                      const SizedBox(height: 10),
+                      for (final line in issueLines)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('• ',
+                                  style: TextStyle(color: Color(0xFFD32F2F), fontSize: 13)),
+                              Expanded(
+                                child: Text(line,
+                                    style: const TextStyle(fontSize: 13, height: 1.5)),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               // 단계 그룹
               ..._groups.map((g) {
@@ -154,8 +196,17 @@ class _DevProcessScreenState extends State<DevProcessScreen> {
                       ),
                       ...list.map((s) {
                         num0++;
-                        final isDone = (s['actual'] ?? '').toString().trim().isNotEmpty;
-                        final isCurrent = !isDone && s['name'] == currentStage;
+                        final stepStatus = (s['status'] ?? '').toString().trim();
+                        final isDone = (s['actual'] ?? '').toString().trim().isNotEmpty ||
+                            stepStatus == '완료';
+                        // 계획일·실적일·상태가 하나도 없으면 '진행중'으로 표시하지 않는다
+                        final hasInput = (s['expected'] ?? '').toString().trim().isNotEmpty ||
+                            (s['actual'] ?? '').toString().trim().isNotEmpty ||
+                            stepStatus.isNotEmpty;
+                        final isCurrent = !isDone &&
+                            hasInput &&
+                            (stepStatus == '진행중' ||
+                                (currentStage.isNotEmpty && s['name'] == currentStage));
                         final expected = (s['expected'] ?? '').toString();
                         final actual = (s['actual'] ?? '').toString();
                         return Container(

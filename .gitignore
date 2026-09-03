@@ -136,13 +136,11 @@ backend/notes.json
 backend/reports_latest.json
 backend/reports_history.json
 backend/reports.json
-backend/models.json
 
 # 로컬/서버 데이터 (fly.io /data 볼륨에 별도 저장)
 *.server_backup
 backend/fcm_cooldown.json
 backend/notification_history.json
-backend/models.json
 backend/notes.json
 backend/app_version.json
 backend/reports_latest.json
@@ -151,3 +149,8 @@ backend/note_assets/photos/**/*.png
 backend/note_assets/tables/**/*.json
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Android 서명 키 (절대 커밋 금지)
+mobile/android/key.properties
+*.jks
+*.keystore

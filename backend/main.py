@@ -19963,11 +19963,32 @@ def _inject_weekly_summary(m: dict) -> dict:
     return m
 
 def _process_current(proc: list):
+    """현재(다음) 진행 단계. 계획일·실적일·상태가 하나도 없는 단계는
+    아직 일정이 안 잡힌 것으로 보고 '진행중'으로 표시하지 않는다."""
+    def _done(s):
+        return bool(str((s or {}).get("actual") or "").strip()) or (s or {}).get("status") == "완료"
+
+    def _has_input(s):
+        return any(str((s or {}).get(k) or "").strip()
+                   for k in ("expected", "actual", "status"))
+
+    proc = proc or []
+    # 1) 상태를 '진행중'으로 직접 지정한 단계
     for s in proc:
-        # actual이 있거나 status가 '완료'면 완료로 인식하고 다음 단계로
-        if not str(s.get("actual") or "").strip() and s.get("status") != "완료":
+        if (s or {}).get("status") == "진행중" and not _done(s):
             return s.get("name") or "", str(s.get("expected") or "")
-    return "최종 승인 완료", ""
+    # 2) 계획일이 잡힌 첫 미완료 단계
+    for s in proc:
+        if not _done(s) and str((s or {}).get("expected") or "").strip():
+            return s.get("name") or "", str(s.get("expected") or "")
+    # 3) 입력이 하나라도 있는 첫 미완료 단계
+    for s in proc:
+        if not _done(s) and _has_input(s):
+            return s.get("name") or "", str(s.get("expected") or "")
+    # 4) 전부 완료했으면 완료, 입력이 아예 없으면 현재 단계 없음
+    if proc and all(_done(s) for s in proc):
+        return "최종 승인 완료", ""
+    return "", ""
 
 def _model_progress_value(m: dict):
     """모델 1건의 진행률(%). 데이터가 없으면 None → 집계에서 제외.
