@@ -16502,8 +16502,8 @@ def _month_shipment_answer(project_key, month, mode='qty'):
     if not keys:
         return None
 
-    g_yang = {'plan': 0, 'actual': 0, 'revenue': 0}
-    g_dev = {'plan': 0, 'actual': 0, 'revenue': 0}
+    g_yang = {'plan': 0, 'actual': 0, 'revenue': 0, 'plan_revenue': 0}
+    g_dev = {'plan': 0, 'actual': 0, 'revenue': 0, 'plan_revenue': 0}
     week_rows = {}
     model_rows = []
     used_labels = []
@@ -16518,10 +16518,10 @@ def _month_shipment_answer(project_key, month, mode='qty'):
             continue
         used_labels.append(PROJECT_LABELS.get(k, k))
         for tgt, src_t in ((g_yang, y_tot), (g_dev, d_tot)):
-            for f in ('plan', 'actual', 'revenue'):
-                tgt[f] += int(src_t.get(f) or 0)
+            for f in ('plan', 'actual', 'revenue', 'plan_revenue'):
+                tgt[f] = tgt.get(f, 0) + int(src_t.get(f) or 0)
         for w in wr.get('weeks') or []:
-            row = week_rows.setdefault(w, {'yp': 0, 'ya': 0, 'dp': 0, 'da': 0, 'rev': 0})
+            row = week_rows.setdefault(w, {'yp': 0, 'ya': 0, 'dp': 0, 'da': 0, 'rev': 0, 'prev': 0})
             yc = ((grp.get('양산') or {}).get('weeks') or {}).get(w) or {}
             dc = ((grp.get('개발') or {}).get('weeks') or {}).get(w) or {}
             row['yp'] += int(yc.get('plan') or 0)
@@ -16529,6 +16529,7 @@ def _month_shipment_answer(project_key, month, mode='qty'):
             row['dp'] += int(dc.get('plan') or 0)
             row['da'] += int(dc.get('actual') or 0)
             row['rev'] += int(yc.get('revenue') or 0) + int(dc.get('revenue') or 0)
+            row['prev'] += int(yc.get('plan_revenue') or 0) + int(dc.get('plan_revenue') or 0)
         for m in ((grp.get('양산') or {}).get('models_used') or []):
             model_rows.append(m)
 
@@ -16544,17 +16545,30 @@ def _month_shipment_answer(project_key, month, mode='qty'):
 
     if mode == 'rev':
         total_rev = g_yang['revenue'] + g_dev['revenue']
-        lines.append(f"{month} {label} 매출은 총 ${total_rev:,}입니다. "
-                     f"(양산 ${g_yang['revenue']:,} / 개발 ${g_dev['revenue']:,})")
+        total_plan_rev = g_yang['plan_revenue'] + g_dev['plan_revenue']
+        if total_rev > 0:
+            lines.append(f"{month} {label} 매출은 실적 기준 ${total_rev:,}입니다. "
+                         f"(양산 ${g_yang['revenue']:,} / 개발 ${g_dev['revenue']:,})")
+            lines.append(f"계획 기준 예상 매출은 ${total_plan_rev:,}이고, "
+                         f"달성률은 {round(total_rev * 100 / total_plan_rev) if total_plan_rev else 0}%입니다.")
+        else:
+            _lc = ord(label[-1])
+            _j = '은' if (0xAC00 <= _lc <= 0xD7A3 and (_lc - 0xAC00) % 28) else '는'
+            lines.append(f"{month} {label}{_j} 아직 실적이 없고, "
+                         f"계획 기준 예상 매출은 ${total_plan_rev:,}입니다. "
+                         f"(양산 ${g_yang['plan_revenue']:,} / 개발 ${g_dev['plan_revenue']:,})")
         lines.append('')
-        lines.append('주차별 매출')
+        lines.append('주차별 (실적 / 계획 기준 예상)')
         for w in weeks_sorted:
-            lines.append(f"- {w}: ${week_rows[w]['rev']:,}")
+            lines.append(f"- {w}: ${week_rows[w]['rev']:,} / ${week_rows[w]['prev']:,}")
     else:
         total_a = g_yang['actual'] + g_dev['actual']
         total_p = g_yang['plan'] + g_dev['plan']
+        total_rev = g_yang['revenue'] + g_dev['revenue']
+        total_plan_rev = g_yang['plan_revenue'] + g_dev['plan_revenue']
         lines.append(f"{month} {label} 출하 실적은 총 {total_a}대입니다. "
                      f"(양산 {g_yang['actual']}대 / 개발 {g_dev['actual']}대, 계획 {total_p}대)")
+        lines.append(f"매출로는 실적 ${total_rev:,} / 계획 기준 예상 ${total_plan_rev:,}입니다.")
         lines.append('')
         lines.append('주차별 (계획 → 실적)')
         for w in weeks_sorted:
@@ -19688,6 +19702,70 @@ def get_projects_progress_summary(division_id: str = None):
     }
 
 
+@app.get("/admin/overview")
+def get_admin_overview(month: str = None, division_id: str = None):
+    """Admin 홈 대시보드용 요약: 프로젝트별 진행률 + 해당 월 수량/매출."""
+    import datetime as _dt
+    data = _load_models()
+    month = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+
+    rows = []
+    for pk, proj in (data.get("projects") or {}).items():
+        entry = _project_progress_entry(pk, proj)
+        if division_id and entry.get("division_id") != division_id:
+            continue
+        row = {
+            "key": pk,
+            "label": PROJECT_LABELS.get(pk, pk),
+            "division_id": entry.get("division_id"),
+            "models_total": entry.get("models_total", 0),
+            "scored_count": entry.get("scored_count", 0),
+            "progress": entry.get("progress"),
+            "qty_plan": 0, "qty_actual": 0,
+            "revenue": 0, "plan_revenue": 0,
+            "has_weekly": False,
+        }
+        try:
+            wr = get_weekly_revenue(pk, month) or {}
+            grp = wr.get("groups") or {}
+            for g in ("양산", "개발"):
+                t = (grp.get(g) or {}).get("total") or {}
+                row["qty_plan"] += int(t.get("plan") or 0)
+                row["qty_actual"] += int(t.get("actual") or 0)
+                row["revenue"] += int(t.get("revenue") or 0)
+                row["plan_revenue"] += int(t.get("plan_revenue") or 0)
+            row["has_weekly"] = bool(row["qty_plan"] or row["qty_actual"])
+        except Exception as _e:
+            print(f"[overview] {pk} 주차 매출 계산 실패: {_e}")
+        rows.append(row)
+
+    rows.sort(key=lambda r: (-(r["plan_revenue"] or 0), -(r["models_total"] or 0), r["label"]))
+
+    scored = sum(r["scored_count"] for r in rows)
+    score_sum = 0
+    for pk, proj in (data.get("projects") or {}).items():
+        e = _project_progress_entry(pk, proj)
+        if division_id and e.get("division_id") != division_id:
+            continue
+        score_sum += e.get("score_sum", 0)
+
+    return {
+        "month": month,
+        "totals": {
+            "projects": len(rows),
+            "projects_active": sum(1 for r in rows if r["models_total"]),
+            "models": sum(r["models_total"] for r in rows),
+            "scored_count": scored,
+            "progress": round(score_sum / scored) if scored else None,
+            "qty_plan": sum(r["qty_plan"] for r in rows),
+            "qty_actual": sum(r["qty_actual"] for r in rows),
+            "revenue": sum(r["revenue"] for r in rows),
+            "plan_revenue": sum(r["plan_revenue"] for r in rows),
+        },
+        "projects": rows,
+    }
+
+
 def _parse_any_date(v):
     """'2026-08-13', '2026/08/13', '26-08-13', '8/13' 같은 값을 date 로."""
     import datetime as _dt, re as _re
@@ -20578,7 +20656,7 @@ def get_weekly_revenue(project_key: str, month: str = None):
             all_weeks = _get_month_weeks(month)
 
     # ── 양산: 모델별 주차 실적 x 모델 판가 ──
-    yang_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0} for w in all_weeks}
+    yang_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0, "plan_revenue": 0} for w in all_weeks}
     yang_models_used = []
     for m in proj.get("models", []):
         if m.get("group") == "개발": continue
@@ -20591,6 +20669,7 @@ def get_weekly_revenue(project_key: str, month: str = None):
             yang_weeks[w]["plan"] += p
             yang_weeks[w]["actual"] += a
             yang_weeks[w]["revenue"] += a * price
+            yang_weeks[w]["plan_revenue"] += p * price
             if p or a: used = True
         if used:
             yang_models_used.append({"id": m.get("id"), "price": price,
@@ -20598,7 +20677,8 @@ def get_weekly_revenue(project_key: str, month: str = None):
                 "actual": sum(int((bucket.get(w) or {}).get("actual") or 0) for w in all_weeks)})
     yang_total = {"plan": sum(v["plan"] for v in yang_weeks.values()),
                   "actual": sum(v["actual"] for v in yang_weeks.values()),
-                  "revenue": sum(v["revenue"] for v in yang_weeks.values())}
+                  "revenue": sum(v["revenue"] for v in yang_weeks.values()),
+                  "plan_revenue": sum(v["plan_revenue"] for v in yang_weeks.values())}
 
     # ── 개발: 그룹 실적 x 고정 단가 ──
     dev_g = ws_data.get("개발") or {}
@@ -20606,14 +20686,17 @@ def get_weekly_revenue(project_key: str, month: str = None):
     for w in all_weeks:
         cell = (dev_g.get("weeks") or {}).get(w) or {}
         p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
-        dev_weeks[w] = {"plan": p, "actual": a, "revenue": a * DEV_PRICE}
+        dev_weeks[w] = {"plan": p, "actual": a, "revenue": a * DEV_PRICE,
+                        "plan_revenue": p * DEV_PRICE}
     dev_total = {"plan": sum(v["plan"] for v in dev_weeks.values()),
                  "actual": sum(v["actual"] for v in dev_weeks.values()),
-                 "revenue": sum(v["revenue"] for v in dev_weeks.values())}
+                 "revenue": sum(v["revenue"] for v in dev_weeks.values()),
+                 "plan_revenue": sum(v["plan_revenue"] for v in dev_weeks.values())}
 
     combined = {w: {"plan": yang_weeks[w]["plan"] + dev_weeks[w]["plan"],
                     "actual": yang_weeks[w]["actual"] + dev_weeks[w]["actual"],
-                    "revenue": yang_weeks[w]["revenue"] + dev_weeks[w]["revenue"]}
+                    "revenue": yang_weeks[w]["revenue"] + dev_weeks[w]["revenue"],
+                    "plan_revenue": yang_weeks[w]["plan_revenue"] + dev_weeks[w]["plan_revenue"]}
                 for w in all_weeks}
 
     yang_g = ws_data.get("양산") or {}
@@ -20635,7 +20718,8 @@ def get_weekly_revenue(project_key: str, month: str = None):
         "combined": {"weeks": combined,
                      "total": {"plan": yang_total["plan"] + dev_total["plan"],
                                "actual": yang_total["actual"] + dev_total["actual"],
-                               "revenue": yang_total["revenue"] + dev_total["revenue"]}},
+                               "revenue": yang_total["revenue"] + dev_total["revenue"],
+                               "plan_revenue": yang_total["plan_revenue"] + dev_total["plan_revenue"]}},
         "note": "양산 = 모델별 판가 x 주차 실적 (모델별 주차 입력 기반), 개발 = 실적 x $3,400 고정.",
     }
 
