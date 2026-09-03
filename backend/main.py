@@ -16505,6 +16505,7 @@ async def chat(payload: dict):
     except NameError:
         _CHAT_SESSIONS = {}
     sess = _CHAT_SESSIONS.setdefault(session_id, {})
+    _user_text = message  # 세션 태그가 붙기 전 사용자 원문 (주차 판별은 이것만 본다)
     last_project = sess.get("last_project")
     last_week = sess.get("last_week")
     _month_context = ""  # 월 합계 컨텍스트 (월 키워드 있을 때만 채워짐)
@@ -16557,16 +16558,16 @@ async def chat(payload: dict):
     alias_hit = None
     # 긴 키부터 매칭 ('다다음주'가 '다음주'보다 먼저 검사되도록)
     for kw, off in sorted(week_aliases.items(), key=lambda x: -len(x[0])):
-        if kw in message:
+        if kw in _user_text:
             cur_wk = max(1, cur_wk + off)
             alias_hit = kw
             break
 
     # ── 명시적 주차 숫자 ("33주차" 또는 "W33") 별칭 매핑 추가 ──
     if not alias_hit:
-        _m_explicit = _re3.search(r'(?<!\d)(\d{1,2})\s*주차', message)
+        _m_explicit = _re3.search(r'(?<!\d)(\d{1,2})\s*주차', _user_text)
         if not _m_explicit:
-            _m_explicit = _re3.search(r'\bW\s*(\d{1,2})\b', message, _re3.I)
+            _m_explicit = _re3.search(r'\bW\s*(\d{1,2})\b', _user_text, _re3.I)
         if _m_explicit:
             try:
                 _n = int(_m_explicit.group(1))
@@ -16674,9 +16675,12 @@ async def chat(payload: dict):
         print(f'[chat] alias {alias_hit!r} → {last_week} (project={last_project})')
     
     # ── 데이터 없는 주차는 LLM 우회하고 즉시 응답 ──
-    valid_weeks = {'W32', 'W33', 'W34', 'W35'}
-    if alias_hit and last_week not in valid_weeks:
-        _no_data_msg = f'해당 주차({last_week}) 데이터는 아직 등록되지 않았습니다. 현재 등록된 주차: W32, W33, W34, W35.'
+    valid_weeks = _known_weeks(last_project)
+    # 사용자가 실제로 주차를 지정한 경우에만 '데이터 없음'으로 끊는다
+    _asked_week = bool(alias_hit) and alias_hit != 'implicit'
+    if _asked_week and valid_weeks and last_week not in valid_weeks:
+        _wk_list = ', '.join(sorted(valid_weeks, key=lambda w: int(str(w).lstrip('Ww') or 0)))
+        _no_data_msg = f'해당 주차({last_week}) 데이터는 아직 등록되지 않았습니다. 현재 등록된 주차: {_wk_list}.'
         _no_data_src = [{'key': last_project, 'label': '하바플레이트'}] if last_project == 'hrva_plate' else []
         return {'answer': _no_data_msg, 'sources': _no_data_src, 'corrected_query': None}
 
@@ -19257,6 +19261,28 @@ DEV_PROCESS_STEPS = [
 
 def _default_process() -> list:
     return [{"key": k, "name": n, "group": g, "expected": "", "actual": "", "status": ""} for k, n, g in DEV_PROCESS_STEPS]
+
+def _known_weeks(project_key=None) -> set:
+    """실제로 데이터가 들어 있는 주차 집합. (weekly_summary + 모델 weekly_plan)"""
+    try:
+        data = _load_models()
+    except Exception:
+        return set()
+    weeks = set()
+    for pk, proj in (data.get("projects") or {}).items():
+        if project_key and project_key not in ("all", pk):
+            continue
+        for g in ("양산", "개발"):
+            for w, cell in (((proj.get("weekly_summary") or {}).get(g) or {}).get("weeks") or {}).items():
+                if (cell or {}).get("plan") or (cell or {}).get("actual"):
+                    weeks.add(str(w).upper())
+        for m in (proj.get("models") or []):
+            for _mo, wk in ((m.get("weekly_plan") or {})).items():
+                for w, cell in (wk or {}).items():
+                    if (cell or {}).get("plan") or (cell or {}).get("actual"):
+                        weeks.add(str(w).upper())
+    return weeks
+
 
 def _model_key_alias(project_key: str) -> str:
     _alias = {"havaplate": "hrva_plate", "hrvaplate": "hrva_plate", "hrva-plate": "hrva_plate"}
