@@ -19798,6 +19798,59 @@ def admin_get_model_process(project_key: str, model_id: str,
     return get_model_process(project_key, model_id)
 
 
+@app.post("/admin/projects/{project_key}/models/{model_id}/process/step-status")
+def admin_set_process_step_status(project_key: str, model_id: str, payload: dict,
+                                  _admin: int = Depends(get_admin_session)):
+    """공정 단계 하나의 상태만 바꾼다 (표의 상태 드롭다운).
+    payload = {step_key, status}  status: '' | '대기' | '진행중' | '완료' | '미승인' | '미제출'
+    '완료'로 바꿨는데 실적일이 비어 있으면 오늘 날짜를 채워 진행률에 반영되게 한다."""
+    from urllib.parse import unquote
+    import datetime as _dt
+    model_id = unquote(model_id)
+    step_key = str(payload.get("step_key") or "").strip()
+    status = str(payload.get("status") or "").strip()
+    if not step_key:
+        raise HTTPException(status_code=400, detail="step_key 가 필요합니다.")
+
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    target = next((m for m in proj.get("models", [])
+                   if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower()), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    if target.get("group") != "개발":
+        raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
+
+    proc = _ensure_process(target)
+    step = next((st for st in proc if str(st.get("key")) == step_key), None)
+    if step is None:
+        raise HTTPException(status_code=404, detail=f"단계 '{step_key}' 를 찾을 수 없습니다.")
+
+    step["status"] = status
+    if status == "완료" and not str(step.get("actual") or "").strip():
+        step["actual"] = _dt.date.today().isoformat()
+    if status in ("", "대기", "진행중"):
+        # 완료 취소면 실적일도 비운다 (진행률이 남아 있지 않게)
+        step["actual"] = ""
+
+    target["process"] = proc
+    target["progress"] = _process_progress(proc)
+    stage, expected = _process_current(proc)
+    _save_models(data)
+    print(f"[process] step {_key}/{model_id} {step_key} → {status or '기본'} (progress={target['progress']}%)")
+    return {
+        "ok": True,
+        "model_id": model_id,
+        "step_key": step_key,
+        "status": status,
+        "actual": step.get("actual", ""),
+        "progress": target["progress"],
+        "current_stage": stage,
+        "current_expected": expected,
+    }
+
+
 @app.put("/admin/projects/{project_key}/models/{model_id}/process")
 def admin_put_model_process(project_key: str, model_id: str, payload: dict,
                             _admin: int = Depends(get_admin_session)):
