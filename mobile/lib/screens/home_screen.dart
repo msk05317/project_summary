@@ -79,6 +79,136 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // 경영 요약(이번 달 매출/출하) — 홈 최상단 카드용
   late Future<OverviewSummary> _overviewFuture;
 
+  // 헤더 돋보기로 여는 검색 패널
+  bool _searchOpen = false;
+
+  // 사업부 필터
+  _DivFilter _divFilter = _DivFilter.all;
+  bool _favoritesOnly = false;
+
+  bool get _filterActive =>
+      _divFilter != _DivFilter.all || _favoritesOnly;
+
+  /// 검색어 외 추가 필터(상태/즐겨찾기) 통과 여부.
+  bool _passesFilter(Division d, DivisionStatus status) {
+    if (_favoritesOnly && !_favDivisions.contains(d.id)) return false;
+    switch (_divFilter) {
+      case _DivFilter.all:
+        return true;
+      case _DivFilter.active:
+        return status != DivisionStatus.empty;
+      case _DivFilter.empty:
+        return status == DivisionStatus.empty;
+    }
+  }
+
+  Future<void> _openFilterSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        var f = _divFilter;
+        var fav = _favoritesOnly;
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            Widget option(String label, bool selected, VoidCallback onTap) {
+              return InkWell(
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 14),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(label, style: AppText.body)),
+                      if (selected)
+                        const Icon(Icons.check,
+                            size: 20, color: AppColors.summaryInProgress),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return SafeArea(
+              top: false,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.bgCard,
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.borderDefault,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('사업부 필터', style: AppText.h2),
+                    ),
+                    const SizedBox(height: 6),
+                    option('전체', f == _DivFilter.all,
+                        () => setSheet(() => f = _DivFilter.all)),
+                    option('진행 중인 사업부만', f == _DivFilter.active,
+                        () => setSheet(() => f = _DivFilter.active)),
+                    option('비어 있는 사업부만', f == _DivFilter.empty,
+                        () => setSheet(() => f = _DivFilter.empty)),
+                    const Divider(height: 1, color: AppColors.borderSoft),
+                    option('즐겨찾기(★)만 보기', fav,
+                        () => setSheet(() => fav = !fav)),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                setSheet(() {
+                                  f = _DivFilter.all;
+                                  fav = false;
+                                });
+                              },
+                              child: const Text('초기화'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () {
+                                setState(() {
+                                  _divFilter = f;
+                                  _favoritesOnly = fav;
+                                });
+                                Navigator.of(ctx).pop();
+                              },
+                              child: const Text('적용'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // 현재 선택된 하단 네비 탭. 첫 탭이 '홈'.
   AppNavTab _currentTab = AppNavTab.home;
 
@@ -493,11 +623,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         );
                       },
                       onTapSearch: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('검색 기능 준비 중입니다.')),
-                        );
+                        setState(() {
+                          _searchOpen = !_searchOpen;
+                          if (!_searchOpen) _query = '';
+                        });
                       },
                     ),
+
+                    // 헤더 돋보기로 여는 검색 패널.
+                    // 사업부뿐 아니라 프로젝트까지 바로 찾아 들어갈 수 있게 한다.
+                    if (_searchOpen)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.x4,
+                          AppSpacing.x2,
+                          AppSpacing.x4,
+                          AppSpacing.x2,
+                        ),
+                        child: _HomeSearchPanel(
+                          query: _query,
+                          divisionsFuture: _divisionsFuture,
+                          onChanged: (v) => setState(() => _query = v),
+                          onClose: () => setState(() {
+                            _searchOpen = false;
+                            _query = '';
+                          }),
+                          onTapDivision: _openDivision,
+                          onTapProject: (key) => _openProject(key),
+                        ),
+                      ),
 
                     // 전체 현황 요약 (KPI)
                     Padding(
@@ -568,15 +722,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       query: _query,
                       matchDivision: _matchDivisionByQuery,
                       onChangedQuery: (v) => setState(() => _query = v),
-                      onTapFilter: () {
-                        // 이번 단계에서는 동작 없음 — '준비 중' 안내만 표시.
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('필터 기능은 곧 제공됩니다.'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      },
+                      onTapFilter: _openFilterSheet,
+                      passesFilter: _passesFilter,
+                      filterActive: _filterActive,
+                      onClearFilter: () => setState(() {
+                        _divFilter = _DivFilter.all;
+                        _favoritesOnly = false;
+                      }),
                       // 즐겨찾기 종속 prop (시안 v2 신규)
                     ),
                   ],
@@ -839,6 +991,11 @@ class _DivisionsSection extends StatelessWidget {
   final VoidCallback onTapFilter;
   final ValueChanged<String> onChangedQuery;
 
+  // 상태/즐겨찾기 필터
+  final bool Function(Division d, DivisionStatus status) passesFilter;
+  final bool filterActive;
+  final VoidCallback onClearFilter;
+
   const _DivisionsSection({
     required this.future,
     required this.onTapItem,
@@ -850,6 +1007,9 @@ class _DivisionsSection extends StatelessWidget {
     required this.matchDivision,
     required this.onTapFilter,
     required this.onChangedQuery,
+    required this.passesFilter,
+    required this.filterActive,
+    required this.onClearFilter,
   });
 
   @override
@@ -913,17 +1073,20 @@ class _DivisionsSection extends StatelessWidget {
             future: future,
             builder: (context, snap) {
               final all = snap.data ?? const <Division>[];
-              final favs = all
-                  .where((d) => favoriteDivisionIds.contains(d.id))
-                  .where((d) => matchDivision(d, query))
-                  .toList();
-
-              if (favs.isEmpty) return const SizedBox.shrink();
 
               return FutureBuilder<List<DashboardCard>>(
                 future: dashboardFuture,
                 builder: (context, cardSnap) {
                   final cards = cardSnap.data ?? const <DashboardCard>[];
+                  final favs = all
+                      .where((d) => favoriteDivisionIds.contains(d.id))
+                      .where((d) => matchDivision(d, query))
+                      .where((d) =>
+                          passesFilter(d, divisionStatus(d.id, cards)))
+                      .toList();
+
+                  if (favs.isEmpty) return const SizedBox.shrink();
+
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -997,8 +1160,14 @@ class _DivisionsSection extends StatelessWidget {
             future: future,
             builder: (context, snap) {
               final all = snap.data ?? const <Division>[];
-              final filtered =
-                  all.where((d) => matchDivision(d, query)).toList();
+              return FutureBuilder<List<DashboardCard>>(
+                future: dashboardFuture,
+                builder: (context, cardSnap) {
+              final cards = cardSnap.data ?? const <DashboardCard>[];
+              final filtered = all
+                  .where((d) => matchDivision(d, query))
+                  .where((d) => passesFilter(d, divisionStatus(d.id, cards)))
+                  .toList();
               final allCount = all.length;
               final shownCount = filtered.length;
 
@@ -1019,7 +1188,7 @@ class _DivisionsSection extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    query.isEmpty
+                    (query.isEmpty && !filterActive)
                         ? '$allCount개'
                         : '$shownCount/$allCount개',
                     style: AppText.caption.copyWith(
@@ -1028,8 +1197,52 @@ class _DivisionsSection extends StatelessWidget {
                   ),
                 ],
               );
+                },
+              );
             },
           ),
+
+          // 필터가 걸려 있으면 한 줄로 알려주고, 눌러서 바로 해제한다.
+          if (filterActive)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  onTap: onClearFilter,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.summaryInProgress
+                          .withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.filter_alt_rounded,
+                            size: 13,
+                            color: AppColors.summaryInProgress),
+                        const SizedBox(width: 4),
+                        Text('필터 적용 중',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.summaryInProgress,
+                              fontWeight: FontWeight.w700,
+                            )),
+                        const SizedBox(width: 8),
+                        Text('해제',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.summaryInProgress,
+                              decoration: TextDecoration.underline,
+                            )),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: AppSpacing.x2),
 
           // 사업부 그리드 (검색어 필터링 + status 매핑)
@@ -1051,9 +1264,6 @@ class _DivisionsSection extends StatelessWidget {
               }
 
               final allItems = snapshot.data ?? const <Division>[];
-              final items = allItems
-                  .where((d) => matchDivision(d, query))
-                  .toList();
 
               if (allItems.isEmpty) {
                 return Text(
@@ -1061,22 +1271,29 @@ class _DivisionsSection extends StatelessWidget {
                   style: AppText.caption.copyWith(color: AppColors.reportBody),
                 );
               }
-              if (items.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    '"$query" 에 해당하는 사업부/프로젝트가 없습니다.',
-                    style: AppText.caption.copyWith(
-                      color: AppColors.reportBody,
-                    ),
-                  ),
-                );
-              }
-
               return FutureBuilder<List<DashboardCard>>(
                 future: dashboardFuture,
                 builder: (context, cardSnap) {
                   final cards = cardSnap.data ?? const <DashboardCard>[];
+                  final items = allItems
+                      .where((d) => matchDivision(d, query))
+                      .where((d) =>
+                          passesFilter(d, divisionStatus(d.id, cards)))
+                      .toList();
+
+                  if (items.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        query.isEmpty
+                            ? '조건에 맞는 사업부가 없습니다.'
+                            : '"$query" 에 해당하는 사업부/프로젝트가 없습니다.',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.reportBody,
+                        ),
+                      ),
+                    );
+                  }
 
                   return GridView.builder(
                     shrinkWrap: true,
@@ -1223,4 +1440,259 @@ class _ImmediateNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+// 사업부 필터 종류. 필터 시트에서 고른다.
+enum _DivFilter { all, active, empty }
+
+// 헤더 돋보기로 여는 검색 패널.
+// - 사업부명뿐 아니라 프로젝트명/키까지 한 번에 찾는다.
+// - 결과를 바로 눌러 해당 화면으로 들어간다.
+class _HomeSearchPanel extends StatefulWidget {
+  final String query;
+  final Future<List<Division>> divisionsFuture;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClose;
+  final void Function(Division division) onTapDivision;
+  final void Function(String projectKey) onTapProject;
+
+  const _HomeSearchPanel({
+    required this.query,
+    required this.divisionsFuture,
+    required this.onChanged,
+    required this.onClose,
+    required this.onTapDivision,
+    required this.onTapProject,
+  });
+
+  @override
+  State<_HomeSearchPanel> createState() => _HomeSearchPanelState();
+}
+
+class _HomeSearchPanelState extends State<_HomeSearchPanel> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.query);
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = widget.query.trim().toLowerCase();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.borderDefault),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+            child: Row(
+              children: [
+                const Icon(Icons.search, size: 18, color: AppColors.textMute),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _c,
+                    focusNode: _focus,
+                    textInputAction: TextInputAction.search,
+                    style: AppText.body,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: '사업부 · 프로젝트 검색',
+                      hintStyle:
+                          AppText.body.copyWith(color: AppColors.textMute),
+                    ),
+                    onChanged: (v) {
+                      setState(() {});
+                      widget.onChanged(v);
+                    },
+                  ),
+                ),
+                if (_c.text.isNotEmpty)
+                  IconButton(
+                    tooltip: '지우기',
+                    icon: const Icon(Icons.cancel,
+                        size: 18, color: AppColors.textMute),
+                    onPressed: () {
+                      _c.clear();
+                      setState(() {});
+                      widget.onChanged('');
+                    },
+                  ),
+                IconButton(
+                  tooltip: '닫기',
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: widget.onClose,
+                ),
+              ],
+            ),
+          ),
+          if (q.isNotEmpty) ...[
+            const Divider(height: 1, color: AppColors.borderSoft),
+            FutureBuilder<List<Division>>(
+              future: widget.divisionsFuture,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+
+                final all = snap.data ?? const <Division>[];
+
+                final divHits = all
+                    .where((d) => d.label.toLowerCase().contains(q))
+                    .toList();
+
+                final projHits = <_ProjHit>[];
+                for (final d in all) {
+                  for (final p in d.projects) {
+                    if (p.label.toLowerCase().contains(q) ||
+                        p.id.toLowerCase().contains(q)) {
+                      projHits.add(_ProjHit(d, p));
+                    }
+                  }
+                }
+
+                if (divHits.isEmpty && projHits.isEmpty) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                    child: Text(
+                      '"${widget.query}" 검색 결과가 없습니다.',
+                      style:
+                          AppText.caption.copyWith(color: AppColors.reportBody),
+                    ),
+                  );
+                }
+
+                final rows = <Widget>[];
+
+                if (divHits.isNotEmpty) {
+                  rows.add(_sectionLabel('사업부 ${divHits.length}'));
+                  for (final d in divHits.take(6)) {
+                    rows.add(_row(
+                      icon: Icons.apartment_rounded,
+                      title: d.label,
+                      sub: '프로젝트 ${d.projects.length}개',
+                      onTap: () {
+                        widget.onClose();
+                        widget.onTapDivision(d);
+                      },
+                    ));
+                  }
+                }
+
+                if (projHits.isNotEmpty) {
+                  rows.add(_sectionLabel('프로젝트 ${projHits.length}'));
+                  for (final h in projHits.take(8)) {
+                    rows.add(_row(
+                      icon: Icons.description_outlined,
+                      title: h.project.label,
+                      sub: h.division.label,
+                      onTap: () {
+                        widget.onClose();
+                        widget.onTapProject(h.project.id);
+                      },
+                    ));
+                  }
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: rows,
+                );
+              },
+            ),
+            const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+      child: Text(
+        text,
+        style: AppText.caption.copyWith(
+          color: AppColors.textMute,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _row({
+    required IconData icon,
+    required String title,
+    required String sub,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: AppColors.summaryInProgress),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: AppText.bodyStrong,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 1),
+                  Text(sub,
+                      style:
+                          AppText.caption.copyWith(color: AppColors.reportBody),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right,
+                size: 18, color: AppColors.textMute),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// 검색 결과에서 '어느 사업부의 어느 프로젝트' 인지 같이 들고 다닌다.
+class _ProjHit {
+  final Division division;
+  final DivisionProjectRef project;
+  const _ProjHit(this.division, this.project);
 }

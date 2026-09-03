@@ -516,6 +516,13 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
   int get _basePlan => _monthTotals?.plan ?? _poQty;
   int get _baseActual => _monthTotals?.actual ?? _shipped;
   int get _remaining => _basePlan - _baseActual;
+
+  /// 계획보다 더 내보냈으면 '잔여'가 아니라 '초과'다.
+  /// (-1 로 찍히면 마치 출하를 못 한 것처럼 읽힌다)
+  bool get _isOver => _remaining < 0;
+  String get _remainLabel =>
+      '${_byMonth ? _monthShort : ''}${_isOver ? '초과 출하' : '잔여 수량'}';
+  String get _remainValue => _isOver ? '+${-_remaining}' : '$_remaining';
   int get _shipProgress =>
       _basePlan > 0 ? ((_baseActual * 100) / _basePlan).round() : 0;
   String get _monthShort {
@@ -560,6 +567,18 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
   String _monthLabel(String m) {
     final p = m.split('-');
     return p.length == 2 ? '${int.tryParse(p[1]) ?? ''}월' : m;
+  }
+
+  /// 잔여 칸: 음수는 '+N'(초과)로, 초록색으로 보여준다.
+  Widget _remainCell(int diff, {bool bold = false}) {
+    final over = diff < 0;
+    return Text(
+      over ? '+${-diff}' : '$diff',
+      style: TextStyle(
+        fontWeight: bold ? FontWeight.w800 : FontWeight.normal,
+        color: over ? const Color(0xFF059669) : null,
+      ),
+    );
   }
 
   Widget _buildWeeklyTable() {
@@ -614,7 +633,7 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
           ])),
           DataCell(Text('$plan')),
           DataCell(Text('$act', style: TextStyle(color: act > 0 ? const Color(0xFF059669) : Colors.black45, fontWeight: act > 0 ? FontWeight.w700 : FontWeight.normal))),
-          DataCell(Text('${plan - act}')),
+          DataCell(_remainCell(plan - act)),
         ],
       ));
     }
@@ -622,7 +641,7 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
       const DataCell(Text('합계', style: TextStyle(fontWeight: FontWeight.w800))),
       DataCell(Text('$tp', style: const TextStyle(fontWeight: FontWeight.w800))),
       DataCell(Text('$ta', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF059669)))),
-      DataCell(Text('${tp - ta}', style: const TextStyle(fontWeight: FontWeight.w800))),
+      DataCell(_remainCell(tp - ta, bold: true)),
     ]));
 
     return Container(
@@ -767,8 +786,8 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
           Row(children: [
-            _kpi('${_byMonth ? _monthShort : ''}잔여 수량', '$_remaining',
-                Colors.black87),
+            _kpi(_remainLabel, _remainValue,
+                _isOver ? const Color(0xFF059669) : Colors.black87),
           ]),
           const SizedBox(height: 12),
           Container(
