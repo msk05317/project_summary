@@ -19791,6 +19791,67 @@ def get_model_process(project_key: str, model_id: str):
             }
     raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
 
+@app.get("/admin/projects/{project_key}/models/{model_id}/process")
+def admin_get_model_process(project_key: str, model_id: str,
+                            _admin: int = Depends(get_admin_session)):
+    """admin v2 'Process 입력' 화면용 조회 (앱용과 같은 형식)."""
+    return get_model_process(project_key, model_id)
+
+
+@app.put("/admin/projects/{project_key}/models/{model_id}/process")
+def admin_put_model_process(project_key: str, model_id: str, payload: dict,
+                            _admin: int = Depends(get_admin_session)):
+    """admin v2 'Process 입력' 저장.
+    payload = {dev_type, steps:[{key, expected, actual, status}, ...]}
+    단계 이름·순서는 서버가 가진 것을 유지하고 입력값만 덮어쓴다."""
+    from urllib.parse import unquote
+    model_id = unquote(model_id)
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.get("projects", {}).get(_key, {})
+    target = None
+    for m in proj.get("models", []):
+        if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
+            target = m
+            break
+    if target is None:
+        raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
+    if target.get("group") != "개발":
+        raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
+
+    proc = _ensure_process(target)
+    incoming = payload.get("steps")
+    if not isinstance(incoming, list):
+        raise HTTPException(status_code=400, detail="steps 는 배열이어야 합니다.")
+
+    by_key = {str(s.get("key")): s for s in incoming if isinstance(s, dict) and s.get("key")}
+    for i, st in enumerate(proc):
+        src = by_key.get(str(st.get("key")))
+        if src is None and i < len(incoming) and isinstance(incoming[i], dict):
+            src = incoming[i]          # key 가 없으면 순서로 매칭
+        if not isinstance(src, dict):
+            continue
+        for f in ("expected", "actual", "status"):
+            if f in src:
+                st[f] = str(src.get(f) or "").strip()
+
+    dev_type = str(payload.get("dev_type") or target.get("dev_type") or "").strip().upper()
+    if dev_type:
+        target["dev_type"] = dev_type
+    target["process"] = proc
+    target["progress"] = _process_progress(proc)
+    stage, expected = _process_current(proc)
+    _save_models(data)
+    print(f"[process] saved {_key}/{model_id} progress={target['progress']}%")
+    return {
+        "ok": True,
+        "model_id": model_id,
+        "progress": target["progress"],
+        "current_stage": stage,
+        "current_expected": expected,
+    }
+
+
 # ── 파워박스 프로세스 엑셀: 시트별 템플릿 ──
 _PB_SHEET_STEPS = {
     'majormodule': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','Source Inspection','FAIR 작성','FAIR 승인','PRR 작성','PRR 승인','최종 승인'],
