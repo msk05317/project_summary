@@ -16798,7 +16798,7 @@ function resetWpModelPlan(idx) {
 </html>
 """
 
-def _week_shipment_answer(project_key, week, mode='qty'):
+def _week_shipment_answer(project_key, week, mode='qty', with_models=False):
     """주차 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     if not week:
         return None
@@ -16876,7 +16876,7 @@ def _week_shipment_answer(project_key, week, mode='qty'):
         lines.append(f"{week}({month}) {label} 출하 실적은 총 {ya + da}대입니다. "
                      f"(양산 {ya}대 / 개발 {da}대, 계획 {yp + dp}대)")
         lines.append(f"매출로는 실적 ${rev:,} / 계획 기준 예상 ${prev:,}입니다.")
-        ms = sorted(model_rows, key=lambda x: -x['actual'])
+        ms = sorted(model_rows, key=lambda x: -x['actual']) if with_models else []
         if ms:
             lines.append('')
             lines.append(f'{week} 모델별 양산 출하 실적')
@@ -16888,7 +16888,7 @@ def _week_shipment_answer(project_key, week, mode='qty'):
     return '\n'.join(lines)
 
 
-def _month_shipment_answer(project_key, month, mode='qty'):
+def _month_shipment_answer(project_key, month, mode='qty', with_models=False):
     """월 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     keys = []
     if project_key and project_key != 'all':
@@ -17001,12 +17001,8 @@ def _month_shipment_answer(project_key, month, mode='qty'):
         for w in weeks_sorted:
             r = week_rows[w]
             lines.append(f"- {w}: 양산 {r['yp']}→{r['ya']}대 / 개발 {r['dp']}→{r['da']}대")
-        if _has_src and _model_yang_actual != g_yang['actual']:
-            lines.append(f"※ 양산 수량은 주간보고 원본 기준입니다. "
-                         f"모델별로 입력된 합계는 {_model_yang_actual}대라 "
-                         f"{abs(g_yang['actual'] - _model_yang_actual)}대 차이가 있습니다.")
-        ms = sorted([m for m in model_rows if int(m.get('actual') or 0) > 0],
-                    key=lambda x: -int(x.get('actual') or 0))
+        ms = (sorted([m for m in model_rows if int(m.get('actual') or 0) > 0],
+                     key=lambda x: -int(x.get('actual') or 0)) if with_models else [])
         if ms:
             lines.append('')
             lines.append('모델별 양산 출하 실적')
@@ -17109,13 +17105,16 @@ async def chat(payload: dict):
     _qty_kw = any(k in _user_text for k in ['몇 대', '몇대', '대수', '수량', '출하량', '몇 개', '몇개', '출하'])
     _rev_kw = any(k in _user_text for k in ['매출', '금액', '얼마'])
     _mode_m = 'rev' if (_rev_kw and not _qty_kw) else 'qty'
+    # 모델을 직접 물어봤을 때만 모델별 내역을 붙인다
+    _want_models = any(k in _user_text for k in
+                       ['모델', '품번', '파트', 'part', '기종', '어떤 거', '어떤걸', '무슨 모델'])
 
     # ── 후속 질문: 직전 질문의 기준(주차 or 월)을 그대로 이어간다 ──
     if not _scope_month and not _has_week_in_msg and not _other_scope and (_qty_kw or _rev_kw):
         if sess.get('last_scope') == 'week' and sess.get('last_week'):
             _wk_prev = sess.get('last_week')
             try:
-                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m)
+                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m, _want_models)
             except Exception as _e_ws:
                 _ans_w = None
                 print(f"[chat] 주차 즉답 실패(무시): {_e_ws}")
@@ -17131,7 +17130,7 @@ async def chat(payload: dict):
 
     if _scope_month and not _has_week_in_msg and (_qty_kw or _rev_kw):
         try:
-            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m)
+            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m, _want_models)
         except Exception as _e_ms:
             _ans_m = None
             print(f"[chat] 월 즉답 실패(무시): {_e_ms}")
