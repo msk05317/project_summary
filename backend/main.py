@@ -4328,32 +4328,34 @@ def _excel_sheet_to_preview_data_url(ws):
                     draw.text((tx, ty + li * line_h), line, fill=fc, font=use_font)
 
     # ── 엑셀에서 강조한 테두리(빨간 박스 등) 재현 ──
-    def _side_rgb(side):
+    # 셀별 선을 그대로 그리면 병합 셀 때문에 한 변이 빠져 박스가 끊긴다.
+    # 그래서 '강조 테두리가 걸린 셀 덩어리'를 찾아 그 덩어리의 바깥선을 그린다.
+    def _side_accent(side):
+        """(색, 두께) — 유채색이거나 굵은 선일 때만. 평범한 검정 얇은 선은 None."""
         if side is None or not getattr(side, "style", None):
-            return None, None
+            return None
         col = getattr(side, "color", None)
-        rgb = None
-        if col is not None and getattr(col, "type", None) == "rgb" and isinstance(col.rgb, str):
-            v = col.rgb
-            if len(v) == 8:
-                v = v[2:]
-            rgb = v.upper()
-        return rgb, side.style
-
-    def _accent(rgb, style):
-        """색이 있거나 굵은 선이면 (색, 두께) 반환. 평범한 검정 얇은 선은 None."""
-        if not rgb or rgb in ("000000", "FFFFFF"):
+        if col is None or getattr(col, "type", None) != "rgb":
+            return None
+        v = col.rgb
+        if not isinstance(v, str):
+            return None
+        if len(v) == 8:
+            v = v[2:]
+        v = v.upper()
+        if v in ("000000", "FFFFFF"):
             return None
         try:
-            r_, g_, b_ = int(rgb[0:2], 16), int(rgb[2:4], 16), int(rgb[4:6], 16)
+            r_, g_, b_ = int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
         except Exception:
             return None
         colorful = (max(r_, g_, b_) - min(r_, g_, b_)) > 40
-        heavy = style in ("thick", "double", "medium")
+        heavy = side.style in ("thick", "double", "medium")
         if not (colorful or heavy):
             return None
-        return ("#" + rgb.lower(), 4 if style in ("thick", "double") else 3)
+        return ("#" + v.lower(), 4 if side.style in ("thick", "double") else 3)
 
+    marked = {}
     for r in range(min_row, max_row + 1):
         for c in range(min_col, max_col + 1):
             try:
@@ -4362,23 +4364,75 @@ def _excel_sheet_to_preview_data_url(ws):
                 continue
             if bd is None:
                 continue
-            bx1, by1 = xs[col_idx[c]], ys[row_idx[r]]
-            bx2, by2 = xs[col_idx[c] + 1] - 1, ys[row_idx[r] + 1] - 1
-            for _name, _side in (("left", bd.left), ("right", bd.right),
-                                 ("top", bd.top), ("bottom", bd.bottom)):
-                _rgb, _style = _side_rgb(_side)
-                _acc = _accent(_rgb, _style)
-                if not _acc:
-                    continue
-                _col, _w = _acc
-                if _name == "left":
-                    draw.line([(bx1, by1), (bx1, by2)], fill=_col, width=_w)
-                elif _name == "right":
-                    draw.line([(bx2, by1), (bx2, by2)], fill=_col, width=_w)
-                elif _name == "top":
-                    draw.line([(bx1, by1), (bx2, by1)], fill=_col, width=_w)
-                else:
-                    draw.line([(bx1, by2), (bx2, by2)], fill=_col, width=_w)
+            best = None
+            for side in (bd.left, bd.right, bd.top, bd.bottom):
+                acc = _side_accent(side)
+                if acc and (best is None or acc[1] > best[1]):
+                    best = acc
+            if best:
+                marked[(r, c)] = best
+
+    if marked:
+        # 병합 셀은 범위 전체를 함께 표시로 취급
+        for rng in ws.merged_cells.ranges:
+            mc, mr, xc, xr = rng.bounds
+            hit = None
+            for rr in range(mr, xr + 1):
+                for cc in range(mc, xc + 1):
+                    if (rr, cc) in marked:
+                        hit = marked[(rr, cc)]
+                        break
+                if hit:
+                    break
+            if hit:
+                for rr in range(max(mr, min_row), min(xr, max_row) + 1):
+                    for cc in range(max(mc, min_col), min(xc, max_col) + 1):
+                        marked.setdefault((rr, cc), hit)
+
+        # 연결된 덩어리별로 바깥선만 그린다
+        seen = set()
+        for origin in list(marked.keys()):
+            if origin in seen:
+                continue
+            comp = []
+            stack = [origin]
+            seen.add(origin)
+            while stack:
+                cur = stack.pop()
+                comp.append(cur)
+                cr, cc2 = cur
+                for nb in ((cr - 1, cc2), (cr + 1, cc2), (cr, cc2 - 1), (cr, cc2 + 1)):
+                    if nb in marked and nb not in seen:
+                        seen.add(nb)
+                        stack.append(nb)
+            comp_set = set(comp)
+            line_col, line_w = marked[origin]
+            for cell_rc in comp:
+                if marked[cell_rc][1] > line_w:
+                    line_col, line_w = marked[cell_rc]
+            hw = max(1, line_w // 2)
+
+            def _cx(v):
+                return min(max(v, hw), max(hw, W - 1 - hw))
+
+            def _cy(v):
+                return min(max(v, hw), max(hw, H - 1 - hw))
+
+            for (cr, cc2) in comp:
+                x1, x2 = xs[col_idx[cc2]], xs[col_idx[cc2] + 1]
+                y1, y2 = ys[row_idx[cr]], ys[row_idx[cr] + 1]
+                if (cr - 1, cc2) not in comp_set:
+                    draw.line([(_cx(x1 - hw), _cy(y1)), (_cx(x2 + hw), _cy(y1))],
+                              fill=line_col, width=line_w)
+                if (cr + 1, cc2) not in comp_set:
+                    draw.line([(_cx(x1 - hw), _cy(y2)), (_cx(x2 + hw), _cy(y2))],
+                              fill=line_col, width=line_w)
+                if (cr, cc2 - 1) not in comp_set:
+                    draw.line([(_cx(x1), _cy(y1 - hw)), (_cx(x1), _cy(y2 + hw))],
+                              fill=line_col, width=line_w)
+                if (cr, cc2 + 1) not in comp_set:
+                    draw.line([(_cx(x2), _cy(y1 - hw)), (_cx(x2), _cy(y2 + hw))],
+                              fill=line_col, width=line_w)
 
     # 마지막 흰 여백 소폭 trim
     try:
