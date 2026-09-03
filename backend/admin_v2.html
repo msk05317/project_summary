@@ -4740,7 +4740,7 @@ window.renderAdminV2ByDivision = function(){
       };
 
       window._addSectionFlow = function(){
-        const raw = prompt('추가할 섹션명을 입력하세요\\n(예: 현황, 주차별 출하실적, 주차별 계획, 주요내용, 이슈/리스크, 요청사항)');
+        const raw = prompt('추가할 섹션명을 입력하세요\n(예: 현황, 주차별 출하실적, 주차별 계획, 주요내용, 이슈/리스크, 요청사항)');
         if (raw === null) return;
         const name = String(raw || '').trim();
         if (!name) { alert('섹션명을 입력해주세요'); return; }
@@ -4761,10 +4761,10 @@ window.renderAdminV2ByDivision = function(){
             return _normSectionName(s.title) === _normSectionName(canonical);
           });
           if (existingIdx >= 0) {
-            const ok = confirm('이미 "' + canonical + '" 섹션이 있습니다.\\n이 섹션으로 대체하시겠습니까?\\n\\n[확인] 기존 섹션 사용 (추가 안 함)\\n[취소] 그래도 "' + name + '"으로 추가');
+            const ok = confirm('이미 "' + canonical + '" 섹션이 있습니다.\n이 섹션으로 대체하시겠습니까?\n\n[확인] 기존 섹션 사용 (추가 안 함)\n[취소] 그래도 "' + name + '"으로 추가');
             if (ok) return;
           } else {
-            const useCanonical = confirm('"' + name + '" 은(는) 표준명 "' + canonical + '"와 유사합니다.\\n표준명으로 추가할까요?\\n\\n[확인] "' + canonical + '"로 추가\\n[취소] 입력한 그대로 "' + name + '"으로 추가');
+            const useCanonical = confirm('"' + name + '" 은(는) 표준명 "' + canonical + '"와 유사합니다.\n표준명으로 추가할까요?\n\n[확인] "' + canonical + '"로 추가\n[취소] 입력한 그대로 "' + name + '"으로 추가');
             if (useCanonical) {
               sectionsState.push({id: _genSecId(), title: canonical, kind: 'mixed', blocks: []});
               _markSectionsDirty();
@@ -6299,7 +6299,8 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
         var r = await fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/import', { method: 'POST', body: fd, credentials: 'same-origin' });
         var d = await r.json();
         if (r.ok && d.ok) {
-          alert('✅ 완료: 신규 ' + d.added + '개, 갱신 ' + d.updated + '개 (전체 ' + d.total + '개)');
+          alert('✅ 완료: 신규 ' + d.added + '개, 갱신 ' + d.updated + '개 (전체 ' + d.total + '개)' +
+            ((d.types_added && d.types_added.length) ? '\n유형 추가: ' + d.types_added.join(', ') : ''));
           var tb = document.getElementById('mdl-table-box');
           if (tb) loadModels(_currentProjectKey, tb);
           loadTypes(_currentProjectKey);
@@ -6333,10 +6334,10 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
               ? _ap + '개 모델의 개발 프로세스를 반영했습니다.'
               : '반영된 모델이 없습니다. 엑셀의 파트번호가 등록된 모델과 일치하는지 확인해주세요.';
             if (_sk > 0 && _skList.length) {
-              _msg += '\\n매칭 안 됨 ' + _sk + '건: ' + _skList.slice(0, 5).join(', ') +
+              _msg += '\n매칭 안 됨 ' + _sk + '건: ' + _skList.slice(0, 5).join(', ') +
                       (_sk > 5 ? ' 외 ' + (_sk - 5) + '개' : '');
             } else if (_sk > 0) {
-              _msg += '\\n매칭 안 됨: ' + _sk + '건';
+              _msg += '\n매칭 안 됨: ' + _sk + '건';
             }
             if (window.mdlToast && _ap > 0 && _sk === 0) window.mdlToast('✅ ' + _msg);
             else alert((_ap > 0 ? '✅ ' : '⚠️ ') + _msg);

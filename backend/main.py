@@ -4886,7 +4886,7 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
         name = str(name_v).strip()
         group = str(ws.cell(row=r, column=col_map.get("group", 0)).value or "").strip() if col_map.get("group") else ""
         group = "개발" if group == "개발" else "양산"
-        dev_type = str(ws.cell(row=r, column=col_map.get("dev_type", 0)).value or "").strip().upper() if col_map.get("dev_type") else ""
+        dev_type = str(ws.cell(row=r, column=col_map.get("dev_type", 0)).value or "").strip() if col_map.get("dev_type") else ""
 
         def _num(col):
             if not col:
@@ -4926,9 +4926,24 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
             added += 1
 
     models.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+
+    # 엑셀 '유형' 열에 나온 값을 프로젝트 유형 목록에 자동 등록 (칩·자동완성용)
+    _types = proj.get("types")
+    if not isinstance(_types, list):
+        _types = []
+    _before = len(_types)
+    for _m in models:
+        _t = str(_m.get("dev_type") or "").strip()
+        if _t and _t not in _types:
+            _types.append(_t)
+    proj["types"] = _types
+    _new_types = _types[_before:]
+
     _save_models(data)
-    print(f"[models-import] {_key}: +{added} 신규, {updated} 갱신, {skipped} 건너뜀")
-    return {"ok": True, "added": added, "updated": updated, "total": len(models)}
+    print(f"[models-import] {_key}: +{added} 신규, {updated} 갱신, {skipped} 건너뜀"
+          + (f", 유형 추가 {_new_types}" if _new_types else ""))
+    return {"ok": True, "added": added, "updated": updated, "total": len(models),
+            "types": _types, "types_added": _new_types}
 
 
 # ─── 이슈 AI 요약 (models.json 기반, 캐시) ───
