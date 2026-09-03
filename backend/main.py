@@ -20317,6 +20317,12 @@ def get_projects_progress_summary(division_id: str = None):
     }
 
 
+@app.get("/overview")
+def get_overview(month: str = None, division_id: str = None):
+    """앱 홈 화면용 요약 (admin/overview 와 동일)."""
+    return get_admin_overview(month=month, division_id=division_id)
+
+
 @app.get("/admin/overview")
 def get_admin_overview(month: str = None, division_id: str = None):
     """Admin 홈 대시보드용 요약: 프로젝트별 진행률 + 해당 월 수량/매출."""

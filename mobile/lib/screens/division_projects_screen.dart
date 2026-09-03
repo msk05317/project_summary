@@ -10,6 +10,7 @@ import '../design/design.dart';
 import '../models/division.dart';
 import '../models/dashboard.dart';
 import '../services/dashboard_service.dart';
+import '../services/progress_service.dart';
 import '../services/favorites_service.dart';
 import '../components/division/division_summary_card.dart';
 import '../components/division/division_immediate_check.dart';
@@ -42,13 +43,29 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
   String? _selectedProjectId;
   String _projectQuery = '';
 
+  // 프로젝트 목록 필터/정렬
+  _ProjectStatusFilter _statusFilter = _ProjectStatusFilter.all;
+  _ProjectSort _sort = _ProjectSort.progressDesc;
+  bool _favoritesOnly = false;
+
+
   late Future<List<DashboardCard>> _future;
+
+  /// 진행률 요약 (백엔드 /projects-progress-summary)
+  ProgressSummary _progress = ProgressSummary.empty;
 
   @override
   void initState() {
     super.initState();
     _future = DashboardService.fetchCards();
     _loadFavorites();
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    final summary = await ProgressService.fetch();
+    if (!mounted) return;
+    setState(() => _progress = summary);
   }
 
   Future<void> _loadFavorites() async {
@@ -73,25 +90,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     setState(() {
       _future = DashboardService.fetchCards();
     });
-    await _future;
-  }
-
-  int _weightOf(String status) {
-    switch (status.toUpperCase()) {
-      case 'GREEN':
-        return 100;
-      case 'BLUE':
-      case 'GRAY':
-      case 'BLACK':
-        return 80;
-      case 'YELLOW':
-      case 'ORANGE':
-        return 50;
-      case 'RED':
-        return 20;
-      default:
-        return 60;
-    }
+    await Future.wait([_future, _loadProgress()]);
   }
 
   String _statusLabel(String status) {
@@ -176,35 +175,26 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     final divisionCards =
         allCards.where((c) => c.divisionId == widget.division.id).toList();
 
-    int red = 0, orange = 0, green = 0, other = 0;
-    int weightSum = 0;
-    int weightCount = 0; // 진행률 계산에 포함되는 카드 수 (dueDateMin 있는 것만)
-
-    for (final c in divisionCards) {
-      final s = c.status.toUpperCase();
-      final hasDue = (c.dueDateMin != null && c.dueDateMin!.isNotEmpty);
-      if (hasDue) {
-        weightSum += c.progress ?? _weightOf(s);
-        weightCount++;
-      }
-      switch (s) {
+    // 프로젝트별 최악 상태 (지연 > 주의 > 정상) — 현황 카운트는 프로젝트 단위
+    final worstStatusByKey = <String, String>{};
+    int rank(String s) {
+      switch (s.toUpperCase()) {
         case 'RED':
-          red++;
-          break;
+          return 3;
         case 'YELLOW':
         case 'ORANGE':
-          orange++;
-          break;
-        case 'GREEN':
-          green++;
-          break;
+          return 2;
         default:
-          other++;
+          return 1;
       }
     }
-
-    // final total = divisionCards.length; // unused
-    final progress = weightCount == 0 ? 0 : (weightSum / weightCount).round();
+    for (final c in divisionCards) {
+      if (c.projectKey.isEmpty) continue;
+      final cur = worstStatusByKey[c.projectKey];
+      if (cur == null || rank(c.status) > rank(cur)) {
+        worstStatusByKey[c.projectKey] = c.status;
+      }
+    }
 
     // 즉시 확인: RED/ORANGE 카드 중 마감 임박 상위 3건
     final immCandidates = divisionCards
@@ -239,14 +229,9 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         cardsByKey.putIfAbsent(c.projectKey, () => []).add(c);
       }
     }
-    int? avgProgressOf(String key) {
-      final list = cardsByKey[key] ?? const [];
-      final vals = list
-          .map((c) => c.progress ?? _weightOf(c.status))
-          .toList();
-      if (vals.isEmpty) return null;
-      return (vals.reduce((a, b) => a + b) / vals.length).round();
-    }
+    // 진행률은 모델 실데이터(/projects-progress-summary) 기준.
+    // 데이터가 없으면 null → 카드에 '-' 표시하고 평균에서도 제외.
+    int? avgProgressOf(String key) => _progress.of(key)?.progress;
     final cardByKey = <String, DashboardCard>{};
     for (final e in cardsByKey.entries) {
       cardByKey[e.key] = e.value.first;
@@ -255,10 +240,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     final projects = <_ProjectItem>[];
     for (final p in widget.division.projects) {
       final card = cardByKey[p.id];
-      final hasData = p.hasModels;  // 모델 데이터 유무로 변경
-      final hasDue = hasData && (card?.dueDateMin != null && card!.dueDateMin!.isNotEmpty);
+      final int? percent = avgProgressOf(p.id);
+      // '데이터 있음' = 진행률이 산출되는 프로젝트 (모델만 있고 입력이 없으면 미등록)
+      final hasData = _progress.of(p.id)?.hasData ?? false;
       final status = hasData && card != null ? _statusLabel(card.status) : '';
-      final int? percent = hasDue ? avgProgressOf(p.id) : null;
       projects.add(_ProjectItem(
         id: p.id,
         englishName: _englishOf(p.id),
@@ -266,6 +251,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         status: status,
         progressPercent: percent,
         hasData: hasData,
+        modelsTotal: _progress.of(p.id)?.modelsTotal ?? 0,
       ));
     }
 
@@ -274,23 +260,50 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       if (c.projectKey.isEmpty) continue;
       final exists = projects.any((p) => p.id == c.projectKey);
       if (exists) continue;
-      final hasDueX = (c.dueDateMin != null && c.dueDateMin!.isNotEmpty);
       projects.add(_ProjectItem(
         id: c.projectKey,
         englishName: _englishOf(c.projectKey),
         koreanName: c.projectLabel,
         status: _statusLabel(c.status),
-        progressPercent: hasDueX ? avgProgressOf(c.projectKey) : null,
-        hasData: true,
+        progressPercent: avgProgressOf(c.projectKey),
+        hasData: _progress.of(c.projectKey)?.hasData ?? false,
+        modelsTotal: _progress.of(c.projectKey)?.modelsTotal ?? 0,
       ));
+    }
+
+    // ── 사업부 전체 진행률: 집계 대상 '모델' 가중 평균
+    final keys = projects.map((p) => p.id);
+    final scoredModels = _progress.scoredModelsFor(keys);
+    final int? progress = _progress.weightedFor(keys);
+
+    // ── 현황 카운트: 프로젝트 단위 (지연 + 주의 + 정상 + 미등록 = 전체)
+    int red = 0, orange = 0, green = 0, noData = 0;
+    for (final p in projects) {
+      if (!p.hasData) {
+        noData++;
+        continue;
+      }
+      switch ((worstStatusByKey[p.id] ?? 'GREEN').toUpperCase()) {
+        case 'RED':
+          red++;
+          break;
+        case 'YELLOW':
+        case 'ORANGE':
+          orange++;
+          break;
+        default:
+          green++;
+      }
     }
 
     return _DivisionData(
       progressPercent: progress,
-      progressDeltaPp: 2,
+      progressDeltaPp: null, // 전월 데이터가 없으므로 표시하지 않음
       delayed: red,
       warning: orange,
-      normal: green + other,
+      normal: green,
+      noData: noData,
+      scoredModels: scoredModels,
       updatedAt: _todayText(),
       immediate: immediate,
       projects: projects,
@@ -326,26 +339,172 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
   List<_ProjectItem> _sortProjects(List<_ProjectItem> input) {
     final list = [...input];
     list.sort((a, b) {
+      // 즐겨찾기 먼저, 그다음 데이터 있는 프로젝트, 그 안에서 선택한 정렬
       final aFav = _favoriteProjects.contains(a.id);
       final bFav = _favoriteProjects.contains(b.id);
       if (aFav != bFav) return aFav ? -1 : 1;
       if (a.hasData != b.hasData) return a.hasData ? -1 : 1;
-      final ap = a.progressPercent ?? -1;
-      final bp = b.progressPercent ?? -1;
-      return ap.compareTo(bp);
+
+      final ap = a.progressPercent;
+      final bp = b.progressPercent;
+      switch (_sort) {
+        case _ProjectSort.progressDesc:
+          if (ap != bp) return (bp ?? -1).compareTo(ap ?? -1);
+          break;
+        case _ProjectSort.progressAsc:
+          if (ap != bp) return (ap ?? 999).compareTo(bp ?? 999);
+          break;
+        case _ProjectSort.name:
+          break;
+      }
+      return a.koreanName.compareTo(b.koreanName);
     });
     return list;
   }
 
+  bool _matchesStatusFilter(_ProjectItem p) {
+    switch (_statusFilter) {
+      case _ProjectStatusFilter.all:
+        return true;
+      case _ProjectStatusFilter.normal:
+        return p.hasData && p.status == '정상';
+      case _ProjectStatusFilter.warning:
+        return p.hasData && p.status == '주의';
+      case _ProjectStatusFilter.delayed:
+        return p.hasData && p.status == '지연';
+      case _ProjectStatusFilter.noData:
+        return !p.hasData;
+    }
+  }
+
   List<_ProjectItem> _visibleProjects(List<_ProjectItem> sorted) {
     final q = _projectQuery.trim().toLowerCase();
-    if (q.isEmpty) return sorted;
     final trimmed = _projectQuery.trim();
     return sorted.where((p) {
+      if (!_matchesStatusFilter(p)) return false;
+      if (_favoritesOnly && !_favoriteProjects.contains(p.id)) return false;
+      if (q.isEmpty) return true;
       return p.englishName.toLowerCase().contains(q) ||
           p.koreanName.contains(trimmed) ||
           p.status.contains(trimmed);
     }).toList();
+  }
+
+  // 프로젝트 목록 필터 시트 (상태 / 정렬 / 즐겨찾기)
+  Future<void> _openFilterSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            void update(VoidCallback fn) {
+              setSheetState(fn);
+              setState(fn);
+            }
+
+            Widget chip(String label, bool selected, VoidCallback onTap) {
+              return GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: selected ? AppColors.headerNavy : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.headerNavy
+                          : const Color(0xFFD1D5DB),
+                    ),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? Colors.white : AppColors.reportBody,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            Widget section(String title, List<Widget> children) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: AppText.bodyStrong.copyWith(
+                          fontSize: 13, color: AppColors.headerNavy)),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 6, children: children),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.of(sheetContext).padding.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text('프로젝트 필터',
+                          style: AppText.bodyStrong
+                              .copyWith(fontSize: 15, color: AppColors.headerNavy)),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => update(() {
+                          _statusFilter = _ProjectStatusFilter.all;
+                          _sort = _ProjectSort.progressDesc;
+                          _favoritesOnly = false;
+                        }),
+                        child: const Text('초기화',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  section('상태', [
+                    for (final f in _ProjectStatusFilter.values)
+                      chip(f.label, _statusFilter == f,
+                          () => update(() => _statusFilter = f)),
+                  ]),
+                  section('정렬', [
+                    for (final v in _ProjectSort.values)
+                      chip(v.label, _sort == v, () => update(() => _sort = v)),
+                  ]),
+                  section('보기', [
+                    chip('즐겨찾기만', _favoritesOnly,
+                        () => update(() => _favoritesOnly = !_favoritesOnly)),
+                  ]),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.headerNavy),
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text('적용'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _toggleFavorite(String id) async {
@@ -507,6 +666,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                     delayedCount: data.delayed,
                     warningCount: data.warning,
                     normalCount: data.normal,
+                    noDataCount: data.noData,
+                    basisText: data.scoredModels > 0
+                        ? '집계 모델 ${data.scoredModels}개'
+                        : null,
                   ),
                   const SizedBox(height: 16),
                   if (data.immediate.isNotEmpty) ...[
@@ -557,11 +720,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                         _projectQuery = v;
                       });
                     },
-                    onTapFilter: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('프로젝트 필터는 준비 중입니다.')),
-                      );
-                    },
+                    onTapFilter: _openFilterSheet,
                     hintText: '프로젝트 검색',
                   ),
                   const SizedBox(height: 12),
@@ -589,7 +748,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                         crossAxisCount: 2,
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
-                        mainAxisExtent: 100,
+                        mainAxisExtent: 112,
                       ),
                       itemBuilder: (context, i) {
                         final p = visibleProjects[i];
@@ -601,6 +760,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                           isFavorite: _favoriteProjects.contains(p.id),
                           isSelected: _selectedProjectId == p.id,
                           hasData: p.hasData,
+                          modelsTotal: p.modelsTotal,
                           onTap: () async {
                             setState(() {
                               _selectedProjectId = p.id;
@@ -644,11 +804,13 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 }
 
 class _DivisionData {
-  final int progressPercent;
-  final int progressDeltaPp;
+  final int? progressPercent;
+  final int? progressDeltaPp;
   final int delayed;
   final int warning;
   final int normal;
+  final int noData;
+  final int scoredModels;
   final String updatedAt;
   final List<DivisionImmediateItem> immediate;
   final List<_ProjectItem> projects;
@@ -659,10 +821,32 @@ class _DivisionData {
     required this.delayed,
     required this.warning,
     required this.normal,
+    required this.noData,
+    required this.scoredModels,
     required this.updatedAt,
     required this.immediate,
     required this.projects,
   });
+}
+
+enum _ProjectStatusFilter {
+  all('전체'),
+  normal('정상'),
+  warning('주의'),
+  delayed('지연'),
+  noData('미등록');
+
+  final String label;
+  const _ProjectStatusFilter(this.label);
+}
+
+enum _ProjectSort {
+  progressDesc('진행률 높은순'),
+  progressAsc('진행률 낮은순'),
+  name('이름순');
+
+  final String label;
+  const _ProjectSort(this.label);
 }
 
 class _ProjectItem {
@@ -672,6 +856,7 @@ class _ProjectItem {
   final String status;
   final int? progressPercent;
   final bool hasData;
+  final int modelsTotal;
 
   const _ProjectItem({
     required this.id,
@@ -680,5 +865,6 @@ class _ProjectItem {
     required this.status,
     required this.progressPercent,
     required this.hasData,
+    this.modelsTotal = 0,
   });
 }

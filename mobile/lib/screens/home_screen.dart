@@ -25,6 +25,7 @@ import '../services/divisions_service.dart';
 import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
+import '../services/overview_service.dart';
 import 'division_projects_screen.dart';
 import 'overall_status_screen.dart';
 import 'immediate_check_screen.dart';
@@ -75,6 +76,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // 프로젝트별 진행률 요약 (모델 실데이터 기준).
   late Future<ProgressSummary> _progressFuture;
 
+  // 경영 요약(이번 달 매출/출하) — 홈 최상단 카드용
+  late Future<OverviewSummary> _overviewFuture;
+
   // 현재 선택된 하단 네비 탭. 첫 탭이 '홈'.
   AppNavTab _currentTab = AppNavTab.home;
 
@@ -88,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _divisionsFuture = DivisionsService.fetchAll();
     _dashboardFuture = DashboardService.fetchCards();
     _progressFuture = ProgressService.fetch();
+    _overviewFuture = OverviewService.fetch();
     _loadFavDivisions();
 
   }
@@ -98,9 +103,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _divisionsFuture = DivisionsService.fetchAll();
         _dashboardFuture = DashboardService.fetchCards();
         _progressFuture = ProgressService.fetch();
+        _overviewFuture = OverviewService.fetch();
     });
     _loadFavDivisions(); // 사업부 즐겨찾기 Set 로딩
-    await Future.wait([_divisionsFuture, _dashboardFuture, _progressFuture]);
+    await Future.wait(
+        [_divisionsFuture, _dashboardFuture, _progressFuture, _overviewFuture]);
   }
 
   // 오늘 날짜를 한국식 표기로 변환합니다.
@@ -505,6 +512,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         divisionsFuture: _divisionsFuture,
                         progressFuture: _progressFuture,
                         onTap: _openOverallStatus,
+                      ),
+                    ),
+
+                    // 이번 달 매출 (경영진이 가장 먼저 봐야 하는 숫자)
+                    // - 기존에는 홈 → 사업부 → 프로젝트 3단계를 들어가야 볼 수 있었음
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.x4,
+                        0,
+                        AppSpacing.x4,
+                        AppSpacing.x3,
+                      ),
+                      child: FutureBuilder<OverviewSummary>(
+                        future: _overviewFuture,
+                        builder: (context, snap) {
+                          return ExecRevenueCard(
+                            summary: snap.data ?? OverviewSummary.empty,
+                            loading:
+                                snap.connectionState == ConnectionState.waiting,
+                            onTap: _openOverallStatus,
+                          );
+                        },
                       ),
                     ),
 
@@ -939,7 +968,7 @@ class _DivisionsSection extends StatelessWidget {
                           crossAxisCount: 2,
                           mainAxisSpacing: 10,
                           crossAxisSpacing: 10,
-                          mainAxisExtent: 92,
+                          mainAxisExtent: 104,
                         ),
                         itemCount: favs.length,
                         itemBuilder: (context, index) {
@@ -1059,7 +1088,7 @@ class _DivisionsSection extends StatelessWidget {
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
                       // 시안 v3: 카드 높이를 80px로 고정 (시안 절대 크기 169x80 기준)
-                      mainAxisExtent: 92,
+                      mainAxisExtent: 104,
                     ),
                     itemCount: items.length,
                     itemBuilder: (context, index) {
@@ -1121,23 +1150,34 @@ class _ImmediateCheckSection extends StatelessWidget {
     return FutureBuilder<List<DashboardCard>>(
       future: future,
       builder: (context, snap) {
-        // 로딩 중: 자리만 비워둠 (SummaryCard 와 즐겨찾기 사이가 너무 벌어지지 않도록)
-        // - 로딩 인디케이터를 별도로 그리지 않는 이유:
-        //   SummaryCard 가 이미 같은 Future 로 인디케이터를 표시하고 있음.
+        // 로딩 / 에러 / 0건을 반드시 구분해서 보여준다.
+        // 예전에는 셋 다 SizedBox.shrink() 라, 조회가 실패해도 화면상으로는
+        // '지연 없음' 과 똑같이 보였다 (경영 판단이 걸린 정보라 위험).
         if (snap.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
+          return const _ImmediateNotice(
+            icon: Icons.hourglass_empty,
+            text: '지연·마감임박 항목 확인 중...',
+          );
         }
 
-        // 에러: 즉시 확인은 보조 정보라 조용히 숨김.
         if (snap.hasError) {
-          return const SizedBox.shrink();
+          return const _ImmediateNotice(
+            icon: Icons.error_outline,
+            text: '지연 현황을 불러오지 못했습니다',
+            color: AppColors.statusRed,
+          );
         }
 
         final cards = snap.data ?? const <DashboardCard>[];
         final items = buildItems(cards);
 
-        // 항목이 없으면 카드 자체를 안 그림.
-        if (items.isEmpty) return const SizedBox.shrink();
+        if (items.isEmpty) {
+          return const _ImmediateNotice(
+            icon: Icons.check_circle_outline,
+            text: '지연·마감임박 항목이 없습니다',
+            color: AppColors.summaryNormal,
+          );
+        }
 
         return ImmediateCheckCard(
           items: items,
@@ -1145,6 +1185,42 @@ class _ImmediateCheckSection extends StatelessWidget {
           onTapShowAll: onTapShowAll,
         );
       },
+    );
+  }
+}
+
+// 즉시 확인 섹션의 로딩/에러/0건 안내 한 줄.
+class _ImmediateNotice extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color? color;
+
+  const _ImmediateNotice({
+    required this.icon,
+    required this.text,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppColors.textMute;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.borderDefault),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 17, color: c),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: AppText.body.copyWith(color: c)),
+          ),
+        ],
+      ),
     );
   }
 }

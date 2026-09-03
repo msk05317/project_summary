@@ -4,6 +4,7 @@ import '../design/design.dart';
 import '../models/division.dart';
 import '../services/divisions_service.dart';
 import '../services/dashboard_service.dart';
+import '../services/favorites_service.dart';
 import '../components/home/search_filter_row.dart';
 import '../components/home/division_grid_card.dart';
 import '../models/dashboard.dart';
@@ -24,7 +25,7 @@ class DivisionSelectScreen extends StatefulWidget {
 class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
   late Future<List<Division>> _divisionsFuture;
   late Future<List<DashboardCard>> _dashboardFuture;
-  final Set<String> _favoriteDivisions = {};
+  Set<String> _favoriteDivisions = <String>{};
   String _query = '';
 
   @override
@@ -32,20 +33,25 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
     super.initState();
     _divisionsFuture = DivisionsService.fetchAll();
     _dashboardFuture = DashboardService.fetchCards();
+    _loadFavorites();
+  }
+
+  // 즐겨찾기는 홈 화면과 같은 저장소를 써야 한다.
+  // (예전에는 이 화면만 메모리 Set 이라 ★를 눌러도 저장되지 않았고
+  //  홈과 값이 달라 보였다)
+  Future<void> _loadFavorites() async {
+    final saved = await FavoritesService.loadAllDivisions();
+    if (!mounted) return;
+    setState(() => _favoriteDivisions = saved);
   }
 
   DivisionStatus _statusOf(String divisionId, List<DashboardCard> cards) {
     return computeDivisionStatus(divisionId, cards);
   }
 
-  void _toggleFavorite(String id) {
-    setState(() {
-      if (_favoriteDivisions.contains(id)) {
-        _favoriteDivisions.remove(id);
-      } else {
-        _favoriteDivisions.add(id);
-      }
-    });
+  Future<void> _toggleFavorite(String id) async {
+    await FavoritesService.toggleDivision(id);
+    await _loadFavorites();
   }
 
   bool _matchDivision(Division d, String q) {
@@ -224,7 +230,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                       crossAxisCount: 2,
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
-                      mainAxisExtent: 92,
+                      mainAxisExtent: 104,
                     ),
                     itemBuilder: (context, i) {
                       final d = favorites[i];
@@ -275,7 +281,7 @@ class _DivisionSelectScreenState extends State<DivisionSelectScreen> {
                     crossAxisCount: 2,
                     mainAxisSpacing: 8,
                     crossAxisSpacing: 8,
-                    mainAxisExtent: 92,
+                    mainAxisExtent: 104,
                   ),
                   itemBuilder: (context, i) {
                     final d = others[i];

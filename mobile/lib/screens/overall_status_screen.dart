@@ -5,6 +5,7 @@ import '../models/division.dart';
 import '../models/dashboard.dart';
 import '../services/dashboard_service.dart';
 import '../services/divisions_service.dart';
+import '../services/progress_service.dart';
 import '../components/overall/overall_progress_card.dart';
 import '../components/overall/status_distribution_bar.dart';
 import '../components/overall/division_progress_row.dart';
@@ -27,8 +28,8 @@ class _DivisionAgg {
   final int normal;
   final int warning;
   final int delayed;
-  final int inProgress;
-  final int progressPercent;
+  final int inProgress; // 데이터 미등록 프로젝트 수
+  final int? progressPercent;
   final String primaryStatus;
 
   const _DivisionAgg({
@@ -63,14 +64,41 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
   }
 
   Future<_LoadedData> _load() async {
-    final results = await Future.wait([
-      DashboardService.fetchCards(),
-      DivisionsService.fetchAll(),
-    ]);
-    return _LoadedData(
-      cards: results[0] as List<DashboardCard>,
-      divisions: results[1] as List<Division>,
+    final cards = DashboardService.fetchCards();
+    final divisions = DivisionsService.fetchAll();
+    final progress = ProgressService.fetch();
+    final trend = TrendService.fetch(
+      period: _trendPeriod(),
+      points: _trendCount(),
     );
+    return _LoadedData(
+      cards: await cards,
+      divisions: await divisions,
+      progress: await progress,
+      trend: await trend,
+    );
+  }
+
+  String _trendPeriod() {
+    switch (_period) {
+      case _Period.today:
+        return 'day';
+      case _Period.week:
+        return 'week';
+      case _Period.month:
+        return 'month';
+    }
+  }
+
+  int _trendCount() {
+    switch (_period) {
+      case _Period.today:
+        return 7;
+      case _Period.week:
+        return 4;
+      case _Period.month:
+        return 6;
+    }
   }
 
   Future<void> _refresh() async {
@@ -80,64 +108,68 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
     await _future;
   }
 
-  // 상태별 진행률 가중치 (mock 기반 근사)
-  // 실제 진행률 필드가 백엔드에 생기면 이 로직 교체 예정
-  int _progressWeight(String status) {
-    switch (status.toUpperCase()) {
-      case 'GREEN':
-        return 100;
-      case 'BLUE':
-      case 'GRAY':
-      case 'BLACK':
-        return 80;
-      case 'YELLOW':
-      case 'ORANGE':
-        return 50;
-      case 'RED':
-        return 20;
-      default:
-        return 60;
+  // 프로젝트별 최악 상태 (지연 > 주의 > 정상)
+  Map<String, String> _worstStatusByProject(List<DashboardCard> cards) {
+    int rank(String s) {
+      switch (s.toUpperCase()) {
+        case 'RED':
+          return 3;
+        case 'YELLOW':
+        case 'ORANGE':
+          return 2;
+        default:
+          return 1;
+      }
     }
+
+    final worst = <String, String>{};
+    for (final c in cards) {
+      if (c.projectKey.isEmpty) continue;
+      final cur = worst[c.projectKey];
+      if (cur == null || rank(c.status) > rank(cur)) {
+        worst[c.projectKey] = c.status;
+      }
+    }
+    return worst;
   }
 
   List<_DivisionAgg> _aggregateByDivision(
     List<Division> divisions,
     List<DashboardCard> cards,
+    ProgressSummary progress,
   ) {
-    final byId = <String, List<DashboardCard>>{};
-    for (final c in cards) {
-      byId.putIfAbsent(c.divisionId, () => []).add(c);
-    }
-
+    final worst = _worstStatusByProject(cards);
     final result = <_DivisionAgg>[];
+
     for (final d in divisions) {
-      final divCards = byId[d.id] ?? const <DashboardCard>[];
+      final keys = <String>{
+        for (final p in d.projects)
+          if (p.id.isNotEmpty) p.id,
+      };
+      for (final c in cards) {
+        if (c.divisionId == d.id && c.projectKey.isNotEmpty) {
+          keys.add(c.projectKey);
+        }
+      }
 
-      int normal = 0, warning = 0, delayed = 0, inProgress = 0;
-      int weightSum = 0;
-
-      for (final c in divCards) {
-        final s = c.status.toUpperCase();
-        weightSum += _progressWeight(s);
-        switch (s) {
-          case 'GREEN':
-            normal++;
+      int normal = 0, warning = 0, delayed = 0, noData = 0;
+      for (final k in keys) {
+        if (!(progress.of(k)?.hasData ?? false)) {
+          noData++;
+          continue;
+        }
+        switch ((worst[k] ?? 'GREEN').toUpperCase()) {
+          case 'RED':
+            delayed++;
             break;
           case 'YELLOW':
           case 'ORANGE':
             warning++;
             break;
-          case 'RED':
-            delayed++;
-            break;
           default:
-            inProgress++;
+            normal++;
         }
       }
-
-      final total = divCards.length;
-      final progressPercent =
-          total == 0 ? 0 : (weightSum / total).round();
 
       String primary;
       if (delayed > 0) {
@@ -150,12 +182,12 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
 
       result.add(_DivisionAgg(
         division: d,
-        total: total,
+        total: normal + warning + delayed,
         normal: normal,
         warning: warning,
         delayed: delayed,
-        inProgress: inProgress,
-        progressPercent: progressPercent,
+        inProgress: noData,
+        progressPercent: progress.weightedFor(keys),
         primaryStatus: primary,
       ));
     }
@@ -171,7 +203,7 @@ class _OverallStatusScreenState extends State<OverallStatusScreen> {
         list.sort((a, b) {
           if (b.delayed != a.delayed) return b.delayed.compareTo(a.delayed);
           if (b.warning != a.warning) return b.warning.compareTo(a.warning);
-          return a.progressPercent.compareTo(b.progressPercent);
+          return (a.progressPercent ?? -1).compareTo(b.progressPercent ?? -1);
         });
         break;
       case _DivisionFilter.normal:
@@ -242,54 +274,23 @@ String _periodLabel() {
     return '$y-$m-$d';
   }
 
-  List<ProgressTrendPoint> _trendPoints(int todayPercent) {
-    // 백엔드 히스토리 API가 아직 없어 오늘 값을 기준으로 근사치를 생성.
-    // 기간 탭에 따라 표시 단위와 범위가 바뀌도록 구성.
-    final now = DateTime.now();
-    final points = <ProgressTrendPoint>[];
+  List<ProgressTrendPoint> _trendPoints(ProgressTrend trend) {
+    return [
+      for (final p in trend.points)
+        if (p.value != null)
+          ProgressTrendPoint(p.label, p.value!.toDouble().clamp(0, 100)),
+    ];
+  }
 
-    switch (_period) {
-      case _Period.today:
-        // 최근 7일 (일 단위)
-        for (int i = 6; i >= 0; i--) {
-          final day = now.subtract(Duration(days: i));
-          final label = '${day.month}/${day.day}';
-          final value = i == 0
-              ? todayPercent.toDouble()
-              : (todayPercent - i - (i % 2 == 0 ? 1 : 0)).toDouble();
-          points.add(ProgressTrendPoint(
-              label, value.clamp(0, 100).toDouble()));
-        }
-        break;
-
-      case _Period.week:
-        // 최근 4주 (주 단위)
-        for (int i = 3; i >= 0; i--) {
-          final day = now.subtract(Duration(days: i * 7));
-          final label = '${day.month}/${day.day}';
-          final value = i == 0
-              ? todayPercent.toDouble()
-              : (todayPercent - (i * 3) - (i % 2 == 0 ? 2 : 0)).toDouble();
-          points.add(ProgressTrendPoint(
-              label, value.clamp(0, 100).toDouble()));
-        }
-        break;
-
-      case _Period.month:
-        // 최근 6개월 (월 단위)
-        for (int i = 5; i >= 0; i--) {
-          final base = DateTime(now.year, now.month - i, 1);
-          final label = '${base.month}월';
-          final value = i == 0
-              ? todayPercent.toDouble()
-              : (todayPercent - (i * 5) - (i % 2 == 0 ? 2 : 0)).toDouble();
-          points.add(ProgressTrendPoint(
-              label, value.clamp(0, 100).toDouble()));
-        }
-        break;
-    }
-
-    return points;
+  String _deltaBadge(ProgressTrend trend) {
+    final d = trend.delta;
+    if (d == null) return '데이터 없음';
+    final unit = _period == _Period.today
+        ? '어제'
+        : _period == _Period.week
+            ? '이번 주'
+            : '이번 달';
+    return '$unit ${d >= 0 ? '+' : ''}$d%';
   }
 
   @override
@@ -341,10 +342,18 @@ String _periodLabel() {
           }
 
           final data = snap.data!;
-          final summary = DashboardSummary.fromCards(data.cards);
-          final aggs = _aggregateByDivision(data.divisions, data.cards);
+          final aggs =
+              _aggregateByDivision(data.divisions, data.cards, data.progress);
           final visible = _filterAndSort(aggs);
-          final trendPoints = _trendPoints(summary.progressPercent);
+          final trendPoints = _trendPoints(data.trend);
+          // 전체 요약: 사업부 집계를 다시 합산 (프로젝트 단위)
+          final summary = DashboardSummary.fromProjects(
+            delayed: aggs.fold<int>(0, (a, b) => a + b.delayed),
+            warning: aggs.fold<int>(0, (a, b) => a + b.warning),
+            normal: aggs.fold<int>(0, (a, b) => a + b.normal),
+            noData: aggs.fold<int>(0, (a, b) => a + b.inProgress),
+            progress: data.progress.progress,
+          );
 
           return SafeArea(
             top: false,
@@ -372,9 +381,9 @@ String _periodLabel() {
                   ),
                   const SizedBox(height: 12),
                   OverallProgressCard(
-                    progressPercent: summary.progressPercent,
-                    deltaVsYesterday: 2,
-                    deltaVsAverage: 6,
+                    progressPercent: data.progress.progress ?? 0,
+                    deltaVsYesterday: data.trend.delta ?? 0,
+                    deltaVsAverage: data.trend.deltaVsAverage ?? 0,
                     totalCount: summary.total,
                     normalCount: summary.normal,
                     warningCount: summary.warning,
@@ -415,9 +424,9 @@ String _periodLabel() {
                                     .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Text(
-                                '이번 주 +6%',
-                                style: TextStyle(
+                              child: Text(
+                                _deltaBadge(data.trend),
+                                style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF196B24),
@@ -492,7 +501,7 @@ String _periodLabel() {
                               normalCount: visible[i].normal,
                               warningCount: visible[i].warning,
                               delayedCount: visible[i].delayed,
-                              progressPercent: visible[i].progressPercent,
+                              progressPercent: visible[i].progressPercent ?? 0,
                               onTap: () => _openDivision(visible[i].division),
                             ),
                             if (i < visible.length - 1)
@@ -534,10 +543,14 @@ String _periodLabel() {
   Widget _periodChip(String label, _Period value) {
     final selected = _period == value;
     return InkWell(
-      onTap: () => setState(() => _period = value),
+      onTap: () => setState(() {
+        // 기간이 바뀌면 추이도 그 단위로 다시 받아온다
+        _period = value;
+        _future = _load();
+      }),
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppColors.headerNavy : Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -563,7 +576,7 @@ String _periodLabel() {
       onTap: () => setState(() => _filter = value),
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppColors.headerNavy : Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -587,6 +600,13 @@ String _periodLabel() {
 class _LoadedData {
   final List<DashboardCard> cards;
   final List<Division> divisions;
+  final ProgressSummary progress;
+  final ProgressTrend trend;
 
-  const _LoadedData({required this.cards, required this.divisions});
+  const _LoadedData({
+    required this.cards,
+    required this.divisions,
+    required this.progress,
+    required this.trend,
+  });
 }

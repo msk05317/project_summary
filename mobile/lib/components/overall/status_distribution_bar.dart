@@ -19,9 +19,13 @@ class StatusDistributionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = _total == 0 ? 1 : _total;
-    final normalFlex = (normalCount * 100 ~/ total).clamp(1, 100);
-    final warningFlex = (warningCount * 100 ~/ total).clamp(1, 100);
-    final delayedFlex = (delayedCount * 100 ~/ total).clamp(1, 100);
+    // 0건인 상태는 조각을 아예 그리지 않는다.
+    // (예전엔 clamp(1,100) 때문에 지연 0건에도 빨간 조각이 보여서
+    //  '지연이 있나?' 하는 착시를 일으켰다)
+    final normalFlex = normalCount == 0 ? 0 : (normalCount * 100 ~/ total).clamp(1, 100);
+    final warningFlex = warningCount == 0 ? 0 : (warningCount * 100 ~/ total).clamp(1, 100);
+    final delayedFlex = delayedCount == 0 ? 0 : (delayedCount * 100 ~/ total).clamp(1, 100);
+    final empty = _total == 0;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -56,64 +60,43 @@ class StatusDistributionBar extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: SizedBox(
-              height: 22,
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: normalFlex,
-                    child: _segment(
-                      color: const Color(0xFF196B24),
-                      label: '정상 $normalCount',
+              height: 14,
+              child: empty
+                  ? Container(color: AppColors.statusGraySoft)
+                  : Row(
+                      children: [
+                        if (normalFlex > 0)
+                          Expanded(
+                            flex: normalFlex,
+                            child: Container(color: AppColors.summaryNormal),
+                          ),
+                        if (warningFlex > 0)
+                          Expanded(
+                            flex: warningFlex,
+                            child: Container(color: AppColors.summaryCaution),
+                          ),
+                        if (delayedFlex > 0)
+                          Expanded(
+                            flex: delayedFlex,
+                            child: Container(color: AppColors.summaryDelayed),
+                          ),
+                      ],
                     ),
-                  ),
-                  Expanded(
-                    flex: warningFlex,
-                    child: _segment(
-                      color: const Color(0xFFE97132),
-                      label: '주의 $warningCount',
-                    ),
-                  ),
-                  Expanded(
-                    flex: delayedFlex,
-                    child: _segment(
-                      color: const Color(0xFFFF0000),
-                      label: '지연 $delayedCount',
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
           const SizedBox(height: 10),
+          // 수치는 범례에서만 읽는다 (막대 안 라벨은 좁으면 잘려서 제거)
           Row(
             children: [
-              _legendDot(const Color(0xFF196B24), '정상 $normalCount건'),
+              _legendDot(AppColors.summaryNormal, '정상 $normalCount건'),
               const SizedBox(width: 12),
-              _legendDot(const Color(0xFFE97132), '주의 $warningCount건'),
+              _legendDot(AppColors.summaryCaution, '주의 $warningCount건'),
               const SizedBox(width: 12),
-              _legendDot(const Color(0xFFFF0000), '지연 $delayedCount건'),
+              _legendDot(AppColors.summaryDelayed, '지연 $delayedCount건'),
             ],
           ),
         ],
       ),
-    );
-  }
-
-  Widget _segment({required Color color, required String label}) {
-    return Container(
-      color: color,
-      alignment: Alignment.center,
-      child: label.isEmpty
-          ? const SizedBox.shrink()
-          : Text(
-              label,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
     );
   }
 

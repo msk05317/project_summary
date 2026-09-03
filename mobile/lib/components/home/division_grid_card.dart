@@ -73,16 +73,22 @@ class DivisionGridCard extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
+                  // 히트박스 40dp — 카드 전체 onTap(사업부 진입) 과 붙어 있어
+                  // 아이콘 크기(16dp)만큼만 잡으면 오탭이 잦다.
                   GestureDetector(
                     onTap: onToggleFavorite,
-                    child: Icon(
-                      isFavorite
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
-                      size: 16,
-                      color: isFavorite
-                          ? const Color(0xFFF4B63D)
-                          : const Color(0xFFC5CAD3),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Icon(
+                        isFavorite
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        size: 16,
+                        color: isFavorite
+                            ? const Color(0xFFF4B63D)
+                            : const Color(0xFFC5CAD3),
+                      ),
                     ),
                   ),
                 ],

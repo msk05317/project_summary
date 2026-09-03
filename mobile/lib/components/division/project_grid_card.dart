@@ -12,6 +12,8 @@ class ProjectGridCard extends StatelessWidget {
   final bool isFavorite;
   final bool isSelected;
   final bool hasData;
+  // 등록된 모델 수. 데이터가 없을 때 왜 없는지 구분해 보여주기 위해 사용.
+  final int modelsTotal;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
 
@@ -24,27 +26,28 @@ class ProjectGridCard extends StatelessWidget {
     required this.isFavorite,
     required this.isSelected,
     this.hasData = true,
+    this.modelsTotal = 0,
     required this.onTap,
     required this.onToggleFavorite,
   });
 
-  Color get _statusColor {
-    if (!hasData) return const Color(0xFFB8BFCC);
+  // 진행률 강조색: 지연/주의는 경고색, 그 외에는 브랜드 네이비 한 가지로 통일해
+  // 카드가 신호등처럼 알록달록해지지 않게 한다.
+  Color get _accent {
+    if (!hasData) return const Color(0xFFC5CAD3);
     switch (status) {
       case '지연':
-        return const Color(0xFFFF0000);
+        return const Color(0xFFDC2626);
       case '주의':
-        return const Color(0xFFE97132);
-      case '정상':
+        return const Color(0xFFD97706);
       default:
-        return const Color(0xFF196B24);
+        return AppColors.headerNavy;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    const double outerRadius = 20;
-    const double stripeWidth = 6;
+    const double outerRadius = 16;
 
     final Color borderColor = isSelected
         ? const Color(0xFF156082)
@@ -56,9 +59,9 @@ class ProjectGridCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(outerRadius),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 14,
-            offset: Offset(0, 4),
+            color: Color(0x0D000000),
+            blurRadius: 10,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -70,27 +73,9 @@ class ProjectGridCard extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: hasData ? onTap : null,
-          child: Stack(
-            children: [
-              // 왼쪽 색띠: 카드 radius를 그대로 따라가는 형태
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: stripeWidth,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(color: _statusColor),
-                ),
-              ),
-              // 본문
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  stripeWidth + 12,
-                  12,
-                  12,
-                  12,
-                ),
+          onTap: onTap,
+          child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -111,14 +96,18 @@ class ProjectGridCard extends StatelessWidget {
                         ),
                         GestureDetector(
                           onTap: onToggleFavorite,
-                          child: Icon(
-                            isFavorite
-                                ? Icons.star_rounded
-                                : Icons.star_border_rounded,
-                            size: 16,
-                            color: isFavorite
-                                ? const Color(0xFFF4B63D)
-                                : const Color(0xFFC5CAD3),
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Icon(
+                              isFavorite
+                                  ? Icons.star_rounded
+                                  : Icons.star_border_rounded,
+                              size: 16,
+                              color: isFavorite
+                                  ? const Color(0xFFF4B63D)
+                                  : const Color(0xFFC5CAD3),
+                            ),
                           ),
                         ),
                       ],
@@ -133,39 +122,53 @@ class ProjectGridCard extends StatelessWidget {
                         color: AppColors.headerNavy,
                       ),
                     ),
-                    Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: _statusColor,
-                            shape: BoxShape.circle,
+                    if (hasData) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '진행률',
+                            style: AppText.caption.copyWith(
+                              fontSize: 10,
+                              color: const Color(0xFF9CA3AF),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          hasData ? status : '데이터 없음',
-                          style: AppText.caption.copyWith(
-                            fontSize: 11,
-                            color: const Color(0xFF7C8594),
+                          const Spacer(),
+                          Text(
+                            '$progressPercent%',
+                            style: TextStyle(
+                              fontSize: 18,
+                              height: 1.0,
+                              fontWeight: FontWeight.w800,
+                              color: _accent,
+                            ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          minHeight: 5,
+                          value: ((progressPercent ?? 0) / 100).clamp(0.0, 1.0),
+                          backgroundColor: const Color(0xFFEDF0F5),
+                          valueColor: AlwaysStoppedAnimation<Color>(_accent),
                         ),
-                        const Spacer(),
-                        Text(
-                          progressPercent == null ? '-' : '$progressPercent%',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: _statusColor,
-                          ),
+                      ),
+                    ] else
+                      Text(
+                        modelsTotal > 0
+                            ? '모델 $modelsTotal종 · 진행률 미입력'
+                            : '등록된 모델 없음',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(
+                          fontSize: 11,
+                          color: const Color(0xFFA8AFBB),
                         ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
-              ),
-            ],
           ),
         ),
       ),

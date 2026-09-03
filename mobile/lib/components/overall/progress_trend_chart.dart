@@ -20,18 +20,22 @@ class ProgressTrendChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (points.isEmpty) {
-      return const SizedBox(height: 160);
+      return SizedBox(
+        height: 160,
+        child: Center(
+          child: Text(
+            '추이 데이터가 없습니다',
+            style: AppText.caption.copyWith(color: AppColors.textMute),
+          ),
+        ),
+      );
     }
 
-    // 실제 값에 맞춰 y축 자동 조정
-    final values = points.map((p) => p.value).toList();
-    final rawMin = values.reduce((a, b) => a < b ? a : b);
-    final rawMax = values.reduce((a, b) => a > b ? a : b);
-    final padding = ((rawMax - rawMin).abs()).clamp(5.0, 20.0);
-    final minY = (rawMin - padding).clamp(0.0, 100.0);
-    final maxY = (rawMax + padding).clamp(0.0, 100.0);
-    final effectiveMinY = minY == maxY ? (minY - 10).clamp(0.0, 100.0) : minY;
-    final effectiveMaxY = minY == maxY ? (maxY + 10).clamp(0.0, 100.0) : maxY;
+    // 진행률은 0~100 고정축.
+    // 예전에는 데이터 범위에 맞춰 축을 확대해서 78%→80% 변화가 급등처럼
+    // 보였다. 경영 보고 차트에서 기울기 과장은 가장 피해야 할 오독이다.
+    const double effectiveMinY = 0;
+    const double effectiveMaxY = 100;
 
     final spots = <FlSpot>[];
     for (int i = 0; i < points.length; i++) {
@@ -56,16 +60,31 @@ class ProgressTrendChart extends StatelessWidget {
               gridData: FlGridData(
                 show: true,
                 drawVerticalLine: false,
-                horizontalInterval: (effectiveMaxY - effectiveMinY) / 4,
+                horizontalInterval: 25,
                 getDrawingHorizontalLine: (v) => FlLine(
-                  color: const Color(0xFFEEF1F5),
+                  color: AppColors.dividerSoft,
                   strokeWidth: 1,
                 ),
               ),
               borderData: FlBorderData(show: false),
               titlesData: FlTitlesData(
-                leftTitles: const AxisTitles(
-                  sideTitles: SideTitles(showTitles: false),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: 25,
+                    reservedSize: 30,
+                    getTitlesWidget: (v, meta) => Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Text(
+                        '${v.toInt()}',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textMute,
+                          fontSize: 10,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ),
                 ),
                 rightTitles: const AxisTitles(
                   sideTitles: SideTitles(showTitles: false),
