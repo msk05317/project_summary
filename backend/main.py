@@ -24,7 +24,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Res
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from openai import OpenAI
 from rag import vector_store as _vs
@@ -11760,7 +11760,7 @@ def admin_create_manual_report(payload: dict, _admin: int = Depends(get_admin_se
     _norm_new = _normalize_project_name(project_name)
     if _norm_new:
         try:
-            _existing = _load_latest_reports()
+            _existing = _read_json(LATEST_FILE, [])
         except Exception:
             _existing = []
         for _r in (_existing or []):
@@ -13851,7 +13851,10 @@ def admin_delete_card(
 
 
 @app.post("/admin/reset")
-def admin_reset(password: str = Form(...)):
+def admin_reset(
+    password: str = Form(default=""),
+    admin_auth: Optional[str] = Cookie(default=None),
+):
     _has_session = bool(_verify_session(admin_auth))
     if not _has_session and password != UPLOAD_PASSWORD:
         raise HTTPException(status_code=401, detail="비밀번호가 틀립니다.")
@@ -16805,9 +16808,15 @@ async def chat(payload: dict):
                     
                     ctx += f"{w} 양산 {_mp}/{_ma} {_mr_show}, 개발 {_dp}/{_da} {_dr_show}; "
                 ctx += f"합계: 양산 {mass_plan}/{mass_act} ${mass_rev:,}, 개발 {dev_plan}/{dev_act} ${dev_rev:,}, 전체 매출 ${mass_rev + dev_rev:,}"
-                ctx += " [규칙: 양산 매출은 각 모델별 판가(price) × 실적의 합산이며 절대 $3,400 고정 단가 아님. 개발만 $3,400 고정. 응답은 2~3문장으로 간결하게. 출처에 없는 숫자는 절대 만들지 마. 계획=PO/plan, 실적=actual 구별 필수. 실적 0이면 절대 $0이라고 먼저 말하지 말고 계획 기준 예상 매출로 답변할 것.]"
+                ctx += (" [산출 기준: 양산 매출 = 모델별 판가(price) × 실적 합산 (고정 단가 아님), "
+                        "개발 매출 = 실적 × $3,400 고정. 계획(plan)과 실적(actual)은 서로 다른 값이다.]")
             except Exception as e:
                 print(f"[chat] weekly 계산 실패 {pk}: {e}")
+                rev = {}
+                try:
+                    rev = get_weekly_revenue(pk, _month_of_week(last_week) or _latest_data_month(pk)) or {}
+                except Exception as _e_rev:
+                    print(f"[chat] weekly-revenue 폴백도 실패 {pk}: {_e_rev}")
                 if rev.get("groups"):
                     m_rev = rev["groups"].get("양산", {})
                     d_rev = rev["groups"].get("개발", {})
@@ -19938,9 +19947,6 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
     return {'ok': True, 'applied': len(applied), 'skipped': len(skipped), 'detail': {'applied': applied[:10], 'skipped': skipped[:10]}}
 
 
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
-
 @app.post("/admin/projects/{project_key}/weekly-summary-import")
 async def admin_import_weekly_summary(project_key: str, file: UploadFile = File(...), _admin: int = Depends(get_admin_session)):
     """하바플레이트 주차별 현황 엑셀 업로드 (양산/개발 총량 구조).
@@ -20068,6 +20074,11 @@ def get_weekly_revenue(project_key: str, month: str = None):
                                "revenue": yang_total["revenue"] + dev_total["revenue"]}},
         "note": "양산 = 모델별 판가 x 주차 실적 (모델별 주차 입력 기반), 개발 = 실적 x $3,400 고정.",
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+
 
 if __name__ == "__main__":
     import uvicorn

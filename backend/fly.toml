@@ -5,7 +5,7 @@ primary_region = "nrt"
   dockerfile = "Dockerfile"
 
 [env]
-  PORT = "8000"
+  PORT = "8080"   # Dockerfile CMD / internal_port 와 일치해야 함
   DATA_DIR = "/data"
   ADMIN_COOKIE_SECURE = "true"
   # 챗봇 답변 모델 (gpt-4o = 품질 우선 / gpt-4o-mini = 비용 우선)
