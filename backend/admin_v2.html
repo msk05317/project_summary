@@ -7392,6 +7392,9 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
 
   window.loadModelList = function(month) { return loadModelList(month); };
 
+  // 구버전 렌더러(_wpLoadModels)가 이 목록을 덮어쓰지 않도록 같은 함수로 통일한다.
+  window._wpLoadModels = function(month) { return loadModelList(month); };
+
   function loadModelList(month) {
     var list = document.getElementById('wp-models-list');
     if (!list) return;
@@ -7400,19 +7403,29 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">프로젝트를 먼저 선택하세요</div>';
       return;
     }
+    // 선택한 월을 항상 반영 (아코디언 펼칠 때 쓰는 _wpMonth 와 어긋나지 않게)
+    var msel = document.getElementById('wp-month-sel');
+    var targetMonth = month || (msel && msel.value) || _wpMonth;
+    _wpMonth = targetMonth;
+    window._revMonth = targetMonth;
+
+    window._wpLoading = true;
     list.innerHTML = '<div style="text-align:center;padding:24px;color:#9CA3AF;font-size:13px;">로딩 중...</div>';
 
-    var targetMonth = month || _wpMonth;
-    
     fetch('/projects/' + encodeURIComponent(pk) + '/models?month=' + encodeURIComponent(targetMonth), { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
+        window._wpLoading = false;
         _wpModels = (d.models || []).filter(function(m) { return m.group === '양산'; });
         if (!_wpModels.length) {
           list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">양산 모델이 없습니다</div>';
           return;
         }
         renderModelCards();
+      })
+      .catch(function(e) {
+        window._wpLoading = false;
+        list.innerHTML = '<div style="padding:20px;color:#DC2626;text-align:center;font-size:13px;">불러오기 실패: ' + e.message + '</div>';
       });
   }
 
@@ -7634,7 +7647,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     var stuck = list.textContent.indexOf('프로젝트를 먼저 선택하세요') >= 0
              || list.textContent.indexOf('불러오는 중') >= 0
              || list.textContent.indexOf('로딩 중') >= 0;
-    if (!stuck) { _kicked = false; return; }
+    if (!stuck || window._wpLoading) { _kicked = false; return; }
     var sel = document.getElementById('mdl-proj-select');
     if (sel && sel.value && !_kicked) {
       _kicked = true;
