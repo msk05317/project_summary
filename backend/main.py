@@ -19335,6 +19335,88 @@ def _process_current(proc: list):
             return s.get("name") or "", str(s.get("expected") or "")
     return "최종 승인 완료", ""
 
+def _model_progress_value(m: dict):
+    """모델 1건의 진행률(%). 데이터가 없으면 None → 집계에서 제외.
+    - 양산: PO 수량(계획)이 있어야 집계. 출하 0이면 0%.
+    - 개발: 공정 단계에 계획일/실적일/상태 중 하나라도 입력돼야 집계.
+      (13단계 틀은 자동 생성되므로 단계 존재만으로는 데이터로 보지 않음)
+    """
+    if not isinstance(m, dict):
+        return None
+    if m.get("group") == "개발":
+        proc = m.get("process") if isinstance(m.get("process"), list) else []
+        has_input = any(
+            str((s or {}).get(k) or "").strip()
+            for s in proc for k in ("expected", "actual", "status")
+        )
+        if not has_input:
+            return None
+        return _process_progress(proc)
+    try:
+        po = int(m.get("po_qty") or 0)
+    except Exception:
+        po = 0
+    if po <= 0:
+        return None
+    try:
+        shipped = int(m.get("shipped_qty") or 0)
+    except Exception:
+        shipped = 0
+    return round(shipped * 100 / po)
+
+
+def _project_progress_entry(project_key: str, proj: dict) -> dict:
+    vals = [v for v in (_model_progress_value(m) for m in (proj.get("models") or []))
+            if v is not None]
+    try:
+        div_id = _cl.derive_division_from_project(project_key)
+    except Exception:
+        div_id = None
+    return {
+        "project_key": project_key,
+        "division_id": div_id,
+        "models_total": len(proj.get("models") or []),
+        "scored_count": len(vals),
+        "score_sum": sum(vals),
+        "progress": round(sum(vals) / len(vals)) if vals else None,
+    }
+
+
+@app.get("/projects-progress-summary")
+def get_projects_progress_summary(division_id: str = None):
+    """프로젝트별 진행률 요약 (앱 사업부 화면용).
+    데이터 없는 모델은 제외하고 계산하며, progress=None 이면 '-' 로 표시할 것.
+    division_id 를 주면 그 사업부 프로젝트만 + 가중 평균(weighted)을 함께 반환."""
+    data = _load_models()
+    out = {}
+    for pk, proj in (data.get("projects") or {}).items():
+        entry = _project_progress_entry(pk, proj)
+        if division_id and entry.get("division_id") != division_id:
+            continue
+        out[pk] = entry
+    # 앱에서 쓰는 별칭 키(hrva-plate 등)로도 찾을 수 있게 보강
+    for _alias, _real in {"havaplate": "hrva_plate", "hrvaplate": "hrva_plate",
+                          "hrva-plate": "hrva_plate"}.items():
+        if _real in out and _alias not in out:
+            out[_alias] = out[_real]
+    # 별칭 중복 집계 방지: project_key 기준 유니크
+    _seen, total_cnt, total_sum, total_models = set(), 0, 0, 0
+    for e in out.values():
+        if e["project_key"] in _seen:
+            continue
+        _seen.add(e["project_key"])
+        total_cnt += e["scored_count"]
+        total_sum += e["score_sum"]
+        total_models += e["models_total"]
+    return {
+        "projects": out,
+        "scored_count": total_cnt,
+        "models_total": total_models,
+        "progress": round(total_sum / total_cnt) if total_cnt else None,
+        "note": "양산=PO수량 등록분, 개발=공정 입력분만 집계. 데이터 없으면 progress=null",
+    }
+
+
 def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "weekly_plan", "weekly_progress", "weekly_summary")}
     if m.get("group") == "개발":
