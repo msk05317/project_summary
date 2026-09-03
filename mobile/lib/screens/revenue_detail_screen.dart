@@ -127,7 +127,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: months.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
           itemBuilder: (context, i) {
             final m = months[i];
             final on = m == _month;
