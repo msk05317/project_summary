@@ -27,7 +27,7 @@ class BackgroundService {
   static final BackgroundService instance = BackgroundService._();
 
   Future<void> init() async {
-    await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    await Workmanager().initialize(callbackDispatcher);
   }
 
   Future<void> registerPeriodic(int minutes) async {

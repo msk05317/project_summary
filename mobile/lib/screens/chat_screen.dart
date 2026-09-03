@@ -76,6 +76,7 @@ class _ChatScreenState extends State<ChatScreen>
         });
         if (isFinal) {
           setState(() => _listening = false);
+          _send(_controller.text);
           _pulse.stop();
         }
       },
@@ -97,7 +98,11 @@ class _ChatScreenState extends State<ChatScreen>
     });
     _scrollToEnd();
 
-    final answer = await ChatService.ask(msg);
+      final answer = await ChatService.ask(
+        msg,
+        history: _buildHistory(),
+        sessionId: 'flutter_main',
+      );
 
     if (!mounted) return;
     setState(() {
@@ -106,6 +111,17 @@ class _ChatScreenState extends State<ChatScreen>
       _sending = false;
     });
     _scrollToEnd();
+  }
+
+
+  List<Map<String, String>> _buildHistory() {
+    // 최근 6개 메시지를 텍스트 히스토리로 변환 (로딩 메시지 제외)
+    final recent = _messages.where((m) => m.text.isNotEmpty && !m.loading).toList();
+    final start = recent.length > 6 ? recent.length - 6 : 0;
+    return recent.sublist(start).map((m) => {
+      'role': m.role == ChatRole.user ? 'user' : 'assistant',
+      'content': m.text,
+    }).toList();
   }
 
   void _scrollToEnd() {

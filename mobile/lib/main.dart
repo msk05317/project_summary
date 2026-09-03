@@ -85,7 +85,11 @@ class _BriefingAppState extends State<BriefingApp> {
               data: media.copyWith(
                 textScaler: TextScaler.linear(AppSettings.instance.fontScale),
               ),
-              child: child!,
+              child: SafeArea(
+                top: false,
+                bottom: true,
+                child: child!,
+              ),
             );
           },
           // 항상 HomeScreen 으로 시작.

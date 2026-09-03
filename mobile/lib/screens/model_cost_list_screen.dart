@@ -33,12 +33,6 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
     return (data['models'] as List? ?? []).cast<Map<String, dynamic>>();
   }
 
-  Color _statusColor(String s) {
-    if (s == '지연') return const Color(0xFFDC2626);
-    if (s == '주의') return const Color(0xFFD97706);
-    return const Color(0xFF059669);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,7 +79,7 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           alignment: Alignment.center,
-                          child: Text('$g ${cnt}개',
+                          child: Text('$g $cnt개',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,

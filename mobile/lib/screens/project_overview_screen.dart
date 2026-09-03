@@ -5,6 +5,9 @@ import '../config/app_config.dart';
 import '../design/typography.dart';
 import 'model_list_screen.dart';
 import 'model_cost_list_screen.dart';
+import '../models/weekly_revenue.dart';
+import '../widgets/weekly_revenue_card.dart';
+import '../services/api_service.dart';
 
 class ProjectOverviewScreen extends StatefulWidget {
   final String projectKey;
@@ -90,51 +93,50 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           final data = snap.data ?? {};
           final models = (data['models'] as List? ?? []).cast<Map<String, dynamic>>();
           if (models.isEmpty) {
+            final note = (data['status_note'] ?? '').toString();
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // 모델 없음 안내 카드
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE5E7EB)),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey[400]),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '등록된 모델이 없습니다',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'admin v2에서 모델을 추가하면 여기서 확인할 수 있습니다.',
-                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                // 현황이 있으면 그것을 먼저 보여준다 (내용 없는 카드는 숨김)
+                _buildStatusNote(note),
+                _buildWeeklyPlanSection(),
+                // 안내는 한 줄로만
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      note.trim().isEmpty
+                          ? '아직 등록된 내용이 없습니다'
+                          : '등록된 모델이 없습니다',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                // 현황 텍스트 (있으면 표시)
-                _buildStatusNote((data['status_note'] ?? '').toString()),
-                // 주차별 계획 (있으면 표시)
-                _buildWeeklyPlanSection(),
               ],
             );
           }
 
           final total = models.length;
-          final avgProgress = total > 0
-              ? (models.fold<int>(0, (s, m) {
-                      final po = (m['po_qty'] as num?)?.toInt() ?? 0;
-                      final sh = (m['shipped_qty'] as num?)?.toInt() ?? 0;
-                      return s + (po > 0 ? ((sh * 100) / po).round() : 0);
-                    }) / total).round()
-              : 0;
+          // 진행률 집계: 데이터가 있는 모델만 포함
+          //  - 양산: PO 수량(계획)이 등록된 모델 (실적 0이면 0%로 집계)
+          //  - 개발: 공정에 실제 입력(계획일/실적일/상태)이 있는 모델
+          // 데이터가 없는 모델은 '-'로 두고 평균에서 제외
+          final scored = <int>[];
+          for (final m in models) {
+            if (m['group'] == '개발') {
+              // 13단계 틀은 자동 생성 → 실제 입력(계획일/실적일/상태)이 있어야 집계
+              if (devHasProcessData(m)) {
+                scored.add((m['progress'] as num?)?.toInt() ?? 0);
+              }
+            } else {
+              final po = (m['po_qty'] as num?)?.toInt() ?? 0;
+              final sh = (m['shipped_qty'] as num?)?.toInt() ?? 0;
+              if (po > 0) scored.add(((sh * 100) / po).round());
+            }
+          }
+          final int? avgProgress = scored.isEmpty
+              ? null
+              : (scored.reduce((a, b) => a + b) / scored.length).round();
           final delayed = models.where((m) => m['status'] == '지연').length;
           final watched = models.where((m) => m['status'] == '주의').length;
 
@@ -168,14 +170,21 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                     children: [
                       Text('전체 진행률', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                       const SizedBox(height: 6),
-                      Text('$avgProgress%',
-                          style: const TextStyle(
-                              fontSize: 30, fontWeight: FontWeight.w800, color: Color(0xFF0F2C59))),
+                      Text(avgProgress == null ? '-' : '$avgProgress%',
+                          style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800,
+                              color: avgProgress == null
+                                  ? const Color(0xFF9CA3AF)
+                                  : const Color(0xFF0F2C59))),
+                      const SizedBox(height: 4),
+                      Text('집계 대상 ${scored.length}개 / 전체 $total개 (데이터 없는 모델 제외)',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                       const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: avgProgress / 100,
+                          value: (avgProgress ?? 0) / 100,
                           minHeight: 8,
                           backgroundColor: const Color(0xFFF3F4F6),
                           valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0F2C59)),
@@ -199,6 +208,33 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 _buildStatusNote((data['status_note'] ?? '').toString()),
                 // ── 주차별 계획 (엑셀 → PNG, 탭하면 확대)
                 _buildWeeklyPlanSection(),
+                // ── 주차별 매출 현황
+                FutureBuilder<WeeklyRevenue?>(
+                  future: fetchWeeklyRevenue(widget.projectKey),
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(height: 80,
+                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+                    }
+                    if (snap.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text('매출 로드 실패: ${snap.error}',
+                            style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12)));
+                    }
+                    final rev = snap.data;
+                    if (rev == null) {
+                      return const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('주차별 매출 데이터 없음',
+                            style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)));
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: WeeklyRevenueCard(rev: rev),
+                    );
+                  },
+                ),
                 // ── 상세로 이동
                 const Padding(
                   padding: EdgeInsets.fromLTRB(2, 8, 2, 8),
@@ -384,6 +420,10 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       builder: (context, snap) {
         final plan = snap.data ?? {};
         final hasPlan = plan['has_plan'] == true && (plan['url'] ?? '').toString().isNotEmpty;
+        // 로딩이 끝났는데 등록된 계획이 없으면 섹션을 통째로 숨긴다
+        if (snap.connectionState == ConnectionState.done && !hasPlan) {
+          return const SizedBox.shrink();
+        }
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
@@ -403,9 +443,6 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                   padding: EdgeInsets.all(12),
                   child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                 ))
-              else if (!hasPlan)
-                const Text('등록된 주차별 계획이 없습니다',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)))
               else
                 GestureDetector(
                   onTap: () {
@@ -413,7 +450,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                       PageRouteBuilder(
                         opaque: false,
                         barrierColor: Colors.black87,
-                        pageBuilder: (_, __, ___) => _ZoomableImageScreen(
+                        pageBuilder: (_, a, s) => _ZoomableImageScreen(
                           imageUrl: '$kApiBaseUrl${plan['url']}',
                           title: plan['file_name'] ?? '주차별 계획',
                         ),
@@ -426,7 +463,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                       '$kApiBaseUrl${plan['url']}',
                       fit: BoxFit.fitWidth,
                       width: double.infinity,
-                      errorBuilder: (_, __, ___) => const Text('이미지 로드 실패',
+                      errorBuilder: (_, e, st) => const Text('이미지 로드 실패',
                           style: TextStyle(color: Color(0xFFDC2626))),
                     ),
                   ),

@@ -7,12 +7,14 @@ import '../../design/design.dart';
 class DivisionSummaryCard extends StatelessWidget {
   final String divisionLabel;
   final String updatedAt;        // "2026-06-22 09:41"
-  final int progressPercent;     // 68
-  final int progressDeltaPp;     // +2
+  final int? progressPercent;    // 68 (null = 집계 가능한 데이터 없음 → '-')
+  final int? progressDeltaPp;    // +2 (null = 비교 데이터 없음 → 표시 안 함)
   final int projectCount;        // 7
   final int delayedCount;        // 1
   final int warningCount;        // 1
   final int normalCount;         // 5
+  final int noDataCount;         // 데이터 미등록 프로젝트 수
+  final String? basisText;       // "집계 모델 71개" 같은 근거 문구
 
   const DivisionSummaryCard({
     super.key,
@@ -24,6 +26,8 @@ class DivisionSummaryCard extends StatelessWidget {
     required this.delayedCount,
     required this.warningCount,
     required this.normalCount,
+    this.noDataCount = 0,
+    this.basisText,
   });
 
   @override
@@ -70,11 +74,13 @@ class DivisionSummaryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '$progressPercent%',
+                  progressPercent == null ? '-' : '$progressPercent%',
                   style: TextStyle(
                     fontSize: 44,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.headerNavy,
+                    color: progressPercent == null
+                        ? const Color(0xFF9CA3AF)
+                        : AppColors.headerNavy,
                     height: 1.0,
                   ),
                 ),
@@ -88,9 +94,13 @@ class DivisionSummaryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '전월 대비 ${progressDeltaPp >= 0 ? '+' : ''}$progressDeltaPp'
-                  'p · 프로젝트 $projectCount건',
-                  maxLines: 1,
+                  [
+                    if (progressDeltaPp != null)
+                      '전월 대비 ${progressDeltaPp! >= 0 ? '+' : ''}${progressDeltaPp}p',
+                    '프로젝트 $projectCount건',
+                    ?basisText,
+                  ].join(' · '),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppText.caption.copyWith(
                     fontSize: 10,
@@ -146,6 +156,10 @@ class DivisionSummaryCard extends StatelessWidget {
                 _statusRow(const Color(0xFFE97132), '주의', warningCount),
                 const SizedBox(height: 8),
                 _statusRow(const Color(0xFF196B24), '정상', normalCount),
+                if (noDataCount > 0) ...[
+                  const SizedBox(height: 8),
+                  _statusRow(const Color(0xFF9CA3AF), '미등록', noDataCount),
+                ],
               ],
             ),
           ),

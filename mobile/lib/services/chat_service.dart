@@ -8,13 +8,30 @@ class ChatService {
     defaultValue: 'https://project-summary-mkoo.fly.dev',
   );
 
-  static Future<ChatMessage> ask(String message, {int topK = 5}) async {
+  static Future<ChatMessage> ask(
+    String message, {
+    int topK = 5,
+    List<Map<String, String>>? history,
+    String sessionId = 'flutter_default',
+  }) async {
+    // 고정 sessionId면 랜덤 생성 (세션 오염 방지)
+    if (sessionId == 'flutter_default') {
+      sessionId = 'flutter_${DateTime.now().millisecondsSinceEpoch % 1000000}';
+    }
     final uri = Uri.parse('$_baseUrl/chat');
     try {
+      final payload = <String, dynamic>{
+        'message': message,
+        'top_k': topK,
+        'session_id': sessionId,
+      };
+      if (history != null && history.isNotEmpty) {
+        payload['history'] = history;
+      }
       final resp = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'message': message, 'top_k': topK}),
+        body: jsonEncode(payload),
       );
       if (resp.statusCode != 200) {
         return ChatMessage(

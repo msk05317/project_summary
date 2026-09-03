@@ -27,11 +27,11 @@ import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/overview_service.dart';
 import 'division_projects_screen.dart';
-import 'overall_status_screen.dart';
 import 'immediate_check_screen.dart';
 import 'calendar_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'project_overview_screen.dart';
+import 'revenue_detail_screen.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 import '../services/settings_service.dart';
@@ -582,10 +582,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _openOverallStatus() {
+  // 매출 카드 → 매출 상세 화면.
+  void _openRevenueDetail(String month) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const OverallStatusScreen(),
+        builder: (_) => RevenueDetailScreen(initialMonth: month),
       ),
     );
   }
@@ -665,7 +666,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         future: _dashboardFuture,
                         divisionsFuture: _divisionsFuture,
                         progressFuture: _progressFuture,
-                        onTap: _openOverallStatus,
                       ),
                     ),
 
@@ -685,7 +685,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             summary: snap.data ?? OverviewSummary.empty,
                             loading:
                                 snap.connectionState == ConnectionState.waiting,
-                            onTap: _openOverallStatus,
+                            onTap: () => _openRevenueDetail(
+                                snap.data?.month ?? ''),
                           );
                         },
                       ),
@@ -805,13 +806,11 @@ class _SummarySection extends StatelessWidget {
   final Future<List<DashboardCard>> future;
   final Future<List<Division>> divisionsFuture;
   final Future<ProgressSummary> progressFuture;
-  final VoidCallback onTap;
 
   const _SummarySection({
     required this.future,
     required this.divisionsFuture,
     required this.progressFuture,
-    required this.onTap,
   });
 
   /// 사업부 단위 요약 집계.
@@ -938,16 +937,10 @@ class _SummarySection extends StatelessWidget {
                     ? DashboardSummary.fromCards(cards)
                     : _summarize(divisions, cards, progress);
 
-                return Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onTap,
-                    borderRadius: BorderRadius.circular(12),
-                    child: SummaryCard(
-                      summary: summary,
-                      rightCaption: _formatSummaryCaption(DateTime.now()),
-                    ),
-                  ),
+                // 전체 현황 화면은 없앴다. 요약 카드는 눌러도 아무 일도 없다.
+                return SummaryCard(
+                  summary: summary,
+                  rightCaption: _formatSummaryCaption(DateTime.now()),
                 );
               },
             );

@@ -43,6 +43,8 @@ class _ProfitKpiSectionState extends State<ProfitKpiSection> {
           SizedBox(
             height: 118,
             child: ListView.separated(
+              padding: const EdgeInsets.only(bottom: 100),
+
               scrollDirection: Axis.horizontal,
               itemCount: widget.card.months.length,
               separatorBuilder: (_, _) => const SizedBox(width: 10),
@@ -61,6 +63,8 @@ class _ProfitKpiSectionState extends State<ProfitKpiSection> {
           SizedBox(
             height: 108,
             child: ListView.separated(
+              padding: const EdgeInsets.only(bottom: 100),
+
               scrollDirection: Axis.horizontal,
               itemCount: widget.card.weeks.length,
               separatorBuilder: (_, _) => const SizedBox(width: 8),

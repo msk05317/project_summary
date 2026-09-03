@@ -7,7 +7,7 @@
 //  - 이번 달 실적 매출 (크게)
 //  - 계획 기준 예상 매출 + 달성률 게이지
 //  - 출하 수량 계획 → 실적
-//  - 기여도 상위 프로젝트 3개 (실적 기준)
+//  - 자세한 내역(프로젝트별)은 카드를 눌러 '매출 상세' 화면에서 본다.
 import 'package:flutter/material.dart';
 
 import '../../design/design.dart';
@@ -168,44 +168,6 @@ class ExecRevenueCard extends StatelessWidget {
             ],
           ),
 
-          // 기여도 상위 프로젝트
-          if (summary.topByRevenue.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1, color: AppColors.borderSoft),
-            const SizedBox(height: 10),
-            ...summary.topByRevenue.take(3).map((p) {
-              final r = Fmt.rate(p.revenue, p.planRevenue);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(p.label,
-                          style: AppText.body,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                    Text(Fmt.moneyShort(p.revenue),
-                        style: AppText.bodyStrong),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 46,
-                      child: Text(
-                        r == null ? '-' : '$r%',
-                        textAlign: TextAlign.right,
-                        style: AppText.caption.copyWith(
-                          color: r != null && r >= 100
-                              ? AppColors.summaryNormal
-                              : AppColors.textMute,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ],
         ],
       ),
     );
