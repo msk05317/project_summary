@@ -16489,6 +16489,90 @@ function resetWpModelPlan(idx) {
 </html>
 """
 
+def _month_shipment_answer(project_key, month, mode='qty'):
+    """월 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
+    keys = []
+    if project_key and project_key != 'all':
+        keys = [project_key]
+    else:
+        _d = _load_models()
+        for k, v in (_d.get('projects') or {}).items():
+            if (v.get('weekly_summary') or {}) or any((m.get('weekly_plan') or {}) for m in (v.get('models') or [])):
+                keys.append(k)
+    if not keys:
+        return None
+
+    g_yang = {'plan': 0, 'actual': 0, 'revenue': 0}
+    g_dev = {'plan': 0, 'actual': 0, 'revenue': 0}
+    week_rows = {}
+    model_rows = []
+    used_labels = []
+    for k in keys:
+        wr = get_weekly_revenue(k, month) or {}
+        if not wr.get('weeks'):
+            continue
+        grp = wr.get('groups') or {}
+        y_tot = (grp.get('양산') or {}).get('total') or {}
+        d_tot = (grp.get('개발') or {}).get('total') or {}
+        if not any(int(x.get(f) or 0) for x in (y_tot, d_tot) for f in ('plan', 'actual')):
+            continue
+        used_labels.append(PROJECT_LABELS.get(k, k))
+        for tgt, src_t in ((g_yang, y_tot), (g_dev, d_tot)):
+            for f in ('plan', 'actual', 'revenue'):
+                tgt[f] += int(src_t.get(f) or 0)
+        for w in wr.get('weeks') or []:
+            row = week_rows.setdefault(w, {'yp': 0, 'ya': 0, 'dp': 0, 'da': 0, 'rev': 0})
+            yc = ((grp.get('양산') or {}).get('weeks') or {}).get(w) or {}
+            dc = ((grp.get('개발') or {}).get('weeks') or {}).get(w) or {}
+            row['yp'] += int(yc.get('plan') or 0)
+            row['ya'] += int(yc.get('actual') or 0)
+            row['dp'] += int(dc.get('plan') or 0)
+            row['da'] += int(dc.get('actual') or 0)
+            row['rev'] += int(yc.get('revenue') or 0) + int(dc.get('revenue') or 0)
+        for m in ((grp.get('양산') or {}).get('models_used') or []):
+            model_rows.append(m)
+
+    if not week_rows:
+        return None
+
+    if len(used_labels) > 2:
+        label = f'반도체사업부 전체({len(used_labels)}개 프로젝트)'
+    else:
+        label = ' + '.join(used_labels) if used_labels else '반도체사업부'
+    weeks_sorted = sorted(week_rows, key=lambda w: int(str(w).lstrip('Ww') or 0))
+    lines = []
+
+    if mode == 'rev':
+        total_rev = g_yang['revenue'] + g_dev['revenue']
+        lines.append(f"{month} {label} 매출은 총 ${total_rev:,}입니다. "
+                     f"(양산 ${g_yang['revenue']:,} / 개발 ${g_dev['revenue']:,})")
+        lines.append('')
+        lines.append('주차별 매출')
+        for w in weeks_sorted:
+            lines.append(f"- {w}: ${week_rows[w]['rev']:,}")
+    else:
+        total_a = g_yang['actual'] + g_dev['actual']
+        total_p = g_yang['plan'] + g_dev['plan']
+        lines.append(f"{month} {label} 출하 실적은 총 {total_a}대입니다. "
+                     f"(양산 {g_yang['actual']}대 / 개발 {g_dev['actual']}대, 계획 {total_p}대)")
+        lines.append('')
+        lines.append('주차별 (계획 → 실적)')
+        for w in weeks_sorted:
+            r = week_rows[w]
+            lines.append(f"- {w}: 양산 {r['yp']}→{r['ya']}대 / 개발 {r['dp']}→{r['da']}대")
+        ms = sorted([m for m in model_rows if int(m.get('actual') or 0) > 0],
+                    key=lambda x: -int(x.get('actual') or 0))
+        if ms:
+            lines.append('')
+            lines.append('모델별 양산 출하 실적')
+            for m in ms[:10]:
+                lines.append(f"- {m.get('id')}: {int(m.get('actual') or 0)}대")
+            if len(ms) > 10:
+                _rest = sum(int(m.get('actual') or 0) for m in ms[10:])
+                lines.append(f"- 그 외 {len(ms) - 10}개 모델 합계 {_rest}대")
+    return '\n'.join(lines)
+
+
 @app.post("/chat")
 async def chat(payload: dict):
     """admin v2 전체 데이터 기반 챗봇"""
@@ -16537,6 +16621,46 @@ async def chat(payload: dict):
 
     sess["last_project"] = last_project
     sess["last_week"] = last_week
+
+    # ── 월 범위 기억 + 월 단위 수량/매출 즉답 (후속 질문 '각각 몇 대씩' 대응) ──
+    _today_m = _dt_mod.now().date()
+    _scope_month = None
+    _mm_cur = _re3.search(r'(\d{1,2})\s*월', _user_text)
+    if _mm_cur:
+        _mn = int(_mm_cur.group(1))
+        if 1 <= _mn <= 12:
+            _yr = _today_m.year if _mn <= _today_m.month else _today_m.year - 1
+            _scope_month = f"{_yr}-{_mn:02d}"
+    elif any(k in _user_text for k in ['이번달', '이번 달', '이달', '금월']):
+        _scope_month = f"{_today_m.year}-{_today_m.month:02d}"
+    elif any(k in _user_text for k in ['지난달', '저번달', '전월']):
+        _pm = _today_m.month - 1 or 12
+        _py = _today_m.year if _today_m.month > 1 else _today_m.year - 1
+        _scope_month = f"{_py}-{_pm:02d}"
+    if _scope_month:
+        sess['last_month'] = _scope_month
+
+    _has_week_in_msg = bool(week_m) or bool(_re3.search(r'(?<!\d)\d{1,2}\s*주차', _user_text))
+    _followup_cue = any(k in _user_text for k in
+                        ['각각', '그럼', '그거', '그때', '거기서', '그 중', '그중', '세부', '자세히', '내역', '나눠'])
+    _qty_kw = any(k in _user_text for k in ['몇 대', '몇대', '대수', '수량', '출하량', '몇 개', '몇개', '출하'])
+    _rev_kw = any(k in _user_text for k in ['매출', '금액', '얼마'])
+    if not _scope_month and not _has_week_in_msg and _followup_cue and sess.get('last_month'):
+        _scope_month = sess.get('last_month')
+    if _scope_month and not _has_week_in_msg and (_qty_kw or _rev_kw):
+        _mode_m = 'rev' if (_rev_kw and not _qty_kw) else 'qty'
+        try:
+            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m)
+        except Exception as _e_ms:
+            _ans_m = None
+            print(f"[chat] 월 즉답 실패(무시): {_e_ms}")
+        if _ans_m:
+            sess['last_month'] = _scope_month
+            sess['last_question_scope'] = True
+            print(f"[chat] 월 즉답 → {_scope_month} / {_mode_m} (project={last_project})")
+            _src_m = ([{'key': last_project, 'label': PROJECT_LABELS.get(last_project, last_project)}]
+                      if last_project and last_project != 'all' else [])
+            return {'answer': _ans_m, 'sources': _src_m, 'corrected_query': None}
 
     # ── 한국어 주차 별칭 → ISO 주차 매핑 (오늘 = W35, 2026-08-27) ──
     week_aliases = {
