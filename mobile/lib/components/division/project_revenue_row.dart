@@ -98,36 +98,45 @@ class ProjectRevenueRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    koreanName,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.headerNavy,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                // 이름 묶음이 남는 폭을 전부 먹어야 금액이 카드 오른쪽 끝에 붙는다.
+                // (Flexible + Spacer 로 두면 남는 폭을 반씩 나눠 가져서
+                //  금액 위치가 이름 길이마다 달라진다)
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          koreanName,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.headerNavy,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: onToggleFavorite,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Icon(
+                            isFavorite
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            size: 16,
+                            color: isFavorite
+                                ? const Color(0xFFF4B63D)
+                                : const Color(0xFFC5CAD3),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: onToggleFavorite,
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Icon(
-                      isFavorite
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
-                      size: 16,
-                      color: isFavorite
-                          ? const Color(0xFFF4B63D)
-                          : const Color(0xFFC5CAD3),
-                    ),
-                  ),
-                ),
-                const Spacer(),
+                const SizedBox(width: 6),
                 Text(
                   Fmt.moneyShort(revenue),
                   style: const TextStyle(
@@ -170,15 +179,18 @@ class ProjectRevenueRow extends StatelessWidget {
                   value: '$modelsTotal종',
                 ),
                 const Spacer(),
-                if (progressPercent != null)
-                  Text(
-                    '진행 ${progressPercent!}%',
+                SizedBox(
+                  width: 58,
+                  child: Text(
+                    progressPercent == null ? '' : '진행 ${progressPercent!}%',
+                    textAlign: TextAlign.right,
                     style: AppText.caption.copyWith(
                       fontSize: 11.5,
                       color: AppColors.textHint,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                ),
               ],
             ),
           ],
@@ -260,53 +272,68 @@ class ProjectPlainRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Flexible(
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      koreanName,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.headerNavy,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: onToggleFavorite,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Icon(
+                        isFavorite
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        size: 15,
+                        color: isFavorite
+                            ? const Color(0xFFF4B63D)
+                            : const Color(0xFFC5CAD3),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            // 모델·진행은 폭을 고정한다. 값이 없는 행이 있어도 열이 흐트러지지 않게.
+            SizedBox(
+              width: 62,
               child: Text(
-                koreanName,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.headerNavy,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: onToggleFavorite,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Icon(
-                  isFavorite ? Icons.star_rounded : Icons.star_border_rounded,
-                  size: 15,
-                  color: isFavorite
-                      ? const Color(0xFFF4B63D)
-                      : const Color(0xFFC5CAD3),
-                ),
-              ),
-            ),
-            const Spacer(),
-            Text(
-              modelsTotal > 0 ? '모델 $modelsTotal종' : '모델 없음',
-              style: AppText.caption.copyWith(
-                fontSize: 11.5,
-                color: AppColors.textHint,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (progressPercent != null) ...[
-              const SizedBox(width: 10),
-              Text(
-                '진행 ${progressPercent!}%',
+                modelsTotal > 0 ? '모델 $modelsTotal종' : '모델 없음',
+                textAlign: TextAlign.right,
                 style: AppText.caption.copyWith(
                   fontSize: 11.5,
                   color: AppColors.textHint,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 58,
+              child: Text(
+                progressPercent == null ? '' : '진행 ${progressPercent!}%',
+                textAlign: TextAlign.right,
+                style: AppText.caption.copyWith(
+                  fontSize: 11.5,
+                  color: AppColors.textHint,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right,
                 size: 16, color: Color(0xFFC5CAD3)),
