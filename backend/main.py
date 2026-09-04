@@ -2327,6 +2327,21 @@ def _load_models() -> dict:
 
 def _save_models(data: dict) -> None:
     from datetime import datetime
+    # 덮어쓰기 전에 직전 파일을 백업해 둔다. 엑셀 업로드 한 번에 모델이 통째로
+    # 바뀔 수 있어서, 되돌릴 수단이 없으면 위험하다. 최근 10개만 보관.
+    try:
+        import shutil, glob, os as _os
+        if _os.path.exists(MODELS_FILE):
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.copy2(MODELS_FILE, f"{MODELS_FILE}.auto_{stamp}")
+            olds = sorted(glob.glob(f"{MODELS_FILE}.auto_*"))
+            for p in olds[:-10]:
+                try:
+                    _os.remove(p)
+                except Exception:
+                    pass
+    except Exception as _e:
+        print(f"[save_models] 백업 실패(무시): {_e}")
     data["updated_at"] = datetime.now().isoformat()
     with open(MODELS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -4888,6 +4903,12 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
         if _parsed and _parsed.get("models"):
             _res = _apply_report_workbook(project_key, _parsed)
             _res["auto_detected"] = "weekly_report"
+            # 주간보고 파서가 못 읽는 값들(주차별 '변동' = PO증감, 진행중/완료 종수,
+            # 그룹 누적 출하)을 현황 파서로 한 번 더 훑어서 채운다.
+            try:
+                _res["enriched"] = _enrich_from_status(project_key, wb)
+            except Exception as _e:
+                print(f"[models/import] 현황 보강 실패(무시): {_e}")
             print(f"[models/import] 주간보고 형식 자동 인식 → {_parsed.get('sheet')}")
             return _res
         raise HTTPException(
@@ -20864,6 +20885,53 @@ def put_group_summary(project_key: str, payload: dict,
     return {"ok": True, "project_key": _key, "changed": changed}
 
 
+def _enrich_from_status(project_key: str, wb) -> dict:
+    """현황 표(1번 섹션)에서 PO증감 이력·진행중/완료 종수·그룹 누적 출하를 채운다."""
+    import hrva_status_import as _hs
+    sheets = _hs.parse_workbook(wb)
+    if not sheets:
+        return {"sheets": 0}
+    data = _load_models()
+    _key = _model_key_alias(project_key)
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    ws_all = proj.setdefault("weekly_summary", {})
+
+    for g in ("양산", "개발"):
+        ws_all.setdefault(g, {})["po_history"] = []
+    weeks = 0
+    for wno, name, d in sheets:
+        st = d.get("status")
+        if not st:
+            continue
+        day = _hs.week_monday(wno).strftime("%Y-%m-%d")
+        wrote = False
+        for g in ("양산", "개발"):
+            dl = int((st.get(g) or {}).get("delta") or 0)
+            if not dl:
+                continue
+            ws_all.setdefault(g, {}).setdefault("po_history", []).append(
+                {"date": day, "week": f"W{wno:02d}", "delta": dl, "note": "엑셀"})
+            wrote = True
+        if wrote:
+            weeks += 1
+
+    st = (sheets[-1][2] or {}).get("status") or {}
+    for g in ("양산", "개발"):
+        src = st.get(g) or {}
+        b = ws_all.setdefault(g, {})
+        if src.get("po"):
+            b["po_qty"] = int(src["po"])
+        if src.get("ship"):
+            b["shipped_qty"] = int(src["ship"])
+    if st.get("ongoing_types") or st.get("done_types"):
+        dev = ws_all.setdefault("개발", {})
+        dev["ongoing_types"] = int(st.get("ongoing_types") or 0)
+        dev["done_types"] = int(st.get("done_types") or 0)
+    _save_models(data)
+    return {"sheets": len(sheets), "history_weeks": weeks,
+            "ongoing_types": st.get("ongoing_types"), "done_types": st.get("done_types")}
+
+
 @app.post("/admin/projects/{project_key}/status-excel")
 async def admin_import_status_excel(project_key: str,
                                     file: UploadFile = File(...),
@@ -21699,7 +21767,12 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
         merged.append(entry)
         (updated if mid in old_map else added).append(mid)
 
-    removed = [mid for mid in old_map if mid not in {m["id"] for m in merged}]
+    # 엑셀에 없는 기존 모델은 지우지 않고 그대로 남긴다.
+    # (예전에는 여기서 잘려 나가 그 모델의 주차 계획·공정 이력까지 같이 사라졌다)
+    _new_ids = {m["id"] for m in merged}
+    kept = [mid for mid in old_map if mid not in _new_ids]
+    for mid in kept:
+        merged.append(old_map[mid])
     merged.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
 
     result = {
@@ -21707,8 +21780,11 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
         "sheet": parsed.get("sheet"),
         "counts": parsed.get("counts"),
         "added": added,
+        "added_count": len(added),
         "updated_count": len(updated),
-        "removed": removed,
+        "total": len(merged),
+        "kept": kept,
+        "removed": [],
         "weekly_summary": {
             k: {"po": v.get("po_qty"), "done": v.get("actual_total"),
                 "weeks": sorted((v.get("weeks") or {}).keys())}
@@ -21721,7 +21797,15 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
 
     proj["models"] = merged
     if parsed.get("weekly_summary"):
-        proj["weekly_summary"] = parsed["weekly_summary"]
+        # PO증감 이력·종수 같은 우리 쪽 필드가 날아가지 않게 병합한다.
+        _cur = proj.setdefault("weekly_summary", {})
+        for _g, _v in (parsed["weekly_summary"] or {}).items():
+            _dst = _cur.setdefault(_g, {})
+            for _k, _val in (_v or {}).items():
+                if _k == "weeks":
+                    _dst.setdefault("weeks", {}).update(_val or {})
+                else:
+                    _dst[_k] = _val
     _save_models(data)
     print(f"[report-import] {_key} sheet={parsed.get('sheet')} "
           f"models={len(merged)} added={len(added)} removed={len(removed)}")

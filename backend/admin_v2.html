@@ -6527,8 +6527,21 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
         var r = await fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models/import', { method: 'POST', body: fd, credentials: 'same-origin' });
         var d = await r.json();
         if (r.ok && d.ok) {
-          alert('✅ 완료: 신규 ' + d.added + '개, 갱신 ' + d.updated + '개 (전체 ' + d.total + '개)' +
-            ((d.types_added && d.types_added.length) ? '\n유형 추가: ' + d.types_added.join(', ') : ''));
+          // 응답 모양이 두 가지다.
+          //  · 모델 템플릿   { added: 3, updated: 12, total: 55 }
+          //  · 주간보고 자동 { added: ['id',...], updated_count: 48, total: 61 }
+          var _add = Array.isArray(d.added) ? d.added.length : (d.added || 0);
+          var _upd = (d.updated_count !== undefined) ? d.updated_count : (d.updated || 0);
+          var _tot = (d.total !== undefined) ? d.total : (_add + _upd);
+          var _msg = '✅ 완료: 신규 ' + _add + '개, 갱신 ' + _upd + '개 (전체 ' + _tot + '개)';
+          if (d.auto_detected === 'weekly_report') _msg += '\n주간보고 형식 자동 인식 · 시트 ' + (d.sheet || '');
+          if (d.enriched && d.enriched.history_weeks) {
+            _msg += '\nPO증감 ' + d.enriched.history_weeks + '주차 반영' +
+              (d.enriched.ongoing_types ? ' · 개발 ' + d.enriched.ongoing_types + '종 진행중 / ' +
+                (d.enriched.done_types || 0) + '종 완료' : '');
+          }
+          if ((d.kept || []).length) _msg += '\n엑셀에 없는 기존 모델 ' + d.kept.length + '개는 그대로 뒀습니다.';
+          alert(_msg + ((d.types_added && d.types_added.length) ? '\n유형 추가: ' + d.types_added.join(', ') : ''));
           var tb = document.getElementById('mdl-table-box');
           if (tb) loadModels(_currentProjectKey, tb);
           loadTypes(_currentProjectKey);
