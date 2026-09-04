@@ -7,6 +7,7 @@ import 'model_list_screen.dart';
 import 'model_cost_list_screen.dart';
 import '../models/weekly_revenue.dart';
 import '../widgets/weekly_revenue_card.dart';
+import '../widgets/weekly_board_card.dart';
 import '../services/api_service.dart';
 
 class ProjectOverviewScreen extends StatefulWidget {
@@ -414,7 +415,13 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     );
   }
 
+  // 주차 현황 보드로 바뀐 프로젝트. 엑셀 이미지 대신 계산된 표를 그린다.
+  static const _boardProjects = {'hrva_plate', 'havaplate', 'hrva-plate'};
+
   Widget _buildWeeklyPlanSection() {
+    if (_boardProjects.contains(widget.projectKey.toLowerCase())) {
+      return WeeklyBoardCard(projectKey: widget.projectKey);
+    }
     return FutureBuilder<Map<String, dynamic>>(
       future: _planFuture,
       builder: (context, snap) {
