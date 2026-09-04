@@ -6039,8 +6039,9 @@ window.renderAdminV2ByDivision = function(){
       (_projIsEss
         ? '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">출하 완료</th><th class="mdl-th-num">남은 수량</th><th>납기</th><th>이슈사항</th><th>비고</th><th style="width:56px">관리</th>'
         : '<th>모델명</th><th>구분</th><th>유형</th>' +
-          '<th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">실적</th><th class="mdl-th-num">잔량</th>' +
-          '<th class="mdl-th-num">판가($)</th><th class="mdl-th-num">재료비($)</th><th class="mdl-th-num">재료비율</th><th>이슈사항</th><th>비고</th><th>관리</th>') +
+          '<th class="mdl-th-num">판가($)</th><th class="mdl-th-num">재료비($)</th><th class="mdl-th-num">재료비율</th>' +
+          '<th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">실적 수량</th>' +
+          '<th>이슈사항</th><th>비고</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
@@ -6087,12 +6088,11 @@ window.renderAdminV2ByDivision = function(){
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 :
-  '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:88px;"></td>' +
-  '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:88px;"></td>' +
-  '<td data-field="remaining" class="mdl-td-ratio">' + Math.max(0, (m.po_qty || 0) - (m.shipped_qty || 0)) + '</td>' +
   '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
   '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
+  '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
+  '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 ) +
@@ -6832,7 +6832,7 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<span class="ov-card-title">주차 현황 보드</span>' +
               '<span class="ov-card-sub">자동 계산</span>' +
               '<span class="spacer"></span>' +
-              '<button type="button" class="ov-btn" id="wb-edit">PO · 기초 실적 입력</button>' +
+              '<button type="button" class="ov-btn" id="wb-edit">PO 수량 · 종수 입력</button>' +
             '</div>' +
             '<div id="wb-board"></div>' +
           '</div>' +
@@ -6947,7 +6947,14 @@ var sidebarSel = document.getElementById('v2-division-select');
       fetch('/projects/' + encodeURIComponent(projectKey) + '/weekly-revenue?month=' + encodeURIComponent(mth), { credentials: 'same-origin' })
         .then(function(r){ return r.json(); })
         .then(function(d){
-          if (!d.groups) { revCard.innerHTML = '<div style="color:#9CA3AF;text-align:center;">' + (d.detail || '주차별 현황 데이터 없음') + '</div>'; return; }
+          if (!d.groups) {
+            // detail 이 객체(FastAPI 검증 오류)로 오면 '[object Object]' 가 찍혔다.
+            var _msg = d.detail;
+            if (_msg && typeof _msg !== 'string') { try { _msg = JSON.stringify(_msg); } catch (e) { _msg = ''; } }
+            revCard.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:16px;">' +
+              (_msg || '주차별 현황 데이터 없음') + '</div>';
+            return;
+          }
           function fmt(n){ return '$' + (n || 0).toLocaleString(); }
           var html = '<div class="ov-card-head">' +
               '<span class="ov-card-title">주차별 매출 현황</span>' +
@@ -7977,8 +7984,8 @@ window._ovProjectKey = function() {
         box.innerHTML = '<div class="ov-wrap-x" style="overflow-x:auto;">' +
           '<table class="wb-tbl"><thead>' + head + '</thead><tbody>' + body + foot + '</tbody></table></div>' +
           '<p class="mdl-hint" style="margin-top:10px;">' +
-          '양산 주차는 모델별 주차 계획의 합, 개발 주차는 ‘개발 (합계)’ 입력값입니다. ' +
-          '실적 = 기초 누적 실적 + 전 기간 주차 실적, 잔량 = PO 수량 − 실적.</p>';
+          'PO 수량은 ‘PO · 기초 실적 입력’, 실적은 모델 목록의 실적 수량 합계입니다. ' +
+          '양산 주차는 모델별 주차 계획의 합, 개발 주차는 ‘개발 (합계)’ 입력값. 잔량 = PO 수량 − 실적.</p>';
       })
       .catch(function(e) {
         box.innerHTML = '<div style="padding:16px;color:#DC2626;font-size:13px;">보드 로드 실패: ' + e.message + '</div>';
@@ -8007,21 +8014,17 @@ window._ovProjectKey = function() {
         back.innerHTML =
           '<div class="ph-box">' +
             '<div class="ph-hd">' +
-              '<h3>PO · 기초 실적 입력</h3>' +
-              '<p>여기 값만 넣으면 PO 수량 · 실적 · 잔량 · PO증감이 보드에 자동으로 채워집니다.<br>' +
-              '<b>기초 누적 실적</b>은 주차별 입력을 시작하기 전까지의 누적 출하량입니다. ' +
-              'PO 수량을 바꾸면 증감 이력이 자동으로 기록됩니다.</p>' +
+              '<h3>PO 수량 · 종수 입력</h3>' +
+              '<p>PO 수량은 여기서, <b>실적 수량은 모델 목록</b>에서 모델별로 넣습니다.<br>' +
+              '잔량(= PO − 실적)과 PO증감은 자동으로 계산됩니다. ' +
+              'PO 수량을 바꾸면 증감 이력이 그때그때 기록됩니다.</p>' +
             '</div>' +
             '<div class="ph-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 18px;">' +
               '<div><h4 style="margin:2px 0 10px;font-size:13px;color:#2563EB;">양산</h4>' +
                 fld('양산', 'po_qty', 'PO 수량') +
-                fld('양산', 'base_actual', '기초 누적 실적', '(주차 입력 이전)') +
-                fld('양산', 'next_month_plan', '다음 달 계획', '(주차 입력 없을 때만)') +
               '</div>' +
               '<div><h4 style="margin:2px 0 10px;font-size:13px;color:#7C3AED;">개발</h4>' +
                 fld('개발', 'po_qty', 'PO 수량') +
-                fld('개발', 'base_actual', '기초 누적 실적', '(주차 입력 이전)') +
-                fld('개발', 'next_month_plan', '다음 달 계획', '(주차 입력 없을 때만)') +
                 '<div style="display:flex;gap:10px;">' +
                   '<div style="flex:1">' + fld('개발', 'ongoing_types', '진행중 종수') + '</div>' +
                   '<div style="flex:1">' + fld('개발', 'done_types', '완료 종수') + '</div>' +

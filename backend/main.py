@@ -20895,11 +20895,11 @@ def get_weekly_board(project_key: str, month: str = None):
     for g in ("양산", "개발"):
         b = _group_bucket(proj, g)
         wk = _mass_week_totals(proj, month, weeks) if g == "양산" else _dev_week_totals(proj, month, weeks)
-        # PO 수량 · 누적 실적은 모델 목록에 직접 적은 값이 있으면 그게 정본이고,
-        # 없으면 그룹 단위 입력(PO·기초 누적 실적 + 주차 실적)으로 계산한다.
+        # PO 수량은 그룹 단위로 직접 입력한 값이 정본 (없으면 모델별 합계).
+        # 누적 실적은 모델 목록의 '실적 수량' 합계가 정본 (없으면 전 기간 주차 실적).
         base = int(b.get("base_actual") or 0)
         m_po, m_ship = _model_qty_sums(proj, g)
-        po = m_po or int(b.get("po_qty") or 0)
+        po = int(b.get("po_qty") or 0) or m_po
         actual_total = m_ship or (base + _all_actual_sum(proj, g))
         nxt_plan = month_plan(g, nxt) or int(b.get("next_month_plan") or 0)
         label = g
