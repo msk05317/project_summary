@@ -5603,6 +5603,23 @@ window.renderAdminV2ByDivision = function(){
     '.wp-acc-name { font-size:13px; font-weight:700; color:#0F172A; }',
     '.wp-acc-tag { margin-left:7px; padding:2px 7px; border-radius:999px; font-size:11px; '
       + 'font-weight:700; color:#7C3AED; background:#F3E8FF; }',
+    // 양산 / 개발 구분 머리글
+    '.wp-group-head { display:flex; align-items:center; gap:7px; margin:16px 0 8px; }',
+    '.wp-group-head:first-child { margin-top:2px; }',
+    '.wp-group-dot { width:7px; height:7px; border-radius:50%; display:inline-block; }',
+    '.wp-group-name { font-size:12.5px; font-weight:800; color:#0F172A; }',
+    '.wp-group-cnt { font-size:11.5px; color:#94A3B8; font-weight:600; }',
+    '.wp-group-line { flex:1 1 auto; height:1px; background:#E9EDF3; margin-left:4px; }',
+    // 모델 검색
+    '.wp-search-wrap { display:inline-flex; align-items:center; gap:8px; margin-right:8px; }',
+    '.wp-search-wrap[hidden] { display:none; }',
+    '.wp-search-input { padding:6px 10px; border:1px solid #D1D5DB; border-radius:8px; '
+      + 'font-size:13px; width:190px; outline:none; }',
+    '.wp-search-input:focus { border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
+    '.wp-search-cnt { font-size:11.5px; color:#94A3B8; white-space:nowrap; }',
+    '.wp-search-btn { border:1px solid #D1D5DB; background:#fff; border-radius:8px; '
+      + 'padding:6px 10px; cursor:pointer; font-size:13px; line-height:1; margin-right:8px; }',
+    '.wp-search-btn.is-on { border-color:#2563EB; background:#EFF6FF; }',
     '.wp-acc-prog { font-size:12px; font-weight:700; color:#64748B; }',
     '.wp-acc-prog.on { color:#0F172A; }',
     '.wp-acc-caret { color:#B6BECB; font-size:11px; transition:transform .18s; }',
@@ -6619,6 +6636,11 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<span class="ov-card-title">모델별 주차별 계획</span>' +
               '<span class="ov-card-sub" id="wp-group-sub">양산</span>' +
               '<span class="spacer"></span>' +
+              '<span id="wp-search-wrap" class="wp-search-wrap" hidden>' +
+                '<input id="wp-search" type="text" class="wp-search-input" placeholder="모델명 검색">' +
+                '<span id="wp-search-count" class="wp-search-cnt"></span>' +
+              '</span>' +
+              '<button type="button" id="wp-search-btn" class="wp-search-btn" title="모델 검색">🔍</button>' +
               '<select id="wp-month-sel" class="ov-select"></select>' +
             '</div>' +
             '<div id="wp-models-list"></div>' +
@@ -7379,6 +7401,7 @@ window._ovProjectKey = function() {
 (function(){
   var _wpMonth = new Date().toISOString().slice(0,7);
   var _wpModels = [];
+  var _wpQuery = '';
 
   // 프로젝트 변경 감지
   var _lastProjectKey = '';
@@ -7410,6 +7433,35 @@ window._ovProjectKey = function() {
       loadModelList(this.value);
       if (window.renderRevenueCard) { window._revMonth = this.value; window.renderRevenueCard(window._ovProjectKey(), this.value); }
     };
+
+    // 🔍 검색 토글
+    var sbtn = document.getElementById('wp-search-btn');
+    var swrap = document.getElementById('wp-search-wrap');
+    var sinp = document.getElementById('wp-search');
+    if (sbtn && swrap && sinp && !sbtn.dataset.wired) {
+      sbtn.dataset.wired = '1';
+      function closeSearch() {
+        swrap.hidden = true;
+        sbtn.classList.remove('is-on');
+        sinp.value = '';
+        _wpQuery = '';
+        if (_wpModels.length) renderModelCards();
+      }
+      sbtn.onclick = function() {
+        if (swrap.hidden) {
+          swrap.hidden = false;
+          sbtn.classList.add('is-on');
+          sinp.focus();
+        } else {
+          closeSearch();
+        }
+      };
+      sinp.oninput = function() {
+        _wpQuery = this.value;
+        if (_wpModels.length) renderModelCards();
+      };
+      sinp.onkeydown = function(e) { if (e.key === 'Escape') closeSearch(); };
+    }
   };
 
   window.loadModelList = function(month) { return loadModelList(month); };
@@ -7467,59 +7519,111 @@ window._ovProjectKey = function() {
       });
   }
 
+  // 검색어 매칭 (모델명 / id / 파트번호)
+  function _wpMatch(m, q) {
+    if (!q) return true;
+    var hay = ((m.name || '') + ' ' + (m.id || '') + ' ' + (m.part_number || '')).toLowerCase();
+    return hay.indexOf(q) >= 0;
+  }
+
+  // 아코디언 한 줄 만들기. idx 는 _wpModels 안에서의 원래 위치(= DOM id 키).
+  function _wpBuildCard(m, idx, no) {
+    var card = document.createElement('div');
+    card.className = 'wp-acc';
+    card.innerHTML =
+      '<div class="wp-acc-head" data-idx="' + idx + '" role="button" tabindex="0" aria-expanded="false">' +
+        '<span class="wp-acc-no">' + no + '</span>' +
+        '<span class="wp-acc-name">' + (m.name || m.id) + '</span>' +
+        '<span style="flex:1 1 auto"></span>' +
+        '<span id="wp-prog-' + idx + '" class="wp-acc-prog">-</span>' +
+        '<span id="wp-arrow-' + idx + '" class="wp-acc-caret">▼</span>' +
+      '</div>' +
+      '<div id="wp-body-' + idx + '" class="wp-acc-body" hidden></div>';
+
+    var head = card.querySelector('.wp-acc-head');
+    function toggle() {
+      var body = document.getElementById('wp-body-' + idx);
+      var open = !body.hidden;
+      body.hidden = open;
+      card.classList.toggle('is-open', !open);
+      head.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (!open && !body.dataset.loaded) loadModelWeeklyData(m.id, idx);
+    }
+    head.onclick = toggle;
+    head.onkeydown = function(e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    };
+    return card;
+  }
+
+  // 저장된 weekly_plan 기준 진행률 표시
+  function _wpPaintProgress() {
+    try {
+      _wpModels.forEach(function(m, idx) {
+        var bucket = (m.weekly_plan || {})[_wpMonth] || {};
+        var tp = 0, ta = 0;
+        Object.keys(bucket).forEach(function(w) {
+          var c = bucket[w] || {};
+          tp += (c.plan || 0);
+          ta += (c.actual || 0);
+        });
+        if (tp > 0) {
+          var el = document.getElementById('wp-prog-' + idx);
+          if (el) {
+            el.textContent = '진행률 ' + Math.round(ta / tp * 100) + '%';
+            el.style.color = '#059669';
+          }
+        }
+      });
+    } catch (e) { console.warn('init prog:', e); }
+  }
+
   function renderModelCards() {
     var list = document.getElementById('wp-models-list');
+    if (!list) return;
     list.innerHTML = '';
-    _wpModels.forEach(function(m, idx) {
-      var card = document.createElement('div');
-      card.className = 'wp-acc';
-      card.innerHTML =
-        '<div class="wp-acc-head" data-idx="' + idx + '" role="button" tabindex="0" aria-expanded="false">' +
-          '<span class="wp-acc-no">' + (idx + 1) + '</span>' +
-          '<span class="wp-acc-name">' + (m.name || m.id) + '</span>' +
-          (m.group === '개발'
-            ? '<span class="wp-acc-tag">개발</span>'
-            : '') +
-          '<span style="flex:1 1 auto"></span>' +
-          '<span id="wp-prog-' + idx + '" class="wp-acc-prog">-</span>' +
-          '<span id="wp-arrow-' + idx + '" class="wp-acc-caret">▼</span>' +
-        '</div>' +
-        '<div id="wp-body-' + idx + '" class="wp-acc-body" hidden></div>';
-      list.appendChild(card);
 
-      var head = card.querySelector('.wp-acc-head');
-      function toggle() {
-        var body = document.getElementById('wp-body-' + idx);
-        var open = !body.hidden;
-        body.hidden = open;
-        card.classList.toggle('is-open', !open);
-        head.setAttribute('aria-expanded', open ? 'false' : 'true');
-        if (!open && !body.dataset.loaded) loadModelWeeklyData(m.id, idx);
-      }
-      head.onclick = toggle;
-      head.onkeydown = function(e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
-      };
+    var q = (_wpQuery || '').trim().toLowerCase();
+    var GROUPS = [
+      { key: '양산', color: '#2563EB' },
+      { key: '개발', color: '#7C3AED' }
+    ];
+    var shown = 0;
+
+    GROUPS.forEach(function(g) {
+      var rows = [];
+      _wpModels.forEach(function(m, idx) {
+        var mg = (m.group === '개발') ? '개발' : '양산';
+        if (mg !== g.key) return;
+        if (!_wpMatch(m, q)) return;
+        rows.push({ m: m, idx: idx });
+      });
+      if (!rows.length) return;
+      shown += rows.length;
+
+      var hd = document.createElement('div');
+      hd.className = 'wp-group-head';
+      hd.innerHTML =
+        '<span class="wp-group-dot" style="background:' + g.color + '"></span>' +
+        '<span class="wp-group-name">' + g.key + '</span>' +
+        '<span class="wp-group-cnt">' + rows.length + '개</span>' +
+        '<span class="wp-group-line"></span>';
+      list.appendChild(hd);
+
+      rows.forEach(function(r, i) {
+        list.appendChild(_wpBuildCard(r.m, r.idx, i + 1));
+      });
     });
 
-        // 초기 진행률 표시 (저장된 weekly_plan 기반)
-        try {
-          _wpModels.forEach(function(m, idx) {
-            var wp = m.weekly_plan || {};
-            var bucket = wp[_wpMonth] || {};
-            var tp = 0, ta = 0;
-            Object.keys(bucket).forEach(function(w) {
-              var c = bucket[w] || {};
-              tp += (c.plan || 0);
-              ta += (c.actual || 0);
-            });
-            if (tp > 0) {
-              var prog = Math.round(ta / tp * 100);
-              var el = document.getElementById('wp-prog-' + idx);
-              if (el) { el.textContent = '진행률 ' + prog + '%'; el.style.color = '#059669'; }
-            }
-          });
-        } catch(e) { console.warn('init prog:', e); }
+    if (!shown) {
+      list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">' +
+        (q ? '검색 결과가 없습니다' : '모델이 없습니다') + '</div>';
+    }
+
+    var cnt = document.getElementById('wp-search-count');
+    if (cnt) cnt.textContent = q ? (shown + ' / ' + _wpModels.length + '개') : '';
+
+    _wpPaintProgress();
   }
 
   function loadModelWeeklyData(modelId, idx) {
