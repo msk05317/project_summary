@@ -20367,6 +20367,23 @@ def get_projects_progress_summary(division_id: str = None):
     }
 
 
+def _display_project_label(project_key: str) -> str:
+    """프로젝트 표시 이름.
+
+    PROJECT_LABELS 는 초창기 8개만 담고 있는 고정 맵이라
+    이후에 추가된 프로젝트(플레이팅 셀 / 톨론 / EOS챔버 / 페러데이 4T /
+    CURIE)는 'plating_cell' 같은 키가 그대로 화면에 노출됐다.
+    운영 설정(config/projects.json)의 라벨을 먼저 본다.
+    """
+    try:
+        p = _cl.get_project(project_key)
+        if p and (p.get("label") or "").strip():
+            return p["label"].strip()
+    except Exception:
+        pass
+    return PROJECT_LABELS.get(project_key, project_key)
+
+
 @app.get("/overview")
 def get_overview(month: str = None, division_id: str = None):
     """앱 홈 화면용 요약 (admin/overview 와 동일)."""
@@ -20387,7 +20404,7 @@ def get_admin_overview(month: str = None, division_id: str = None):
             continue
         row = {
             "key": pk,
-            "label": PROJECT_LABELS.get(pk, pk),
+            "label": _display_project_label(pk),
             "division_id": entry.get("division_id"),
             "models_total": entry.get("models_total", 0),
             "scored_count": entry.get("scored_count", 0),

@@ -387,6 +387,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     'major_module': 'Major Module',
     'powerbox': 'Powerbox',
     'chamber': 'Chamber',
+    'spacex': 'CURIE (Space X)',
     'enclosure': 'Enclosure',
     'frame': 'Frame',
     'cup': 'CUP',

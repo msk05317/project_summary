@@ -56,7 +56,7 @@ SECTION_KEYWORDS = {
     "CUP": ["CUP", "컵"],
     "자일란 코팅": ["자일란", "Xylan", "자일란코팅"],
     "톨론": ["톨론", "Torlon"],
-    "Space X": ["Space X", "SpaceX", "스페이스X"],
+    "Space X": ["Space X", "SpaceX", "스페이스X", "CURIE", "Curie", "퀴리"],
     "KLA": ["KLA", "케이엘에이"],
     "세정": ["세정", "Cleaning", "클리닝"],
     "EOS 챔버": ["EOS", "EOS 챔버"],
