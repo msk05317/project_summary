@@ -21694,6 +21694,20 @@ async def admin_import_weekly_report(
     return _apply_report_workbook(project_key, parsed, dry_run=dry_run)
 
 
+def _is_rpm_model(m: dict) -> bool:
+    """엑셀에서 빠지면 지워도 되는 모델인지.
+
+    RPM 개발품은 주 단위로 들고 나서 이력을 붙들 이유가 없다.
+    반대로 양산(HVM)과 HVM 개발품은 엑셀에 안 보여도 절대 지우지 않는다
+    (주차별 계획·개발 공정 이력이 같이 날아가기 때문).
+    """
+    if not isinstance(m, dict):
+        return False
+    if _norm_group(m.get("group")) != "개발":
+        return False
+    return "RPM" in str(m.get("dev_type") or "").upper()
+
+
 def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False) -> dict:
     """주간 보고 엑셀 파싱 결과를 models.json 에 병합한다.
     엑셀을 정본으로 교체하되 기존 공정(process)/이슈(issues)는 ID 로 승계하고,
@@ -21767,12 +21781,20 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
         merged.append(entry)
         (updated if mid in old_map else added).append(mid)
 
-    # 엑셀에 없는 기존 모델은 지우지 않고 그대로 남긴다.
-    # (예전에는 여기서 잘려 나가 그 모델의 주차 계획·공정 이력까지 같이 사라졌다)
+    # 엑셀에 없는 기존 모델 처리:
+    #   RPM 개발품  → 정리 (주 단위로 바뀌는 항목이라 남길 이유가 없다)
+    #   그 외(양산·HVM) → 그대로 유지. 예전에는 전부 잘려 나가면서
+    #                     주차별 계획과 개발 공정 이력까지 같이 사라졌다.
     _new_ids = {m["id"] for m in merged}
-    kept = [mid for mid in old_map if mid not in _new_ids]
-    for mid in kept:
-        merged.append(old_map[mid])
+    kept, removed = [], []
+    for mid, _old in old_map.items():
+        if mid in _new_ids:
+            continue
+        if _is_rpm_model(_old):
+            removed.append(mid)
+            continue
+        kept.append(mid)
+        merged.append(_old)
     merged.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
 
     result = {
@@ -21784,7 +21806,7 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
         "updated_count": len(updated),
         "total": len(merged),
         "kept": kept,
-        "removed": [],
+        "removed": removed,
         "weekly_summary": {
             k: {"po": v.get("po_qty"), "done": v.get("actual_total"),
                 "weeks": sorted((v.get("weeks") or {}).keys())}

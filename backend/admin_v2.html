@@ -6540,7 +6540,8 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
               (d.enriched.ongoing_types ? ' · 개발 ' + d.enriched.ongoing_types + '종 진행중 / ' +
                 (d.enriched.done_types || 0) + '종 완료' : '');
           }
-          if ((d.kept || []).length) _msg += '\n엑셀에 없는 기존 모델 ' + d.kept.length + '개는 그대로 뒀습니다.';
+          if ((d.kept || []).length) _msg += '\n엑셀에 없는 양산·HVM 모델 ' + d.kept.length + '개는 그대로 뒀습니다.';
+          if ((d.removed || []).length) _msg += '\n엑셀에서 빠진 RPM 개발품 ' + d.removed.length + '개는 정리했습니다.';
           alert(_msg + ((d.types_added && d.types_added.length) ? '\n유형 추가: ' + d.types_added.join(', ') : ''));
           var tb = document.getElementById('mdl-table-box');
           if (tb) loadModels(_currentProjectKey, tb);
