@@ -5502,6 +5502,7 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-table td { padding: 10px 12px; box-shadow: none; border-color: #EDF0F4; }',
     '.mdl-table tr[data-model-id]:hover td { background: #FBFCFE; }',
     '.mdl-td-name { font-weight: 700; color: #0F172A; font-size: 13px; letter-spacing: -0.01em; }',
+    '.mdl-input-name { width:160px; font-weight:700; color:#0F172A; text-align:left; }',
     /* 입력칸: 평소엔 테두리 없이 값만 보이고, 포커스/호버 때만 드러나게 */
     '.mdl-input { width: 96px; padding: 7px 10px; border: 1px solid transparent; border-radius: 6px; background: #F7F9FC; color: #0F172A; font-weight: 600; transition: border-color .12s, background .12s; }',
     '.mdl-input:hover { background: #F1F5F9; }',
@@ -5745,6 +5746,9 @@ window.renderAdminV2ByDivision = function(){
       if (!m) return;
       const g = r.querySelector('[data-field="group"]');
       if (g) m.group = g.value;
+      // 모델명. 빈 값은 반영하지 않는다 — 서버가 이름 없는 모델을 버려서 행이 통째로 사라진다.
+      const nm = r.querySelector('[data-field="name"]');
+      if (nm && String(nm.value || '').trim()) m.name = String(nm.value).trim();
       const pn = r.querySelector('[data-field="part_number"]');
       const poq = r.querySelector('[data-field="po_qty"]');
       const shq = r.querySelector('[data-field="shipped_qty"]');
@@ -6043,7 +6047,11 @@ window.renderAdminV2ByDivision = function(){
           '<td class="mdl-td-chk"><input type="checkbox" class="mdl-check mdl-row-chk"' + (window._mdlSel[m.id] ? ' checked' : '') + '></td>' +
           ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
           ? '<td class="mdl-col-pn"><input data-field="part_number" value="' + (m.part_number || m.id) + '" style="width:110px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:11px;font-family:monospace;font-weight:600;" /></td>' : '') +
-          '<td class="mdl-td-name">' + m.name + _phaseBadge(m) + '</td>' +
+          '<td class="mdl-td-name">' +
+            '<input data-field="name" class="mdl-input mdl-input-name" placeholder="모델명" value="' +
+              String(m.name || '').replace(/"/g, '&quot;') + '">' +
+            _phaseBadge(m) +
+          '</td>' +
           '<td><select data-field="group">' +
             '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
             '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
@@ -6109,6 +6117,14 @@ window.renderAdminV2ByDivision = function(){
       });
       el.addEventListener('change', function(){
         syncDomToData(container);
+      });
+    });
+    container.querySelectorAll('input[data-field="name"]').forEach(function(inp){
+      inp.addEventListener('blur', function(){
+        if (String(inp.value || '').trim()) return;
+        var tr = inp.closest('tr');
+        var m = (window._modelsData || []).find(function(x){ return x.id === (tr && tr.dataset.modelId); });
+        if (m) inp.value = m.name || '';
       });
     });
     container.querySelectorAll('input[data-field="dev_type"]').forEach(function(inp){
