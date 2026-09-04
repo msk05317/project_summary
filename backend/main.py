@@ -13233,11 +13233,23 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
                 entry[_keep] = old.get(_keep)
         if not str(entry.get("note") or "").strip() and old.get("note"):
             entry["note"] = old.get("note")
+        # 구분·판가 이력 (개발→양산 전환, 판가 변경). 과거 매출이 흔들리지 않게 보존한다.
+        _ph = _norm_phases(m.get("phases") if m.get("phases") is not None else old.get("phases"))
+        if _ph:
+            entry["phases"] = _ph
         if group == "개발":
             dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             entry["dev_type"] = dev_type
             proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
             entry["process"] = proc if isinstance(proc, list) and len(proc) in (12, 13) else _default_process()
+        else:
+            # 양산으로 넘어가도 개발 때 쌓인 유형/공정 이력은 지우지 않는다.
+            _dt = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
+            if _dt:
+                entry["dev_type"] = _dt
+            _proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
+            if isinstance(_proc, list) and len(_proc) in (12, 13):
+                entry["process"] = _proc
         normalized.append(entry)
 
     normalized.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
@@ -21315,6 +21327,93 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
 
 
 @app.get("/projects/{project_key}/weekly-revenue")
+# ─────────────────────────────────────────────────────────────
+# 모델의 '구분·판가 이력' (phases)
+#
+# 개발품으로 나가다가 도중에 양산으로 넘어가는 모델이 있다. 예) Mahabali MPD
+# 는 W35 까지 개발품($138,470)으로 출하되다가 W36 부터 양산품으로 바뀐다.
+# 모델에 group/price 를 하나씩만 두면 구분을 바꾸는 순간 과거 주차까지
+# 새 판가로 소급 계산돼 8월 매출이 통째로 흔들린다.
+#
+# 그래서 시점별 구간을 배열로 둔다.
+#   "phases": [
+#     {"from": "2026-W01", "group": "개발", "price": 138470},
+#     {"from": "2026-W36", "group": "양산", "price":  96000}
+#   ]
+# 주차마다 from <= 그 주차 인 마지막 구간의 구분/판가를 쓴다.
+# phases 가 없으면 모델의 현재 group/price 를 그대로 쓴다(기존 동작 유지).
+# ─────────────────────────────────────────────────────────────
+
+def _week_ord(month: str, week) -> int:
+    """('2026-08','W36') → 202636. 연말/연초 주차는 ISO 연도로 보정."""
+    try:
+        y = int(str(month)[:4]); mm = int(str(month)[5:7])
+    except Exception:
+        return 0
+    try:
+        w = int(str(week).lstrip("Ww") or 0)
+    except Exception:
+        return 0
+    if mm == 1 and w >= 52:
+        y -= 1
+    elif mm == 12 and w <= 2:
+        y += 1
+    return y * 100 + w
+
+
+def _phase_ord(v) -> int:
+    """'2026-W36' → 202636. 못 읽으면 None."""
+    import re as _re
+    m = _re.match(r"^\s*(\d{4})\s*[-/]?\s*[Ww]?\s*(\d{1,2})\s*$", str(v or ""))
+    if not m:
+        return None
+    return int(m.group(1)) * 100 + int(m.group(2))
+
+
+def _norm_phases(v):
+    """저장/조회용 정규화. from 오름차순, 잘못된 항목은 버린다."""
+    if not isinstance(v, list):
+        return []
+    out = []
+    for e in v:
+        if not isinstance(e, dict):
+            continue
+        o = _phase_ord(e.get("from"))
+        if o is None:
+            continue
+        g = "개발" if str(e.get("group") or "").strip() == "개발" else "양산"
+        try:
+            p = max(0, int(e.get("price") or 0))
+        except Exception:
+            p = 0
+        out.append({"from": "%04d-W%02d" % (o // 100, o % 100), "group": g, "price": p})
+    out.sort(key=lambda e: _phase_ord(e["from"]))
+    return out
+
+
+def _phase_at(m: dict, month: str, week):
+    """그 주차에 유효한 (구분, 판가). phases 가 없으면 모델의 현재 값."""
+    g = "개발" if (m or {}).get("group") == "개발" else "양산"
+    try:
+        price = max(0, int((m or {}).get("price") or 0))
+    except Exception:
+        price = 0
+    ph = _norm_phases((m or {}).get("phases"))
+    if not ph:
+        return g, price
+    cur = _week_ord(month, week)
+    hit = None
+    for e in ph:
+        if _phase_ord(e["from"]) <= cur:
+            hit = e
+        else:
+            break
+    # 첫 구간보다 앞선 주차는 첫 구간을 적용한다 (이력 이전 = 최초 상태)
+    if hit is None:
+        hit = ph[0]
+    return hit["group"], (hit["price"] or price)
+
+
 def get_weekly_revenue(project_key: str, month: str = None):
     """주차별 현황+매출:
     양산 = 모델별 weekly_plan 실적 합산 x 각 모델 판가
@@ -21340,26 +21439,38 @@ def get_weekly_revenue(project_key: str, month: str = None):
         if not all_weeks:
             all_weeks = _get_month_weeks(month)
 
-    # ── 양산: 모델별 주차 실적 x 모델 판가 ──
+    # ── 모델별 주차 실적 x 그 주차에 유효한 판가 ──
+    # 한 모델이 달 중간에 개발→양산으로 넘어가면 주차마다 다른 그룹/판가로 잡힌다.
     yang_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0, "plan_revenue": 0} for w in all_weeks}
-    yang_models_used = []
+    dev_model_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0, "plan_revenue": 0} for w in all_weeks}
+    yang_models_used, dev_models_used = [], []
     for m in proj.get("models", []):
-        if m.get("group") == "개발": continue
         bucket = (m.get("weekly_plan") or {}).get(month) or {}
-        price = int(m.get("price") or 0)
-        used = False
+        if not bucket:
+            continue
+        acc = {"양산": {"plan": 0, "actual": 0, "price": 0},
+               "개발": {"plan": 0, "actual": 0, "price": 0}}
         for w in all_weeks:
             cell = bucket.get(w) or {}
             p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
-            yang_weeks[w]["plan"] += p
-            yang_weeks[w]["actual"] += a
-            yang_weeks[w]["revenue"] += a * price
-            yang_weeks[w]["plan_revenue"] += p * price
-            if p or a: used = True
-        if used:
-            yang_models_used.append({"id": m.get("id"), "price": price,
-                "plan": sum(int((bucket.get(w) or {}).get("plan") or 0) for w in all_weeks),
-                "actual": sum(int((bucket.get(w) or {}).get("actual") or 0) for w in all_weeks)})
+            g, price = _phase_at(m, month, w)
+            # 개발인데 판가가 비어 있으면 고정단가로 계산 (기존 동작 유지)
+            if g == "개발" and not price:
+                price = DEV_PRICE
+            tgt = yang_weeks if g == "양산" else dev_model_weeks
+            tgt[w]["plan"] += p
+            tgt[w]["actual"] += a
+            tgt[w]["revenue"] += a * price
+            tgt[w]["plan_revenue"] += p * price
+            if p or a:
+                acc[g]["plan"] += p
+                acc[g]["actual"] += a
+                acc[g]["price"] = price
+        for g in ("양산", "개발"):
+            if acc[g]["plan"] or acc[g]["actual"]:
+                (yang_models_used if g == "양산" else dev_models_used).append(
+                    {"id": m.get("id"), "price": acc[g]["price"],
+                     "plan": acc[g]["plan"], "actual": acc[g]["actual"]})
     yang_total = {"plan": sum(v["plan"] for v in yang_weeks.values()),
                   "actual": sum(v["actual"] for v in yang_weeks.values()),
                   "revenue": sum(v["revenue"] for v in yang_weeks.values()),
@@ -21371,37 +21482,18 @@ def get_weekly_revenue(project_key: str, month: str = None):
     #    (하바플레이트 외 프로젝트는 admin 에서 개발 모델도 주차별로 직접 입력한다)
     #    단가는 모델 판가가 있으면 그걸, 없으면 $3,400 고정단가를 쓴다.
     dev_g = ws_data.get("개발") or {}
-    dev_models_used = []
-    dev_weeks = {}
     if (dev_g.get("weeks") or {}):
+        # 하바플레이트: 개발은 모델이 아니라 그룹 총계로 관리 (x 고정단가)
+        dev_weeks = {}
         for w in all_weeks:
             cell = (dev_g.get("weeks") or {}).get(w) or {}
             p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
             dev_weeks[w] = {"plan": p, "actual": a, "revenue": a * DEV_PRICE,
                             "plan_revenue": p * DEV_PRICE}
+        dev_models_used = []
     else:
-        dev_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0, "plan_revenue": 0}
-                     for w in all_weeks}
-        for m in proj.get("models", []):
-            if m.get("group") != "개발":
-                continue
-            bucket = (m.get("weekly_plan") or {}).get(month) or {}
-            price = int(m.get("price") or 0) or DEV_PRICE
-            used = False
-            for w in all_weeks:
-                cell = bucket.get(w) or {}
-                p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
-                dev_weeks[w]["plan"] += p
-                dev_weeks[w]["actual"] += a
-                dev_weeks[w]["revenue"] += a * price
-                dev_weeks[w]["plan_revenue"] += p * price
-                if p or a:
-                    used = True
-            if used:
-                dev_models_used.append({
-                    "id": m.get("id"), "price": price,
-                    "plan": sum(int((bucket.get(w) or {}).get("plan") or 0) for w in all_weeks),
-                    "actual": sum(int((bucket.get(w) or {}).get("actual") or 0) for w in all_weeks)})
+        # 나머지 프로젝트: 위 루프에서 구간 기준으로 이미 모아둔 값
+        dev_weeks = dev_model_weeks
     dev_total = {"plan": sum(v["plan"] for v in dev_weeks.values()),
                  "actual": sum(v["actual"] for v in dev_weeks.values()),
                  "revenue": sum(v["revenue"] for v in dev_weeks.values()),

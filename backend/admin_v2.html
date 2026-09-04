@@ -5544,6 +5544,24 @@ window.renderAdminV2ByDivision = function(){
     '.ov-search input { height:36px; width:230px; padding:0 12px 0 32px; border:1px solid #D8DEE7; border-radius:8px; font-size:13px; background:#fff; box-sizing:border-box; }',
     '.ov-search input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
     '.ov-search .ico { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:13px; pointer-events:none; }',
+    '.mdl-phase-tag { margin-left:7px; padding:2px 7px; border-radius:999px; font-size:10.5px; '
+      + 'font-weight:700; color:#B45309; background:#FEF3C7; white-space:nowrap; cursor:pointer; }',
+    '.ph-back { position:fixed; inset:0; background:rgba(15,44,89,.35); z-index:10000; '
+      + 'display:flex; align-items:center; justify-content:center; }',
+    '.ph-box { background:#fff; border-radius:14px; width:min(620px,92vw); max-height:86vh; '
+      + 'overflow:auto; box-shadow:0 24px 60px rgba(15,23,42,.28); }',
+    '.ph-hd { padding:18px 20px 12px; border-bottom:1px solid #E5E7EB; }',
+    '.ph-hd h3 { margin:0 0 4px; font-size:16px; font-weight:800; color:#0F172A; }',
+    '.ph-hd p { margin:0; font-size:12px; color:#64748B; line-height:1.55; }',
+    '.ph-body { padding:14px 20px 4px; }',
+    '.ph-tbl { width:100%; border-collapse:collapse; }',
+    '.ph-tbl th { font-size:11.5px; color:#64748B; text-align:left; padding:0 6px 6px; font-weight:700; }',
+    '.ph-tbl td { padding:4px 6px; }',
+    '.ph-tbl input, .ph-tbl select { width:100%; padding:7px 9px; border:1px solid #D1D5DB; '
+      + 'border-radius:8px; font-size:13px; background:#fff; }',
+    '.ph-del { border:1px solid #E5E7EB; background:#fff; border-radius:8px; padding:6px 9px; cursor:pointer; }',
+    '.ph-ft { display:flex; gap:8px; align-items:center; padding:12px 20px 18px; }',
+    '.ph-err { color:#DC2626; font-size:12px; font-weight:600; }',
     '.ov-seg { display:inline-flex; padding:3px; background:#F1F5F9; border-radius:9px; }',
     '.ov-seg button { height:30px; padding:0 14px; border:0; border-radius:7px; background:transparent; font-size:12px; font-weight:700; color:#64748B; cursor:pointer; }',
     '.ov-seg button.on { background:#fff; color:#0F172A; box-shadow:0 1px 3px rgba(15,23,42,.10); }',
@@ -5754,6 +5772,142 @@ window.renderAdminV2ByDivision = function(){
     });
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  // 구분·판가 이력 (phases)
+  //
+  // 개발품으로 나가다 도중에 양산으로 넘어가는 모델이 있다.
+  // 구분/판가를 하나만 두면 바꾸는 순간 과거 주차까지 새 판가로 소급돼
+  // 지난달 매출이 통째로 흔들린다. 그래서 '언제부터 무슨 구분/판가' 를 기록한다.
+  //   phases: [{from:'2026-W01',group:'개발',price:138470},
+  //            {from:'2026-W36',group:'양산',price:96000}]
+  // ══════════════════════════════════════════════════════════════════
+  function _curWeekTag() {
+    var t = new Date();
+    t = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    t.setDate(t.getDate() - ((t.getDay() + 6) % 7) + 3);   // 그 주 목요일
+    var jan4 = new Date(t.getFullYear(), 0, 4);
+    var w = 1 + Math.round(((t - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+    return t.getFullYear() + '-W' + String(w).padStart(2, '0');
+  }
+
+  function _phaseOrd(v) {
+    var m = /^\s*(\d{4})\s*[-\/]?\s*[Ww]?\s*(\d{1,2})\s*$/.exec(String(v || ''));
+    return m ? (parseInt(m[1], 10) * 100 + parseInt(m[2], 10)) : null;
+  }
+  function _phaseNorm(v) {
+    if (!Array.isArray(v)) return [];
+    return v.map(function(e) {
+      var o = _phaseOrd(e && e.from);
+      if (o === null) return null;
+      return { from: Math.floor(o / 100) + '-W' + String(o % 100).padStart(2, '0'),
+               group: (e.group === '개발' ? '개발' : '양산'),
+               price: Math.max(0, parseInt(e.price || 0, 10) || 0) };
+    }).filter(Boolean).sort(function(a, b) { return _phaseOrd(a.from) - _phaseOrd(b.from); });
+  }
+
+  // 구분이 바뀌는 첫 지점을 배지로 보여준다. 예: 개발→양산 W36
+  function _phaseBadge(m) {
+    var ph = _phaseNorm(m && m.phases);
+    if (ph.length < 2) return '';
+    for (var i = 1; i < ph.length; i++) {
+      if (ph[i].group !== ph[i - 1].group) {
+        return '<span class="mdl-phase-tag" title="구분·판가 이력 보기">' +
+          ph[i - 1].group + '→' + ph[i].group + ' ' +
+          ph[i].from.split('-')[1] + '</span>';
+      }
+    }
+    return '<span class="mdl-phase-tag" title="판가 이력 보기">판가 이력 ' + (ph.length) + '</span>';
+  }
+
+  window.openPhaseEditor = function(modelId, isTransition) {
+    var m = (window._modelsData || []).find(function(x) { return x.id === modelId; });
+    if (!m) return;
+    var rows = _phaseNorm(m.phases);
+    if (!rows.length) {
+      var y = new Date().getFullYear();
+      rows = [{ from: y + '-W01', group: (m.group === '개발' ? '개발' : '양산'),
+                price: parseInt(m.price || 0, 10) || 0 }];
+    }
+    if (isTransition) {
+      rows[0].group = '개발';
+      rows.push({ from: _curWeekTag(), group: '양산',
+                  price: parseInt(m.price || 0, 10) || 0 });
+    }
+
+    var back = document.createElement('div');
+    back.className = 'ph-back';
+    back.innerHTML =
+      '<div class="ph-box">' +
+        '<div class="ph-hd">' +
+          '<h3>' + (m.name || m.id) + ' · 구분 · 판가 이력</h3>' +
+          '<p>주차마다 <b>그 시점에 유효한 구분과 판가</b>로 매출을 계산합니다.<br>' +
+          '예) W35까지 개발 $138,470 → W36부터 양산 $96,000 이면 8월 매출은 개발가 그대로 남습니다.</p>' +
+        '</div>' +
+        '<div class="ph-body">' +
+          '<table class="ph-tbl"><thead><tr>' +
+            '<th style="width:34%">이 주차부터</th><th style="width:24%">구분</th>' +
+            '<th style="width:32%">판가($)</th><th style="width:10%"></th>' +
+          '</tr></thead><tbody id="ph-rows"></tbody></table>' +
+          '<button type="button" class="ov-btn" id="ph-add" style="margin-top:8px;">＋ 구간 추가</button>' +
+        '</div>' +
+        '<div class="ph-ft">' +
+          '<span id="ph-err" class="ph-err"></span>' +
+          '<span style="flex:1 1 auto"></span>' +
+          '<button type="button" class="ov-btn" id="ph-cancel">취소</button>' +
+          '<button type="button" class="ov-btn ov-btn-primary" id="ph-ok">적용</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(back);
+
+    var tb = back.querySelector('#ph-rows');
+    function addRow(p) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input class="ph-from" value="' + (p.from || '') + '" placeholder="2026-W36"></td>' +
+        '<td><select class="ph-group">' +
+          '<option value="개발"' + (p.group === '개발' ? ' selected' : '') + '>개발</option>' +
+          '<option value="양산"' + (p.group !== '개발' ? ' selected' : '') + '>양산</option>' +
+        '</select></td>' +
+        '<td><input class="ph-price" type="number" min="0" value="' + (p.price || 0) + '"></td>' +
+        '<td><button type="button" class="ph-del" title="구간 삭제">🗑</button></td>';
+      tr.querySelector('.ph-del').onclick = function() { tr.remove(); };
+      tb.appendChild(tr);
+    }
+    rows.forEach(addRow);
+    back.querySelector('#ph-add').onclick = function() {
+      addRow({ from: _curWeekTag(), group: '양산', price: parseInt(m.price || 0, 10) || 0 });
+    };
+
+    function close() { back.remove(); }
+    back.querySelector('#ph-cancel').onclick = close;
+    back.onclick = function(e) { if (e.target === back) close(); };
+
+    back.querySelector('#ph-ok').onclick = function() {
+      var out = [], bad = null;
+      tb.querySelectorAll('tr').forEach(function(tr) {
+        var f = tr.querySelector('.ph-from').value.trim();
+        if (!f) return;
+        if (_phaseOrd(f) === null) { bad = f; return; }
+        out.push({ from: f, group: tr.querySelector('.ph-group').value,
+                   price: parseInt(tr.querySelector('.ph-price').value || '0', 10) || 0 });
+      });
+      var err = back.querySelector('#ph-err');
+      if (bad) { err.textContent = '주차 형식이 잘못됐습니다: ' + bad + ' (예: 2026-W36)'; return; }
+      if (!out.length) { err.textContent = '구간을 최소 1개 입력하세요.'; return; }
+      out = _phaseNorm(out);
+      m.phases = out;
+      var last = out[out.length - 1];
+      m.group = last.group;
+      m.price = last.price;
+      close();
+      var box = document.getElementById('mdl-table-box');
+      if (box && window.renderTable) window.renderTable(box);
+      if (window.mdlToast) window.mdlToast('구분·판가 이력을 반영했습니다. 저장을 눌러 주세요.');
+      var msg = document.getElementById('mdl-save-msg');
+      if (msg) { msg.textContent = '저장해야 반영됩니다'; msg.style.color = '#B45309'; }
+    };
+  };
+
 
   // 유형 색상 (Flutter 앱과 동일 팔레트)
   function _typeColor(t) {
@@ -5889,7 +6043,7 @@ window.renderAdminV2ByDivision = function(){
           '<td class="mdl-td-chk"><input type="checkbox" class="mdl-check mdl-row-chk"' + (window._mdlSel[m.id] ? ' checked' : '') + '></td>' +
           ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
           ? '<td class="mdl-col-pn"><input data-field="part_number" value="' + (m.part_number || m.id) + '" style="width:110px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:11px;font-family:monospace;font-weight:600;" /></td>' : '') +
-          '<td class="mdl-td-name">' + m.name + '</td>' +
+          '<td class="mdl-td-name">' + m.name + _phaseBadge(m) + '</td>' +
           '<td><select data-field="group">' +
             '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
             '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
@@ -5923,6 +6077,7 @@ window.renderAdminV2ByDivision = function(){
             '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
             '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
             (isDev ? '<button type="button" class="mdl-btn mdl-btn-process mdl-row-process">Process 입력</button>' : '') +
+            '<button type="button" class="ov-btn ov-btn-icon mdl-row-phase" title="구분·판가 이력">🕘</button>' +
             '<button type="button" class="ov-btn ov-btn-icon mdl-row-del" title="삭제">🗑</button>' +
           '</td>' : '<td class="mdl-td-actions"><input data-field="status" type="hidden" value="' + (m.status || '정상') + '"><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '"><button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>') + '</tr>';
       });
@@ -6037,6 +6192,29 @@ window.renderAdminV2ByDivision = function(){
       btn.addEventListener('click', function() {
         const tr = btn.closest('tr');
         if (tr && tr.dataset.modelId) openProcessEditor(tr.dataset.modelId);
+      });
+    });
+
+    // 🕘 구분·판가 이력 열기 (관리 칸 버튼 / 모델명 옆 배지)
+    container.querySelectorAll('.mdl-row-phase, .mdl-phase-tag').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var tr = el.closest('tr');
+        if (tr && tr.dataset.modelId) window.openPhaseEditor(tr.dataset.modelId, false);
+      });
+    });
+
+    // 개발 → 양산 으로 바꾸면 전환 주차와 양산 판가를 바로 묻는다.
+    // 그냥 저장해 버리면 과거 개발 출하까지 양산 판가로 소급 계산된다.
+    container.querySelectorAll('select[data-field="group"]').forEach(function(sel) {
+      sel.dataset.prev = sel.value;
+      sel.addEventListener('change', function() {
+        var prev = sel.dataset.prev;
+        sel.dataset.prev = sel.value;
+        var tr = sel.closest('tr');
+        if (prev === '개발' && sel.value === '양산' && tr && tr.dataset.modelId) {
+          window.openPhaseEditor(tr.dataset.modelId, true);
+        }
       });
     });
   }
