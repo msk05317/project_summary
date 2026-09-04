@@ -20845,9 +20845,11 @@ def get_group_summary(project_key: str):
             "po_qty": int(b.get("po_qty") or 0),
             "base_actual": int(b.get("base_actual") or 0),
             "next_month_plan": int(b.get("next_month_plan") or 0),
+            "shipped_qty": int(b.get("shipped_qty") or 0),
             "ongoing_types": int(b.get("ongoing_types") or 0),
             "done_types": int(b.get("done_types") or 0),
             "po_history": b.get("po_history") or [],
+            "po_delta_manual": b.get("po_delta_manual") or [],
         }
     return {"project_key": _key, "groups": out}
 
@@ -20878,9 +20880,32 @@ def put_group_summary(project_key: str, payload: dict,
                 b["po_history"] = hist[-200:]
                 changed.append({"group": g, "from": old_po, "to": new_po})
             b["po_qty"] = new_po
-        for f in ("base_actual", "next_month_plan", "ongoing_types", "done_types"):
+        for f in ("shipped_qty", "base_actual", "next_month_plan",
+                  "ongoing_types", "done_types"):
             if f in src:
                 b[f] = max(0, int(src.get(f) or 0))
+
+    # PO증감 직접 입력: [{period: '2026-03' | 'W36', '양산': 619, '개발': 41}, ...]
+    # 엑셀 업로드가 po_history 를 다시 만들어도 이건 지워지지 않게 따로 둔다.
+    deltas = payload.get("po_deltas")
+    if isinstance(deltas, list):
+        rows = {"양산": [], "개발": []}
+        for e in deltas:
+            if not isinstance(e, dict):
+                continue
+            per = str(e.get("period") or "").strip()
+            if not per:
+                continue
+            for g in ("양산", "개발"):
+                try:
+                    v = int(e.get(g) or 0)
+                except Exception:
+                    v = 0
+                if v:
+                    rows[g].append({"period": per, "delta": v})
+        for g in ("양산", "개발"):
+            ws.setdefault(g, {})["po_delta_manual"] = rows[g]
+
     _save_models(data)
     return {"ok": True, "project_key": _key, "changed": changed}
 
@@ -21101,7 +21126,8 @@ def get_weekly_board(project_key: str, month: str = None):
             "month_plan": sum(v["plan"] for v in wk.values()),
             "month_actual": sum(v["actual"] for v in wk.values()),
             "next_month_plan": nxt_plan,
-            "po_delta": _po_delta_summary(b.get("po_history") or [], month),
+            "po_delta": _po_delta_summary(b.get("po_history") or [], month,
+                                          b.get("po_delta_manual") or []),
         })
 
     total = {
@@ -21116,13 +21142,23 @@ def get_weekly_board(project_key: str, month: str = None):
         "month_actual": sum(r["month_actual"] for r in rows),
         "next_month_plan": sum(r["next_month_plan"] for r in rows),
     }
+    try:
+        cur_week = "W%02d" % _dt.date.today().isocalendar()[1]
+    except Exception:
+        cur_week = None
     return {"project_key": _key, "month": month, "weeks": weeks,
             "prev_month": prev, "next_month": nxt,
+            "current_week": cur_week,
             "rows": rows, "total": total}
 
 
-def _po_delta_summary(history, month):
-    """PO 변경 이력을 월별/이번달 주차별 증감으로 요약."""
+def _po_delta_summary(history, month, manual=None):
+    """PO 증감 요약.
+
+    지난 달까지는 월 단위, 이번 달은 주차 단위로 보여준다.
+    (9월이면 '9월: N' 이 아니라 'W36: N / W37: N')
+    엑셀에서 읽은 이력(history)과 직접 입력한 값(manual)을 합친다.
+    """
     import datetime as _dt
     by_month, by_week = {}, {}
     for h in history or []:
@@ -21137,10 +21173,35 @@ def _po_delta_summary(history, month):
         if not delta:
             continue
         mk = f"{d.year}-{d.month:02d}"
-        by_month[mk] = by_month.get(mk, 0) + delta
         if mk == month:
             wk = "W%02d" % d.isocalendar()[1]
             by_week[wk] = by_week.get(wk, 0) + delta
+        else:
+            by_month[mk] = by_month.get(mk, 0) + delta
+
+    # 직접 입력분: period 가 'YYYY-MM' 이면 월, 'W36' 이면 주차
+    import re as _re
+    for e in manual or []:
+        if not isinstance(e, dict):
+            continue
+        per = str(e.get("period") or "").strip()
+        try:
+            dv = int(e.get("delta") or 0)
+        except Exception:
+            dv = 0
+        if not per or not dv:
+            continue
+        mw = _re.match(r"^[Ww]?(\d{1,2})$", per)
+        if mw:
+            by_week["W%02d" % int(mw.group(1))] = by_week.get("W%02d" % int(mw.group(1)), 0) + dv
+            continue
+        mm = _re.match(r"^(\d{4})[-/](\d{1,2})$", per)
+        if mm:
+            key = "%s-%02d" % (mm.group(1), int(mm.group(2)))
+            if key == month:
+                continue
+            by_month[key] = by_month.get(key, 0) + dv
+
     return {
         "months": [{"key": k, "delta": v} for k, v in sorted(by_month.items())],
         "weeks": [{"key": k, "delta": v} for k, v in sorted(by_week.items())],

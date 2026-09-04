@@ -5555,6 +5555,14 @@ window.renderAdminV2ByDivision = function(){
     '.wb-up { color:#B91C1C; font-weight:700; }',
     '.wb-dn { color:#1D4ED8; font-weight:700; }',
     '.wb-sep { border-top:1px dashed #CBD5E1; margin:3px 0; }',
+    // 이번 주차 열 강조 — 엑셀에서 빨간 박스로 표시하던 것과 같은 의미
+    '.wb-tbl td.nw { background:#FEF2F2; }',
+    '.wb-tbl th.nw { background:#7F1D1D; }',
+    '.wb-tbl tr.wb-total td.nw { background:#7F1D1D; }',
+    '.wb-tbl .nw-l { border-left:2px solid #DC2626 !important; }',
+    '.wb-tbl .nw-r { border-right:2px solid #DC2626 !important; }',
+    '.wb-tbl .nw-t { border-top:2px solid #DC2626 !important; }',
+    '.wb-tbl .nw-b { border-bottom:2px solid #DC2626 !important; }',
     '.mdl-phase-tag { margin-left:7px; padding:2px 7px; border-radius:999px; font-size:10.5px; '
       + 'font-weight:700; color:#B45309; background:#FEF3C7; white-space:nowrap; cursor:pointer; }',
     '.ph-back { position:fixed; inset:0; background:rgba(15,44,89,.35); z-index:10000; '
@@ -6848,7 +6856,7 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<span class="spacer"></span>' +
               '<input type="file" id="wb-file" accept=".xlsx,.xlsm" style="display:none">' +
               '<button type="button" class="ov-btn" id="wb-upload">📁 현황 엑셀 올리기</button>' +
-              '<button type="button" class="ov-btn" id="wb-edit">PO 수량 · 종수 입력</button>' +
+              '<button type="button" class="ov-btn" id="wb-edit">PO · 실적 · 증감 입력</button>' +
             '</div>' +
             '<div id="wb-board"></div>' +
           '</div>' +
@@ -7997,6 +8005,8 @@ window._ovProjectKey = function() {
       .then(function(r) { return r.json(); })
       .then(function(d) {
         var wks = d.weeks || [];
+        var now = d.current_week || '';   // 이번 주차 (빨간 박스)
+        window._wbMonthWeeks = wks;       // PO증감 입력에서 기본 주차 행으로 쓴다
         // 엑셀 원본과 같은 3단 머리글:
         //   1단  구분 · PO수량 · 실적 · 잔량 · 지난달 | 이번달(주차 전체) | 이번달(합계) | 다음달 · PO증감
         //   2단  W32 W33 W34 W35
@@ -8011,9 +8021,15 @@ window._ovProjectKey = function() {
             '<th rowspan="3">' + _wbMon(d.next_month) + '</th>' +
             '<th rowspan="3">PO증감</th>' +
           '</tr><tr>' +
-            wks.map(function(w) { return '<th colspan="2">' + w + '</th>'; }).join('') +
+            wks.map(function(w) {
+              return '<th colspan="2"' + (w === now ? ' class="nw nw-l nw-r nw-t"' : '') + '>' + w + '</th>';
+            }).join('') +
           '</tr><tr>' +
-            wks.map(function() { return '<th>계획</th><th>실적</th>'; }).join('') +
+            wks.map(function(w) {
+              return w === now
+                ? '<th class="nw nw-l">계획</th><th class="nw nw-r">실적</th>'
+                : '<th>계획</th><th>실적</th>';
+            }).join('') +
             '<th>계획</th><th>실적</th>' +
           '</tr>';
 
@@ -8026,7 +8042,10 @@ window._ovProjectKey = function() {
             '<td>' + _wbNum(r.prev_month_actual) + '</td>' +
             wks.map(function(w) {
               var c = r.weeks[w] || { plan: 0, actual: 0 };
-              return '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
+              var k = (w === now) ? ' class="nw nw-' : '';
+              return k
+                ? '<td class="nw nw-l">' + _wbNum(c.plan) + '</td><td class="nw nw-r">' + _wbNum(c.actual) + '</td>'
+                : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
             }).join('') +
             '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
             '<td>' + _wbNum(r.next_month_plan) + '</td>' +
@@ -8041,7 +8060,9 @@ window._ovProjectKey = function() {
           '<td>' + _wbNum(t.remaining) + '</td><td>' + _wbNum(t.prev_month_actual) + '</td>' +
           wks.map(function(w) {
             var c = (t.weeks || {})[w] || { plan: 0, actual: 0 };
-            return '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
+            return (w === now)
+              ? '<td class="nw nw-l nw-b">' + _wbNum(c.plan) + '</td><td class="nw nw-r nw-b">' + _wbNum(c.actual) + '</td>'
+              : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
           }).join('') +
           '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td>' +
           '<td>' + _wbNum(t.next_month_plan) + '</td><td></td>' +
@@ -8050,18 +8071,22 @@ window._ovProjectKey = function() {
         box.innerHTML = '<div class="ov-wrap-x" style="overflow-x:auto;">' +
           '<table class="wb-tbl"><thead>' + head + '</thead><tbody>' + body + foot + '</tbody></table></div>' +
           '<p class="mdl-hint" style="margin-top:10px;">' +
-          'PO 수량은 ‘PO · 기초 실적 입력’, 실적은 모델 목록의 실적 수량 합계입니다. ' +
-          '양산 주차는 모델별 주차 계획의 합, 개발 주차는 ‘개발 (합계)’ 입력값. 잔량 = PO 수량 − 실적.</p>';
+          'PO 수량·실적은 ‘PO · 실적 · 증감 입력’ 값이 우선이고, 비어 있으면 모델 목록 합계를 씁니다. ' +
+          '양산 주차는 모델별 주차 계획의 합, 개발 주차는 ‘개발 (합계)’ 입력값. 잔량 = PO 수량 − 실적. ' +
+          '<b style="color:#DC2626">빨간 테두리</b>가 이번 주차입니다.</p>';
       })
       .catch(function(e) {
         box.innerHTML = '<div style="padding:16px;color:#DC2626;font-size:13px;">보드 로드 실패: ' + e.message + '</div>';
       });
   };
 
-  // PO 수량 · 기초 누적 실적 · 개발 종수 입력
+  // PO 수량 · 실적 · 개발 종수 · PO증감 직접 입력
   window.openBoardEditor = function() {
     var pk = window._ovProjectKey();
     if (!pk) { alert('프로젝트를 먼저 선택하세요'); return; }
+    var msel = document.getElementById('wp-month-sel');
+    var month = (msel && msel.value) || new Date().toISOString().slice(0, 7);
+
     fetch('/projects/' + encodeURIComponent(pk) + '/group-summary', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -8075,27 +8100,79 @@ window._ovProjectKey = function() {
               'style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;">' +
           '</label>';
         }
+
+        // 기존 PO증감 입력값을 period 기준으로 합친다
+        var byPeriod = {};
+        ['양산', '개발'].forEach(function(g) {
+          ((G[g] || {}).po_delta_manual || []).forEach(function(e) {
+            var p = String(e.period || '');
+            if (!p) return;
+            byPeriod[p] = byPeriod[p] || { period: p, '양산': 0, '개발': 0 };
+            byPeriod[p][g] = e.delta || 0;
+          });
+        });
+        // 기본 행: 올해 3월 ~ 지난 달(월 단위) + 이번 달 주차(주 단위)
+        var y = parseInt(month.split('-')[0], 10), mo = parseInt(month.split('-')[1], 10);
+        var seeds = [];
+        for (var m = 3; m < mo; m++) seeds.push(y + '-' + String(m).padStart(2, '0'));
+        (window._wbMonthWeeks || []).forEach(function(w) { seeds.push(w); });
+        seeds.forEach(function(p) {
+          if (!byPeriod[p]) byPeriod[p] = { period: p, '양산': 0, '개발': 0 };
+        });
+        var order = Object.keys(byPeriod).sort(function(a, b) {
+          var aw = /^W/i.test(a), bw = /^W/i.test(b);
+          if (aw !== bw) return aw ? 1 : -1;
+          return a < b ? -1 : (a > b ? 1 : 0);
+        });
+
+        function label(p) {
+          if (/^W/i.test(p)) return p;
+          var t = p.split('-');
+          return t.length > 1 ? (parseInt(t[1], 10) + '월') : p;
+        }
+        function deltaRow(p) {
+          var e = byPeriod[p];
+          return '<tr>' +
+            '<td><input class="pd-period" value="' + p + '" style="width:100%"></td>' +
+            '<td style="color:#94A3B8;font-size:11.5px;white-space:nowrap">' + label(p) + '</td>' +
+            '<td><input class="pd-mass" type="number" value="' + (e['양산'] || 0) + '" style="width:100%"></td>' +
+            '<td><input class="pd-dev" type="number" value="' + (e['개발'] || 0) + '" style="width:100%"></td>' +
+            '<td><button type="button" class="ph-del">🗑</button></td>' +
+          '</tr>';
+        }
+
         var back = document.createElement('div');
         back.className = 'ph-back';
         back.innerHTML =
-          '<div class="ph-box">' +
+          '<div class="ph-box" style="width:min(760px,94vw)">' +
             '<div class="ph-hd">' +
-              '<h3>PO 수량 · 종수 입력</h3>' +
-              '<p>PO 수량은 여기서, <b>실적 수량은 모델 목록</b>에서 모델별로 넣습니다.<br>' +
-              '잔량(= PO − 실적)과 PO증감은 자동으로 계산됩니다. ' +
-              'PO 수량을 바꾸면 증감 이력이 그때그때 기록됩니다.</p>' +
+              '<h3>PO · 실적 · 증감 입력</h3>' +
+              '<p>여기 값이 보드의 <b>PO 수량 · 실적 · 잔량 · PO증감</b> 이 됩니다.<br>' +
+              'PO증감은 지난 달까지는 월 단위(3월…8월), <b>이번 달은 주차 단위</b>(W36, W37…)로 적습니다.</p>' +
             '</div>' +
-            '<div class="ph-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 18px;">' +
-              '<div><h4 style="margin:2px 0 10px;font-size:13px;color:#2563EB;">양산</h4>' +
-                fld('양산', 'po_qty', 'PO 수량') +
-              '</div>' +
-              '<div><h4 style="margin:2px 0 10px;font-size:13px;color:#7C3AED;">개발</h4>' +
-                fld('개발', 'po_qty', 'PO 수량') +
-                '<div style="display:flex;gap:10px;">' +
-                  '<div style="flex:1">' + fld('개발', 'ongoing_types', '진행중 종수') + '</div>' +
-                  '<div style="flex:1">' + fld('개발', 'done_types', '완료 종수') + '</div>' +
+            '<div class="ph-body">' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 18px;">' +
+                '<div><h4 style="margin:2px 0 10px;font-size:13px;color:#2563EB;">양산</h4>' +
+                  fld('양산', 'po_qty', 'PO 수량') +
+                  fld('양산', 'shipped_qty', '실적 (누적 출하)') +
+                '</div>' +
+                '<div><h4 style="margin:2px 0 10px;font-size:13px;color:#7C3AED;">개발</h4>' +
+                  fld('개발', 'po_qty', 'PO 수량') +
+                  fld('개발', 'shipped_qty', '실적 (누적 출하)') +
+                  '<div style="display:flex;gap:10px;">' +
+                    '<div style="flex:1">' + fld('개발', 'ongoing_types', '진행중 종수') + '</div>' +
+                    '<div style="flex:1">' + fld('개발', 'done_types', '완료 종수') + '</div>' +
+                  '</div>' +
                 '</div>' +
               '</div>' +
+              '<h4 style="margin:14px 0 8px;font-size:13px;color:#0F172A;">PO증감</h4>' +
+              '<table class="ph-tbl"><thead><tr>' +
+                '<th style="width:24%">기간</th><th style="width:14%"></th>' +
+                '<th style="width:26%">양산</th><th style="width:26%">개발</th><th style="width:10%"></th>' +
+              '</tr></thead><tbody id="pd-rows">' +
+                order.map(deltaRow).join('') +
+              '</tbody></table>' +
+              '<button type="button" class="ov-btn" id="pd-add" style="margin-top:8px;">＋ 기간 추가</button>' +
             '</div>' +
             '<div class="ph-ft">' +
               '<span id="wb-err" class="ph-err"></span><span style="flex:1 1 auto"></span>' +
@@ -8104,17 +8181,49 @@ window._ovProjectKey = function() {
             '</div>' +
           '</div>';
         document.body.appendChild(back);
+
+        var tb = back.querySelector('#pd-rows');
+        function wireDel() {
+          tb.querySelectorAll('.ph-del').forEach(function(b) {
+            b.onclick = function() { b.closest('tr').remove(); };
+          });
+        }
+        wireDel();
+        back.querySelector('#pd-add').onclick = function() {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><input class="pd-period" value="" placeholder="2026-03 또는 W36" style="width:100%"></td>' +
+            '<td></td>' +
+            '<td><input class="pd-mass" type="number" value="0" style="width:100%"></td>' +
+            '<td><input class="pd-dev" type="number" value="0" style="width:100%"></td>' +
+            '<td><button type="button" class="ph-del">🗑</button></td>';
+          tb.appendChild(tr);
+          wireDel();
+        };
+
         function close() { back.remove(); }
         back.querySelector('#wb-cancel').onclick = close;
         back.onclick = function(e) { if (e.target === back) close(); };
+
         back.querySelector('#wb-save').onclick = function() {
           var groups = { '양산': {}, '개발': {} };
           back.querySelectorAll('input[data-g]').forEach(function(inp) {
             groups[inp.dataset.g][inp.dataset.f] = parseInt(inp.value || '0', 10) || 0;
           });
+          var deltas = [];
+          tb.querySelectorAll('tr').forEach(function(tr) {
+            var p = (tr.querySelector('.pd-period').value || '').trim();
+            if (!p) return;
+            deltas.push({
+              period: p,
+              '양산': parseInt(tr.querySelector('.pd-mass').value || '0', 10) || 0,
+              '개발': parseInt(tr.querySelector('.pd-dev').value || '0', 10) || 0
+            });
+          });
           fetch('/admin/projects/' + encodeURIComponent(pk) + '/group-summary', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin', body: JSON.stringify({ groups: groups })
+            credentials: 'same-origin',
+            body: JSON.stringify({ groups: groups, po_deltas: deltas })
           }).then(function(r) { return r.json(); }).then(function(res) {
             if (!res.ok) { back.querySelector('#wb-err').textContent = res.detail || '저장 실패'; return; }
             close();
@@ -8124,8 +8233,7 @@ window._ovProjectKey = function() {
               }).join(', ');
               window.mdlToast(c ? ('저장했습니다 · ' + c) : '저장했습니다');
             }
-            window.renderWeeklyBoard(pk, document.getElementById('wp-month-sel') &&
-                                         document.getElementById('wp-month-sel').value);
+            window.renderWeeklyBoard(pk, month);
           }).catch(function(e) { back.querySelector('#wb-err').textContent = '저장 실패: ' + e.message; });
         };
       });
