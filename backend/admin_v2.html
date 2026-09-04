@@ -8033,7 +8033,8 @@ window._ovProjectKey = function() {
             '<th>계획</th><th>실적</th>' +
           '</tr>';
 
-        var body = (d.rows || []).map(function(r) {
+        var nRows = (d.rows || []).length || 1;
+        var body = (d.rows || []).map(function(r, ri) {
           return '<tr>' +
             '<td class="lbl">' + r.label + '</td>' +
             '<td>' + _wbNum(r.po_qty) + '</td>' +
@@ -8049,7 +8050,8 @@ window._ovProjectKey = function() {
             }).join('') +
             '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
             '<td>' + _wbNum(r.next_month_plan) + '</td>' +
-            '<td>' + _wbDelta(r.po_delta) + '</td>' +
+            // PO증감은 양산/개발을 나누지 않고 두 행에 걸친 한 칸
+            (ri === 0 ? '<td rowspan="' + nRows + '">' + _wbDelta(d.po_delta) + '</td>' : '') +
           '</tr>';
         }).join('');
 
@@ -8101,15 +8103,11 @@ window._ovProjectKey = function() {
           '</label>';
         }
 
-        // 기존 PO증감 입력값을 period 기준으로 합친다
+        // PO증감은 양산/개발 구분 없이 합계 한 줄
         var byPeriod = {};
-        ['양산', '개발'].forEach(function(g) {
-          ((G[g] || {}).po_delta_manual || []).forEach(function(e) {
-            var p = String(e.period || '');
-            if (!p) return;
-            byPeriod[p] = byPeriod[p] || { period: p, '양산': 0, '개발': 0 };
-            byPeriod[p][g] = e.delta || 0;
-          });
+        (d.po_delta_manual || []).forEach(function(e) {
+          var p = String(e.period || '');
+          if (p) byPeriod[p] = { period: p, delta: e.delta || 0 };
         });
         // 기본 행: 올해 3월 ~ 지난 달(월 단위) + 이번 달 주차(주 단위)
         var y = parseInt(month.split('-')[0], 10), mo = parseInt(month.split('-')[1], 10);
@@ -8117,7 +8115,7 @@ window._ovProjectKey = function() {
         for (var m = 3; m < mo; m++) seeds.push(y + '-' + String(m).padStart(2, '0'));
         (window._wbMonthWeeks || []).forEach(function(w) { seeds.push(w); });
         seeds.forEach(function(p) {
-          if (!byPeriod[p]) byPeriod[p] = { period: p, '양산': 0, '개발': 0 };
+          if (!byPeriod[p]) byPeriod[p] = { period: p, delta: 0 };
         });
         var order = Object.keys(byPeriod).sort(function(a, b) {
           var aw = /^W/i.test(a), bw = /^W/i.test(b);
@@ -8131,12 +8129,11 @@ window._ovProjectKey = function() {
           return t.length > 1 ? (parseInt(t[1], 10) + '월') : p;
         }
         function deltaRow(p) {
-          var e = byPeriod[p];
+          var e = byPeriod[p] || { delta: 0 };
           return '<tr>' +
             '<td><input class="pd-period" value="' + p + '" style="width:100%"></td>' +
             '<td style="color:#94A3B8;font-size:11.5px;white-space:nowrap">' + label(p) + '</td>' +
-            '<td><input class="pd-mass" type="number" value="' + (e['양산'] || 0) + '" style="width:100%"></td>' +
-            '<td><input class="pd-dev" type="number" value="' + (e['개발'] || 0) + '" style="width:100%"></td>' +
+            '<td><input class="pd-delta" type="number" value="' + (e.delta || 0) + '" style="width:100%"></td>' +
             '<td><button type="button" class="ph-del">🗑</button></td>' +
           '</tr>';
         }
@@ -8148,7 +8145,8 @@ window._ovProjectKey = function() {
             '<div class="ph-hd">' +
               '<h3>PO · 실적 · 증감 입력</h3>' +
               '<p>여기 값이 보드의 <b>PO 수량 · 실적 · 잔량 · PO증감</b> 이 됩니다.<br>' +
-              'PO증감은 지난 달까지는 월 단위(3월…8월), <b>이번 달은 주차 단위</b>(W36, W37…)로 적습니다.</p>' +
+              'PO증감은 양산·개발 구분 없이 <b>합계 한 줄</b>로, 지난 달까지는 월 단위(3월…8월), ' +
+              '<b>이번 달은 주차 단위</b>(W36, W37…)로 적습니다.</p>' +
             '</div>' +
             '<div class="ph-body">' +
               '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 18px;">' +
@@ -8167,8 +8165,8 @@ window._ovProjectKey = function() {
               '</div>' +
               '<h4 style="margin:14px 0 8px;font-size:13px;color:#0F172A;">PO증감</h4>' +
               '<table class="ph-tbl"><thead><tr>' +
-                '<th style="width:24%">기간</th><th style="width:14%"></th>' +
-                '<th style="width:26%">양산</th><th style="width:26%">개발</th><th style="width:10%"></th>' +
+                '<th style="width:30%">기간</th><th style="width:16%"></th>' +
+                '<th style="width:42%">증감 (합계)</th><th style="width:12%"></th>' +
               '</tr></thead><tbody id="pd-rows">' +
                 order.map(deltaRow).join('') +
               '</tbody></table>' +
@@ -8194,8 +8192,7 @@ window._ovProjectKey = function() {
           tr.innerHTML =
             '<td><input class="pd-period" value="" placeholder="2026-03 또는 W36" style="width:100%"></td>' +
             '<td></td>' +
-            '<td><input class="pd-mass" type="number" value="0" style="width:100%"></td>' +
-            '<td><input class="pd-dev" type="number" value="0" style="width:100%"></td>' +
+            '<td><input class="pd-delta" type="number" value="0" style="width:100%"></td>' +
             '<td><button type="button" class="ph-del">🗑</button></td>';
           tb.appendChild(tr);
           wireDel();
@@ -8216,8 +8213,7 @@ window._ovProjectKey = function() {
             if (!p) return;
             deltas.push({
               period: p,
-              '양산': parseInt(tr.querySelector('.pd-mass').value || '0', 10) || 0,
-              '개발': parseInt(tr.querySelector('.pd-dev').value || '0', 10) || 0
+              delta: parseInt(tr.querySelector('.pd-delta').value || '0', 10) || 0
             });
           });
           fetch('/admin/projects/' + encodeURIComponent(pk) + '/group-summary', {

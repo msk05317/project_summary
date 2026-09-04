@@ -20849,9 +20849,9 @@ def get_group_summary(project_key: str):
             "ongoing_types": int(b.get("ongoing_types") or 0),
             "done_types": int(b.get("done_types") or 0),
             "po_history": b.get("po_history") or [],
-            "po_delta_manual": b.get("po_delta_manual") or [],
         }
-    return {"project_key": _key, "groups": out}
+    return {"project_key": _key, "groups": out,
+            "po_delta_manual": _project_manual_deltas(proj)}
 
 
 @app.put("/admin/projects/{project_key}/group-summary")
@@ -20885,26 +20885,27 @@ def put_group_summary(project_key: str, payload: dict,
             if f in src:
                 b[f] = max(0, int(src.get(f) or 0))
 
-    # PO증감 직접 입력: [{period: '2026-03' | 'W36', '양산': 619, '개발': 41}, ...]
+    # PO증감 직접 입력: [{period: '2026-03' | 'W36', delta: 619}, ...]
+    # 양산/개발로 나누지 않고 합계 한 줄만 관리한다 (엑셀 표기와 동일).
     # 엑셀 업로드가 po_history 를 다시 만들어도 이건 지워지지 않게 따로 둔다.
     deltas = payload.get("po_deltas")
     if isinstance(deltas, list):
-        rows = {"양산": [], "개발": []}
+        rows = []
         for e in deltas:
             if not isinstance(e, dict):
                 continue
             per = str(e.get("period") or "").strip()
             if not per:
                 continue
-            for g in ("양산", "개발"):
-                try:
-                    v = int(e.get(g) or 0)
-                except Exception:
-                    v = 0
-                if v:
-                    rows[g].append({"period": per, "delta": v})
+            try:
+                v = int(e.get("delta") or 0)
+            except Exception:
+                v = 0
+            if v:
+                rows.append({"period": per, "delta": v})
+        proj["po_delta_manual"] = rows
         for g in ("양산", "개발"):
-            ws.setdefault(g, {})["po_delta_manual"] = rows[g]
+            ws.get(g, {}).pop("po_delta_manual", None)
 
     _save_models(data)
     return {"ok": True, "project_key": _key, "changed": changed}
@@ -21126,8 +21127,6 @@ def get_weekly_board(project_key: str, month: str = None):
             "month_plan": sum(v["plan"] for v in wk.values()),
             "month_actual": sum(v["actual"] for v in wk.values()),
             "next_month_plan": nxt_plan,
-            "po_delta": _po_delta_summary(b.get("po_history") or [], month,
-                                          b.get("po_delta_manual") or []),
         })
 
     total = {
@@ -21142,14 +21141,41 @@ def get_weekly_board(project_key: str, month: str = None):
         "month_actual": sum(r["month_actual"] for r in rows),
         "next_month_plan": sum(r["next_month_plan"] for r in rows),
     }
+    # PO증감은 양산/개발을 나누지 않고 합계 한 벌만 (엑셀 표기와 동일)
+    _hist = []
+    for g in ("양산", "개발"):
+        _hist.extend((_group_bucket(proj, g).get("po_history") or []))
+    po_delta = _po_delta_summary(_hist, month, _project_manual_deltas(proj))
+
     try:
         cur_week = "W%02d" % _dt.date.today().isocalendar()[1]
     except Exception:
         cur_week = None
     return {"project_key": _key, "month": month, "weeks": weeks,
             "prev_month": prev, "next_month": nxt,
-            "current_week": cur_week,
+            "current_week": cur_week, "po_delta": po_delta,
             "rows": rows, "total": total}
+
+
+def _project_manual_deltas(proj):
+    """직접 입력한 PO증감. 예전에 그룹별로 저장된 값도 합쳐서 한 벌로 돌려준다."""
+    rows = proj.get("po_delta_manual")
+    if isinstance(rows, list) and rows:
+        return rows
+    merged = {}
+    for g in ("양산", "개발"):
+        b = (proj.get("weekly_summary") or {}).get(g) or {}
+        for e in (b.get("po_delta_manual") or []):
+            if not isinstance(e, dict):
+                continue
+            per = str(e.get("period") or "").strip()
+            if not per:
+                continue
+            try:
+                merged[per] = merged.get(per, 0) + int(e.get("delta") or 0)
+            except Exception:
+                pass
+    return [{"period": k, "delta": v} for k, v in sorted(merged.items())]
 
 
 def _po_delta_summary(history, month, manual=None):
