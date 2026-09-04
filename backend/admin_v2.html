@@ -5431,6 +5431,27 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-title { font-size: 18px; font-weight: 700; color: #111827; margin: 0; }',
     '.mdl-select { margin-left: auto; padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 13px; background: #fff; min-width: 160px; }',
     '.mdl-tabs { display: flex; gap: 2px; border-bottom: 1px solid #E4E7EC; margin-bottom: 20px; }',
+    // hidden 속성이 display:flex 같은 클래스에 밀려 안 먹는 경우가 있어 못박아 둔다
+    '[hidden] { display: none !important; }',
+    // 프로젝트 선택 화면
+    '#mdl-picker { margin-bottom: 18px; }',
+    '.mdl-crumb { display:inline-flex; align-items:center; gap:7px; margin-left:10px; padding:4px 11px; '
+      + 'background:#EEF2F7; border-radius:999px; font-size:13px; font-weight:700; color:#0F2C59; }',
+    '.mdl-pick-head { display:flex; align-items:baseline; gap:8px; margin:6px 0 14px; }',
+    '.mdl-pick-head b { font-size:15px; font-weight:800; color:#0F172A; }',
+    '.mdl-pick-head .cnt { font-size:12.5px; color:#94A3B8; font-weight:700; }',
+    '.mdl-pick-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(212px,1fr)); gap:12px; }',
+    '.mdl-pick-card { display:flex; flex-direction:column; align-items:stretch; gap:0; text-align:left; '
+      + 'padding:16px 16px 14px; background:#fff; border:1px solid #E5E7EB; border-radius:14px; '
+      + 'cursor:pointer; transition:border-color .12s, box-shadow .12s, transform .12s; font:inherit; }',
+    '.mdl-pick-card:hover { border-color:#0F2C59; box-shadow:0 6px 18px rgba(15,44,89,.10); transform:translateY(-1px); }',
+    '.mdl-pick-card .nm { font-size:15px; font-weight:800; color:#0F2C59; letter-spacing:-0.01em; '
+      + 'white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+    '.mdl-pick-card .sub { margin-top:3px; font-size:11.5px; color:#98A1B0; font-weight:600; }',
+    '.mdl-pick-card .bar { display:block; height:5px; margin-top:12px; background:#EEF2F7; border-radius:999px; overflow:hidden; }',
+    '.mdl-pick-card .bar i { display:block; height:100%; background:#156082; border-radius:999px; }',
+    '.mdl-pick-card .pct { margin-top:6px; font-size:11.5px; font-weight:800; color:#156082; }',
+    '.mdl-pick-empty { padding:60px 20px; text-align:center; color:#94A3B8; font-size:14px; }',
     '.mdl-tab { padding: 11px 4px; margin-right: 22px; border: none; background: none; font-size: 14px; font-weight: 700; color: #94A3B8; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .13s; letter-spacing:-0.01em; }',
     '.mdl-tab:hover { color: #475569; }',
     '.mdl-tab.is-active { color: #0F172A; border-bottom-color: #0F172A; }',
@@ -6783,13 +6804,19 @@ var sidebarSel = document.getElementById('v2-division-select');
         '<div class="mdl-head">' +
           '<div class="ov-page-head">' +
             '<div>' +
-              '<h1 class="ttl">모델 관리</h1>' +
+              '<h1 class="ttl">모델 관리' +
+                '<span id="mdl-crumb" class="mdl-crumb" hidden></span>' +
+              '</h1>' +
               '<p class="desc">프로젝트별 모델·주차별 계획·개발 공정을 등록하고 관리합니다</p>' +
             '</div>' +
             '<span class="spacer"></span>' +
-            '<select id="mdl-proj-select" class="ov-select" style="min-width:210px;height:38px;"></select>' +
+            '<button type="button" class="ov-btn" id="mdl-back" hidden>← 프로젝트 목록</button>' +
+            // 선택 상태는 여전히 이 select 가 들고 있다 (기존 로직이 전부 이걸 본다).
+            // 화면에는 카드로 고르고, 값만 여기에 넣어 change 를 쏜다.
+            '<select id="mdl-proj-select" style="display:none"></select>' +
           '</div>' +
-          '<div class="mdl-tabs">' +
+          '<div id="mdl-picker"></div>' +
+          '<div class="mdl-tabs" id="mdl-tabs" hidden>' +
             '<button type="button" class="mdl-tab is-active" data-mtab="list">모델 목록 <span id="mdl-tab-count" class="mdl-badge">0</span></button>' +
             '<button type="button" class="mdl-tab" data-mtab="plan">주차별 계획</button>' +
           '</div>' +
@@ -6922,6 +6949,88 @@ var sidebarSel = document.getElementById('v2-division-select');
       }
       if (tries > 0) setTimeout(function() { ensureMonthSel(tries - 1); }, 200);
     })(15);
+
+    // ── 프로젝트 선택 화면 / 상세 화면 전환 ──────────────────────────
+    // 드롭다운으로 고르는 게 손이 많이 가서, 모델 관리에 들어오면 먼저
+    // 프로젝트 카드를 보여주고 고른 뒤에 모델 목록·주차별 계획을 연다.
+    window._mdlShowPicker = function(show) {
+      var picker = document.getElementById('mdl-picker');
+      var tabsBox = document.getElementById('mdl-tabs');
+      var back = document.getElementById('mdl-back');
+      var crumb = document.getElementById('mdl-crumb');
+      if (picker) picker.hidden = !show;
+      if (tabsBox) tabsBox.hidden = show;
+      if (back) back.hidden = show;
+      if (crumb) crumb.hidden = show;
+      var act = document.querySelector('.mdl-tab.is-active');
+      var want = act ? act.dataset.mtab : 'list';
+      document.querySelectorAll('.mdl-pane').forEach(function(pn) {
+        pn.hidden = show ? true : (pn.dataset.mpane !== want);
+      });
+      if (show) window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window._mdlRenderPicker = function(projects, stats) {
+      var box = document.getElementById('mdl-picker');
+      if (!box) return;
+      if (!projects || !projects.length) {
+        box.innerHTML = '<div class="mdl-pick-empty">이 사업부에 등록된 프로젝트가 없습니다.</div>';
+        return;
+      }
+      box.innerHTML =
+        '<div class="mdl-pick-head"><b>프로젝트를 선택하세요</b>' +
+          '<span class="cnt">' + projects.length + '개</span></div>' +
+        '<div class="mdl-pick-grid">' +
+          projects.map(function(p) {
+            var st = (stats && stats[p.id]) || {};
+            var n = st.models_total || 0;
+            var pg = (st.progress === null || st.progress === undefined) ? null : st.progress;
+            return '<button type="button" class="mdl-pick-card" data-pk="' + p.id + '">' +
+              '<span class="nm">' + (p.label || p.id) + '</span>' +
+              '<span class="sub">' + (n ? ('모델 ' + n + '개') : '등록된 모델 없음') + '</span>' +
+              '<span class="bar"><i style="width:' + (pg || 0) + '%"></i></span>' +
+              '<span class="pct">' + (pg === null ? '진행률 -' : '진행률 ' + pg + '%') + '</span>' +
+            '</button>';
+          }).join('') +
+        '</div>';
+      box.querySelectorAll('.mdl-pick-card').forEach(function(btn) {
+        btn.onclick = function() {
+          var s2 = document.getElementById('mdl-proj-select');
+          if (!s2) return;
+          var pk = btn.dataset.pk;
+          var label = btn.querySelector('.nm').textContent;
+          // 드롭다운을 다른 코드가 늦게 다시 채우는 경우가 있어서,
+          // 해당 옵션이 없으면 직접 넣고 값을 세운다.
+          var has = false;
+          for (var i = 0; i < s2.options.length; i++) {
+            if (s2.options[i].value === pk) { has = true; break; }
+          }
+          if (!has) {
+            var o = document.createElement('option');
+            o.value = pk; o.textContent = label;
+            s2.appendChild(o);
+          }
+          s2.value = pk;
+          window._currentProjectKey = pk;
+          try { _currentProjectKey = pk; } catch (e) {}
+          var crumb = document.getElementById('mdl-crumb');
+          if (crumb) crumb.textContent = label;
+          s2.dispatchEvent(new Event('change', { bubbles: true }));
+          window._mdlShowPicker(false);
+        };
+      });
+    };
+
+    var backBtn = document.getElementById('mdl-back');
+    if (backBtn) {
+      backBtn.onclick = function() {
+        var s2 = document.getElementById('mdl-proj-select');
+        window._currentProjectKey = '';
+        try { _currentProjectKey = ''; } catch (e) {}
+        if (s2) { s2.value = ''; s2.dispatchEvent(new Event('change', { bubbles: true })); }
+        window._mdlShowPicker(true);
+      };
+    }
 
     // 탭 전환
     const tabs = content.querySelectorAll('.mdl-tab');
@@ -7299,12 +7408,21 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         if (projects.length === 0) {
           sel.innerHTML = '<option value="">프로젝트가 없습니다</option>';
           tableBox.innerHTML = '<div class="mdl-empty">프로젝트가 없습니다</div>';
+          window._mdlRenderPicker([], {});
+          window._mdlShowPicker(true);
           return;
         }
         sel.innerHTML = '<option value="">프로젝트 선택...</option>' + projects.map(function(p) {
           return '<option value="' + p.id + '">' + (p.label || p.id) + '</option>';
         }).join('');
         bindModelExcel();
+        // 카드에 모델 수·진행률을 같이 보여준다 (요청 1번으로 전부 받아온다)
+        fetch('/projects-progress-summary?division_id=' + encodeURIComponent(currentDiv),
+              { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(pd) { window._mdlRenderPicker(projects, pd.projects || {}); })
+          .catch(function() { window._mdlRenderPicker(projects, {}); });
+        window._mdlShowPicker(!sel.value);
         loadModels(sel.value, tableBox);
         loadWeeklyPlan(sel.value);
         loadStatusNote(sel.value);
