@@ -20681,8 +20681,12 @@ def put_weekly_plan(project_key: str, model_id: str, payload: dict,
                    if (m.get("id") or "").lower() == model_id.lower()), None)
     if not target:
         raise HTTPException(status_code=404, detail="모델을 찾을 수 없습니다.")
-    if target.get("group") != "양산":
-        raise HTTPException(status_code=400, detail="양산 모델만 주차별 계획이 있습니다.")
+    # 하바플레이트만 개발을 주차별 '그룹 총계'(weekly_summary)로 관리한다.
+    # 나머지 프로젝트는 개발 모델도 모델별 주차 계획을 직접 입력한다.
+    if target.get("group") == "개발" and _key in ("hrva_plate", "havaplate"):
+        raise HTTPException(
+            status_code=400,
+            detail="하바플레이트 개발은 주차별 합계(weekly_summary)로 관리합니다.")
     cur = target.setdefault("weekly_plan", {})
     bucket = {}
     for w in _get_month_weeks(month):
@@ -21361,14 +21365,43 @@ def get_weekly_revenue(project_key: str, month: str = None):
                   "revenue": sum(v["revenue"] for v in yang_weeks.values()),
                   "plan_revenue": sum(v["plan_revenue"] for v in yang_weeks.values())}
 
-    # ── 개발: 그룹 실적 x 고정 단가 ──
+    # ── 개발 ──
+    # 1) weekly_summary['개발'] 그룹 총계가 있으면 그걸 정본으로 쓴다 (하바플레이트).
+    # 2) 없으면 개발 모델의 모델별 weekly_plan 을 합산한다.
+    #    (하바플레이트 외 프로젝트는 admin 에서 개발 모델도 주차별로 직접 입력한다)
+    #    단가는 모델 판가가 있으면 그걸, 없으면 $3,400 고정단가를 쓴다.
     dev_g = ws_data.get("개발") or {}
+    dev_models_used = []
     dev_weeks = {}
-    for w in all_weeks:
-        cell = (dev_g.get("weeks") or {}).get(w) or {}
-        p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
-        dev_weeks[w] = {"plan": p, "actual": a, "revenue": a * DEV_PRICE,
-                        "plan_revenue": p * DEV_PRICE}
+    if (dev_g.get("weeks") or {}):
+        for w in all_weeks:
+            cell = (dev_g.get("weeks") or {}).get(w) or {}
+            p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
+            dev_weeks[w] = {"plan": p, "actual": a, "revenue": a * DEV_PRICE,
+                            "plan_revenue": p * DEV_PRICE}
+    else:
+        dev_weeks = {w: {"plan": 0, "actual": 0, "revenue": 0, "plan_revenue": 0}
+                     for w in all_weeks}
+        for m in proj.get("models", []):
+            if m.get("group") != "개발":
+                continue
+            bucket = (m.get("weekly_plan") or {}).get(month) or {}
+            price = int(m.get("price") or 0) or DEV_PRICE
+            used = False
+            for w in all_weeks:
+                cell = bucket.get(w) or {}
+                p, a = int(cell.get("plan") or 0), int(cell.get("actual") or 0)
+                dev_weeks[w]["plan"] += p
+                dev_weeks[w]["actual"] += a
+                dev_weeks[w]["revenue"] += a * price
+                dev_weeks[w]["plan_revenue"] += p * price
+                if p or a:
+                    used = True
+            if used:
+                dev_models_used.append({
+                    "id": m.get("id"), "price": price,
+                    "plan": sum(int((bucket.get(w) or {}).get("plan") or 0) for w in all_weeks),
+                    "actual": sum(int((bucket.get(w) or {}).get("actual") or 0) for w in all_weeks)})
     dev_total = {"plan": sum(v["plan"] for v in dev_weeks.values()),
                  "actual": sum(v["actual"] for v in dev_weeks.values()),
                  "revenue": sum(v["revenue"] for v in dev_weeks.values()),
@@ -21394,14 +21427,16 @@ def get_weekly_revenue(project_key: str, month: str = None):
             "개발": {"po_qty": dev_g.get("po_qty", 0),
                      "actual_total": dev_g.get("actual_total", 0),
                      "remaining": dev_g.get("remaining", 0),
-                     "unit_price": DEV_PRICE, "weeks": dev_weeks, "total": dev_total},
+                     "unit_price": DEV_PRICE, "weeks": dev_weeks, "total": dev_total,
+                     "models_used": dev_models_used},
         },
         "combined": {"weeks": combined,
                      "total": {"plan": yang_total["plan"] + dev_total["plan"],
                                "actual": yang_total["actual"] + dev_total["actual"],
                                "revenue": yang_total["revenue"] + dev_total["revenue"],
                                "plan_revenue": yang_total["plan_revenue"] + dev_total["plan_revenue"]}},
-        "note": "양산 = 모델별 판가 x 주차 실적 (모델별 주차 입력 기반), 개발 = 실적 x $3,400 고정.",
+        "note": "양산 = 모델별 판가 x 주차 실적. 개발 = 그룹 총계가 있으면 실적 x $3,400 고정, "
+                "없으면 개발 모델의 모델별 주차 입력 x 모델 판가(판가 없으면 $3,400).",
     }
 
 if __name__ == "__main__":

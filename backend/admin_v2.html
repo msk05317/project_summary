@@ -5601,6 +5601,8 @@ window.renderAdminV2ByDivision = function(){
     '.wp-acc-no { width:26px; height:26px; flex:0 0 26px; display:flex; align-items:center; justify-content:center; border-radius:7px; background:#EEF2F8; color:#64748B; font-size:11px; font-weight:800; }',
     '.wp-acc.is-open .wp-acc-no { background:#0F172A; color:#fff; }',
     '.wp-acc-name { font-size:13px; font-weight:700; color:#0F172A; }',
+    '.wp-acc-tag { margin-left:7px; padding:2px 7px; border-radius:999px; font-size:11px; '
+      + 'font-weight:700; color:#7C3AED; background:#F3E8FF; }',
     '.wp-acc-prog { font-size:12px; font-weight:700; color:#64748B; }',
     '.wp-acc-prog.on { color:#0F172A; }',
     '.wp-acc-caret { color:#B6BECB; font-size:11px; transition:transform .18s; }',
@@ -6615,7 +6617,7 @@ var sidebarSel = document.getElementById('v2-division-select');
           '<div class="ov-card">' +
             '<div class="ov-card-head">' +
               '<span class="ov-card-title">모델별 주차별 계획</span>' +
-              '<span class="ov-card-sub">양산</span>' +
+              '<span class="ov-card-sub" id="wp-group-sub">양산</span>' +
               '<span class="spacer"></span>' +
               '<select id="wp-month-sel" class="ov-select"></select>' +
             '</div>' +
@@ -7132,7 +7134,7 @@ window._ovProjectKey = function() {
     box.style.cssText = 'margin-top:16px;padding:20px;background:#fff;border-radius:12px;border:1px solid #E5E7EB;box-shadow:0 1px 3px rgba(0,0,0,0.06);';
     box.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #E5E7EB;">' +
-        '<h4 style="margin:0;font-size:15px;font-weight:700;color:#111827;">📝 모델별 주차별 계획 입력 (양산)</h4>' +
+        '<h4 style="margin:0;font-size:15px;font-weight:700;color:#111827;">📝 모델별 주차별 계획 입력</h4>' +
         '<select id="wp-month-sel" style="padding:7px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:13px;background:#fff;"></select>' +
       '</div>' +
       '<div id="wp-models-list"></div>';
@@ -7177,9 +7179,15 @@ window._ovProjectKey = function() {
     fetch('/projects/' + encodeURIComponent(pk) + '/models', { credentials: 'same-origin' })
       .then(function(r){ return r.json(); })
       .then(function(d){
-        var models = (d.models || []).filter(function(m){ return m.group === '양산'; });
+        var _withDev = !window._wpAllowDev || window._wpAllowDev(pk);
+        var models = (d.models || []).filter(function(m){
+          return _withDev ? true : (m.group !== '개발');
+        });
+        models.sort(function(a, b){
+          return (a.group === '개발' ? 1 : 0) - (b.group === '개발' ? 1 : 0);
+        });
         if (!models.length) {
-          list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">양산 모델이 없습니다</div>';
+          list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">모델이 없습니다</div>';
           return;
         }
         list.innerHTML = '';
@@ -7409,6 +7417,10 @@ window._ovProjectKey = function() {
   // 구버전 렌더러(_wpLoadModels)가 이 목록을 덮어쓰지 않도록 같은 함수로 통일한다.
   window._wpLoadModels = function(month) { return loadModelList(month); };
 
+  // 하바플레이트만 개발을 그룹 총계로 따로 관리한다. 나머지는 개발도 모델별 입력.
+  function _wpAllowDev(pk) { return pk !== 'hrva_plate' && pk !== 'havaplate'; }
+  window._wpAllowDev = _wpAllowDev;
+
   function loadModelList(month) {
     var list = document.getElementById('wp-models-list');
     if (!list) return;
@@ -7430,9 +7442,21 @@ window._ovProjectKey = function() {
       .then(function(r) { return r.json(); })
       .then(function(d) {
         window._wpLoading = false;
-        _wpModels = (d.models || []).filter(function(m) { return m.group === '양산'; });
+        // 하바플레이트는 개발을 weekly_summary(그룹 총계)로 관리하므로 양산만.
+        // 나머지 프로젝트는 개발 모델도 모델별로 직접 입력한다.
+        var withDev = _wpAllowDev(pk);
+        _wpModels = (d.models || []).filter(function(m) {
+          return withDev ? true : (m.group !== '개발');
+        });
+        // 양산 먼저, 그다음 개발
+        _wpModels.sort(function(a, b) {
+          return (a.group === '개발' ? 1 : 0) - (b.group === '개발' ? 1 : 0);
+        });
+        var sub = document.getElementById('wp-group-sub');
+        if (sub) sub.textContent = withDev ? '양산 · 개발' : '양산';
         if (!_wpModels.length) {
-          list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">양산 모델이 없습니다</div>';
+          list.innerHTML = '<div style="padding:20px;color:#9CA3AF;text-align:center;font-size:13px;">'
+            + (withDev ? '모델이 없습니다' : '양산 모델이 없습니다') + '</div>';
           return;
         }
         renderModelCards();
@@ -7453,6 +7477,9 @@ window._ovProjectKey = function() {
         '<div class="wp-acc-head" data-idx="' + idx + '" role="button" tabindex="0" aria-expanded="false">' +
           '<span class="wp-acc-no">' + (idx + 1) + '</span>' +
           '<span class="wp-acc-name">' + (m.name || m.id) + '</span>' +
+          (m.group === '개발'
+            ? '<span class="wp-acc-tag">개발</span>'
+            : '') +
           '<span style="flex:1 1 auto"></span>' +
           '<span id="wp-prog-' + idx + '" class="wp-acc-prog">-</span>' +
           '<span id="wp-arrow-' + idx + '" class="wp-acc-caret">▼</span>' +
