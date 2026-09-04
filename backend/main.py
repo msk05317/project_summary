@@ -20834,7 +20834,7 @@ def put_group_weekly_plan(project_key: str, payload: dict, group: str = "개발"
 
 
 @app.get("/projects/{project_key}/group-summary")
-def get_group_summary(project_key: str):
+def get_group_summary(project_key: str, month: str = None):
     """PO 수량 / 기초 누적 실적 / 종수 / 다음달 계획 (그룹별)."""
     _key = _model_key_alias(project_key)
     proj = (_load_models().get("projects") or {}).get(_key) or {}
@@ -20850,8 +20850,11 @@ def get_group_summary(project_key: str):
             "done_types": int(b.get("done_types") or 0),
             "po_history": b.get("po_history") or [],
         }
-    return {"project_key": _key, "groups": out,
-            "po_delta_manual": _project_manual_deltas(proj)}
+    import datetime as _dt2
+    month = (month or "").strip() or _dt2.date.today().strftime("%Y-%m")
+    return {"project_key": _key, "groups": out, "month": month,
+            "delta_periods": _delta_periods(month),
+            "po_delta_manual": _project_manual_deltas(proj, month)}
 
 
 @app.put("/admin/projects/{project_key}/group-summary")
@@ -21145,7 +21148,7 @@ def get_weekly_board(project_key: str, month: str = None):
     _hist = []
     for g in ("양산", "개발"):
         _hist.extend((_group_bucket(proj, g).get("po_history") or []))
-    po_delta = _po_delta_summary(_hist, month, _project_manual_deltas(proj))
+    po_delta = _po_delta_summary(_hist, month, _project_manual_deltas(proj, month))
 
     try:
         cur_week = "W%02d" % _dt.date.today().isocalendar()[1]
@@ -21157,25 +21160,88 @@ def get_weekly_board(project_key: str, month: str = None):
             "rows": rows, "total": total}
 
 
-def _project_manual_deltas(proj):
+def _month_of_week_key(week_no, ref_month):
+    """주차 번호가 어느 달에 속하는지. 월별 주차 배정 규칙(_get_month_weeks)을 그대로 쓴다."""
+    tag = "W%02d" % int(week_no)
+    try:
+        y, m = int(str(ref_month)[:4]), int(str(ref_month)[5:7])
+    except Exception:
+        return None
+    for off in range(-7, 8):
+        mm = m + off
+        yy = y + (mm - 1) // 12
+        mm = (mm - 1) % 12 + 1
+        cand = f"{yy}-{mm:02d}"
+        try:
+            if tag in _get_month_weeks(cand):
+                return cand
+        except Exception:
+            continue
+    return None
+
+
+def _delta_periods(month):
+    """PO증감 입력 칸. 지난 6개월은 월 단위, 이번 달은 주차 단위로 고정한다.
+
+    10월이 되면 W36~W40 은 자동으로 '9월' 한 줄로 접히고
+    W41, W42 … 가 새로 열린다. 사용자가 기간을 직접 만들 필요가 없다.
+    """
+    y, m = int(str(month)[:4]), int(str(month)[5:7])
+    out = []
+    for off in range(6, 0, -1):
+        mm = m - off
+        yy = y + (mm - 1) // 12 if mm > 0 else y - 1
+        mm = (mm - 1) % 12 + 1 if mm > 0 else mm + 12
+        out.append({"key": f"{yy}-{mm:02d}", "label": f"{mm}월", "kind": "month"})
+    for w in _get_month_weeks(month):
+        out.append({"key": w, "label": w, "kind": "week"})
+    return out
+
+
+def _project_manual_deltas(proj, month=None):
     """직접 입력한 PO증감. 예전에 그룹별로 저장된 값도 합쳐서 한 벌로 돌려준다."""
+    import re as _re
     rows = proj.get("po_delta_manual")
-    if isinstance(rows, list) and rows:
+    if not (isinstance(rows, list) and rows):
+        merged = {}
+        for g in ("양산", "개발"):
+            b = (proj.get("weekly_summary") or {}).get(g) or {}
+            for e in (b.get("po_delta_manual") or []):
+                if not isinstance(e, dict):
+                    continue
+                per = str(e.get("period") or "").strip()
+                if not per:
+                    continue
+                try:
+                    merged[per] = merged.get(per, 0) + int(e.get("delta") or 0)
+                except Exception:
+                    pass
+        rows = [{"period": k, "delta": v} for k, v in sorted(merged.items())]
+
+    if not month:
         return rows
-    merged = {}
-    for g in ("양산", "개발"):
-        b = (proj.get("weekly_summary") or {}).get(g) or {}
-        for e in (b.get("po_delta_manual") or []):
-            if not isinstance(e, dict):
+
+    # 이번 달이 아닌 주차 입력은 그 달 한 줄로 접는다 (9월이 지나면 W36~W40 → 9월)
+    out = {}
+    for e in rows:
+        if not isinstance(e, dict):
+            continue
+        per = str(e.get("period") or "").strip()
+        try:
+            dv = int(e.get("delta") or 0)
+        except Exception:
+            dv = 0
+        if not per or not dv:
+            continue
+        mw = _re.match(r"^[Ww]?(\d{1,2})$", per)
+        if mw:
+            mon = _month_of_week_key(int(mw.group(1)), month)
+            if mon and mon != month:
+                out[mon] = out.get(mon, 0) + dv
                 continue
-            per = str(e.get("period") or "").strip()
-            if not per:
-                continue
-            try:
-                merged[per] = merged.get(per, 0) + int(e.get("delta") or 0)
-            except Exception:
-                pass
-    return [{"period": k, "delta": v} for k, v in sorted(merged.items())]
+            per = "W%02d" % int(mw.group(1))
+        out[per] = out.get(per, 0) + dv
+    return [{"period": k, "delta": v} for k, v in sorted(out.items())]
 
 
 def _po_delta_summary(history, month, manual=None):
@@ -21219,7 +21285,13 @@ def _po_delta_summary(history, month, manual=None):
             continue
         mw = _re.match(r"^[Ww]?(\d{1,2})$", per)
         if mw:
-            by_week["W%02d" % int(mw.group(1))] = by_week.get("W%02d" % int(mw.group(1)), 0) + dv
+            wk = "W%02d" % int(mw.group(1))
+            mon = _month_of_week_key(int(mw.group(1)), month)
+            if mon and mon != month:
+                # 지난 달 주차는 그 달 합계로 접는다
+                by_month[mon] = by_month.get(mon, 0) + dv
+            else:
+                by_week[wk] = by_week.get(wk, 0) + dv
             continue
         mm = _re.match(r"^(\d{4})[-/](\d{1,2})$", per)
         if mm:
