@@ -17120,22 +17120,39 @@ async def chat(payload: dict):
     week_m = _re3.search(r"W(\d{2})", message, _re3.I)
     if week_m:
         last_week = "W" + week_m.group(1)
-    proj_keywords = {
-        "하바플레이트": "hrva_plate", "하바 플레이트": "hrva_plate",
+    # 메시지에 프로젝트 이름이 들어 있으면 그 프로젝트로 확정한다.
+    # (예전에는 하바플레이트 별칭만 하드코딩돼 있어서 '파워박스 8월 매출' 같은 질문이
+    #  프로젝트 미지정 = 반도체사업부 전체 답변으로 떨어졌다.)
+    from project_templates import PRODUCT_TO_PROJECT as _P2P
+    proj_keywords = {}
+    for _kws, _pk_ in _P2P:
+        for _kw_ in _kws:
+            proj_keywords[_kw_.lower()] = _pk_
+    for _k_, _lbl_ in PROJECT_LABELS.items():
+        proj_keywords.setdefault(_k_.lower(), _k_)
+        proj_keywords.setdefault(_lbl_.lower(), _k_)
+    proj_keywords.update({
         "하바플레잍": "hrva_plate", "하바 플레잍": "hrva_plate",
-        "하바": "hrva_plate", "hrva": "hrva_plate", "hava": "hrva_plate",
         "하버": "hrva_plate", "하바플": "hrva_plate", "하바프": "hrva_plate",
         "하바플래이트": "hrva_plate", "하바 플래이트": "hrva_plate",
-        "harbor": "hrva_plate", "harva": "hrva_plate", "hrva_plate": "hrva_plate",
-    }
-    msg_lower_pre = message.lower()
-    for kw, pk in proj_keywords.items():
-        if kw in msg_lower_pre or kw in message:
-            last_project = pk
-            break
+        "harbor": "hrva_plate", "harva": "hrva_plate",
+    })
 
-    # 후속 질문 보강: 프로젝트/주차 없으면 세션 값을 메시지에 태깅
-    if last_project and "hrva_plate" not in msg_lower_pre and "하바플레이트" not in message:
+    msg_lower_pre = message.lower()
+    _proj_in_msg = None
+    for kw in sorted(proj_keywords, key=len, reverse=True):
+        if kw in msg_lower_pre:
+            _proj_in_msg = proj_keywords[kw]
+            break
+    # 사업부/전사 단위를 명시했으면 프로젝트 컨텍스트를 푼다
+    if any(k in _user_text for k in ('사업부 전체', '전체 사업부', '반도체사업부',
+                                     '전사', '전체 프로젝트', '모든 프로젝트')):
+        _proj_in_msg = 'all'
+    if _proj_in_msg:
+        last_project = _proj_in_msg
+
+    # 후속 질문 보강: 이번 메시지에 프로젝트가 안 나왔으면 세션 값을 태깅
+    if last_project and last_project != 'all' and not _proj_in_msg:
         message = f"[project:{last_project}] {message}"
     if last_week and not week_m:
         message = f"{message} ({last_week} 기준)"
