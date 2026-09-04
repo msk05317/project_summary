@@ -129,11 +129,14 @@ class ExecRevenueCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            Fmt.money(summary.revenue),
-            style: AppText.caption.copyWith(color: AppColors.textMute),
-          ),
+          // 축약값과 정확한 금액이 같으면(10만 미만) 같은 줄을 두 번 보여줄 이유가 없다.
+          if (Fmt.money(summary.revenue) != Fmt.moneyShort(summary.revenue)) ...[
+            const SizedBox(height: 4),
+            Text(
+              Fmt.money(summary.revenue),
+              style: AppText.caption.copyWith(color: AppColors.textMute),
+            ),
+          ],
 
           const SizedBox(height: 12),
           ClipRRect(

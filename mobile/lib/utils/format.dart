@@ -10,7 +10,6 @@ class Fmt {
   Fmt._();
 
   static final NumberFormat _int = NumberFormat('#,##0');
-  static final NumberFormat _dec1 = NumberFormat('#,##0.0');
 
   /// 12345 → '12,345'
   static String qty(num? v) => v == null ? '-' : _int.format(v.round());
@@ -18,21 +17,28 @@ class Fmt {
   /// 1520796 → '\$1,520,796'
   static String money(num? v) => v == null ? '-' : '\$${_int.format(v.round())}';
 
-  /// 큰 금액 축약. 1520796 → '\$1.52M', 820000 → '\$820K'
-  /// 경영진 화면의 KPI 숫자는 자릿수보다 크기 감이 중요하다.
+  /// 큰 금액 축약 — 한국식 만/억 단위.
+  /// K·M 이 한눈에 안 들어온다는 피드백이 있어 만·억으로 바꿨다.
+  ///   7120000 → '$712만',  164566 → '$16.5만',  74707 → '$74,707',  120000000 → '$1.2억'
+  /// 10만 미만은 축약하지 않고 정확한 금액을 그대로 보여준다 (자릿수가 짧아 그게 더 명확).
   static String moneyShort(num? v) {
     if (v == null) return '-';
     final n = v.abs();
     final sign = v < 0 ? '-' : '';
-    if (n >= 1000000) {
-      final m = n / 1000000;
-      return '$sign\$${m >= 100 ? m.toStringAsFixed(0) : m.toStringAsFixed(2)}M';
+    if (n >= 100000000) {
+      return '$sign\$${_unit(n / 100000000)}억';
     }
-    if (n >= 1000) {
-      final k = n / 1000;
-      return '$sign\$${k >= 100 ? k.toStringAsFixed(0) : _dec1.format(k)}K';
+    if (n >= 100000) {
+      return '$sign\$${_unit(n / 10000)}만';
     }
     return '$sign\$${_int.format(n.round())}';
+  }
+
+  /// 만/억 앞자리. 100 이상은 소수점 없이, 그 외는 한 자리.
+  /// '10.0만' 처럼 의미 없는 .0 은 떼고, 99.99 → '100' 으로 올려서 '100.0만' 을 막는다.
+  static String _unit(double x) {
+    final t = x >= 100 ? x.toStringAsFixed(0) : x.toStringAsFixed(1);
+    return t.endsWith('.0') ? t.substring(0, t.length - 2) : t;
   }
 
   /// 72 → '72%', null → '-'
