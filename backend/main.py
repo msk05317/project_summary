@@ -21993,7 +21993,6 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
     return result
 
 
-@app.get("/projects/{project_key}/weekly-revenue")
 # ─────────────────────────────────────────────────────────────
 # 모델의 '구분·판가 이력' (phases)
 #
@@ -22081,6 +22080,7 @@ def _phase_at(m: dict, month: str, week):
     return hit["group"], (hit["price"] or price)
 
 
+@app.get("/projects/{project_key}/weekly-revenue")
 def get_weekly_revenue(project_key: str, month: str = None):
     """주차별 현황+매출:
     양산 = 모델별 weekly_plan 실적 합산 x 각 모델 판가
