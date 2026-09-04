@@ -20677,6 +20677,275 @@ def get_weekly_plan(project_key: str, model_id: str, month: str = None):
             "progress": _ensure_mass_progress(target.get("weekly_plan") or {}, month)}
 
 
+# ═══════════════════════════════════════════════════════════════
+# 그룹(양산/개발) 단위 주차 합계 · PO 관리
+#
+# 하바플레이트 개발은 종수가 많고 모델별 주차 계획을 따로 잡지 않는다.
+# 그래서 '개발' 은 모델이 아니라 그룹 총계로 주차 계획/실적을 입력한다.
+# PO 수량과 '기초 누적 실적'(주차 입력 이전까지의 누적)도 여기서 관리해서,
+# 엑셀 원본 없이도 PO/실적/잔량/PO증감 표를 계산해 낼 수 있게 한다.
+#   weekly_summary[그룹] = {
+#     po_qty, base_actual, next_month_plan,
+#     ongoing_types, done_types,          # 개발 'N종 진행중 / M종 완료'
+#     weeks: { "W32": {plan, actual}, ... },
+#     po_history: [{date, from, to, note}]
+#   }
+# ═══════════════════════════════════════════════════════════════
+
+def _norm_group(g):
+    return "개발" if str(g or "").strip() == "개발" else "양산"
+
+
+def _group_bucket(proj, group):
+    return (proj.get("weekly_summary") or {}).get(_norm_group(group)) or {}
+
+
+def _mass_week_totals(proj, month, weeks):
+    """양산 주차 합계는 모델별 weekly_plan 이 정본."""
+    out = {w: {"plan": 0, "actual": 0} for w in weeks}
+    for m in proj.get("models", []):
+        bucket = (m.get("weekly_plan") or {}).get(month) or {}
+        for w in weeks:
+            g, _ = _phase_at(m, month, w)
+            if g != "양산":
+                continue
+            c = bucket.get(w) or {}
+            out[w]["plan"] += int(c.get("plan") or 0)
+            out[w]["actual"] += int(c.get("actual") or 0)
+    return out
+
+
+def _dev_week_totals(proj, month, weeks):
+    """개발 주차 합계. 그룹 총계가 있으면 그것, 없으면 모델 합산."""
+    gw = (_group_bucket(proj, "개발").get("weeks") or {})
+    if gw:
+        return {w: {"plan": int((gw.get(w) or {}).get("plan") or 0),
+                    "actual": int((gw.get(w) or {}).get("actual") or 0)} for w in weeks}
+    out = {w: {"plan": 0, "actual": 0} for w in weeks}
+    for m in proj.get("models", []):
+        bucket = (m.get("weekly_plan") or {}).get(month) or {}
+        for w in weeks:
+            g, _ = _phase_at(m, month, w)
+            if g != "개발":
+                continue
+            c = bucket.get(w) or {}
+            out[w]["plan"] += int(c.get("plan") or 0)
+            out[w]["actual"] += int(c.get("actual") or 0)
+    return out
+
+
+def _all_actual_sum(proj, group):
+    """전 기간 주차 실적 합. 누적 실적 = base_actual + 이 값."""
+    group = _norm_group(group)
+    if group == "개발":
+        gw = _group_bucket(proj, "개발").get("weeks") or {}
+        if gw:
+            return sum(int((v or {}).get("actual") or 0) for v in gw.values())
+    total = 0
+    for m in proj.get("models", []):
+        for mon, bucket in (m.get("weekly_plan") or {}).items():
+            for w, c in (bucket or {}).items():
+                g, _ = _phase_at(m, mon, w)
+                if g != group:
+                    continue
+                total += int((c or {}).get("actual") or 0)
+    return total
+
+
+@app.get("/projects/{project_key}/group-weekly-plan")
+def get_group_weekly_plan(project_key: str, group: str = "개발", month: str = None):
+    """그룹(개발) 주차 합계 조회. 모델별 조회와 같은 모양이라 화면을 그대로 재사용한다."""
+    import datetime as _dt
+    _key = _model_key_alias(project_key)
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    group = _norm_group(group)
+    month = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    weeks = _get_month_weeks(month)
+    gw = _group_bucket(proj, group).get("weeks") or {}
+    rows, tp, ta = [], 0, 0
+    for w in weeks:
+        c = gw.get(w) or {}
+        p, a = int(c.get("plan") or 0), int(c.get("actual") or 0)
+        rows.append({"week": w, "plan": p, "actual": a, "remaining": max(0, p - a)})
+        tp += p
+        ta += a
+    return {"model_id": "__group__", "model_name": f"{group} (합계)", "group": group,
+            "month": month, "weeks": rows,
+            "month_total_plan": tp, "month_total_actual": ta,
+            "month_remaining": max(0, tp - ta),
+            "progress": round(min(100.0, ta / tp * 100), 1) if tp > 0 else 0.0}
+
+
+@app.put("/admin/projects/{project_key}/group-weekly-plan")
+def put_group_weekly_plan(project_key: str, payload: dict, group: str = "개발",
+                          month: str = None, _admin: int = Depends(get_admin_session)):
+    """그룹(개발) 주차 합계 저장."""
+    import datetime as _dt
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    group = _norm_group(payload.get("group") or group)
+    month = (payload.get("month") or month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    weeks_in = payload.get("weeks") or {}
+    ws = proj.setdefault("weekly_summary", {}).setdefault(group, {})
+    cur = ws.setdefault("weeks", {})
+    for w in _get_month_weeks(month):
+        c = weeks_in.get(w) or {}
+        cur[w] = {"plan": int(c.get("plan") or 0), "actual": int(c.get("actual") or 0)}
+    _save_models(data)
+    tp = sum(int((cur.get(w) or {}).get("plan") or 0) for w in _get_month_weeks(month))
+    ta = sum(int((cur.get(w) or {}).get("actual") or 0) for w in _get_month_weeks(month))
+    return {"ok": True, "group": group, "month": month,
+            "month_total_plan": tp, "month_total_actual": ta,
+            "progress": round(min(100.0, ta / tp * 100), 1) if tp > 0 else 0.0}
+
+
+@app.get("/projects/{project_key}/group-summary")
+def get_group_summary(project_key: str):
+    """PO 수량 / 기초 누적 실적 / 종수 / 다음달 계획 (그룹별)."""
+    _key = _model_key_alias(project_key)
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    out = {}
+    for g in ("양산", "개발"):
+        b = _group_bucket(proj, g)
+        out[g] = {
+            "po_qty": int(b.get("po_qty") or 0),
+            "base_actual": int(b.get("base_actual") or 0),
+            "next_month_plan": int(b.get("next_month_plan") or 0),
+            "ongoing_types": int(b.get("ongoing_types") or 0),
+            "done_types": int(b.get("done_types") or 0),
+            "po_history": b.get("po_history") or [],
+        }
+    return {"project_key": _key, "groups": out}
+
+
+@app.put("/admin/projects/{project_key}/group-summary")
+def put_group_summary(project_key: str, payload: dict,
+                      _admin: int = Depends(get_admin_session)):
+    """PO 수량 등 저장. PO 수량이 바뀌면 증감 이력을 자동으로 남긴다."""
+    import datetime as _dt
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    ws = proj.setdefault("weekly_summary", {})
+    today = (payload.get("date") or "").strip() or _dt.date.today().strftime("%Y-%m-%d")
+    changed = []
+    for g in ("양산", "개발"):
+        src = (payload.get("groups") or {}).get(g)
+        if not isinstance(src, dict):
+            continue
+        b = ws.setdefault(g, {})
+        if "po_qty" in src:
+            new_po = max(0, int(src.get("po_qty") or 0))
+            old_po = int(b.get("po_qty") or 0)
+            if new_po != old_po:
+                hist = b.setdefault("po_history", [])
+                hist.append({"date": today, "from": old_po, "to": new_po,
+                             "note": str(src.get("po_note") or "")})
+                b["po_history"] = hist[-200:]
+                changed.append({"group": g, "from": old_po, "to": new_po})
+            b["po_qty"] = new_po
+        for f in ("base_actual", "next_month_plan", "ongoing_types", "done_types"):
+            if f in src:
+                b[f] = max(0, int(src.get(f) or 0))
+    _save_models(data)
+    return {"ok": True, "project_key": _key, "changed": changed}
+
+
+@app.get("/projects/{project_key}/weekly-board")
+def get_weekly_board(project_key: str, month: str = None):
+    """엑셀로 올리던 '주차별 계획 원본' 표를 데이터에서 계산해 돌려준다.
+
+    열 구성: PO수량 / 누적실적 / 잔량 / 지난달 / 이번달 주차별(계획·실적) /
+             이번달 합계 / 다음달 계획 / PO증감
+    """
+    import datetime as _dt
+    _key = _model_key_alias(project_key)
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    month = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    weeks = _get_month_weeks(month)
+
+    y, mm = int(month[:4]), int(month[5:7])
+    prev = f"{y - 1}-12" if mm == 1 else f"{y}-{mm - 1:02d}"
+    nxt = f"{y + 1}-01" if mm == 12 else f"{y}-{mm + 1:02d}"
+
+    def month_actual(group, mon):
+        wk = _get_month_weeks(mon)
+        t = _mass_week_totals(proj, mon, wk) if group == "양산" else _dev_week_totals(proj, mon, wk)
+        return sum(v["actual"] for v in t.values())
+
+    def month_plan(group, mon):
+        wk = _get_month_weeks(mon)
+        t = _mass_week_totals(proj, mon, wk) if group == "양산" else _dev_week_totals(proj, mon, wk)
+        return sum(v["plan"] for v in t.values())
+
+    rows = []
+    for g in ("양산", "개발"):
+        b = _group_bucket(proj, g)
+        wk = _mass_week_totals(proj, month, weeks) if g == "양산" else _dev_week_totals(proj, month, weeks)
+        base = int(b.get("base_actual") or 0)
+        actual_total = base + _all_actual_sum(proj, g)
+        po = int(b.get("po_qty") or 0)
+        nxt_plan = month_plan(g, nxt) or int(b.get("next_month_plan") or 0)
+        label = g
+        if g == "개발":
+            on, done = int(b.get("ongoing_types") or 0), int(b.get("done_types") or 0)
+            if on or done:
+                label = f"개발 ({on}종 진행중 / {done}종 완료)"
+        rows.append({
+            "group": g, "label": label,
+            "po_qty": po,
+            "base_actual": base,
+            "actual_total": actual_total,
+            "remaining": po - actual_total,
+            "prev_month_actual": month_actual(g, prev),
+            "weeks": {w: wk[w] for w in weeks},
+            "month_plan": sum(v["plan"] for v in wk.values()),
+            "month_actual": sum(v["actual"] for v in wk.values()),
+            "next_month_plan": nxt_plan,
+            "po_delta": _po_delta_summary(b.get("po_history") or [], month),
+        })
+
+    total = {
+        "label": "합계",
+        "po_qty": sum(r["po_qty"] for r in rows),
+        "actual_total": sum(r["actual_total"] for r in rows),
+        "remaining": sum(r["remaining"] for r in rows),
+        "prev_month_actual": sum(r["prev_month_actual"] for r in rows),
+        "weeks": {w: {"plan": sum(r["weeks"][w]["plan"] for r in rows),
+                      "actual": sum(r["weeks"][w]["actual"] for r in rows)} for w in weeks},
+        "month_plan": sum(r["month_plan"] for r in rows),
+        "month_actual": sum(r["month_actual"] for r in rows),
+        "next_month_plan": sum(r["next_month_plan"] for r in rows),
+    }
+    return {"project_key": _key, "month": month, "weeks": weeks,
+            "prev_month": prev, "next_month": nxt,
+            "rows": rows, "total": total}
+
+
+def _po_delta_summary(history, month):
+    """PO 변경 이력을 월별/이번달 주차별 증감으로 요약."""
+    import datetime as _dt
+    by_month, by_week = {}, {}
+    for h in history or []:
+        try:
+            d = _dt.date.fromisoformat(str(h.get("date"))[:10])
+        except Exception:
+            continue
+        delta = int(h.get("to") or 0) - int(h.get("from") or 0)
+        if not delta:
+            continue
+        mk = f"{d.year}-{d.month:02d}"
+        by_month[mk] = by_month.get(mk, 0) + delta
+        if mk == month:
+            wk = "W%02d" % d.isocalendar()[1]
+            by_week[wk] = by_week.get(wk, 0) + delta
+    return {
+        "months": [{"key": k, "delta": v} for k, v in sorted(by_month.items())],
+        "weeks": [{"key": k, "delta": v} for k, v in sorted(by_week.items())],
+    }
+
+
 @app.put("/admin/projects/{project_key}/models/{model_id}/weekly-plan")
 def put_weekly_plan(project_key: str, model_id: str, payload: dict,
                     _admin: int = Depends(get_admin_session)):
