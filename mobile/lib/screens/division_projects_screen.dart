@@ -1,8 +1,17 @@
-// 사업부 상세 화면 (실데이터 v1).
-// 데이터 소스: DashboardService.fetchCards()
-// - 해당 사업부(division.id)에 속한 카드만 필터해서 사용
-// - 요약 카드/즉시 확인/프로젝트 그리드 모두 실데이터에서 파생
-// UI 구조는 기존 mock 버전 그대로 유지.
+// 사업부 상세 화면 (디자인 A · 매출 우선).
+//
+// 첫 블록은 진행률(%)이 아니라 이 달의 매출이다.
+// 경영진이 앱을 여는 순서가 "얼마 나갔나 → 왜 → 누구 때문에" 이기 때문에
+// 화면도 그 순서로 내려간다.
+//   1) 이번 달 매출 히어로 (사업부 합계)
+//   2) 확인이 필요한 프로젝트 N건 (0건이면 숨김)
+//   3) 프로젝트 — 매출 기여순 1열 리스트
+//   4) 매출 계획이 없는 프로젝트는 접어둔다
+//
+// 데이터 소스
+//  - DashboardService.fetchCards() : 상태(RED/ORANGE/GREEN), 마감일
+//  - ProgressService.fetch()       : 진행률 / 모델 수
+//  - OverviewService.fetch(divisionId:) : 월 매출·출하 (프로젝트별 + 합계)
 
 import 'package:flutter/material.dart';
 
@@ -12,15 +21,19 @@ import '../models/dashboard.dart';
 import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/favorites_service.dart';
-import '../components/division/division_summary_card.dart';
-import '../components/division/division_immediate_check.dart';
-import '../components/division/project_grid_card.dart';
+import '../services/overview_service.dart';
+import '../components/division/division_immediate_check.dart'
+    show DivisionImmediateItem, ImmediatePriority;
+import '../components/division/division_revenue_hero.dart';
+import '../components/division/division_attention_banner.dart';
+import '../components/division/project_revenue_row.dart';
 import '../components/home/search_filter_row.dart';
 import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'immediate_check_screen.dart';
 import 'project_overview_screen.dart';
+import 'revenue_detail_screen.dart';
 import 'calendar_screen.dart';
 import 'chat_screen.dart';
 
@@ -45,14 +58,20 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 
   // 프로젝트 목록 필터/정렬
   _ProjectStatusFilter _statusFilter = _ProjectStatusFilter.all;
-  _ProjectSort _sort = _ProjectSort.progressDesc;
+  _ProjectSort _sort = _ProjectSort.revenueDesc;
   bool _favoritesOnly = false;
 
+  /// 매출 계획이 없는 프로젝트 그룹 펼침 여부
+  bool _showNoPlan = false;
 
   late Future<List<DashboardCard>> _future;
 
   /// 진행률 요약 (백엔드 /projects-progress-summary)
   ProgressSummary _progress = ProgressSummary.empty;
+
+  /// 이 사업부의 월 매출/출하 (백엔드 /overview?division_id=)
+  OverviewSummary _overview = OverviewSummary.empty;
+  bool _overviewLoading = true;
 
   @override
   void initState() {
@@ -60,12 +79,44 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     _future = DashboardService.fetchCards();
     _loadFavorites();
     _loadProgress();
+    _loadOverview();
   }
 
   Future<void> _loadProgress() async {
     final summary = await ProgressService.fetch();
     if (!mounted) return;
     setState(() => _progress = summary);
+  }
+
+  Future<void> _loadOverview() async {
+    if (mounted) setState(() => _overviewLoading = true);
+    final s = await OverviewService.fetch(divisionId: widget.division.id);
+    if (!mounted) return;
+    setState(() {
+      _overview = s;
+      _overviewLoading = false;
+    });
+  }
+
+  /// 이번 달 남은 영업일(오늘 포함, 주말 제외). 공휴일은 반영하지 않는다.
+  int _businessDaysLeft() {
+    final now = DateTime.now();
+    final last = DateTime(now.year, now.month + 1, 0).day;
+    var n = 0;
+    for (var d = now.day; d <= last; d++) {
+      final wd = DateTime(now.year, now.month, d).weekday;
+      if (wd <= DateTime.friday) n++;
+    }
+    return n;
+  }
+
+  /// 오늘이 속한 ISO 주차 라벨 ('W36').
+  String _weekLabel() {
+    final now = DateTime.now();
+    final thursday = now.add(Duration(days: 4 - now.weekday));
+    final jan1 = DateTime(thursday.year, 1, 1);
+    final week = ((thursday.difference(jan1).inDays) / 7).floor() + 1;
+    return 'W$week';
   }
 
   Future<void> _loadFavorites() async {
@@ -90,7 +141,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     setState(() {
       _future = DashboardService.fetchCards();
     });
-    await Future.wait([_future, _loadProgress()]);
+    await Future.wait([_future, _loadProgress(), _loadOverview()]);
   }
 
   String _statusLabel(String status) {
@@ -237,6 +288,11 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       cardByKey[e.key] = e.value.first;
     }
 
+    // 매출/출하는 /overview 응답을 프로젝트 키로 붙인다.
+    final revByKey = <String, OverviewProject>{
+      for (final o in _overview.items) o.key: o,
+    };
+
     final projects = <_ProjectItem>[];
     for (final p in widget.division.projects) {
       final card = cardByKey[p.id];
@@ -244,6 +300,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       // '데이터 있음' = 진행률이 산출되는 프로젝트 (모델만 있고 입력이 없으면 미등록)
       final hasData = _progress.of(p.id)?.hasData ?? false;
       final status = hasData && card != null ? _statusLabel(card.status) : '';
+      final rev = revByKey[p.id];
       projects.add(_ProjectItem(
         id: p.id,
         englishName: _englishOf(p.id),
@@ -252,6 +309,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         progressPercent: percent,
         hasData: hasData,
         modelsTotal: _progress.of(p.id)?.modelsTotal ?? 0,
+        revenue: rev?.revenue ?? 0,
+        planRevenue: rev?.planRevenue ?? 0,
+        qtyPlan: rev?.qtyPlan ?? 0,
+        qtyActual: rev?.qtyActual ?? 0,
       ));
     }
 
@@ -260,6 +321,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       if (c.projectKey.isEmpty) continue;
       final exists = projects.any((p) => p.id == c.projectKey);
       if (exists) continue;
+      final rev = revByKey[c.projectKey];
       projects.add(_ProjectItem(
         id: c.projectKey,
         englishName: _englishOf(c.projectKey),
@@ -268,6 +330,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
         progressPercent: avgProgressOf(c.projectKey),
         hasData: _progress.of(c.projectKey)?.hasData ?? false,
         modelsTotal: _progress.of(c.projectKey)?.modelsTotal ?? 0,
+        revenue: rev?.revenue ?? 0,
+        planRevenue: rev?.planRevenue ?? 0,
+        qtyPlan: rev?.qtyPlan ?? 0,
+        qtyActual: rev?.qtyActual ?? 0,
       ));
     }
 
@@ -343,11 +409,25 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       final aFav = _favoriteProjects.contains(a.id);
       final bFav = _favoriteProjects.contains(b.id);
       if (aFav != bFav) return aFav ? -1 : 1;
+      if (a.hasRevenue != b.hasRevenue) return a.hasRevenue ? -1 : 1;
       if (a.hasData != b.hasData) return a.hasData ? -1 : 1;
 
       final ap = a.progressPercent;
       final bp = b.progressPercent;
       switch (_sort) {
+        case _ProjectSort.revenueDesc:
+          // 매출 기여는 '실적'이 아니라 '이 달에 걸린 금액'(계획)이 기준이다.
+          // 실적순으로 두면 아직 안 나간 큰 건이 맨 아래로 밀린다.
+          if (a.planRevenue != b.planRevenue) {
+            return b.planRevenue.compareTo(a.planRevenue);
+          }
+          if (a.revenue != b.revenue) return b.revenue.compareTo(a.revenue);
+          break;
+        case _ProjectSort.achievementAsc:
+          final ar = a.planRevenue <= 0 ? 1000.0 : a.revenue * 100 / a.planRevenue;
+          final br = b.planRevenue <= 0 ? 1000.0 : b.revenue * 100 / b.planRevenue;
+          if (ar != br) return ar.compareTo(br);
+          break;
         case _ProjectSort.progressDesc:
           if (ap != bp) return (bp ?? -1).compareTo(ap ?? -1);
           break;
@@ -519,6 +599,14 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     });
   }
 
+  /// 행 탭 → 선택 표시 → 상세 진입 → 복귀 시 선택 해제.
+  Future<void> _tapProject(String projectKey, String projectName) async {
+    setState(() => _selectedProjectId = projectKey);
+    await _openProject(projectKey, projectName);
+    if (!mounted) return;
+    setState(() => _selectedProjectId = null);
+  }
+
   Future<void> _openProject(String projectKey, String projectName) async {
     // 모델 데이터 로드
     // 모델 데이터 로드 (사용하지 않음)
@@ -568,9 +656,6 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final shortLabel =
-        widget.division.badgeShortLabel ?? widget.division.label;
-
     return Scaffold(
       backgroundColor: AppColors.reportPageBg,
       appBar: AppBar(
@@ -649,6 +734,11 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
           final data = _computeData(snap.data!);
           final sortedProjects = _sortProjects(data.projects);
           final visibleProjects = _visibleProjects(sortedProjects);
+          // 매출이 걸린 프로젝트가 본문, 나머지는 접힌 그룹.
+          final withRevenue =
+              visibleProjects.where((p) => p.hasRevenue).toList();
+          final noRevenue =
+              visibleProjects.where((p) => !p.hasRevenue).toList();
 
           return SafeArea(
             top: false,
@@ -657,26 +747,36 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
-                  DivisionSummaryCard(
-                    divisionLabel: widget.division.label,
-                    updatedAt: data.updatedAt,
-                    progressPercent: data.progressPercent,
-                    progressDeltaPp: data.progressDeltaPp,
-                    projectCount: data.projects.length,
-                    delayedCount: data.delayed,
-                    warningCount: data.warning,
-                    normalCount: data.normal,
-                    noDataCount: data.noData,
-                    basisText: data.scoredModels > 0
-                        ? '집계 모델 ${data.scoredModels}개'
-                        : null,
+                  DivisionRevenueHero(
+                    month: _overview.month,
+                    revenue: _overview.revenue,
+                    planRevenue: _overview.planRevenue,
+                    qtyPlan: _overview.qtyPlan,
+                    qtyActual: _overview.qtyActual,
+                    weekLabel: _weekLabel(),
+                    businessDaysLeft: _businessDaysLeft(),
+                    loading: _overviewLoading && !_overview.loaded,
+                    loaded: _overview.loaded,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => RevenueDetailScreen(
+                            divisionId: widget.division.id,
+                            divisionLabel: widget.division.label,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 16),
-                  if (data.immediate.isNotEmpty) ...[
-                    DivisionImmediateCheckSection(
-                      divisionShortLabel: shortLabel,
-                      items: data.immediate,
-                      onTapSeeAll: () {
+                  if (data.delayed + data.warning > 0) ...[
+                    const SizedBox(height: 10),
+                    DivisionAttentionBanner(
+                      count: data.delayed + data.warning,
+                      severe: data.delayed > 0,
+                      headline: data.immediate.isEmpty
+                          ? null
+                          : data.immediate.first.headline,
+                      onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => ImmediateCheckScreen(
@@ -686,13 +786,12 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
                   ],
+                  const SizedBox(height: 18),
+
+                  // ── 프로젝트 (매출 기여순)
                   Row(
                     children: [
-                      const Icon(Icons.folder_outlined,
-                          size: 16, color: Color(0xFF7C8594)),
-                      const SizedBox(width: 6),
                       Text(
                         '프로젝트',
                         style: AppText.bodyStrong.copyWith(
@@ -700,14 +799,32 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                           color: AppColors.headerNavy,
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       Text(
-                        _projectQuery.trim().isEmpty
-                            ? '총 ${sortedProjects.length}건'
-                            : '${visibleProjects.length}/${sortedProjects.length}건',
+                        '${_sort.label} · ${visibleProjects.length}건',
                         style: AppText.caption.copyWith(
-                          fontSize: 11,
-                          color: const Color(0xFF7C8594),
+                          fontSize: 11.5,
+                          color: AppColors.textHint,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: _openFilterSheet,
+                        behavior: HitTestBehavior.opaque,
+                        child: Row(
+                          children: [
+                            Text(
+                              '정렬',
+                              style: AppText.caption.copyWith(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.todayBlue,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.keyboard_arrow_down_rounded,
+                                size: 16, color: AppColors.todayBlue),
+                          ],
                         ),
                       ),
                     ],
@@ -724,6 +841,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                     hintText: '프로젝트 검색',
                   ),
                   const SizedBox(height: 12),
+
                   if (visibleProjects.isEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -738,43 +856,86 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                         ),
                       ),
                     )
-                  else
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: visibleProjects.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        mainAxisExtent: 112,
+                  else ...[
+                    for (final p in withRevenue) ...[
+                      ProjectRevenueRow(
+                        koreanName: p.koreanName,
+                        status: p.status,
+                        revenue: p.revenue,
+                        planRevenue: p.planRevenue,
+                        qtyPlan: p.qtyPlan,
+                        qtyActual: p.qtyActual,
+                        modelsTotal: p.modelsTotal,
+                        progressPercent: p.progressPercent,
+                        isFavorite: _favoriteProjects.contains(p.id),
+                        isSelected: _selectedProjectId == p.id,
+                        onTap: () => _tapProject(p.id, p.koreanName),
+                        onToggleFavorite: () => _toggleFavorite(p.id),
                       ),
-                      itemBuilder: (context, i) {
-                        final p = visibleProjects[i];
-                        return ProjectGridCard(
-                          englishName: p.englishName,
-                          koreanName: p.koreanName,
-                          status: p.status,
-                          progressPercent: p.progressPercent,
-                          isFavorite: _favoriteProjects.contains(p.id),
-                          isSelected: _selectedProjectId == p.id,
-                          hasData: p.hasData,
-                          modelsTotal: p.modelsTotal,
-                          onTap: () async {
-                            setState(() {
-                              _selectedProjectId = p.id;
-                            });
-                            await _openProject(p.id, p.koreanName);
-                            if (!mounted) return;
-                            setState(() {
-                              _selectedProjectId = null;
-                            });
-                          },
-                          onToggleFavorite: () => _toggleFavorite(p.id),
-                        );
-                      },
-                    ),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // 매출 계획이 없는 프로젝트는 기본으로 접어둔다.
+                    // 첫 화면에서 읽어야 할 줄 수를 줄이는 게 목적이라
+                    // 지우지는 않고 한 줄로만 남긴다.
+                    if (noRevenue.isNotEmpty) ...[
+                      InkWell(
+                        onTap: () =>
+                            setState(() => _showNoPlan = !_showNoPlan),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 13, vertical: 11),
+                          decoration: BoxDecoration(
+                            color: AppColors.statusGraySoft,
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.md),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                '매출 계획 없는 프로젝트',
+                                style: AppText.captionStrong.copyWith(
+                                  fontSize: 12.5,
+                                  color: AppColors.textMute,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${noRevenue.length}건',
+                                style: AppText.captionStrong.copyWith(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textHint,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                _showNoPlan
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.chevron_right,
+                                size: 18,
+                                color: const Color(0xFFC5CAD3),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // 검색 중에는 접힌 그룹도 펼쳐야 결과가 보인다.
+                      if (_showNoPlan || _projectQuery.trim().isNotEmpty)
+                        for (final p in noRevenue) ...[
+                          const SizedBox(height: 8),
+                          ProjectPlainRow(
+                            koreanName: p.koreanName,
+                            modelsTotal: p.modelsTotal,
+                            progressPercent: p.progressPercent,
+                            isFavorite: _favoriteProjects.contains(p.id),
+                            onTap: () => _tapProject(p.id, p.koreanName),
+                            onToggleFavorite: () => _toggleFavorite(p.id),
+                          ),
+                        ],
+                    ],
+                  ],
                 ],
               ),
             ),
@@ -841,6 +1002,8 @@ enum _ProjectStatusFilter {
 }
 
 enum _ProjectSort {
+  revenueDesc('매출 기여순'),
+  achievementAsc('달성률 낮은순'),
   progressDesc('진행률 높은순'),
   progressAsc('진행률 낮은순'),
   name('이름순');
@@ -857,6 +1020,10 @@ class _ProjectItem {
   final int? progressPercent;
   final bool hasData;
   final int modelsTotal;
+  final int revenue;
+  final int planRevenue;
+  final int qtyPlan;
+  final int qtyActual;
 
   const _ProjectItem({
     required this.id,
@@ -866,5 +1033,13 @@ class _ProjectItem {
     required this.progressPercent,
     required this.hasData,
     this.modelsTotal = 0,
+    this.revenue = 0,
+    this.planRevenue = 0,
+    this.qtyPlan = 0,
+    this.qtyActual = 0,
   });
+
+  /// 이번 달 매출 계획이나 실적이 잡혀 있는가.
+  /// 없으면 리스트 본문이 아니라 접힌 그룹으로 내린다.
+  bool get hasRevenue => planRevenue > 0 || revenue > 0;
 }

@@ -17,7 +17,16 @@ class RevenueDetailScreen extends StatefulWidget {
   /// 처음 보여줄 월 ('2026-09'). 비우면 이번 달.
   final String? initialMonth;
 
-  const RevenueDetailScreen({super.key, this.initialMonth});
+  /// 특정 사업부로 좁혀서 볼 때. 비우면 전사.
+  final String? divisionId;
+  final String? divisionLabel;
+
+  const RevenueDetailScreen({
+    super.key,
+    this.initialMonth,
+    this.divisionId,
+    this.divisionLabel,
+  });
 
   @override
   State<RevenueDetailScreen> createState() => _RevenueDetailScreenState();
@@ -38,13 +47,15 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
     _month = (widget.initialMonth != null && widget.initialMonth!.isNotEmpty)
         ? widget.initialMonth!
         : cur;
-    _future = OverviewService.fetch(month: _month);
+    _future = OverviewService.fetch(
+        month: _month, divisionId: widget.divisionId);
   }
 
   void _load(String month) {
     setState(() {
       _month = month;
-      _future = OverviewService.fetch(month: month);
+      _future = OverviewService.fetch(
+          month: month, divisionId: widget.divisionId);
     });
   }
 
@@ -72,7 +83,11 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
     return Scaffold(
       backgroundColor: AppColors.reportPageBg,
       appBar: AppBar(
-        title: const Text('매출 상세'),
+        title: Text(
+          (widget.divisionLabel ?? '').trim().isEmpty
+              ? '매출 상세'
+              : '${widget.divisionLabel} 매출',
+        ),
         backgroundColor: AppColors.bgCard,
         elevation: 0,
         actions: [
