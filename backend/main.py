@@ -20904,8 +20904,7 @@ def put_group_summary(project_key: str, payload: dict,
                 v = int(e.get("delta") or 0)
             except Exception:
                 v = 0
-            if v:
-                rows.append({"period": per, "delta": v})
+            rows.append({"period": per, "delta": v})
         proj["po_delta_manual"] = rows
         for g in ("양산", "개발"):
             ws.get(g, {}).pop("po_delta_manual", None)
@@ -21231,7 +21230,7 @@ def _project_manual_deltas(proj, month=None):
             dv = int(e.get("delta") or 0)
         except Exception:
             dv = 0
-        if not per or not dv:
+        if not per:
             continue
         mw = _re.match(r"^[Ww]?(\d{1,2})$", per)
         if mw:
@@ -21252,6 +21251,10 @@ def _po_delta_summary(history, month, manual=None):
     엑셀에서 읽은 이력(history)과 직접 입력한 값(manual)을 합친다.
     """
     import datetime as _dt
+    # 직접 입력한 표가 있으면 그게 정본이다. 엑셀에서 읽은 이력과 더하면
+    # 같은 기간이 두 번 세어져(3월 619 + 1,321 = 1,940) 입력값과 안 맞는다.
+    if manual:
+        history = []
     by_month, by_week = {}, {}
     for h in history or []:
         try:
@@ -21301,8 +21304,8 @@ def _po_delta_summary(history, month, manual=None):
             by_month[key] = by_month.get(key, 0) + dv
 
     return {
-        "months": [{"key": k, "delta": v} for k, v in sorted(by_month.items())],
-        "weeks": [{"key": k, "delta": v} for k, v in sorted(by_week.items())],
+        "months": [{"key": k, "delta": v} for k, v in sorted(by_month.items()) if v],
+        "weeks": [{"key": k, "delta": v} for k, v in sorted(by_week.items()) if v],
     }
 
 
