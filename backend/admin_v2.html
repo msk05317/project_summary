@@ -6038,13 +6038,15 @@ window.renderAdminV2ByDivision = function(){
         ? '<th>파트넘버</th>' : '') +
       (_projIsEss
         ? '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">출하 완료</th><th class="mdl-th-num">남은 수량</th><th>납기</th><th>이슈사항</th><th>비고</th><th style="width:56px">관리</th>'
-        : '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">판가($)</th><th class="mdl-th-num">재료비($)</th><th class="mdl-th-num">재료비율</th><th>이슈사항</th><th>비고</th><th>관리</th>') +
+        : '<th>모델명</th><th>구분</th><th>유형</th>' +
+          '<th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">실적</th><th class="mdl-th-num">잔량</th>' +
+          '<th class="mdl-th-num">판가($)</th><th class="mdl-th-num">재료비($)</th><th class="mdl-th-num">재료비율</th><th>이슈사항</th><th>비고</th><th>관리</th>') +
       '</tr></thead><tbody>';
 
     ['양산', '개발'].forEach(function(g) {
       const list = byGroup[g];
       if (!list.length) return;
-      html += '<tr class="mdl-group-row"><td colspan="13">' +
+      html += '<tr class="mdl-group-row"><td colspan="16">' +
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
         '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
       list.forEach(function(m) {
@@ -6085,6 +6087,9 @@ window.renderAdminV2ByDivision = function(){
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 :
+  '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:88px;"></td>' +
+  '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:88px;"></td>' +
+  '<td data-field="remaining" class="mdl-td-ratio">' + Math.max(0, (m.po_qty || 0) - (m.shipped_qty || 0)) + '</td>' +
   '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
   '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
@@ -7919,15 +7924,21 @@ window._ovProjectKey = function() {
       .then(function(r) { return r.json(); })
       .then(function(d) {
         var wks = d.weeks || [];
+        // 엑셀 원본과 같은 3단 머리글:
+        //   1단  구분 · PO수량 · 실적 · 잔량 · 지난달 | 이번달(주차 전체) | 이번달(합계) | 다음달 · PO증감
+        //   2단  W32 W33 W34 W35
+        //   3단  계획 실적 …
         var head =
           '<tr>' +
-            '<th rowspan="2" style="min-width:150px;">구분</th>' +
-            '<th rowspan="2">PO 수량</th><th rowspan="2">실적</th><th rowspan="2">잔량</th>' +
-            '<th rowspan="2">' + _wbMon(d.prev_month) + '</th>' +
+            '<th rowspan="3" style="min-width:160px;"></th>' +
+            '<th rowspan="3">PO 수량</th><th rowspan="3">실적</th><th rowspan="3">잔량</th>' +
+            '<th rowspan="3">' + _wbMon(d.prev_month) + '</th>' +
+            '<th colspan="' + (wks.length * 2) + '">' + _wbMon(d.month) + '</th>' +
+            '<th colspan="2" rowspan="2">' + _wbMon(d.month) + '</th>' +
+            '<th rowspan="3">' + _wbMon(d.next_month) + '</th>' +
+            '<th rowspan="3">PO증감</th>' +
+          '</tr><tr>' +
             wks.map(function(w) { return '<th colspan="2">' + w + '</th>'; }).join('') +
-            '<th colspan="2">' + _wbMon(d.month) + '</th>' +
-            '<th rowspan="2">' + _wbMon(d.next_month) + '</th>' +
-            '<th rowspan="2">PO증감</th>' +
           '</tr><tr>' +
             wks.map(function() { return '<th>계획</th><th>실적</th>'; }).join('') +
             '<th>계획</th><th>실적</th>' +

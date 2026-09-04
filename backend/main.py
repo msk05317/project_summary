@@ -20734,6 +20734,18 @@ def _dev_week_totals(proj, month, weeks):
     return out
 
 
+def _model_qty_sums(proj, group):
+    """모델 목록에 직접 적은 PO 수량 / 실적 수량의 그룹 합계."""
+    group = _norm_group(group)
+    po = ship = 0
+    for m in proj.get("models", []):
+        if _norm_group(m.get("group")) != group:
+            continue
+        po += int(m.get("po_qty") or 0)
+        ship += int(m.get("shipped_qty") or 0)
+    return po, ship
+
+
 def _all_actual_sum(proj, group):
     """전 기간 주차 실적 합. 누적 실적 = base_actual + 이 값."""
     group = _norm_group(group)
@@ -20883,9 +20895,12 @@ def get_weekly_board(project_key: str, month: str = None):
     for g in ("양산", "개발"):
         b = _group_bucket(proj, g)
         wk = _mass_week_totals(proj, month, weeks) if g == "양산" else _dev_week_totals(proj, month, weeks)
+        # PO 수량 · 누적 실적은 모델 목록에 직접 적은 값이 있으면 그게 정본이고,
+        # 없으면 그룹 단위 입력(PO·기초 누적 실적 + 주차 실적)으로 계산한다.
         base = int(b.get("base_actual") or 0)
-        actual_total = base + _all_actual_sum(proj, g)
-        po = int(b.get("po_qty") or 0)
+        m_po, m_ship = _model_qty_sums(proj, g)
+        po = m_po or int(b.get("po_qty") or 0)
+        actual_total = m_ship or (base + _all_actual_sum(proj, g))
         nxt_plan = month_plan(g, nxt) or int(b.get("next_month_plan") or 0)
         label = g
         if g == "개발":
@@ -20979,8 +20994,8 @@ def put_weekly_plan(project_key: str, model_id: str, payload: dict,
     _plan_total = sum(v["plan"] for v in bucket.values())
     _act_total = sum(v["actual"] for v in bucket.values())
     if _plan_total > 0 or _act_total > 0:
-        target["po_qty"] = _plan_total
-        target["shipped_qty"] = _act_total
+        # po_qty / shipped_qty 는 '전체 PO 대비 누적 출하'라 모델 목록에서 직접 관리한다.
+        # 예전에는 여기서 이번 달 주차 합계로 덮어써서 누적값이 매달 날아갔다.
         target["due_text"] = f"{month} 주차계획 · 잔여 {_plan_total - _act_total}개"
     _save_models(data)
     return {"ok": True, "model_id": model_id, "month": month, "progress": target["weekly_progress"]}
