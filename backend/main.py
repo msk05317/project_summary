@@ -20864,6 +20864,120 @@ def put_group_summary(project_key: str, payload: dict,
     return {"ok": True, "project_key": _key, "changed": changed}
 
 
+@app.post("/admin/projects/{project_key}/status-excel")
+async def admin_import_status_excel(project_key: str,
+                                    file: UploadFile = File(...),
+                                    all_sheets: str = Form("1"),
+                                    _admin: int = Depends(get_admin_session)):
+    """하바플레이트 주간 현황 엑셀(W6~W35 시트)을 읽어 PO 수량·출하수량을 맞춘다.
+
+    - 섹션 2~5 (모델별 표)  → 모델의 판가·PO 수량·출하수량·개발종류
+    - 섹션 1 (현황)         → 그룹 PO 수량·누적 출하·진행중/완료 종수
+    - 각 시트의 '변동' 열   → PO증감 이력 (주차별)
+    기존 모델은 그대로 두고, 엑셀에만 있는 모델은 새로 만든다.
+    """
+    import io as _io, openpyxl as _xl
+    import hrva_status_import as _hs
+
+    _key = _model_key_alias(project_key)
+    raw = await file.read()
+    try:
+        wb = _xl.load_workbook(_io.BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+
+    sheets = _hs.parse_workbook(wb)
+    if not sheets:
+        raise HTTPException(status_code=400, detail="W숫자 형태의 시트를 찾지 못했습니다.")
+
+    use_all = str(all_sheets).lower() not in ("0", "false", "no", "")
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    ws_all = proj.setdefault("weekly_summary", {})
+
+    # ── PO증감 이력: 각 시트의 '변동' 을 그 주 월요일 날짜로 기록 ──
+    hist_weeks = []
+    if use_all:
+        for g in ("양산", "개발"):
+            ws_all.setdefault(g, {})["po_history"] = []
+        for wno, name, d in sheets:
+            st = d.get("status")
+            if not st:
+                continue
+            day = _hs.week_monday(wno).strftime("%Y-%m-%d")
+            wrote = False
+            for g in ("양산", "개발"):
+                dl = int((st.get(g) or {}).get("delta") or 0)
+                if not dl:
+                    continue
+                ws_all.setdefault(g, {}).setdefault("po_history", []).append(
+                    {"date": day, "week": f"W{wno:02d}", "delta": dl, "note": "엑셀"})
+                wrote = True
+            if wrote:
+                hist_weeks.append(name)
+
+    # ── 마지막(최신) 시트로 현재 상태를 맞춘다 ──
+    last_w, last_name, last = sheets[-1]
+    st = last.get("status") or {}
+    for g in ("양산", "개발"):
+        src = st.get(g) or {}
+        b = ws_all.setdefault(g, {})
+        if src.get("po"):
+            b["po_qty"] = int(src["po"])
+        if src.get("ship"):
+            b["shipped_qty"] = int(src["ship"])
+    if st.get("ongoing_types") or st.get("done_types"):
+        dev = ws_all.setdefault("개발", {})
+        dev["ongoing_types"] = int(st.get("ongoing_types") or 0)
+        dev["done_types"] = int(st.get("done_types") or 0)
+
+    models = proj.setdefault("models", [])
+    by_id = {str(m.get("id") or "").strip().lower(): m for m in models}
+    updated, created, group_diff = 0, [], []
+    for row in last.get("models") or []:
+        mid = str(row.get("id") or "").strip()
+        tgt = by_id.get(mid.lower())
+        if tgt is None:
+            entry = {
+                "id": mid, "name": mid,
+                "group": row.get("group") or "양산",
+                "status": "정상", "progress": 0,
+                "price": int(row.get("price") or 0),
+                "material_cost": 0,
+                "po_qty": int(row.get("po_qty") or 0),
+                "shipped_qty": int(row.get("shipped_qty") or 0),
+                "issues": "", "note": "",
+            }
+            if entry["group"] == "개발":
+                entry["dev_type"] = str(row.get("dev_type") or "").upper()
+                entry["process"] = _default_process()
+            models.append(entry)
+            by_id[mid.lower()] = entry
+            created.append(mid)
+            continue
+        # 기존 모델은 구분을 바꾸지 않는다 (개발→양산 전환은 이력이 필요해서 별도 처리)
+        if _norm_group(tgt.get("group")) != _norm_group(row.get("group")):
+            group_diff.append(mid)
+        tgt["po_qty"] = int(row.get("po_qty") or 0)
+        tgt["shipped_qty"] = int(row.get("shipped_qty") or 0)
+        if row.get("price"):
+            tgt["price"] = int(row["price"])
+        if row.get("dev_type") and _norm_group(tgt.get("group")) == "개발":
+            tgt["dev_type"] = str(row["dev_type"]).upper()
+        updated += 1
+
+    _save_models(data)
+    return {
+        "ok": True, "project_key": _key,
+        "sheets": [n for _, n, _ in sheets],
+        "applied_sheet": last_name,
+        "updated": updated, "created": created,
+        "group_diff": group_diff,
+        "history_weeks": len(hist_weeks),
+        "status": st,
+    }
+
+
 @app.get("/projects/{project_key}/weekly-board")
 def get_weekly_board(project_key: str, month: str = None):
     """엑셀로 올리던 '주차별 계획 원본' 표를 데이터에서 계산해 돌려준다.
@@ -20900,7 +21014,8 @@ def get_weekly_board(project_key: str, month: str = None):
         base = int(b.get("base_actual") or 0)
         m_po, m_ship = _model_qty_sums(proj, g)
         po = int(b.get("po_qty") or 0) or m_po
-        actual_total = m_ship or (base + _all_actual_sum(proj, g))
+        actual_total = (int(b.get("shipped_qty") or 0) or m_ship
+                        or (base + _all_actual_sum(proj, g)))
         nxt_plan = month_plan(g, nxt) or int(b.get("next_month_plan") or 0)
         label = g
         if g == "개발":
@@ -20947,7 +21062,10 @@ def _po_delta_summary(history, month):
             d = _dt.date.fromisoformat(str(h.get("date"))[:10])
         except Exception:
             continue
-        delta = int(h.get("to") or 0) - int(h.get("from") or 0)
+        if h.get("delta") is not None:
+            delta = int(h.get("delta") or 0)
+        else:
+            delta = int(h.get("to") or 0) - int(h.get("from") or 0)
         if not delta:
             continue
         mk = f"{d.year}-{d.month:02d}"

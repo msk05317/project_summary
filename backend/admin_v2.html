@@ -6832,6 +6832,8 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<span class="ov-card-title">주차 현황 보드</span>' +
               '<span class="ov-card-sub">자동 계산</span>' +
               '<span class="spacer"></span>' +
+              '<input type="file" id="wb-file" accept=".xlsx,.xlsm" style="display:none">' +
+              '<button type="button" class="ov-btn" id="wb-upload">📁 현황 엑셀 올리기</button>' +
               '<button type="button" class="ov-btn" id="wb-edit">PO 수량 · 종수 입력</button>' +
             '</div>' +
             '<div id="wb-board"></div>' +
@@ -7693,6 +7695,56 @@ window._ovProjectKey = function() {
         if (_wpModels.length) renderModelCards();
       };
       sinp.onkeydown = function(e) { if (e.key === 'Escape') closeSearch(); };
+    }
+
+    // 주간 현황 엑셀 업로드 → PO 수량·출하수량 자동 반영
+    var wbUp = document.getElementById('wb-upload');
+    var wbFile = document.getElementById('wb-file');
+    if (wbUp && wbFile && !wbUp.dataset.wired) {
+      wbUp.dataset.wired = '1';
+      wbUp.onclick = function() { wbFile.click(); };
+      wbFile.onchange = function() {
+        var f = wbFile.files && wbFile.files[0];
+        if (!f) return;
+        var pk = window._ovProjectKey();
+        if (!pk) { alert('프로젝트를 먼저 선택하세요'); return; }
+        var fd = new FormData();
+        fd.append('file', f);
+        fd.append('all_sheets', '1');
+        wbUp.disabled = true;
+        wbUp.textContent = '올리는 중...';
+        fetch('/admin/projects/' + encodeURIComponent(pk) + '/status-excel',
+              { method: 'POST', credentials: 'same-origin', body: fd })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            wbUp.disabled = false;
+            wbUp.textContent = '📁 현황 엑셀 올리기';
+            wbFile.value = '';
+            if (!d.ok) {
+              var m = d.detail;
+              if (m && typeof m !== 'string') { try { m = JSON.stringify(m); } catch (e) { m = ''; } }
+              alert('반영 실패: ' + (m || '알 수 없는 오류'));
+              return;
+            }
+            var msg = d.applied_sheet + ' 기준 · 모델 ' + d.updated + '개 갱신';
+            if ((d.created || []).length) msg += ' · 신규 ' + d.created.length + '개 추가';
+            if (d.history_weeks) msg += ' · PO증감 ' + d.history_weeks + '주차 반영';
+            if ((d.group_diff || []).length) {
+              msg += '\n구분이 엑셀과 다른 모델 ' + d.group_diff.length + '개는 그대로 뒀습니다: ' +
+                     d.group_diff.slice(0, 5).join(', ');
+            }
+            if (window.mdlToast) window.mdlToast(msg.split('\n')[0]);
+            if (msg.indexOf('\n') >= 0) alert(msg);
+            var msel = document.getElementById('wp-month-sel');
+            window.renderWeeklyBoard(pk, msel && msel.value);
+            if (window.loadModelList) window.loadModelList(msel && msel.value);
+          })
+          .catch(function(e) {
+            wbUp.disabled = false;
+            wbUp.textContent = '📁 현황 엑셀 올리기';
+            alert('반영 실패: ' + e.message);
+          });
+      };
     }
 
     var wbBtn = document.getElementById('wb-edit');
