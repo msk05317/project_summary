@@ -6860,7 +6860,7 @@ var sidebarSel = document.getElementById('v2-division-select');
             '</div>' +
             '<div id="wb-board"></div>' +
           '</div>' +
-          '<div class="ov-card">' +
+          '<div class="ov-card" id="wp-src-card">' +
             '<div class="ov-card-head">' +
               '<span class="ov-card-title">주차별 계획 원본</span>' +
               '<span id="mdl-weekly-status" class="mdl-weekly-status">로딩 중...</span>' +
@@ -7993,11 +7993,18 @@ window._ovProjectKey = function() {
     return '<div class="wb-po">' + html + '</div>';
   }
 
+  // 보드가 엑셀 원본과 같은 표를 데이터로 그리는 프로젝트.
+  // 여기서는 '주차별 계획 원본'(엑셀 이미지) 카드를 숨긴다 — 같은 표가 두 번 나올 이유가 없다.
+  var WB_REPLACES_SRC = ['hrva_plate', 'havaplate'];
+
   window.renderWeeklyBoard = function(pk, month) {
     var box = document.getElementById('wb-board');
     if (!box) return;
     pk = pk || window._ovProjectKey();
     if (!pk) { box.innerHTML = ''; return; }
+
+    var srcCard = document.getElementById('wp-src-card');
+    if (srcCard) srcCard.style.display = (WB_REPLACES_SRC.indexOf(pk) >= 0) ? 'none' : '';
     box.innerHTML = '<div style="padding:18px;text-align:center;color:#9CA3AF;font-size:13px;">불러오는 중...</div>';
 
     fetch('/projects/' + encodeURIComponent(pk) + '/weekly-board?month=' + encodeURIComponent(month || ''),
