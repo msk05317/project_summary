@@ -9,6 +9,7 @@
 열 위치는 고정하지 않고 '머리글 라벨'로 찾는다. 시트가 조금 바뀌어도 견디게 하기 위함.
 """
 
+import week_calendar as _wcal
 import re
 import datetime as _dt
 
@@ -101,10 +102,9 @@ def _col(cols, *names):
 
 
 def _month_of_week(week_no, year):
-    """ISO 주차 → 그 주 목요일이 속한 'YYYY-MM'."""
+    """ISO 주차 → 그 주차를 소유한 'YYYY-MM' (앱이 읽는 규칙과 동일)."""
     try:
-        thu = _dt.date.fromisocalendar(year, week_no, 4)
-        return f"{thu.year}-{thu.month:02d}"
+        return _wcal.month_of_week_no(week_no, year)
     except Exception:
         return None
 

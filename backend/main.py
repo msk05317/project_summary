@@ -42,6 +42,7 @@ from project_templates import (
 # - 분류 실패해도 응답이 깨지지 않게 안전 처리한다.
 # ============================================================
 import config_loader as _cl
+import week_calendar as _wcal
 
 
 def _safe_text_for_card(card: dict) -> str:
@@ -20085,77 +20086,19 @@ def _ensure_mass_progress(weekly_plan, month=None):
 
 
 def _month_weeks_base(y, m):
-    """ISO 규칙(그 주 목요일이 속한 달) + 말일이 3일 이상 걸친 주."""
-    import datetime as _dt
-    first = _dt.date(y, m, 1)
-    last = (_dt.date(y + 1, 1, 1) if m == 12 else _dt.date(y, m + 1, 1)) - _dt.timedelta(days=1)
-    weeks, seen = [], set()
-    cur = first
-    while cur <= last:
-        if cur.weekday() == 3:  # 목요일
-            _, iso_week, _ = cur.isocalendar()
-            key = f"W{iso_week:02d}"
-            if key not in seen:
-                seen.add(key)
-                weeks.append(key)
-        cur += _dt.timedelta(days=1)
-
-    _, w_last, _ = last.isocalendar()
-    key_last = f"W{w_last:02d}"
-    if key_last not in seen:
-        mon = last - _dt.timedelta(days=last.weekday())
-        days = sum(1 for i in range(7) if first <= mon + _dt.timedelta(days=i) <= last)
-        if days >= 3:
-            weeks.append(key_last)
-    return weeks
+    """week_calendar 로 위임. 규칙 사본이 갈라지면 W40 같은 사고가 난다."""
+    return _wcal.month_weeks_base(y, m)
 
 
 def _get_month_weeks(month):
-    """YYYY-MM 월의 주차 목록. 한 주차는 한 달에만 속한다.
-
-    - 기본: 그 주 목요일이 속한 달 (8월 = W32~W35)
-    - 말일이 3일 이상 걸친 주는 그 달의 마지막 주차로 추가 (9월 = W36~W40)
-    - 그렇게 앞 달이 가져간 주차는 다음 달에서 뺀다 (10월 = W41~W44)
-    """
-    y, m = map(int, month.split("-"))
-    weeks = _month_weeks_base(y, m)
-    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
-    prev = set(_month_weeks_base(py, pm))
-    while weeks and weeks[0] in prev:
-        weeks = weeks[1:]
-    return weeks
+    """YYYY-MM 월의 주차 목록. 규칙 본문은 week_calendar 에 있다."""
+    return _wcal.get_month_weeks(month)
 
 
 def _month_of_week(week_label, year=None):
-    """'W33' → 그 주차가 속한 'YYYY-MM'. _get_month_weeks 의 소유 규칙과 일치."""
-    import datetime as _dt
-    if not week_label:
-        return None
-    try:
-        n = int(str(week_label).upper().lstrip('W'))
-    except Exception:
-        return None
-    if not (1 <= n <= 53):
-        return None
-    if year is None:
-        year = _dt.date.today().year
-    for _y in (year, year - 1):
-        try:
-            thu = _dt.date.fromisocalendar(_y, n, 4)
-        except Exception:
-            continue
-        key = f"W{n:02d}"
-        iso_month = f"{thu.year}-{thu.month:02d}"
-        # 앞 달이 이 주차를 가져갔으면(9월의 W40 처럼) 그 달을 돌려준다
-        py, pm = (thu.year - 1, 12) if thu.month == 1 else (thu.year, thu.month - 1)
-        prev_month = f"{py}-{pm:02d}"
-        try:
-            if key in _get_month_weeks(prev_month):
-                return prev_month
-        except Exception:
-            pass
-        return iso_month
-    return None
+    """'W40' → 그 주차를 소유한 'YYYY-MM'. 규칙 본문은 week_calendar 에 있다."""
+    return _wcal.month_of_week(week_label, year)
+
 
 def _latest_data_month(project_key=None):
     """모델 weekly_plan / weekly_summary에 데이터가 있는 가장 최근 'YYYY-MM'."""

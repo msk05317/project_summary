@@ -11,6 +11,7 @@
 열 위치는 고정하지 않고 '계획/실적' 하위 머리글과 병합된 월/주차 머리글로 찾는다.
 """
 
+import week_calendar as _wcal
 import re
 import datetime as _dt
 
@@ -78,10 +79,14 @@ def _filled_grid(ws):
 
 
 def _month_of_week_iso(wno, year):
-    """ISO 주차 번호 → 그 주 목요일이 속한 'YYYY-MM'. 주차 번호가 정본."""
+    """ISO 주차 번호 → 그 주차를 소유한 'YYYY-MM'.
+
+    예전에는 목요일이 속한 달만 봤는데, 앱이 읽는 규칙(week_calendar)은
+    말일이 3일 이상 걸친 주를 앞 달이 가져간다. 2026년 W40 이 그런 경우라
+    저장은 10월, 조회는 9월이 되어 그 주 물량이 통째로 사라졌다.
+    """
     try:
-        thu = _dt.date.fromisocalendar(year, wno, 4)
-        return f"{thu.year}-{thu.month:02d}"
+        return _wcal.month_of_week_no(wno, year)
     except Exception:
         return None
 
