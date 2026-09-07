@@ -5779,6 +5779,18 @@ window.renderAdminV2ByDivision = function(){
   }
 
   // 모델 테이블 렌더링
+  // 입력칸에서 수량/금액을 읽는다.
+  // type="number" 는 '96,000' 을 넣으면 화면에는 그대로 보이면서 .value 로는
+  // 빈 문자열을 돌려준다. 그래서 콤마 붙여넣기가 0 으로 저장됐다.
+  // 칸을 text 로 바꾸고 여기서 콤마·$·공백을 걷어낸다.
+  function _numVal(el, fallback) {
+    if (!el) return fallback;
+    var raw = String(el.value == null ? '' : el.value).replace(/[,\s$₩]/g, '');
+    if (raw === '') return 0;
+    var n = parseFloat(raw);
+    return isFinite(n) ? Math.max(0, Math.round(n)) : fallback;
+  }
+
   function syncDomToData(container) {
     container.querySelectorAll('tr[data-model-id]').forEach(function(r) {
       const m = window._modelsData.find(function(x) { return x.id === r.dataset.modelId; });
@@ -5796,8 +5808,8 @@ window.renderAdminV2ByDivision = function(){
       const nte = r.querySelector('[data-field="note"]');
       // part_number는 개발 3종(powerbox/major_module/frame)에서만 존재
       // ESS 필드 값 할당 (누락됐던 부분)
-      if (poq) m.po_qty = parseInt(poq.value || '0', 10) || 0;
-      if (shq) m.shipped_qty = parseInt(shq.value || '0', 10) || 0;
+      if (poq) m.po_qty = _numVal(poq, m.po_qty || 0);
+      if (shq) m.shipped_qty = _numVal(shq, m.shipped_qty || 0);
       if (duet) m.due_text = duet.value || '';
       if (iss) m.issues = iss.value || '';
       if (nte) m.note = nte.value || '';
@@ -5806,10 +5818,14 @@ window.renderAdminV2ByDivision = function(){
       if (dt) m.dev_type = dt.value;
       const st = r.querySelector('[data-field="status"]');
       if (st) m.status = st.value;
+      // ESS 프로젝트(sdi·fluence·epc_power)는 행에 판가·재료비 칸 자체가 없다.
+      // 예전에는 칸이 없으면 0 을 대입해서, 이슈사항 한 글자만 고쳐 저장해도
+      // 모든 모델의 판가·재료비가 0 이 됐다. 화면에 판가 열이 없어 보이지도 않았고,
+      // 그대로 매출이 $0 으로 집계됐다. 다른 필드처럼 '칸이 있을 때만' 반영한다.
       var priceEl = r.querySelector('[data-field="price"]');
-      m.price = priceEl ? parseInt((priceEl.value || '0').replace(/,/g, ''), 10) || 0 : 0;
+      if (priceEl) m.price = _numVal(priceEl, m.price || 0);
       var matEl = r.querySelector('[data-field="material_cost"]');
-      m.material_cost = matEl ? parseInt((matEl.value || '0').replace(/,/g, ''), 10) || 0 : 0;
+      if (matEl) m.material_cost = _numVal(matEl, m.material_cost || 0);
       const pg = r.querySelector('[data-field="progress"]');
       if (pg) m.progress = parseInt(pg.value || '0', 10) || 0;
     });
@@ -6110,18 +6126,18 @@ window.renderAdminV2ByDivision = function(){
             })() +
           '</select></td>' +
           (_projIsEss ?
-  '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
-  '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
+  '<td><input data-field="po_qty" type="text" inputmode="numeric" value="' + (m.po_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
+  '<td><input data-field="shipped_qty" type="text" inputmode="numeric" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
   '<td data-field="remaining" class="mdl-td-ratio">' + Math.max(0, (m.po_qty || 0) - (m.shipped_qty || 0)) + '</td>' +
   '<td><input data-field="due_text" type="text" value="' + (m.due_text || '').replace(/"/g, '&quot;') + '" class="mdl-input" placeholder="예: 8월 24일" style="width:140px;"></td>' +
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 :
-  '<td><input data-field="price" type="number" min="0" value="' + price + '" class="mdl-input"></td>' +
-  '<td><input data-field="material_cost" type="number" min="0" value="' + mcost + '" class="mdl-input"></td>' +
+  '<td><input data-field="price" type="text" inputmode="numeric" value="' + price + '" class="mdl-input"></td>' +
+  '<td><input data-field="material_cost" type="text" inputmode="numeric" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
-  '<td><input data-field="po_qty" type="number" min="0" value="' + (m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
-  '<td><input data-field="shipped_qty" type="number" min="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
+  '<td><input data-field="po_qty" type="text" inputmode="numeric" value="' + (m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
+  '<td><input data-field="shipped_qty" type="text" inputmode="numeric" value="' + (m.shipped_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 ) +
@@ -6189,8 +6205,8 @@ window.renderAdminV2ByDivision = function(){
           el.className = 'mdl-devtype mdl-dt-' + el.value.toLowerCase();
         }
         if (el.dataset.field === 'price' || el.dataset.field === 'material_cost') {
-          const pr = parseInt(tr.querySelector('[data-field="price"]').value || '0', 10) || 0;
-          const mc = parseInt(tr.querySelector('[data-field="material_cost"]').value || '0', 10) || 0;
+          const pr = _numVal(tr.querySelector('[data-field="price"]'), 0);
+          const mc = _numVal(tr.querySelector('[data-field="material_cost"]'), 0);
           const cell = tr.querySelector('[data-field="ratio"]');
           if (cell) cell.textContent = pr > 0 ? ((mc / pr) * 100).toFixed(1) + '%' : '-';
         }
