@@ -2377,11 +2377,11 @@ def _normalize_model(raw: dict, existing_ids: set) -> dict | None:
     price = 0
     material_cost = 0
     try:
-        price = int(raw.get("price") or 0)
+        price = _as_money(raw.get("price"))
     except (ValueError, TypeError):
         pass
     try:
-        material_cost = int(raw.get("material_cost") or 0)
+        material_cost = _as_money(raw.get("material_cost"))
     except (ValueError, TypeError):
         pass
     price = max(0, price)
@@ -4051,6 +4051,26 @@ async def admin_upload_note_photo(
 def _norm_label(t):
     import re as _re
     return _re.sub(r"[^0-9A-Za-z가-힣]", "", str(t or "")).upper()
+
+
+def _as_money(v, default=0):
+    """판가·재료비 같은 '금액'. 소수점을 살린다.
+
+    예전에는 int() 로 잘라서 판가 3150.4 가 3150 으로 저장됐다.
+    1,000대면 400달러가 사라진다. 소수 둘째 자리까지 반올림하고,
+    딱 떨어지면 int 로 돌려 기존 데이터(3150)의 표기가 3150.0 으로
+    바뀌지 않게 한다.
+    """
+    if v is None or v == "":
+        return default
+    try:
+        n = float(str(v).replace(",", "").replace("$", "").replace("₩", "").strip())
+    except Exception:
+        return default
+    if n != n or n in (float("inf"), float("-inf")):
+        return default
+    n = round(n, 2)
+    return int(n) if n == int(n) else n
 
 
 def _as_int(v, default=0):
@@ -13183,12 +13203,12 @@ def admin_update_model(project_key: str, model_id: str, payload: dict, _admin: i
             target["status"] = s
     if "price" in payload:
         try:
-            target["price"] = max(0, int(payload["price"]))
+            target["price"] = max(0, _as_money(payload["price"]))
         except (ValueError, TypeError):
             pass
     if "material_cost" in payload:
         try:
-            target["material_cost"] = max(0, int(payload["material_cost"]))
+            target["material_cost"] = max(0, _as_money(payload["material_cost"]))
         except (ValueError, TypeError):
             pass
     _save_models(data)
@@ -13260,11 +13280,11 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         progress = max(0, min(100, progress))
         status = str(m.get("status") or "정상").strip()
         try:
-            price = int(m.get("price") or 0)
+            price = _as_money(m.get("price"))
         except (ValueError, TypeError):
             price = 0
         try:
-            material_cost = int(m.get("material_cost") or 0)
+            material_cost = _as_money(m.get("material_cost"))
         except (ValueError, TypeError):
             material_cost = 0
         entry = {
@@ -20401,7 +20421,7 @@ def get_admin_overview(month: str = None, division_id: str = None):
                 t = (grp.get(g) or {}).get("total") or {}
                 row["qty_plan"] += int(t.get("plan") or 0)
                 row["qty_actual"] += int(t.get("actual") or 0)
-                row["revenue"] += int(t.get("revenue") or 0)
+                row["revenue"] += round(float(t.get("revenue") or 0))
                 row["plan_revenue"] += int(t.get("plan_revenue") or 0)
             row["has_weekly"] = bool(row["qty_plan"] or row["qty_actual"])
         except Exception as _e:
@@ -21036,7 +21056,7 @@ async def admin_import_status_excel(project_key: str,
                 "id": mid, "name": mid,
                 "group": row.get("group") or "양산",
                 "status": "정상", "progress": 0,
-                "price": int(row.get("price") or 0),
+                "price": _as_money(row.get("price")),
                 "material_cost": 0,
                 "po_qty": int(row.get("po_qty") or 0),
                 "shipped_qty": int(row.get("shipped_qty") or 0),
@@ -21055,7 +21075,7 @@ async def admin_import_status_excel(project_key: str,
         tgt["po_qty"] = int(row.get("po_qty") or 0)
         tgt["shipped_qty"] = int(row.get("shipped_qty") or 0)
         if row.get("price"):
-            tgt["price"] = int(row["price"])
+            tgt["price"] = _as_money(row["price"])
         if row.get("dev_type") and _norm_group(tgt.get("group")) == "개발":
             tgt["dev_type"] = str(row["dev_type"]).upper()
         updated += 1
@@ -21670,8 +21690,10 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
             applied.append(f"{skey}:{pn}")
             if cfg['price']:
                 price, mcost = _cs(row[28] if len(row) > 28 else ''), _cs(row[29] if len(row) > 29 else '')
-                if price.replace('.','').isdigit(): m['price'] = int(float(price))
-                if mcost.replace('.','').isdigit(): m['material_cost'] = int(float(mcost))
+                _pv = _as_money(price, None)
+                if _pv is not None: m['price'] = _pv
+                _mv = _as_money(mcost, None)
+                if _mv is not None: m['material_cost'] = _mv
     # ── 위 시트(pbx/ema/majormodule)가 하나도 안 걸리면 일반 Process Schedule 형식으로 처리 ──
     if not applied:
         import process_import as _pi
@@ -22050,7 +22072,7 @@ def _norm_phases(v):
             continue
         g = "개발" if str(e.get("group") or "").strip() == "개발" else "양산"
         try:
-            p = max(0, int(e.get("price") or 0))
+            p = max(0, _as_money(e.get("price")))
         except Exception:
             p = 0
         out.append({"from": "%04d-W%02d" % (o // 100, o % 100), "group": g, "price": p})
@@ -22062,7 +22084,7 @@ def _phase_at(m: dict, month: str, week):
     """그 주차에 유효한 (구분, 판가). phases 가 없으면 모델의 현재 값."""
     g = "개발" if (m or {}).get("group") == "개발" else "양산"
     try:
-        price = max(0, int((m or {}).get("price") or 0))
+        price = max(0, _as_money((m or {}).get("price")))
     except Exception:
         price = 0
     ph = _norm_phases((m or {}).get("phases"))
@@ -22128,6 +22150,7 @@ def get_weekly_revenue(project_key: str, month: str = None):
             tgt = yang_weeks if g == "양산" else dev_model_weeks
             tgt[w]["plan"] += p
             tgt[w]["actual"] += a
+            # 판가에 소수가 있을 수 있다. 누적은 정확히 하고 응답에서 반올림한다.
             tgt[w]["revenue"] += a * price
             tgt[w]["plan_revenue"] += p * price
             if p or a:
@@ -22139,6 +22162,13 @@ def get_weekly_revenue(project_key: str, month: str = None):
                 (yang_models_used if g == "양산" else dev_models_used).append(
                     {"id": m.get("id"), "price": acc[g]["price"],
                      "plan": acc[g]["plan"], "actual": acc[g]["actual"]})
+    # 센트 단위까지 누적한 뒤 여기서 원 단위로 반올림한다.
+    # 앱은 매출을 정수로 받으므로 float 이 그대로 나가면 파싱에서 터진다.
+    for _wk in (yang_weeks, dev_model_weeks):
+        for _v in _wk.values():
+            _v["revenue"] = round(_v["revenue"])
+            _v["plan_revenue"] = round(_v["plan_revenue"])
+
     yang_total = {"plan": sum(v["plan"] for v in yang_weeks.values()),
                   "actual": sum(v["actual"] for v in yang_weeks.values()),
                   "revenue": sum(v["revenue"] for v in yang_weeks.values()),

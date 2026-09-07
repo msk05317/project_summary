@@ -5783,12 +5783,30 @@ window.renderAdminV2ByDivision = function(){
   // type="number" 는 '96,000' 을 넣으면 화면에는 그대로 보이면서 .value 로는
   // 빈 문자열을 돌려준다. 그래서 콤마 붙여넣기가 0 으로 저장됐다.
   // 칸을 text 로 바꾸고 여기서 콤마·$·공백을 걷어낸다.
-  function _numVal(el, fallback) {
-    if (!el) return fallback;
+  function _rawNum(el) {
+    if (!el) return null;
     var raw = String(el.value == null ? '' : el.value).replace(/[,\s$₩]/g, '');
     if (raw === '') return 0;
     var n = parseFloat(raw);
-    return isFinite(n) ? Math.max(0, Math.round(n)) : fallback;
+    return isFinite(n) ? n : null;
+  }
+
+  // 수량 — 정수.
+  function _numVal(el, fallback) {
+    if (!el) return fallback;
+    var n = _rawNum(el);
+    return n === null ? fallback : Math.max(0, Math.round(n));
+  }
+
+  // 금액(판가·재료비) — 소수점을 살린다.
+  // 판가 3150.4 를 3150 으로 자르면 1,000대에서 400달러가 사라진다.
+  // 소수 둘째 자리까지 반올림하고, 딱 떨어지면 정수로 돌려 표기를 유지한다.
+  function _moneyVal(el, fallback) {
+    if (!el) return fallback;
+    var n = _rawNum(el);
+    if (n === null) return fallback;
+    n = Math.max(0, Math.round(n * 100) / 100);
+    return n === Math.trunc(n) ? Math.trunc(n) : n;
   }
 
   function syncDomToData(container) {
@@ -5823,9 +5841,9 @@ window.renderAdminV2ByDivision = function(){
       // 모든 모델의 판가·재료비가 0 이 됐다. 화면에 판가 열이 없어 보이지도 않았고,
       // 그대로 매출이 $0 으로 집계됐다. 다른 필드처럼 '칸이 있을 때만' 반영한다.
       var priceEl = r.querySelector('[data-field="price"]');
-      if (priceEl) m.price = _numVal(priceEl, m.price || 0);
+      if (priceEl) m.price = _moneyVal(priceEl, m.price || 0);
       var matEl = r.querySelector('[data-field="material_cost"]');
-      if (matEl) m.material_cost = _numVal(matEl, m.material_cost || 0);
+      if (matEl) m.material_cost = _moneyVal(matEl, m.material_cost || 0);
       const pg = r.querySelector('[data-field="progress"]');
       if (pg) m.progress = parseInt(pg.value || '0', 10) || 0;
     });
@@ -6133,8 +6151,8 @@ window.renderAdminV2ByDivision = function(){
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 :
-  '<td><input data-field="price" type="text" inputmode="numeric" value="' + price + '" class="mdl-input"></td>' +
-  '<td><input data-field="material_cost" type="text" inputmode="numeric" value="' + mcost + '" class="mdl-input"></td>' +
+  '<td><input data-field="price" type="text" inputmode="decimal" value="' + price + '" class="mdl-input"></td>' +
+  '<td><input data-field="material_cost" type="text" inputmode="decimal" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
   '<td><input data-field="po_qty" type="text" inputmode="numeric" value="' + (m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
   '<td><input data-field="shipped_qty" type="text" inputmode="numeric" value="' + (m.shipped_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
@@ -6205,8 +6223,8 @@ window.renderAdminV2ByDivision = function(){
           el.className = 'mdl-devtype mdl-dt-' + el.value.toLowerCase();
         }
         if (el.dataset.field === 'price' || el.dataset.field === 'material_cost') {
-          const pr = _numVal(tr.querySelector('[data-field="price"]'), 0);
-          const mc = _numVal(tr.querySelector('[data-field="material_cost"]'), 0);
+          const pr = _moneyVal(tr.querySelector('[data-field="price"]'), 0);
+          const mc = _moneyVal(tr.querySelector('[data-field="material_cost"]'), 0);
           const cell = tr.querySelector('[data-field="ratio"]');
           if (cell) cell.textContent = pr > 0 ? ((mc / pr) * 100).toFixed(1) + '%' : '-';
         }

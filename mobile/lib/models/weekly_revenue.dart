@@ -13,11 +13,15 @@ class WeekCell {
     this.planRevenue,
   });
 
+  // 숫자는 반드시 num 을 거쳐서 받는다.
+  // 판가에 소수점이 생기면서 매출이 double 로 내려올 수 있는데,
+  // 곧바로 int 에 대입하면 화면 전체가
+  // "type 'double' is not a subtype of type 'int'" 로 죽는다.
   factory WeekCell.fromJson(Map<String, dynamic> j) => WeekCell(
-        plan: j['plan'] ?? 0,
-        actual: j['actual'] ?? 0,
-        revenue: j['revenue'],
-        planRevenue: j['plan_revenue'],
+        plan: (j['plan'] as num?)?.round() ?? 0,
+        actual: (j['actual'] as num?)?.round() ?? 0,
+        revenue: (j['revenue'] as num?)?.round(),
+        planRevenue: (j['plan_revenue'] as num?)?.round(),
       );
 }
 
@@ -31,10 +35,10 @@ class GroupSummary {
     this.unitPrice, required this.weeks, required this.total,
   });
   factory GroupSummary.fromJson(Map<String, dynamic> j) => GroupSummary(
-        poQty: j['po_qty'] ?? 0,
-        actualTotal: j['actual_total'] ?? 0,
-        remaining: j['remaining'] ?? 0,
-        unitPrice: j['unit_price'],
+        poQty: (j['po_qty'] as num?)?.round() ?? 0,
+        actualTotal: (j['actual_total'] as num?)?.round() ?? 0,
+        remaining: (j['remaining'] as num?)?.round() ?? 0,
+        unitPrice: (j['unit_price'] as num?)?.round(),
         weeks: (j['weeks'] as Map<String, dynamic>? ?? {})
             .map((k, v) => MapEntry(k, WeekCell.fromJson(v))),
         total: WeekCell.fromJson(j['total'] ?? {}),
@@ -66,9 +70,10 @@ class WeeklyRevenue {
         weeks: List<String>.from(j['weeks'] ?? []),
         mass: GroupSummary.fromJson(j['groups']['양산'] ?? {}),
         dev: GroupSummary.fromJson(j['groups']['개발'] ?? {}),
-        combinedRevenue: (j['combined']?['total']?['revenue'] as num?)?.toInt()
-            ?? j['combined_revenue'] ?? 0,
+        combinedRevenue: (j['combined']?['total']?['revenue'] as num?)?.round()
+            ?? (j['combined_revenue'] as num?)?.round()
+            ?? 0,
         combinedPlanRevenue:
-            (j['combined']?['total']?['plan_revenue'] as num?)?.toInt() ?? 0,
+            (j['combined']?['total']?['plan_revenue'] as num?)?.round() ?? 0,
       );
 }
