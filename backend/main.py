@@ -4176,31 +4176,34 @@ def _apply_plan_matrix(data, project_key, parsed):
                         "model": target.get("name") or target.get("id")})
 
     # ── 프로젝트 주차 합계 (양산/개발) ──
+    #
+    # 시트에는 개별 모델 행과 그것을 요약한 집계 행('양산 19종', '개발 22종')이
+    # 같이 들어 있다. 예전에는 둘을 한꺼번에 더해서 그룹 PO·출하·주차 계획이
+    # 정확히 두 배가 됐다. 집계 행은 개별 행을 이미 합한 값이므로 제외한다.
+    #
+    # 단, 하바플레이트 개발처럼 개별 모델 없이 총 수량만 적는 방식도 있다.
+    # 그 경우 집계 행이 유일한 데이터이므로 그대로 쓴다.
     ws_out = proj.setdefault("weekly_summary", {})
-    for row in (parsed.get("rows") or []):
-        grp = "개발" if "개발" in str(row.get("label") or "") else "양산"
-        g = ws_out.setdefault(grp, {})
-        g["po_qty"] = int(g.get("po_qty") or 0) + int(row.get("po_qty") or 0)
-        g["actual_total"] = int(g.get("actual_total") or 0) + int(row.get("shipped_qty") or 0)
-        g["remaining"] = int(g.get("remaining") or 0) + int(row.get("remaining") or 0)
-    # 합계는 이번 업로드 값으로 새로 계산 (누적 방지)
     for grp in ("양산", "개발"):
         rows_g = [r for r in (parsed.get("rows") or [])
                   if ("개발" in str(r.get("label") or "")) == (grp == "개발")]
         if not rows_g:
             continue
+        detail = [r for r in rows_g if not r.get("is_aggregate")]
+        src = detail or rows_g
+
         g = ws_out.setdefault(grp, {})
-        g["po_qty"] = sum(int(r.get("po_qty") or 0) for r in rows_g)
-        g["actual_total"] = sum(int(r.get("shipped_qty") or 0) for r in rows_g)
-        g["remaining"] = sum(int(r.get("remaining") or 0) for r in rows_g)
+        g["po_qty"] = sum(_as_int(r.get("po_qty")) for r in src)
+        g["actual_total"] = sum(_as_int(r.get("shipped_qty")) for r in src)
+        g["remaining"] = sum(_as_int(r.get("remaining")) for r in src)
         weeks = g.setdefault("weeks", {})
         agg = {}
-        for r in rows_g:
+        for r in src:
             for _month, wk in (r.get("weeks") or {}).items():
                 for w, cell in wk.items():
                     tgt = agg.setdefault(w, {"plan": 0, "actual": 0})
-                    tgt["plan"] += int((cell or {}).get("plan") or 0)
-                    tgt["actual"] += int((cell or {}).get("actual") or 0)
+                    tgt["plan"] += _as_int((cell or {}).get("plan"))
+                    tgt["actual"] += _as_int((cell or {}).get("actual"))
         weeks.update(agg)          # 이번 업로드에 있는 주차만 갱신
 
     models.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
