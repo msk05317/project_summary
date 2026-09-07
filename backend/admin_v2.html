@@ -5841,7 +5841,24 @@ window.renderAdminV2ByDivision = function(){
       // 모든 모델의 판가·재료비가 0 이 됐다. 화면에 판가 열이 없어 보이지도 않았고,
       // 그대로 매출이 $0 으로 집계됐다. 다른 필드처럼 '칸이 있을 때만' 반영한다.
       var priceEl = r.querySelector('[data-field="price"]');
-      if (priceEl) m.price = _moneyVal(priceEl, m.price || 0);
+      if (priceEl) {
+        var _newPrice = _moneyVal(priceEl, _shownPrice(m));
+        // 판가 이력이 있는 모델은 매출 계산이 '구간 판가'를 본다.
+        // 목록에서 고친 값을 m.price 에만 넣으면 저장은 되는데 매출은 안 바뀐다.
+        // 여기서 고친다는 건 '지금 판가를 고친다'는 뜻이므로 현재 구간에 반영하고,
+        // 지난 구간은 건드리지 않는다 (지난달 매출이 뒤늦게 바뀌면 안 된다).
+        var _cp = _curPhase(m);
+        if (_cp && _newPrice !== _cp.price) {
+          var rows = _phaseNorm(m.phases);
+          for (var _i = 0; _i < rows.length; _i++) {
+            if (rows[_i].from === _cp.from) { rows[_i].price = _newPrice; break; }
+          }
+          m.phases = rows;
+          window._phaseTouched = window._phaseTouched || {};
+          window._phaseTouched[m.id] = _cp.from;
+        }
+        m.price = _newPrice;
+      }
       var matEl = r.querySelector('[data-field="material_cost"]');
       if (matEl) m.material_cost = _moneyVal(matEl, m.material_cost || 0);
       const pg = r.querySelector('[data-field="progress"]');
@@ -5867,6 +5884,35 @@ window.renderAdminV2ByDivision = function(){
     return t.getFullYear() + '-W' + String(w).padStart(2, '0');
   }
 
+  // 금액 정규화(원시값용). _moneyVal 은 입력칸용, 이건 데이터용.
+  function _moneyOf(v) {
+    var n = parseFloat(String(v == null ? '' : v).replace(/[,\s$₩]/g, ''));
+    if (!isFinite(n) || n < 0) return 0;
+    n = Math.round(n * 100) / 100;
+    return n === Math.trunc(n) ? Math.trunc(n) : n;
+  }
+
+  // 오늘이 속한 구간. 매출 계산(_phase_at)과 같은 규칙으로 고른다.
+  function _curPhase(m) {
+    var rows = _phaseNorm(m && m.phases);
+    if (!rows.length) return null;
+    var cur = _phaseOrd(_curWeekTag());
+    var hit = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (_phaseOrd(rows[i].from) <= cur) hit = rows[i];
+      else break;
+    }
+    return hit || rows[0];
+  }
+
+  // 목록에 보여줄 판가. 이력이 있으면 '지금 적용 중인' 판가를 보여준다.
+  // 화면의 숫자와 매출이 쓰는 숫자가 다르면 고쳐놓고도 못 믿게 된다.
+  function _shownPrice(m) {
+    var cp = _curPhase(m);
+    if (cp && cp.price) return cp.price;
+    return _moneyOf(m && m.price);
+  }
+
   function _phaseOrd(v) {
     var m = /^\s*(\d{4})\s*[-\/]?\s*[Ww]?\s*(\d{1,2})\s*$/.exec(String(v || ''));
     return m ? (parseInt(m[1], 10) * 100 + parseInt(m[2], 10)) : null;
@@ -5878,7 +5924,7 @@ window.renderAdminV2ByDivision = function(){
       if (o === null) return null;
       return { from: Math.floor(o / 100) + '-W' + String(o % 100).padStart(2, '0'),
                group: (e.group === '개발' ? '개발' : '양산'),
-               price: Math.max(0, parseInt(e.price || 0, 10) || 0) };
+               price: _moneyOf(e && e.price) };
     }).filter(Boolean).sort(function(a, b) { return _phaseOrd(a.from) - _phaseOrd(b.from); });
   }
 
@@ -6114,8 +6160,8 @@ window.renderAdminV2ByDivision = function(){
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
         '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
       list.forEach(function(m) {
-        const price = m.price || 0;
-        const mcost = m.material_cost || 0;
+        const price = _shownPrice(m);
+        const mcost = _moneyOf(m.material_cost);
         const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
         const isDev = g === '개발';
         const devType = (m.dev_type || '').toUpperCase();
@@ -6737,7 +6783,16 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       return r.json();
     })
     .then(function(d) {
-      if (statusEl) { statusEl.textContent = '✅ 저장 완료 (' + (d.count || 0) + '개)'; statusEl.className = 'mdl-status ok'; }
+      var _tp = window._phaseTouched || {};
+      var _tk = Object.keys(_tp);
+      var _msg = '✅ 저장 완료 (' + (d.count || 0) + '개)';
+      if (_tk.length === 1) {
+        _msg += ' · 판가를 ' + _tp[_tk[0]] + ' 부터 구간에 반영했습니다';
+      } else if (_tk.length > 1) {
+        _msg += ' · 판가 ' + _tk.length + '건을 현재 구간에 반영했습니다';
+      }
+      window._phaseTouched = {};
+      if (statusEl) { statusEl.textContent = _msg; statusEl.className = 'mdl-status ok'; }
       // 저장 성공: window._modelsData는 이미 sync된 상태 → renderTable만 호출 (재조회 X, 부드러운 UX)
       var tableBox = document.getElementById('mdl-table-box');
       if (tableBox) renderTable(document.getElementById("mdl-table-box"));

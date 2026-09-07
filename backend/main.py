@@ -13296,8 +13296,9 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             "price": max(0, price),
             "material_cost": max(0, material_cost),
             # ESS 필드 추가
-            "po_qty": max(0, int(m.get("po_qty") or 0)),
-            "shipped_qty": max(0, int(m.get("shipped_qty") or 0)),
+            # 문자열('3,427')이 오면 int() 가 예외를 던져 저장 전체가 500 이 된다.
+            "po_qty": max(0, _as_int(m.get("po_qty"))),
+            "shipped_qty": max(0, _as_int(m.get("shipped_qty"))),
             "due_text": str(m.get("due_text") or ""),
             "issues": str(m.get("issues") or ""),
             # 이슈와 별개로 자유롭게 적는 비고(메모)
