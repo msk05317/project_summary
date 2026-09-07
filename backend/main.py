@@ -4053,6 +4053,16 @@ def _norm_label(t):
     return _re.sub(r"[^0-9A-Za-z가-힣]", "", str(t or "")).upper()
 
 
+def _as_int(v, default=0):
+    """수량 값을 정수로. 문자열/소수/None/콤마 어느 쪽이 와도 터지지 않는다."""
+    if v is None or v == "":
+        return default
+    try:
+        return int(float(str(v).replace(",", "").strip()))
+    except Exception:
+        return default
+
+
 def _apply_plan_matrix(data, project_key, parsed):
     """'구분 x 주차' 엑셀을 모델별 주차 계획 + 프로젝트 주차 합계에 반영.
     같은 월/주차가 이미 있으면 이번 업로드 값으로 덮어쓴다(최신 우선)."""
@@ -4117,21 +4127,46 @@ def _apply_plan_matrix(data, project_key, parsed):
             if mv.get("actual"):
                 target.setdefault("monthly_actual", {})[month] = int(mv.get("actual") or 0)
 
-        # 엑셀의 누적 PO/출하는 참고용으로 보관 (진행률 규칙은 건드리지 않는다)
+        # 시트에 적힌 원문 그대로 (감사용 사본)
         if row.get("po_qty"):
-            target["po_total"] = int(row["po_qty"])
+            target["po_total"] = _as_int(row.get("po_qty"))
         if row.get("shipped_qty"):
-            target["shipped_total"] = int(row["shipped_qty"])
+            target["shipped_total"] = _as_int(row.get("shipped_qty"))
         if row.get("remaining"):
-            target["remaining_total"] = int(row["remaining"])
+            target["remaining_total"] = _as_int(row.get("remaining"))
 
+        # 이번 달 주차 계획/실적 합계. 누적값과는 다른 값이다.
+        _p = _a = 0
         if last_month:
             _b = wp.get(last_month) or {}
-            _p = sum(int((v or {}).get("plan") or 0) for v in _b.values())
-            _a = sum(int((v or {}).get("actual") or 0) for v in _b.values())
-            if _p or _a:
-                target["po_qty"] = _p
-                target["shipped_qty"] = _a
+            _p = sum(_as_int((v or {}).get("plan")) for v in _b.values())
+            _a = sum(_as_int((v or {}).get("actual")) for v in _b.values())
+
+        # po_qty / shipped_qty 는 '지금까지 받은 주문 전체 / 지금까지 나간 전체'다.
+        #
+        # 예전에는 바로 위 _p / _a (이번 달 주차 합계)를 여기에 대입했다.
+        # 9월 매트릭스를 올리면 PO 3,427 / 출하 2,098 이 PO 240 / 출하 41 이 되고,
+        # 엑셀에는 그 달 주차만 있으니 누적값을 되살릴 방법이 없었다.
+        # (같은 버그가 put_weekly_plan 에는 이미 고쳐져 있었다)
+        #
+        # 우선순위: 시트의 누적 칸 > 기존 값 유지 > (신규 모델일 때만) 주차 합계
+        _po_x = _as_int(row.get("po_qty"))
+        _sh_x = _as_int(row.get("shipped_qty"))
+        if _po_x:
+            target["po_qty"] = _po_x
+        elif not _as_int(target.get("po_qty")) and _p:
+            target["po_qty"] = _p
+        if _sh_x:
+            target["shipped_qty"] = _sh_x
+        elif not _as_int(target.get("shipped_qty")) and _a:
+            target["shipped_qty"] = _a
+
+        if last_month:
+            # due_text 는 담당자가 직접 적는 납기 칸이다 (예: '8월 24일').
+            # 여기서 '2026-09 주차계획 · 잔여 N개' 로 덮어쓰면 입력해 둔 납기가
+            # 사라지고, _parse_due_text 가 날짜를 못 읽어 마감 추적에서도 빠진다.
+            # 비어 있을 때만 채운다.
+            if (_p or _a) and not str(target.get("due_text") or "").strip():
                 target["due_text"] = f"{last_month} 주차계획 · 잔여 {_p - _a}개"
             try:
                 target["weekly_progress"] = _ensure_mass_progress(wp, last_month)
