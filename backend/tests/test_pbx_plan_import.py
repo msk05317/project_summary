@@ -127,6 +127,26 @@ def test_등록_안된_품번은_조용히_넘어가지_않는다():
     assert m is None and why == "등록 안 됨", (m, why)
 
 
+def test_업로드_갈림길은_시트이름으로_갈린다():
+    """업로드 버튼이 하나라 서버가 파일 종류를 가른다. 두 모양이 겹치면 안 된다.
+
+    하바 주간 현황  = 시트 '이름'이 'W35' 처럼 주차 하나
+    파워박스 출하계획 = 시트 '안'에 주차 머리글이 늘어선 표
+    한쪽이 다른 쪽을 가로채면 엉뚱한 값이 덮인다.
+    """
+    import hrva_status_import as hs
+
+    # 파워박스 파일을 하바 파서가 잡으면 안 된다
+    assert hs.parse_workbook(_wb()) == []
+
+    # 하바 파일은 하바 파서가 잡고, 출하계획 파서는 읽을 게 없다
+    wb = Workbook()
+    wb.remove(wb.active)
+    wb.create_sheet("W35")
+    assert [s[1] for s in hs.parse_workbook(wb)] == ["W35"]
+    assert pbx.parse(wb) is None
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in sorted(globals().items()):

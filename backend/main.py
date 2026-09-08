@@ -13578,8 +13578,8 @@ def _pbx_diff(proj, parsed):
     }
 
 
-async def _pbx_read_upload(file, month):
-    """업로드된 엑셀을 열어 주차표를 읽는다 → (원본 파일명, parsed)"""
+async def _pbx_open_upload(file):
+    """업로드된 엑셀을 연다 → (원본 파일명, 워크북)"""
     orig = file.filename or "plan.xlsx"
     if not orig.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(status_code=400, detail="xlsx/xlsm 파일만 올릴 수 있습니다")
@@ -13595,6 +13595,12 @@ async def _pbx_read_upload(file, month):
         wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+    return orig, wb
+
+
+def _pbx_pick_sheet(wb, month):
+    """주차표가 있는 시트를 고른다. 못 고르면 이유를 말하고 멈춘다."""
+    import pbx_plan_import as _pbx
 
     available = _pbx.sheet_months(wb)
     parsed = _pbx.parse(wb, (month or "").strip() or None)
@@ -13608,7 +13614,13 @@ async def _pbx_read_upload(file, month):
             status_code=400,
             detail="주차(W36 같은) 머리글이 있는 시트를 찾지 못했습니다")
     parsed["available"] = available
-    return orig, parsed
+    return parsed
+
+
+async def _pbx_read_upload(file, month):
+    """열기 + 시트 고르기를 한 번에 (반영 단계에서 쓴다)"""
+    orig, wb = await _pbx_open_upload(file)
+    return orig, _pbx_pick_sheet(wb, month)
 
 
 @app.post("/admin/projects/{project_key}/plan-file/preview")
@@ -13620,11 +13632,25 @@ async def admin_plan_file_preview(
 ):
     """올린 파일이 무엇을 바꾸는지 먼저 보여준다. 저장하지 않는다."""
     key = project_key.strip()
-    orig, parsed = await _pbx_read_upload(file, month)
+    orig, wb = await _pbx_open_upload(file)
+
+    # 업로드 버튼이 하나라서 어느 쪽 파일인지 여기서 가른다.
+    # 하바플레이트 주간 현황 엑셀은 시트 이름이 'W35' 처럼 주차 하나뿐이고,
+    # 파워박스 출하계획은 시트 안에 주차 머리글이 늘어선 표다. 겹치지 않는다.
+    try:
+        import hrva_status_import as _hs
+        status_sheets = _hs.parse_workbook(wb)
+    except Exception:
+        status_sheets = []
+    if status_sheets:
+        return {"ok": True, "kind": "status", "project_key": key,
+                "file_name": orig, "sheets": [s[1] for s in status_sheets]}
+
+    parsed = _pbx_pick_sheet(wb, month)
     data = _load_models()
     proj = (data.get("projects") or {}).get(key) or {"models": []}
     out = _pbx_diff(proj, parsed)
-    out.update({"ok": True, "project_key": key, "file_name": orig,
+    out.update({"ok": True, "kind": "plan", "project_key": key, "file_name": orig,
                 "available": parsed.get("available") or []})
     return out
 
