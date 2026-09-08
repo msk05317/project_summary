@@ -13,7 +13,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 
-const double _kHeadH = 26;   // 머리글 한 줄
+const double _kHeadH = 22;   // 머리글 한 줄 (x3 = 표 머리글 전체 높이)
 const double _kRowH = 52;    // 데이터 행 (양산 / 개발)
 const double _kTotalH = 32;  // 합계 행
 
@@ -93,11 +93,125 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           return _shell(const Text('주차 현황을 불러오지 못했습니다',
               style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))));
         }
-        return _shell(SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: _table(d),
-        ));
+        return _shell(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 표 폭이 화면보다 훨씬 넓다(약 980px). 가로 스크롤만으로는
+              // 오른쪽에 주차가 더 있다는 걸 모른다. 오른쪽 끝을 흐리게 해서
+              // 이어진다는 걸 보이고, 탭하면 전체를 확대해서 본다.
+              Stack(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: _table(d),
+                  ),
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 22,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerRight,
+                            end: Alignment.centerLeft,
+                            colors: [
+                              Colors.white,
+                              Colors.white.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              InkWell(
+                onTap: () => _openZoom(d),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.zoom_out_map_rounded,
+                          size: 15, color: Color(0xFF156082)),
+                      SizedBox(width: 5),
+                      Text('전체 크게 보기',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF156082),
+                          )),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
       },
+    );
+  }
+
+  // 표 전체를 화면 가득 펼쳐 손가락으로 확대·이동해 본다.
+  // 폰을 가로로 눕히면 주차가 거의 다 들어온다.
+  void _openZoom(Map<String, dynamic> d) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.82),
+      builder: (ctx) => Dialog.fullscreen(
+        backgroundColor: const Color(0xFFF8FAFC),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Text('주차 현황 보드',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.pinch_rounded, size: 13, color: Color(0xFF9CA3AF)),
+                    SizedBox(width: 5),
+                    Expanded(
+                      child: Text('손가락으로 확대·이동할 수 있어요. 폰을 눕히면 더 넓게 보입니다.',
+                          style: TextStyle(
+                              fontSize: 11.5, color: Color(0xFF6B7280))),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: InteractiveViewer(
+                  constrained: false,
+                  minScale: 0.4,
+                  maxScale: 4.0,
+                  boundaryMargin: const EdgeInsets.all(120),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: _table(d),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -166,10 +280,10 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   // 구분 열 (머리글은 빈 칸, 3단 높이)
   Widget _labelCol(List<Map> rows) {
     return SizedBox(
-      width: 116,
+      width: 128,
       child: Column(
         children: [
-          _cell('', _kHeadH * 3, head: true, align: TextAlign.left),
+          _cell('구분', _kHeadH * 3, head: true, align: TextAlign.left),
           for (final r in rows)
             _cell('${r['label']}', _kRowH,
                 align: TextAlign.left, bold: true, size: 9.5),
@@ -303,7 +417,10 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       height: h,
       width: double.infinity,
       alignment: align == TextAlign.left ? Alignment.centerLeft : Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      // 좌우 4px 이면 글자가 구분선에 붙어 읽기 힘들다.
+      // 가운데 정렬 칸은 6px, 왼쪽 정렬(구분 열)은 10px 을 준다.
+      padding: EdgeInsets.symmetric(
+          horizontal: align == TextAlign.left ? 10 : 6),
       decoration: BoxDecoration(
         color: bg,
         border: Border(
