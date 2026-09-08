@@ -22620,6 +22620,27 @@ def _phase_at(m: dict, month: str, week):
     return hit["group"], (hit["price"] or price)
 
 
+def _dev_weeks_from_models(dev_model_weeks, dev_group):
+    """개발 주차값을 '모델별 입력'에서 읽을지, '그룹 총계'에서 읽을지.
+
+    모델별로 0 이 아닌 값이 하나라도 있으면 모델이 정본이다.
+
+    weekly_summary['개발'] 은 하바플레이트처럼 개발을 그룹 총계로만 관리하는
+    프로젝트를 위한 값이다. 예전에는 이게 있기만 하면 무조건 그쪽을 썼는데,
+    파워박스처럼 개발도 모델별로 입력하는 프로젝트에서는 옛 주간보고에서 들어온
+    0 짜리 그룹 총계가 모델 값을 통째로 덮었다. 853-043648-115 는 9월 W36 실적
+    1대가 저장돼 있는데도 매출·수량 집계에서 0 으로 잡혀, 파워박스 9월 실적이
+    52대 대신 51대로 나왔다.
+
+    하바플레이트는 개발 모델 40종에 주차 칸만 있고 값은 전부 0 이라
+    이 규칙에서도 그대로 그룹 총계를 쓴다.
+    """
+    if not (dev_group or {}).get("weeks"):
+        return True
+    return any((v or {}).get("plan") or (v or {}).get("actual")
+               for v in (dev_model_weeks or {}).values())
+
+
 @app.get("/projects/{project_key}/weekly-revenue")
 def get_weekly_revenue(project_key: str, month: str = None):
     """주차별 현황+매출:
@@ -22692,12 +22713,13 @@ def get_weekly_revenue(project_key: str, month: str = None):
                   "plan_revenue": sum(v["plan_revenue"] for v in yang_weeks.values())}
 
     # ── 개발 ──
-    # 1) weekly_summary['개발'] 그룹 총계가 있으면 그걸 정본으로 쓴다 (하바플레이트).
-    # 2) 없으면 개발 모델의 모델별 weekly_plan 을 합산한다.
-    #    (하바플레이트 외 프로젝트는 admin 에서 개발 모델도 주차별로 직접 입력한다)
-    #    단가는 모델 판가가 있으면 그걸, 없으면 $3,400 고정단가를 쓴다.
+    # 1) 개발 모델에 주차 값이 들어와 있으면 그걸 정본으로 쓴다 (파워박스 등).
+    #    단가는 모델 판가가 있으면 그걸, 없으면 $3,400 고정단가.
+    # 2) 모델 쪽이 비어 있고 weekly_summary['개발'] 그룹 총계만 있으면 그걸 쓴다
+    #    (하바플레이트 — 개발을 모델이 아니라 그룹 단위로 관리한다).
+    #    판단은 _dev_weeks_from_models 에 있다.
     dev_g = ws_data.get("개발") or {}
-    if (dev_g.get("weeks") or {}):
+    if not _dev_weeks_from_models(dev_model_weeks, dev_g):
         # 하바플레이트: 개발은 모델이 아니라 그룹 총계로 관리 (x 고정단가)
         dev_weeks = {}
         for w in all_weeks:
