@@ -21093,6 +21093,129 @@ async def admin_import_status_excel(project_key: str,
     }
 
 
+def _load_board_spec(project_key):
+    """config/boards.json 의 행 구성. 없으면 None → 예전 양산/개발 2줄 방식."""
+    import json as _json
+    from pathlib import Path as _Path
+    try:
+        p = _Path(__file__).resolve().parent / "config" / "boards.json"
+        d = _json.loads(p.read_text(encoding="utf-8"))
+        return (d.get("boards") or {}).get(project_key)
+    except Exception as e:
+        print(f"[board] boards.json 읽기 실패: {e}")
+        return None
+
+
+def _board_row_models(proj, row):
+    """행이 가리키는 모델 목록. models(품번 지정) 또는 dev_type(유형 전체)."""
+    ids = [str(x).strip() for x in (row.get("models") or []) if str(x).strip()]
+    dt = str(row.get("dev_type") or "").strip().upper()
+    out = []
+    for m in proj.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("id") or "").strip()
+        pn = str(m.get("part_number") or "").strip()
+        if ids and (mid in ids or pn in ids):
+            out.append(m)
+        elif dt and str(m.get("dev_type") or "").strip().upper() == dt:
+            out.append(m)
+    return out
+
+
+def _board_row_status(models, manual_status):
+    """'현황' 자동 판정. 완료 > 양산 > 개발 순으로 본다."""
+    if manual_status:
+        return str(manual_status)
+    if not models:
+        return ""
+    progs = [m.get("progress") for m in models]
+    if progs and all(isinstance(p, (int, float)) and p >= 100 for p in progs):
+        return "완료"
+    if any(_norm_group(m.get("group")) == "양산" for m in models):
+        return "양산"
+    return "개발"
+
+
+def _board_month_qty(models, mon):
+    """그 달 계획/실적 합계. 모델별 weekly_plan 을 월 소유 규칙대로 더한다."""
+    weeks = _get_month_weeks(mon)
+    plan = actual = 0
+    for m in models:
+        bucket = (m.get("weekly_plan") or {}).get(mon) or {}
+        for w in weeks:
+            c = bucket.get(w) or {}
+            plan += _as_int(c.get("plan"))
+            actual += _as_int(c.get("actual"))
+    return {"plan": plan, "actual": actual}
+
+
+def _board_months(month, span):
+    """오늘 달을 마지막으로 하는 월 목록. span=2 → ['2026-08','2026-09']."""
+    y, m = int(str(month)[:4]), int(str(month)[5:7])
+    out = []
+    for off in range(span - 1, -1, -1):
+        mm = m - off
+        yy = y + (mm - 1) // 12
+        mm = (mm - 1) % 12 + 1
+        out.append(f"{yy}-{mm:02d}")
+    return out
+
+
+def _spec_board(project_key, proj, spec, month):
+    """boards.json 스펙대로 그린 보드 (섹션 + 행)."""
+    span = int(spec.get("month_span") or 2)
+    months = _board_months(month, span)
+    manual_store = (proj.get("board_manual") or {})
+
+    sections, flat = [], []
+    for sec in (spec.get("sections") or []):
+        srows = []
+        for row in (sec.get("rows") or []):
+            key = str(row.get("key") or row.get("label") or "")
+            man = manual_store.get(key) or {}
+            if row.get("manual"):
+                po = _as_int(man.get("po_qty"))
+                act = _as_int(man.get("actual_total"))
+                mq = {mon: {"plan": _as_int((man.get("months") or {}).get(mon, {}).get("plan")),
+                            "actual": _as_int((man.get("months") or {}).get(mon, {}).get("actual"))}
+                      for mon in months}
+                models = []
+            else:
+                models = _board_row_models(proj, row)
+                po = sum(_as_int(m.get("po_qty")) for m in models)
+                act = sum(_as_int(m.get("shipped_qty")) for m in models)
+                mq = {mon: _board_month_qty(models, mon) for mon in months}
+            r = {
+                "key": key,
+                "label": row.get("label") or key,
+                "section": sec.get("name") or "",
+                "status": _board_row_status(models, row.get("status")),
+                "model_count": len(models),
+                "po_qty": po,
+                "actual_total": act,
+                "remaining": po - act,
+                "months": mq,
+                "note": str(man.get("note") or row.get("note") or ""),
+            }
+            srows.append(r)
+            flat.append(r)
+        sections.append({"name": sec.get("name") or "", "rows": srows})
+
+    total = {
+        "label": "합계",
+        "po_qty": sum(r["po_qty"] for r in flat),
+        "actual_total": sum(r["actual_total"] for r in flat),
+        "remaining": sum(r["remaining"] for r in flat),
+        "months": {mon: {"plan": sum(r["months"][mon]["plan"] for r in flat),
+                         "actual": sum(r["months"][mon]["actual"] for r in flat)}
+                   for mon in months},
+    }
+    return {"project_key": project_key, "month": month, "layout": "sections",
+            "columns": spec.get("columns") or "month", "months": months,
+            "sections": sections, "rows": flat, "total": total}
+
+
 @app.get("/projects/{project_key}/weekly-board")
 def get_weekly_board(project_key: str, month: str = None):
     """엑셀로 올리던 '주차별 계획 원본' 표를 데이터에서 계산해 돌려준다.
@@ -21104,6 +21227,13 @@ def get_weekly_board(project_key: str, month: str = None):
     _key = _model_key_alias(project_key)
     proj = (_load_models().get("projects") or {}).get(_key) or {}
     month = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+
+    # 프로젝트별 행 구성이 정의돼 있으면 그대로 그린다 (챔버 등).
+    # 없으면 예전처럼 양산/개발 두 줄 (하바플레이트).
+    _spec = _load_board_spec(_key)
+    if _spec:
+        return _spec_board(_key, proj, _spec, month)
+
     weeks = _get_month_weeks(month)
 
     y, mm = int(month[:4]), int(month[5:7])
