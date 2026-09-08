@@ -21,24 +21,76 @@
         {
           "name": "기존",
           "rows": [
-            { "key": "legacy4", "label": "4종", "manual": true, "status": "완료" },
-            { "key": "m002", "label": "002", "models": ["715-044854-002"] },
-            { "key": "m205", "label": "205", "models": ["715-181531-205"] }
+            {
+              "key": "legacy4",
+              "label": "4종",
+              "manual": true,
+              "status": "완료"
+            },
+            {
+              "key": "m002",
+              "label": "002",
+              "models": [
+                "715-044854-002"
+              ],
+              "status": "양산"
+            },
+            {
+              "key": "m205",
+              "label": "205",
+              "models": [
+                "715-181531-205"
+              ],
+              "status": "개발"
+            }
           ]
         },
         {
           "name": "내재화",
           "rows": [
-            { "key": "in302", "label": "302-00", "models": ["15-152302-00"] },
-            { "key": "in966", "label": "966-00", "models": ["15-379966-00"] },
-            { "key": "in568", "label": "568-00", "models": ["15-389568-00"] },
-            { "key": "in706", "label": "706-003", "models": ["853-268706-003"] }
+            {
+              "key": "in302",
+              "label": "302-00",
+              "models": [
+                "15-152302-00"
+              ],
+              "status": "개발"
+            },
+            {
+              "key": "in966",
+              "label": "966-00",
+              "models": [
+                "15-379966-00"
+              ],
+              "status": "개발"
+            },
+            {
+              "key": "in568",
+              "label": "568-00",
+              "models": [
+                "15-389568-00"
+              ],
+              "status": "개발"
+            },
+            {
+              "key": "in706",
+              "label": "706-003",
+              "models": [
+                "853-268706-003"
+              ],
+              "status": "개발"
+            }
           ]
         },
         {
           "name": "Dep 챔버",
           "rows": [
-            { "key": "dep", "label": "15종", "dev_type": "DEP챔버" }
+            {
+              "key": "dep",
+              "label": "15종",
+              "dev_type": "DEP챔버",
+              "status": "개발"
+            }
           ]
         }
       ]

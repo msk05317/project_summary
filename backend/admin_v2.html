@@ -8296,6 +8296,9 @@ window._ovProjectKey = function() {
             rowsHtml += '<tr>' +
               (i === 0 ? '<td class="lbl" rowspan="' + sec.rows.length + '" style="vertical-align:middle">' + _esc(sec.name) + '</td>' : '') +
               '<td class="lbl">' + _esc(r.label) + '</td>' +
+              '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="status" type="text" ' +
+                'list="wb-status-list" value="' + _esc(v.status || '') + '" placeholder="' + _esc(r.status || '자동') +
+                '" style="width:100%"></td>' +
               '<td>' + inp(v.po_qty, 'po_qty', r.manual_row ? '직접 입력' : '모델 합계 ' + r.po_qty) + '</td>' +
               '<td>' + inp(v.actual_total, 'actual_total', r.manual_row ? '직접 입력' : '모델 합계 ' + r.actual_total) + '</td>' +
               months.map(function(m) {
@@ -8320,9 +8323,11 @@ window._ovProjectKey = function() {
               '<b>비워두면</b> 그 행에 묶인 모델들의 합계를 씁니다 (0 을 넣으면 0 으로 고정). ' +
               '월 칸은 그 달 계획입니다.</p>' +
             '</div>' +
+            '<datalist id="wb-status-list"><option value="완료"><option value="양산"><option value="개발"></datalist>' +
             '<div style="padding:14px 16px;overflow:auto;max-height:64vh">' +
               '<table class="wb-tbl"><thead><tr>' +
                 '<th style="min-width:84px">구분</th><th style="min-width:92px"></th>' +
+                '<th style="min-width:88px">현황</th>' +
                 '<th style="min-width:110px">PO 수량</th><th style="min-width:110px">실적</th>' +
                 months.map(function(m) { return '<th style="min-width:96px">' + _wbMon(m) + ' 계획</th>'; }).join('') +
                 '<th style="min-width:230px">비고</th>' +

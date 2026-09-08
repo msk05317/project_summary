@@ -21123,10 +21123,18 @@ def _board_row_models(proj, row):
     return out
 
 
-def _board_row_status(models, manual_status):
-    """'현황' 자동 판정. 완료 > 양산 > 개발 순으로 본다."""
-    if manual_status:
-        return str(manual_status)
+def _board_row_status(models, spec_status, manual_status=None):
+    """'현황' 칸.
+
+    보드에서 직접 넣은 값 > boards.json 에 적힌 값 > 모델로 자동 판정 순.
+    자동만으로는 틀리는 경우가 있다. 205 는 FAIR 승인이 끝나 진행률이 100%
+    라서 자동으로는 '완료'가 되지만 실제로는 아직 개발 건이고, 내재화처럼
+    모델이 아직 등록 안 된 행은 근거가 없어 빈칸이 된다.
+    """
+    if manual_status and str(manual_status).strip():
+        return str(manual_status).strip()
+    if spec_status and str(spec_status).strip():
+        return str(spec_status).strip()
     if not models:
         return ""
     progs = [m.get("progress") for m in models]
@@ -21204,7 +21212,7 @@ def _spec_board(project_key, proj, spec, month):
                 "key": key,
                 "label": row.get("label") or key,
                 "section": sec.get("name") or "",
-                "status": _board_row_status(models, row.get("status")),
+                "status": _board_row_status(models, row.get("status"), man.get("status")),
                 "model_count": len(models),
                 "po_qty": po,
                 "actual_total": act,
@@ -21283,6 +21291,9 @@ def put_board_rows(project_key: str, payload: dict,
         note = str(v.get("note") or "").strip()
         if note:
             e["note"] = note
+        stt = str(v.get("status") or "").strip()
+        if stt:
+            e["status"] = stt
         if e:
             store[str(k)] = e
 
