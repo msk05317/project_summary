@@ -21162,6 +21162,14 @@ def _board_months(month, span):
     return out
 
 
+def _has(d, k):
+    """직접 입력 칸이 '채워져 있는가'. 0 은 유효한 값이므로 None/빈문자만 비었다고 본다."""
+    if not isinstance(d, dict):
+        return False
+    v = d.get(k)
+    return v is not None and str(v).strip() != ""
+
+
 def _spec_board(project_key, proj, spec, month):
     """boards.json 스펙대로 그린 보드 (섹션 + 행)."""
     span = int(spec.get("month_span") or 2)
@@ -21174,18 +21182,24 @@ def _spec_board(project_key, proj, spec, month):
         for row in (sec.get("rows") or []):
             key = str(row.get("key") or row.get("label") or "")
             man = manual_store.get(key) or {}
-            if row.get("manual"):
-                po = _as_int(man.get("po_qty"))
-                act = _as_int(man.get("actual_total"))
-                mq = {mon: {"plan": _as_int((man.get("months") or {}).get(mon, {}).get("plan")),
-                            "actual": _as_int((man.get("months") or {}).get(mon, {}).get("actual"))}
-                      for mon in months}
-                models = []
-            else:
-                models = _board_row_models(proj, row)
-                po = sum(_as_int(m.get("po_qty")) for m in models)
-                act = sum(_as_int(m.get("shipped_qty")) for m in models)
-                mq = {mon: _board_month_qty(models, mon) for mon in months}
+            # 행마다 직접 입력이 있으면 그 값이 정본, 없으면 모델 합계.
+            # 단일 모델 행은 모델 목록에서 넣는 게 낫고(진행률도 같이 잡힌다),
+            # '4종'·'Dep 15종' 같은 묶음 행은 보드에서 바로 넣는 게 편하다.
+            models = [] if row.get("manual") else _board_row_models(proj, row)
+            po_m = sum(_as_int(m.get("po_qty")) for m in models)
+            act_m = sum(_as_int(m.get("shipped_qty")) for m in models)
+            po = _as_int(man["po_qty"]) if _has(man, "po_qty") else po_m
+            act = _as_int(man["actual_total"]) if _has(man, "actual_total") else act_m
+
+            mq = {}
+            man_mon = man.get("months") or {}
+            for mon in months:
+                calc = _board_month_qty(models, mon) if models else {"plan": 0, "actual": 0}
+                mv = man_mon.get(mon) or {}
+                mq[mon] = {
+                    "plan": _as_int(mv["plan"]) if _has(mv, "plan") else calc["plan"],
+                    "actual": _as_int(mv["actual"]) if _has(mv, "actual") else calc["actual"],
+                }
             r = {
                 "key": key,
                 "label": row.get("label") or key,
@@ -21197,6 +21211,9 @@ def _spec_board(project_key, proj, spec, month):
                 "remaining": po - act,
                 "months": mq,
                 "note": str(man.get("note") or row.get("note") or ""),
+                "manual_row": bool(row.get("manual")),
+                "po_manual": _has(man, "po_qty"),
+                "actual_manual": _has(man, "actual_total"),
             }
             srows.append(r)
             flat.append(r)
@@ -21214,6 +21231,65 @@ def _spec_board(project_key, proj, spec, month):
     return {"project_key": project_key, "month": month, "layout": "sections",
             "columns": spec.get("columns") or "month", "months": months,
             "sections": sections, "rows": flat, "total": total}
+
+
+@app.get("/projects/{project_key}/board-rows")
+def get_board_rows(project_key: str):
+    """보드 행별 직접 입력값 (PO수량·실적·월·비고)."""
+    _key = _model_key_alias(project_key)
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    spec = _load_board_spec(_key)
+    return {"project_key": _key,
+            "has_spec": bool(spec),
+            "spec": spec or {},
+            "manual": proj.get("board_manual") or {}}
+
+
+@app.put("/admin/projects/{project_key}/board-rows")
+def put_board_rows(project_key: str, payload: dict,
+                   _admin: int = Depends(get_admin_session)):
+    """보드 행별 직접 입력값 저장.
+
+    빈 문자열로 보내면 그 칸은 '직접 입력 없음'이 되어 모델 합계로 돌아간다.
+    (0 은 유효한 값이라 지우기와 구분해야 한다)
+    """
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    rows = payload.get("rows")
+    if not isinstance(rows, dict):
+        raise HTTPException(status_code=400, detail="rows 는 객체여야 합니다")
+
+    store = {}
+    for k, v in rows.items():
+        if not isinstance(v, dict):
+            continue
+        e = {}
+        for f in ("po_qty", "actual_total"):
+            if _has(v, f):
+                e[f] = _as_int(v[f])
+        mons = {}
+        for mon, mv in (v.get("months") or {}).items():
+            if not isinstance(mv, dict):
+                continue
+            cell = {}
+            for f in ("plan", "actual"):
+                if _has(mv, f):
+                    cell[f] = _as_int(mv[f])
+            if cell:
+                mons[str(mon)] = cell
+        if mons:
+            e["months"] = mons
+        note = str(v.get("note") or "").strip()
+        if note:
+            e["note"] = note
+        if e:
+            store[str(k)] = e
+
+    proj["board_manual"] = store
+    _save_models(data)
+    print(f"[board] {_key} 행 직접입력 저장: {len(store)}행")
+    return {"ok": True, "project_key": _key, "rows": len(store)}
 
 
 @app.get("/projects/{project_key}/weekly-board")

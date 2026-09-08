@@ -7979,7 +7979,14 @@ window._ovProjectKey = function() {
     var wbBtn = document.getElementById('wb-edit');
     if (wbBtn && !wbBtn.dataset.wired) {
       wbBtn.dataset.wired = '1';
-      wbBtn.onclick = function() { window.openBoardEditor(); };
+      wbBtn.onclick = function() {
+        // 챔버처럼 행 구성이 정의된 프로젝트는 행별 입력창을 연다
+        if ((window._wbSpecData || {}).layout === 'sections') {
+          _wbOpenRowEditor(window._ovProjectKey());
+        } else {
+          window.openBoardEditor();
+        }
+      };
     }
 
     // 전체 / 양산 / 개발 세그먼트 (모델 목록과 동일)
@@ -8204,6 +8211,166 @@ window._ovProjectKey = function() {
   // 여기서는 '주차별 계획 원본'(엑셀 이미지) 카드를 숨긴다 — 같은 표가 두 번 나올 이유가 없다.
   var WB_REPLACES_SRC = ['hrva_plate', 'havaplate'];
 
+  // ── 섹션형 보드 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──
+  function _wbRenderSections(box, pk, d) {
+    var months = d.months || [];
+    window._wbSpecData = d;
+
+    var head = '<tr>' +
+      '<th style="min-width:86px;">구분</th>' +
+      '<th style="min-width:96px;"></th>' +
+      '<th style="min-width:58px;">현황</th>' +
+      '<th>PO 수량</th><th>실적</th><th>잔량</th>' +
+      months.map(function(m) { return '<th>' + _wbMon(m) + '</th>'; }).join('') +
+      '<th style="min-width:180px;">비고</th>' +
+    '</tr>';
+
+    var body = (d.sections || []).map(function(sec) {
+      var rows = sec.rows || [];
+      return rows.map(function(r, i) {
+        return '<tr>' +
+          (i === 0
+            ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' +
+              _esc(sec.name) + '</td>'
+            : '') +
+          '<td class="lbl">' + _esc(r.label) + '</td>' +
+          '<td>' + _esc(r.status || '') + '</td>' +
+          '<td>' + _wbNum(r.po_qty) + '</td>' +
+          '<td>' + _wbNum(r.actual_total) + '</td>' +
+          '<td>' + _wbNum(r.remaining) + '</td>' +
+          months.map(function(m) {
+            var c = (r.months || {})[m] || {};
+            return '<td>' + _wbNum(c.plan) + '</td>';
+          }).join('') +
+          '<td style="text-align:left;font-size:11px;color:#475569;">' +
+            _esc(r.note || '') + '</td>' +
+        '</tr>';
+      }).join('');
+    }).join('');
+
+    var t = d.total || {};
+    var foot = '<tr class="wb-total">' +
+      '<td colspan="3">합계</td>' +
+      '<td>' + _wbNum(t.po_qty) + '</td>' +
+      '<td>' + _wbNum(t.actual_total) + '</td>' +
+      '<td>' + _wbNum(t.remaining) + '</td>' +
+      months.map(function(m) {
+        var c = (t.months || {})[m] || {};
+        return '<td>' + _wbNum(c.plan) + '</td>';
+      }).join('') +
+      '<td></td>' +
+    '</tr>';
+
+    box.innerHTML = '<div class="ov-wrap-x" style="overflow-x:auto;">' +
+      '<table class="wb-tbl"><thead>' + head + '</thead><tbody>' + body + foot + '</tbody></table></div>' +
+      '<p class="mdl-hint" style="margin-top:10px;">' +
+      '행마다 <b>PO · 실적 · 증감 입력</b>에 넣은 값이 우선이고, 비워두면 그 행에 묶인 모델들의 합계를 씁니다. ' +
+      '모델이 하나인 행(002 · 205 · 내재화)은 <b>모델 목록</b>에서 넣으면 진행률도 같이 잡힙니다. ' +
+      '‘4종’처럼 모델이 없는 행과 ‘Dep 챔버 15종’처럼 묶음인 행은 여기서 바로 넣는 편이 낫습니다.</p>';
+  }
+
+  function _esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // 섹션형 행별 입력창
+  function _wbOpenRowEditor(pk) {
+    var d = window._wbSpecData || {};
+    var months = d.months || [];
+    fetch('/projects/' + encodeURIComponent(pk) + '/board-rows', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(cur) {
+        var man = cur.manual || {};
+        var rowsHtml = '';
+        (d.sections || []).forEach(function(sec) {
+          (sec.rows || []).forEach(function(r, i) {
+            var v = man[r.key] || {};
+            var mv = v.months || {};
+            function inp(val, key, ph) {
+              return '<input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="' + key +
+                     '" type="text" inputmode="numeric" placeholder="' + _esc(ph) +
+                     '" value="' + (val === undefined || val === null ? '' : _esc(val)) + '" style="width:100%">';
+            }
+            rowsHtml += '<tr>' +
+              (i === 0 ? '<td class="lbl" rowspan="' + sec.rows.length + '" style="vertical-align:middle">' + _esc(sec.name) + '</td>' : '') +
+              '<td class="lbl">' + _esc(r.label) + '</td>' +
+              '<td>' + inp(v.po_qty, 'po_qty', r.manual_row ? '직접 입력' : '모델 합계 ' + r.po_qty) + '</td>' +
+              '<td>' + inp(v.actual_total, 'actual_total', r.manual_row ? '직접 입력' : '모델 합계 ' + r.actual_total) + '</td>' +
+              months.map(function(m) {
+                var c = mv[m] || {};
+                return '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="m:' + m +
+                       '" type="text" inputmode="numeric" placeholder="자동" value="' +
+                       (c.plan === undefined || c.plan === null ? '' : _esc(c.plan)) + '" style="width:100%"></td>';
+              }).join('') +
+              '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="note" type="text" value="' +
+                _esc(v.note || '') + '" placeholder="예: FAIR 승인 완료 → 33주차" style="width:100%"></td>' +
+            '</tr>';
+          });
+        });
+
+        var back = document.createElement('div');
+        back.className = 'ph-back';
+        back.innerHTML =
+          '<div class="ph-box" style="width:min(1040px,96vw)">' +
+            '<div class="ph-hd">' +
+              '<h3>보드 행 입력</h3>' +
+              '<p>여기 넣은 값이 그 행의 <b>PO 수량 · 실적</b> 이 됩니다. ' +
+              '<b>비워두면</b> 그 행에 묶인 모델들의 합계를 씁니다 (0 을 넣으면 0 으로 고정). ' +
+              '월 칸은 그 달 계획입니다.</p>' +
+            '</div>' +
+            '<div style="padding:14px 16px;overflow:auto;max-height:64vh">' +
+              '<table class="wb-tbl"><thead><tr>' +
+                '<th style="min-width:84px">구분</th><th style="min-width:92px"></th>' +
+                '<th style="min-width:110px">PO 수량</th><th style="min-width:110px">실적</th>' +
+                months.map(function(m) { return '<th style="min-width:96px">' + _wbMon(m) + ' 계획</th>'; }).join('') +
+                '<th style="min-width:230px">비고</th>' +
+              '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid #E5E7EB">' +
+              '<button type="button" class="ov-btn" id="wbr-cancel">취소</button>' +
+              '<button type="button" class="ov-btn ov-btn-primary" id="wbr-save">저장</button>' +
+            '</div>' +
+          '</div>';
+        document.body.appendChild(back);
+
+        function close() { back.remove(); }
+        back.querySelector('#wbr-cancel').onclick = close;
+        back.onclick = function(e) { if (e.target === back) close(); };
+
+        back.querySelector('#wbr-save').onclick = function() {
+          var rows = {};
+          back.querySelectorAll('.wb-ri').forEach(function(el) {
+            var k = el.dataset.row, f = el.dataset.f, val = String(el.value || '').trim();
+            rows[k] = rows[k] || {};
+            if (f.indexOf('m:') === 0) {
+              if (val !== '') {
+                rows[k].months = rows[k].months || {};
+                rows[k].months[f.slice(2)] = { plan: val };
+              }
+            } else if (val !== '') {
+              rows[k][f] = val;
+            }
+          });
+          fetch('/admin/projects/' + encodeURIComponent(pk) + '/board-rows', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ rows: rows })
+          })
+          .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(function() {
+            close();
+            var msel = document.getElementById('wp-month-sel');
+            window.renderWeeklyBoard(pk, (msel && msel.value) || '');
+          })
+          .catch(function(e) { alert('저장 실패: ' + e.message); });
+        };
+      })
+      .catch(function(e) { alert('불러오기 실패: ' + e.message); });
+  }
+
   window.renderWeeklyBoard = function(pk, month) {
     var box = document.getElementById('wb-board');
     if (!box) return;
@@ -8218,6 +8385,10 @@ window._ovProjectKey = function() {
           { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
+        // 백엔드가 두 모양을 돌려준다.
+        //   layout 'sections'  프로젝트별 행 구성 (챔버)
+        //   그 외               양산/개발 2줄 + 주차 (하바플레이트)
+        if (d.layout === 'sections') { _wbRenderSections(box, pk, d); return; }
         var wks = d.weeks || [];
         var now = d.current_week || '';   // 이번 주차 (빨간 박스)
         window._wbMonthWeeks = wks;       // PO증감 입력에서 기본 주차 행으로 쓴다
