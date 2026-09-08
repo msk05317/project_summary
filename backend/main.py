@@ -13514,6 +13514,175 @@ async def admin_upload_weekly_plan(
     }
 
 
+# ── 파워박스 'Plan and Actual' 출하계획 파일 ─────────────────────────
+#
+# 파워박스팀은 매주 'PBX 9월 출하계획' 파일을 쓴다. 새 양식을 따로 만들어
+# 채우게 하는 대신, 쓰던 파일을 그대로 올려서 주차 계획/실적만 가져온다.
+#
+# PO·판가·재료비는 건드리지 않는다. 그 값들은 누적이라 여기서 잘못 덮으면
+# 되살릴 방법이 없다 (예전에 PO 3,427 이 240 으로 깎인 적이 있다).
+# 그리고 저장하기 전에 무엇이 무엇으로 바뀌는지 먼저 보여준다.
+
+
+def _pbx_diff(proj, parsed):
+    """엑셀 행 ↔ 등록 모델 대조표를 만든다. 저장은 하지 않는다."""
+    import pbx_plan_import as _pbx
+
+    models = proj.get("models") or []
+    matcher = _pbx.Matcher(models)
+    month = parsed["month"]
+    weeks = parsed["weeks"]
+    rows, missing, seen = [], [], {}
+
+    for r in parsed["rows"]:
+        m, how = matcher.match(r["label"])
+        if m is None:
+            missing.append({"label": r["label"], "reason": how, "row": r["row"]})
+            continue
+        cur = (m.get("weekly_plan") or {}).get(month) or {}
+        cells, changed = [], 0
+        for w in weeks:
+            new = r["weeks"].get(w) or {}
+            old = cur.get(w) or {}
+            op, oa = _as_int(old.get("plan")), _as_int(old.get("actual"))
+            np_, na = _as_int(new.get("plan")), _as_int(new.get("actual"))
+            if (op, oa) != (np_, na):
+                changed += 1
+            cells.append({"week": w,
+                          "old": {"plan": op, "actual": oa},
+                          "new": {"plan": np_, "actual": na}})
+        entry = {"label": r["label"], "row": r["row"],
+                 "model_id": m.get("id"), "model_name": m.get("name"),
+                 "group": m.get("group"), "how": how,
+                 "changed": changed, "cells": cells}
+        # 같은 모델이 시트에 두 줄 이상이면 뒤 줄이 앞 줄을 덮는다. 양쪽 다 표시한다.
+        mid = str(m.get("id") or m.get("name"))
+        if mid in seen:
+            seen[mid]["duplicate"] = True
+            entry["duplicate"] = True
+        seen[mid] = entry
+        rows.append(entry)
+
+    return {
+        "month": month,
+        "weeks": weeks,
+        "sheet": parsed.get("sheet"),
+        "rows": rows,
+        "unmatched": missing,
+        # 합계는 시트의 TOTAL 열을 믿지 않고 주차 값을 더해서 만든다.
+        # 실제 파일에서 그 열 수식이 깨져 계획이 400 대신 333 으로 나왔다.
+        "totals": {
+            "plan": sum(c["new"]["plan"] for e in rows for c in e["cells"]),
+            "actual": sum(c["new"]["actual"] for e in rows for c in e["cells"]),
+        },
+    }
+
+
+async def _pbx_read_upload(file, month):
+    """업로드된 엑셀을 열어 주차표를 읽는다 → (원본 파일명, parsed)"""
+    orig = file.filename or "plan.xlsx"
+    if not orig.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="xlsx/xlsm 파일만 올릴 수 있습니다")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일입니다")
+
+    from io import BytesIO
+    import openpyxl
+    import pbx_plan_import as _pbx
+
+    try:
+        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+
+    available = _pbx.sheet_months(wb)
+    parsed = _pbx.parse(wb, (month or "").strip() or None)
+    if not parsed:
+        if available:
+            raise HTTPException(
+                status_code=400,
+                detail="그 달 시트를 찾지 못했습니다. 이 파일에 있는 달: "
+                       + ", ".join(g["month"] for g in available))
+        raise HTTPException(
+            status_code=400,
+            detail="주차(W36 같은) 머리글이 있는 시트를 찾지 못했습니다")
+    parsed["available"] = available
+    return orig, parsed
+
+
+@app.post("/admin/projects/{project_key}/plan-file/preview")
+async def admin_plan_file_preview(
+    project_key: str,
+    file: UploadFile = File(...),
+    month: str = Form(""),
+    _admin: int = Depends(get_admin_session),
+):
+    """올린 파일이 무엇을 바꾸는지 먼저 보여준다. 저장하지 않는다."""
+    key = project_key.strip()
+    orig, parsed = await _pbx_read_upload(file, month)
+    data = _load_models()
+    proj = (data.get("projects") or {}).get(key) or {"models": []}
+    out = _pbx_diff(proj, parsed)
+    out.update({"ok": True, "project_key": key, "file_name": orig,
+                "available": parsed.get("available") or []})
+    return out
+
+
+@app.post("/admin/projects/{project_key}/plan-file/apply")
+async def admin_plan_file_apply(
+    project_key: str,
+    file: UploadFile = File(...),
+    month: str = Form(""),
+    skip: str = Form(""),
+    _admin: int = Depends(get_admin_session),
+):
+    """미리보기에서 확인한 내용을 저장한다. 주차 계획/실적만 손댄다."""
+    key = project_key.strip()
+    orig, parsed = await _pbx_read_upload(file, month)
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(key, {"models": []})
+    diff = _pbx_diff(proj, parsed)
+
+    # 미리보기에서 체크를 푼 행 (라벨을 | 로 이어 보낸다)
+    drop = {s.strip() for s in (skip or "").split("|") if s.strip()}
+
+    by_id = {}
+    for m in proj.get("models") or []:
+        by_id[str(m.get("id") or m.get("name"))] = m
+
+    mon = diff["month"]
+    applied = 0
+    for e in diff["rows"]:
+        if e["label"] in drop:
+            continue
+        m = by_id.get(str(e["model_id"] or e["model_name"]))
+        if m is None:
+            continue
+        wp_all = m.setdefault("weekly_plan", {})
+        bucket = wp_all.setdefault(mon, {})
+        for c in e["cells"]:
+            bucket[c["week"]] = {"plan": c["new"]["plan"], "actual": c["new"]["actual"]}
+        try:
+            m["weekly_progress"] = _ensure_mass_progress(wp_all, mon)
+        except Exception:
+            pass
+        applied += 1
+
+    proj["plan_file"] = {
+        "file_name": orig,
+        "sheet": diff.get("sheet"),
+        "month": mon,
+        "uploaded_at": __import__("datetime").datetime.now().isoformat(),
+    }
+    _save_models(data)
+    print(f"[plan-file] {key} {mon} '{orig}': {applied}행 반영, "
+          f"건너뜄 {len(drop)}, 미매칭 {len(diff['unmatched'])}")
+    return {"ok": True, "project_key": key, "month": mon, "weeks": diff["weeks"],
+            "applied": applied, "skipped": len(drop),
+            "unmatched": diff["unmatched"], "file_name": orig}
+
+
 @app.delete("/admin/projects/{project_key}/weekly-plan")
 def admin_delete_weekly_plan(project_key: str, _admin: int = Depends(get_admin_session)):
     """주차별 계획 삭제"""

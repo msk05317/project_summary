@@ -6982,6 +6982,8 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<span class="spacer"></span>' +
               '<input type="file" id="wb-file" accept=".xlsx,.xlsm" style="display:none">' +
               '<button type="button" class="ov-btn" id="wb-upload">📁 현황 엑셀 올리기</button>' +
+              '<input type="file" id="pf-file" accept=".xlsx,.xlsm" style="display:none">' +
+              '<button type="button" class="ov-btn" id="pf-upload">📅 출하계획 파일 올리기</button>' +
               '<button type="button" class="ov-btn" id="wb-edit">PO · 실적 · 증감 입력</button>' +
             '</div>' +
             '<div id="wb-board"></div>' +
@@ -7935,6 +7937,160 @@ window._ovProjectKey = function() {
         if (_wpModels.length) renderModelCards();
       };
       sinp.onkeydown = function(e) { if (e.key === 'Escape') closeSearch(); };
+    }
+
+    // ── 출하계획 파일 올리기 (파워박스 'Plan and Actual' 시트) ──
+    //
+    // 파워박스팀이 쓰던 파일을 새 양식에 옮겨 적게 하지 않고 그대로 받는다.
+    // 저장하기 전에 무엇이 무엇으로 바뀌는지 먼저 보여주고, 체크를 풀면 건너뛴다.
+    // PO 수량·판가·재료비는 손대지 않는다 — 누적값이라 잘못 덮으면 되살릴 수 없다.
+    function _pfE(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function _pfPreview(pk, f, d) {
+      var weeks = d.weeks || [];
+      var rows = d.rows || [];
+      var nChg = 0;
+      rows.forEach(function(r) { if (r.changed > 0) nChg++; });
+
+      function td(c) {
+        var o = c.old, n = c['new'];
+        if (o.plan === n.plan && o.actual === n.actual) {
+          return '<td style="text-align:right;color:#9CA3AF">' + n.plan + ' / ' + n.actual + '</td>';
+        }
+        return '<td style="text-align:right;color:#156082;font-weight:700">' +
+               '<span style="color:#CBD5E1;text-decoration:line-through;font-weight:500">' +
+               o.plan + '/' + o.actual + '</span> → ' + n.plan + ' / ' + n.actual + '</td>';
+      }
+
+      var body = rows.map(function(r) {
+        return '<tr' + (r.changed ? '' : ' style="opacity:.5"') + '>' +
+          '<td style="text-align:center"><input type="checkbox" class="pf-ck" checked data-label="' +
+            _pfE(r.label) + '"></td>' +
+          '<td class="lbl">' + _pfE(r.label) +
+            (r.duplicate ? ' <span style="color:#DC2626;font-size:11px">· 같은 모델 두 줄</span>' : '') + '</td>' +
+          '<td style="font-size:11px;color:#4B5563">' + _pfE(r.model_name || r.model_id) +
+            '<br><span style="color:#9CA3AF">' + _pfE(r.model_id) + ' · ' + _pfE(r.how) + '</span></td>' +
+          (r.cells || []).map(td).join('') +
+        '</tr>';
+      }).join('');
+
+      var un = (d.unmatched || []).map(function(u) {
+        return '<li>' + _pfE(u.label) +
+               ' <span style="color:#9CA3AF">(' + u.row + '행 · ' + _pfE(u.reason) + ')</span></li>';
+      }).join('');
+      var tot = d.totals || {};
+
+      var back = document.createElement('div');
+      back.className = 'ph-back';
+      back.innerHTML =
+        '<div class="ph-box" style="width:min(1180px,96vw)">' +
+          '<div class="ph-hd">' +
+            '<h3>출하계획 파일 반영 · ' + _pfE(d.month) + '</h3>' +
+            '<p><b>' + _pfE(d.file_name) + '</b> — 시트 <b>' + _pfE(d.sheet) + '</b> · ' +
+              weeks.join(', ') + '<br>' +
+              '읽은 행 <b>' + rows.length + '</b>개 중 <b>' + nChg + '</b>개가 지금 값과 다릅니다. ' +
+              '계획 합계 <b>' + (tot.plan || 0) + '</b> · 실적 합계 <b>' + (tot.actual || 0) + '</b> ' +
+              '(시트의 TOTAL 열은 쓰지 않고 주차 값을 직접 더한 숫자입니다)<br>' +
+              '<b>주차 계획·실적만</b> 바꿉니다. PO 수량·판가·재료비는 그대로 둡니다.</p>' +
+          '</div>' +
+          (un
+            ? '<div style="margin:0 16px;padding:10px 12px;background:#FEF2F2;border:1px solid #FECACA;' +
+              'border-radius:8px;font-size:12px;color:#7F1D1D">' +
+              '<b>등록되지 않아 건너뛰는 행 ' + (d.unmatched || []).length + '개</b>' +
+              '<ul style="margin:6px 0 0 16px">' + un + '</ul></div>'
+            : '') +
+          '<div style="padding:14px 16px;overflow:auto;max-height:56vh">' +
+            '<table class="wb-tbl"><thead><tr>' +
+              '<th style="width:44px"><input type="checkbox" id="pf-all" checked></th>' +
+              '<th style="min-width:210px">엑셀 행</th>' +
+              '<th style="min-width:160px">맞춘 모델</th>' +
+              weeks.map(function(w) {
+                return '<th style="min-width:126px">' + w + ' 계획/실적</th>';
+              }).join('') +
+            '</tr></thead><tbody>' + body + '</tbody></table>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid #E5E7EB">' +
+            '<button type="button" class="ov-btn" id="pf-cancel">취소</button>' +
+            '<button type="button" class="ov-btn ov-btn-primary" id="pf-ok">이대로 저장</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(back);
+
+      function close() { back.remove(); }
+      back.querySelector('#pf-cancel').onclick = close;
+      back.onclick = function(e) { if (e.target === back) close(); };
+      back.querySelector('#pf-all').onchange = function() {
+        var v = this.checked;
+        back.querySelectorAll('.pf-ck').forEach(function(el) { el.checked = v; });
+      };
+
+      back.querySelector('#pf-ok').onclick = function() {
+        var btn = this, skip = [];
+        back.querySelectorAll('.pf-ck').forEach(function(el) {
+          if (!el.checked) skip.push(el.dataset.label);
+        });
+        var fd = new FormData();
+        fd.append('file', f);
+        fd.append('month', d.month);
+        fd.append('skip', skip.join('|'));
+        btn.disabled = true;
+        btn.textContent = '저장 중...';
+        fetch('/admin/projects/' + encodeURIComponent(pk) + '/plan-file/apply',
+              { method: 'POST', credentials: 'same-origin', body: fd })
+          .then(function(r) { return r.json(); })
+          .then(function(res) {
+            close();
+            if (!res.ok) { alert('반영 실패: ' + (res.detail || '알 수 없는 오류')); return; }
+            if (window.mdlToast) {
+              window.mdlToast(res.month + ' · 모델 ' + res.applied + '개 반영');
+            }
+            if (window.wbRefresh) window.wbRefresh();
+          })
+          .catch(function(e) { close(); alert('반영 실패: ' + e.message); });
+      };
+    }
+
+    var pfUp = document.getElementById('pf-upload');
+    var pfFile = document.getElementById('pf-file');
+    if (pfUp && pfFile && !pfUp.dataset.wired) {
+      pfUp.dataset.wired = '1';
+      pfUp.onclick = function() { pfFile.click(); };
+      pfFile.onchange = function() {
+        var f = pfFile.files && pfFile.files[0];
+        if (!f) return;
+        var pk = window._ovProjectKey && window._ovProjectKey();
+        if (!pk) { alert('프로젝트를 먼저 선택하세요'); return; }
+        var msel = document.getElementById('wp-month-sel');
+        var fd = new FormData();
+        fd.append('file', f);
+        fd.append('month', (msel && msel.value) || '');
+        pfUp.disabled = true;
+        pfUp.textContent = '읽는 중...';
+        fetch('/admin/projects/' + encodeURIComponent(pk) + '/plan-file/preview',
+              { method: 'POST', credentials: 'same-origin', body: fd })
+          .then(function(r) {
+            return r.json().then(function(j) { return { ok: r.ok, j: j || {} }; });
+          })
+          .then(function(x) {
+            pfUp.disabled = false;
+            pfUp.textContent = '📅 출하계획 파일 올리기';
+            pfFile.value = '';
+            if (!x.ok || !x.j.ok) {
+              alert('읽기 실패: ' + (x.j.detail || '알 수 없는 오류'));
+              return;
+            }
+            _pfPreview(pk, f, x.j);
+          })
+          .catch(function(e) {
+            pfUp.disabled = false;
+            pfUp.textContent = '📅 출하계획 파일 올리기';
+            alert('읽기 실패: ' + e.message);
+          });
+      };
     }
 
     // 주간 현황 엑셀 업로드 → PO 수량·출하수량 자동 반영
