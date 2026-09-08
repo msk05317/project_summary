@@ -21236,8 +21236,12 @@ def _spec_board(project_key, proj, spec, month):
                          "actual": sum(r["months"][mon]["actual"] for r in flat)}
                    for mon in months},
     }
+    import datetime as _dt
     return {"project_key": project_key, "month": month, "layout": "sections",
             "columns": spec.get("columns") or "month", "months": months,
+            # 오늘이 속한 달 — 그 열을 빨간 테두리로 표시한다
+            # (주차형 보드의 current_week 와 같은 역할)
+            "current_month": _dt.date.today().strftime("%Y-%m"),
             "sections": sections, "rows": flat, "total": total}
 
 

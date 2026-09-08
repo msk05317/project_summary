@@ -249,6 +249,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   // ── 섹션형 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──────
   Widget _sectionTable(Map<String, dynamic> d) {
     final months = (d['months'] as List? ?? const []).map((e) => '$e').toList();
+    final nowMon = (d['current_month'] ?? '').toString();  // 이번 달 = 빨간 테두리
     final sections = (d['sections'] as List? ?? const []).cast<Map>();
     final total = (d['total'] as Map?) ?? const {};
 
@@ -309,6 +310,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
               _n(((total['months'] as Map?)?[mon] as Map?)?['plan']),
             ],
             52,
+            isNow: mon == nowMon,
           ),
         if (hasNote)
           SizedBox(
@@ -328,14 +330,25 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // 섹션형 머리글은 2단이라 별도 (주차형은 3단)
-  Widget _numCol2(String title, List<String> values, double w) {
-    return SizedBox(
+  // isNow = 이번 달 열. 주차형의 이번 주차와 같게 빨간 테두리를 두른다.
+  Widget _numCol2(String title, List<String> values, double w,
+      {bool isNow = false}) {
+    return Container(
       width: w,
+      decoration: isNow
+          ? const BoxDecoration(
+              border: Border(
+                left: BorderSide(color: _red, width: 2),
+                right: BorderSide(color: _red, width: 2),
+              ),
+            )
+          : null,
       child: Column(
         children: [
-          _cell(title, _kHeadH * 2, head: true),
-          for (var i = 0; i < values.length - 1; i++) _cell(values[i], _kSecRowH),
-          _cell(values.last, _kTotalH, total: true),
+          _cell(title, _kHeadH * 2, head: true, redHead: isNow),
+          for (var i = 0; i < values.length - 1; i++)
+            _cell(values[i], _kSecRowH, tint: isNow),
+          _cell(values.last, _kTotalH, total: true, redHead: isNow),
         ],
       ),
     );
