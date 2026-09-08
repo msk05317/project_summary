@@ -713,7 +713,12 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
               Expanded(
                   child: _moneyCell('계획 기준 예상 매출', _usd(tp * _price),
                       const Color(0xFF1E3A5F))),
-              Container(width: 1, height: 30, color: const Color(0xFFE5E7EB)),
+              Container(
+                width: 1,
+                height: 30,
+                margin: const EdgeInsets.symmetric(horizontal: 14),
+                color: const Color(0xFFE5E7EB),
+              ),
               Expanded(
                   child: _moneyCell('실적 매출', _usd(ta * _price),
                       const Color(0xFF059669))),

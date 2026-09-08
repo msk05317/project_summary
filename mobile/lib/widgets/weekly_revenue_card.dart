@@ -72,14 +72,26 @@ class _WeeklyRevenueCardState extends State<WeeklyRevenueCard> {
                   color: AppColors.summaryNormal,
                 ),
               ),
-              Container(width: 1, height: 30, color: AppColors.borderSoft),
+              // 구분선에 글자가 붙지 않게 양옆으로 띄운다.
+              Container(
+                width: 1,
+                height: 30,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                color: AppColors.borderSoft,
+              ),
               Expanded(
                 child: _Kpi(
                   label: '계획 기준 예상',
                   value: Fmt.moneyShort(rev.combinedPlanRevenue),
                 ),
               ),
-              Container(width: 1, height: 30, color: AppColors.borderSoft),
+              // 구분선에 글자가 붙지 않게 양옆으로 띄운다.
+              Container(
+                width: 1,
+                height: 30,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                color: AppColors.borderSoft,
+              ),
               Expanded(
                 child: _Kpi(
                   label: '달성률',

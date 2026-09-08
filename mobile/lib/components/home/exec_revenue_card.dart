@@ -159,7 +159,13 @@ class ExecRevenueCard extends StatelessWidget {
                   value: '${Fmt.qty(summary.qtyPlan)} → ${Fmt.qty(summary.qtyActual)}대',
                 ),
               ),
-              Container(width: 1, height: 26, color: AppColors.borderSoft),
+              // 구분선에 글자가 붙지 않게 양옆으로 띄운다.
+              Container(
+                width: 1,
+                height: 26,
+                margin: const EdgeInsets.symmetric(horizontal: 14),
+                color: AppColors.borderSoft,
+              ),
               Expanded(
                 child: _MiniStat(
                   label: ahead ? '계획 대비 초과' : '계획 대비 부족',

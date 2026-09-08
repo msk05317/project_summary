@@ -262,7 +262,12 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                 child: _stat('출하 (계획 → 실적)',
                     '${Fmt.qty(s.qtyPlan)} → ${Fmt.qty(s.qtyActual)}대'),
               ),
-              Container(width: 1, height: 28, color: AppColors.borderSoft),
+              Container(
+                width: 1,
+                height: 28,
+                margin: const EdgeInsets.symmetric(horizontal: 14),
+                color: AppColors.borderSoft,
+              ),
               Expanded(
                 child: _stat(
                   ahead ? '계획 대비 초과' : '계획 대비 부족',
