@@ -5624,6 +5624,11 @@ window.renderAdminV2ByDivision = function(){
        같은 품번은 정작 구분되는 뒷자리가 잘려 안 보인다.
        규칙 순서에 기대지 않도록 여기서 다시 잡는다. */
     '.mdl-input-name { width:210px; min-width:210px; font-weight:700; color:#0F172A; text-align:left; letter-spacing:-0.01em; }',
+    // 판가 확인 필요 표시 — 같은 우선순위 규칙끼리는 뒤에 온 쪽이 이긴다.
+    '.mdl-input-warn { border-color:#DC2626 !important; background:#FEF2F2 !important; }',
+    '.mdl-price-warn { margin-top:3px; font-size:10px; font-weight:700; color:#DC2626; text-align:right; cursor:help; }',
+    '.mdl-warn-bar { margin:0 0 10px; padding:9px 12px; border:1px solid #FECACA; background:#FEF2F2;' +
+      ' border-radius:8px; font-size:12px; color:#7F1D1D; }',
     '.mdl-table select { padding:0 26px 0 10px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 9px center; }',
     '.mdl-table select:hover { background-color:#F1F5F9; }',
     '.mdl-table select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
@@ -6144,6 +6149,29 @@ window.renderAdminV2ByDivision = function(){
       const g = (m.group === '개발') ? '개발' : '양산';
       byGroup[g].push(m);
     });
+
+    // ── 판가 점검 ────────────────────────────────────────────────
+    //
+    // 판가가 틀리면 화면 어디에도 표시가 안 난다. 매출이 조용히 작게 나올 뿐이다.
+    // 파워박스 853-B15113-313 이 $215 로 들어가 있었다 (같은 프로젝트 다른 모델은
+    // $3,272~$28,197). 9월 계획 50대짜리라 계획 매출이 $10,750 으로 잡혔다.
+    //
+    // 확실한 것만 잡는다. '다른 모델보다 싸다' 는 잡지 않는다. 파워박스에는
+    // $215~$975 짜리 EMA 부품이 줄지어 있고 재료비도 그에 맞게 들어가 있다.
+    // 싸다는 이유로 표시하면 멀쩡한 모델 아홉 개가 매번 걸린다.
+    function _priceWarn(m) {
+      // 쓰이지 않는 모델은 넘어간다. PO 도 주차 데이터도 없으면 매출에 안 잡힌다.
+      var used = (Number(m.po_qty) || 0) > 0 || (Number(m.shipped_qty) || 0) > 0 ||
+                 Object.keys(m.weekly_plan || {}).length > 0;
+      if (!used) return '';
+      var p = _moneyOf(_shownPrice(m));
+      var c = _moneyOf(m.material_cost);
+      if (!(p > 0)) return '판가가 비어 있습니다. 이 모델은 매출이 0 으로 잡힙니다';
+      if (c > 0 && c >= p)
+        return '재료비 $' + c.toLocaleString() + ' 가 판가 $' + p.toLocaleString() + ' 이상입니다';
+      return '';
+    }
+    var _priceWarnCount = 0;
     const tabCount = document.getElementById('mdl-tab-count');
     if (tabCount) tabCount.textContent = (window._modelsData || []).length;
 
@@ -6170,6 +6198,8 @@ window.renderAdminV2ByDivision = function(){
         const price = _shownPrice(m);
         const mcost = _moneyOf(m.material_cost);
         const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
+        const _pw = _priceWarn(m);
+        if (_pw) _priceWarnCount++;
         const isDev = g === '개발';
         const devType = (m.dev_type || '').toUpperCase();
         html += '<tr data-model-id="' + m.id + '"' + (window._mdlSel[m.id] ? ' class="is-sel"' : '') + '>' +
@@ -6204,7 +6234,9 @@ window.renderAdminV2ByDivision = function(){
   '<td><textarea data-field="issues" class="mdl-memo" placeholder="문제 · 리스크">' + (m.issues || '') + '</textarea></td>' +
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 :
-  '<td><input data-field="price" type="text" inputmode="decimal" value="' + price + '" class="mdl-input"></td>' +
+  '<td><input data-field="price" type="text" inputmode="decimal" value="' + price + '" class="mdl-input' +
+    (_pw ? ' mdl-input-warn' : '') + '"' + (_pw ? ' title="' + _pw.replace(/"/g, '&quot;') + '"' : '') + '>' +
+    (_pw ? '<div class="mdl-price-warn" title="' + _pw.replace(/"/g, '&quot;') + '">확인 필요</div>' : '') + '</td>' +
   '<td><input data-field="material_cost" type="text" inputmode="decimal" value="' + mcost + '" class="mdl-input"></td>' +
   '<td data-field="ratio" class="mdl-td-ratio">' + ratio + '</td>' +
   '<td><input data-field="po_qty" type="text" inputmode="numeric" value="' + (m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
@@ -6223,6 +6255,11 @@ window.renderAdminV2ByDivision = function(){
     });
 
     html += '</tbody></table>';
+    if (_priceWarnCount) {
+      html = '<div class="mdl-warn-bar">판가를 확인해 주세요 — ' + _priceWarnCount +
+             '개 모델. 판가가 틀리면 매출이 조용히 작게 잡힙니다. ' +
+             '<b>확인 필요</b> 표시에 마우스를 올리면 이유가 나옵니다.</div>' + html;
+    }
     if (!window._modelsData.length) {
       html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     } else if (!_visible.length) {
