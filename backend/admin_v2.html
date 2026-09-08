@@ -8228,10 +8228,11 @@ window._ovProjectKey = function() {
     function mk(m, extra) { return m === nowM ? ' class="nw ' + extra + '"' : ''; }
     var showSt = d.show_status !== false;
     var showNote = d.show_note !== false;
+    var hasSec = (d.sections || []).some(function(x) { return (x.name || '').trim(); });
 
     var head = '<tr>' +
-      '<th style="min-width:86px;">구분</th>' +
-      '<th style="min-width:96px;"></th>' +
+      (hasSec ? '<th style="min-width:86px;">구분</th>' : '') +
+      '<th style="min-width:96px;">' + (hasSec ? '' : '구분') + '</th>' +
       (showSt ? '<th style="min-width:58px;">현황</th>' : '') +
       '<th>PO 수량</th><th>실적</th><th>잔량</th>' +
       months.map(function(m) {
@@ -8244,7 +8245,7 @@ window._ovProjectKey = function() {
       var rows = sec.rows || [];
       return rows.map(function(r, i) {
         return '<tr>' +
-          (i === 0
+          (hasSec && i === 0
             ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' +
               _esc(sec.name) + '</td>'
             : '') +
@@ -8265,7 +8266,7 @@ window._ovProjectKey = function() {
 
     var t = d.total || {};
     var foot = '<tr class="wb-total">' +
-      '<td colspan="' + (showSt ? 3 : 2) + '">합계</td>' +
+      '<td colspan="' + ((hasSec ? 2 : 1) + (showSt ? 1 : 0)) + '">합계</td>' +
       '<td>' + _wbNum(t.po_qty) + '</td>' +
       '<td>' + _wbNum(t.actual_total) + '</td>' +
       '<td>' + _wbNum(t.remaining) + '</td>' +
@@ -8292,12 +8293,15 @@ window._ovProjectKey = function() {
     var showSt = d.show_status !== false;
     var showNote = d.show_note !== false;
     var nextM = d.next_month || '';    // 다음달 계획 열 (파워박스)
-    var lead = 2 + (showSt ? 1 : 0);   // 구분 + 행 (+현황)
+    // 섹션 이름이 하나도 없으면(파워박스처럼 평면 4줄) 구분 열을 따로 두지 않고
+    // 행 이름 열의 머리글을 '구분'으로 쓴다. 빈 칸만 있는 열이 생기지 않게.
+    var hasSec = (d.sections || []).some(function(x) { return (x.name || '').trim(); });
+    var lead = (hasSec ? 2 : 1) + (showSt ? 1 : 0);
 
     var head =
       '<tr>' +
-        '<th rowspan="3" style="min-width:86px;">구분</th>' +
-        '<th rowspan="3" style="min-width:76px;"></th>' +
+        (hasSec ? '<th rowspan="3" style="min-width:86px;">구분</th>' : '') +
+        '<th rowspan="3" style="min-width:96px;">' + (hasSec ? '' : '구분') + '</th>' +
         (showSt ? '<th rowspan="3" style="min-width:58px;">현황</th>' : '') +
         '<th rowspan="3">PO 수량</th><th rowspan="3">실적</th><th rowspan="3">잔량</th>' +
         '<th rowspan="3">' + _wbMon(d.prev_month) + '</th>' +
@@ -8321,7 +8325,7 @@ window._ovProjectKey = function() {
       var rows = sec.rows || [];
       return rows.map(function(r, i) {
         return '<tr>' +
-          (i === 0 ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' + _esc(sec.name) + '</td>' : '') +
+          (hasSec && i === 0 ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' + _esc(sec.name) + '</td>' : '') +
           '<td class="lbl">' + _esc(r.label) + '</td>' +
           (showSt ? '<td>' + _esc(r.status || '') + '</td>' : '') +
           '<td>' + _wbNum(r.po_qty) + '</td>' +
@@ -8380,6 +8384,7 @@ window._ovProjectKey = function() {
       .then(function(cur) {
         var man = cur.manual || {};
         var byWeek = (d.columns === 'week');
+        var hasSec = (d.sections || []).some(function(x) { return (x.name || '').trim(); });
         // 기준 주차 기본값 = 지난 주차 (지금까지 확정된 마지막 주)
         var defBaseWeek = (function() {
           var w = String(d.current_week || '').replace('W', '');
@@ -8398,7 +8403,7 @@ window._ovProjectKey = function() {
                      '" value="' + (val === undefined || val === null ? '' : _esc(val)) + '" style="width:100%">';
             }
             rowsHtml += '<tr>' +
-              (i === 0 ? '<td class="lbl" rowspan="' + sec.rows.length + '" style="vertical-align:middle">' + _esc(sec.name) + '</td>' : '') +
+              (hasSec && i === 0 ? '<td class="lbl" rowspan="' + sec.rows.length + '" style="vertical-align:middle">' + _esc(sec.name) + '</td>' : '') +
               '<td class="lbl">' + _esc(r.label) + '</td>' +
               (d.show_status !== false
                 ? '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="status" type="text" ' +
@@ -8441,7 +8446,8 @@ window._ovProjectKey = function() {
             '<datalist id="wb-status-list"><option value="완료"><option value="양산"><option value="개발"></datalist>' +
             '<div style="padding:14px 16px;overflow:auto;max-height:64vh">' +
               '<table class="wb-tbl"><thead><tr>' +
-                '<th style="min-width:84px">구분</th><th style="min-width:92px"></th>' +
+                (hasSec ? '<th style="min-width:84px">구분</th>' : '') +
+                '<th style="min-width:100px">' + (hasSec ? '' : '구분') + '</th>' +
                 (d.show_status !== false ? '<th style="min-width:88px">현황</th>' : '') +
                 '<th style="min-width:110px">PO 수량</th>' +
                 (byWeek

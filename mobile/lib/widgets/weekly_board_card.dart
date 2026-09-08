@@ -264,6 +264,9 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
     // 비고 열: 프로젝트가 끄지 않았고(show_note) 실제로 적힌 게 있을 때만 그린다
     final hasNote = d['show_note'] != false &&
         flat.any((r) => '${r['note'] ?? ''}'.trim().isNotEmpty);
+    // 섹션 이름이 하나도 없으면(파워박스처럼 평면) 구분 열을 따로 두지 않고
+    // 행 이름 열의 머리글을 '구분'으로 쓴다.
+    final hasSec = sections.any((s) => '${s['name'] ?? ''}'.trim().isNotEmpty);
 
     // 주차 모드는 머리글이 3단(월 / 주차 / 계획·실적), 월 모드는 2단이다.
     final headSpan = byWeek ? 3 : 2;
@@ -274,27 +277,30 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 구분 — 섹션 이름을 한 칸으로 묶어 세로로 이어 보이게 한다
-        SizedBox(
-          width: 74,
-          child: Column(
-            children: [
-              _cell('구분', _kHeadH * headSpan, head: true, align: TextAlign.left),
-              for (final sec in sections)
-                _cell('${sec['name']}',
-                    _kSecRowH * ((sec['rows'] as List? ?? const []).length),
-                    align: TextAlign.left, bold: true, size: 10),
-              _cell('', _kTotalH, total: true),
-            ],
+        if (hasSec)
+          SizedBox(
+            width: 74,
+            child: Column(
+              children: [
+                _cell('구분', _kHeadH * headSpan, head: true, align: TextAlign.left),
+                for (final sec in sections)
+                  _cell('${sec['name']}',
+                      _kSecRowH * ((sec['rows'] as List? ?? const []).length),
+                      align: TextAlign.left, bold: true, size: 10),
+                _cell('', _kTotalH, total: true),
+              ],
+            ),
           ),
-        ),
         SizedBox(
-          width: 84,
+          width: hasSec ? 84 : 96,
           child: Column(
             children: [
-              _cell('', _kHeadH * headSpan, head: true),
+              _cell(hasSec ? '' : '구분', _kHeadH * headSpan,
+                  head: true, align: TextAlign.left),
               for (final r in flat)
-                _cell('${r['label']}', _kSecRowH, bold: true, size: 10.5),
-              _cell('합계', _kTotalH, total: true),
+                _cell('${r['label']}', _kSecRowH,
+                    align: TextAlign.left, bold: true, size: 10.5),
+              _cell('합계', _kTotalH, total: true, align: TextAlign.left),
             ],
           ),
         ),
