@@ -18087,10 +18087,10 @@ async def chat(payload: dict):
                     _total_mass_rev += _m_rev
                     _total_dev_rev += _d_rev
                     
-                    # 계획 기준 예상 매출
-                    _m_price_est = round(_m_rev / _m_act) if _m_act > 0 else 3350
-                    _m_plan_rev = _m_plan * _m_price_est
-                    _d_plan_rev = _d_plan * 3400
+                    # 계획 기준 예상 매출 — 모델별 판가로 이미 계산돼 있다.
+                    # 예전엔 실적이 0 이면 $3,350 고정 단가를 곱했다.
+                    _m_plan_rev = int(_mw.get('plan_revenue') or 0)
+                    _d_plan_rev = int(_dw.get('plan_revenue') or 0)
                     
                     _total_mass_plan_rev += _m_plan_rev
                     _total_dev_plan_rev += _d_plan_rev
@@ -18122,56 +18122,23 @@ async def chat(payload: dict):
                 _dg = _wr_data.get('groups',{}).get('개발',{})
                 _mw = _mg.get('weeks',{}).get(last_week,{})
                 _dw = _dg.get('weeks',{}).get(last_week,{})
-                # weekly_summary에서 직접 읽기 (모델별 데이터 불완전)
-                _ws_mass = _wdata.get('projects', {}).get('hrva_plate', {}).get('weekly_summary', {}).get('양산', {}).get('weeks', {}).get(last_week, {})
-                _ws_dev = _wdata.get('projects', {}).get('hrva_plate', {}).get('weekly_summary', {}).get('개발', {}).get('weeks', {}).get(last_week, {})
-                _m_plan = int(_ws_mass.get('plan') or 0)
-                _m_act = int(_ws_mass.get('actual') or 0)
-                _d_plan = int(_ws_dev.get('plan') or 0)
-                _d_act = int(_ws_dev.get('actual') or 0)
-                # 양산: weekly_summary actual을 모델별 plan 비율로 분배 후 각 price로 매출 계산
-                _m_rev = 0
-                if _m_act > 0:
-                    # 양산 모델들의 W34 plan 수집
-                    _mass_models = []
-                    _total_plan = 0
-                    for _m in _wdata.get('projects', {}).get('hrva_plate', {}).get('models', []):
-                        if _m.get('group') != '양산': continue
-                        _wp = (_m.get('weekly_plan') or {}).get(_wr_month, {})
-                        _cell = _wp.get(last_week, {})
-                        _plan = int(_cell.get('plan') or 0)
-                        _price = float(_m.get('price') or _m.get('unit_price') or 0)
-                        if _plan > 0 and _price > 0:
-                            _mass_models.append({'id': _m.get('id'), 'plan': _plan, 'price': _price})
-                            _total_plan += _plan
-                    
-                    # weekly_summary actual을 plan 비율로 분배
-                    if _total_plan > 0:
-                        _distributed = 0
-                        for _i, _mm in enumerate(_mass_models):
-                            _ratio = _mm['plan'] / _total_plan
-                            _alloc = round(_m_act * _ratio)
-                            _distributed += _alloc
-                            _rev = _alloc * _mm['price']
-                            _m_rev += _rev
-                            print(f"[chat] 모델 {_mm['id']}: plan={_mm['plan']}, alloc={_alloc}, price={_mm['price']}, rev={_rev:,.0f}")
-                        
-                        # 반올림 오차 보정
-                        _diff = _m_act - _distributed
-                        if _diff != 0 and _mass_models:
-                            _mass_models[0]['alloc'] += _diff
-                            _m_rev += _diff * _mass_models[0]['price']
-                            print(f"[chat] 반올림 오차 보정: {_diff}대 추가")
-                    else:
-                        # plan 데이터 없으면 평균 단가 사용
-                        _m_rev = _m_act * 3245
-                
-                # 개발: 고정 단가 $3,400
-                _d_rev = _d_act * 3400
-                # 계획 기준 예상 매출 (실적 0일 때용)
-                _m_price_est = round(_m_rev / _m_act) if _m_act > 0 else 3350
-                _m_plan_rev = _m_plan * _m_price_est
-                _d_plan_rev = _d_plan * 3400
+                # 수량·매출 모두 같은 엔진에서 받는다. 앱이 보여주는 값과 같아야 한다.
+                #
+                # 예전에는 여기서 세 번째 계산을 했다. weekly_summary 의 양산 실적을
+                # 모델별 계획 비율로 나눠 각 판가를 곱하고, 계획 매출은 $3,350,
+                # 계획이 없으면 $3,245 같은 고정 단가를 썼다. 그래서 같은 주차라도
+                # 챗봇과 화면의 숫자가 갈릴 수 있었다.
+                #
+                # 하바플레이트 개발은 모델별 입력이 비어 있어 get_weekly_revenue 가
+                # 알아서 그룹 총계 x $3,400 으로 잡아 준다. 여기서 따로 볼 필요가 없다.
+                _m_plan = int(_mw.get('plan') or 0)
+                _m_act = int(_mw.get('actual') or 0)
+                _m_rev = int(_mw.get('revenue') or 0)
+                _m_plan_rev = int(_mw.get('plan_revenue') or 0)
+                _d_plan = int(_dw.get('plan') or 0)
+                _d_act = int(_dw.get('actual') or 0)
+                _d_rev = int(_dw.get('revenue') or 0)
+                _d_plan_rev = int(_dw.get('plan_revenue') or 0)
                 _total_actual_rev = _m_rev + _d_rev
                 _total_plan_rev = _m_plan_rev + _d_plan_rev
                 
