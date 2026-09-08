@@ -423,6 +423,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     'chamber',
     'enclosure',
     'powerbox',
+    'major_module',
   };
 
   Widget _buildWeeklyPlanSection() {

@@ -182,6 +182,33 @@
           ]
         }
       ]
+    },
+    "major_module": {
+      "columns": "week",
+      "show_status": false,
+      "show_note": false,
+      "next_month": true,
+      "sections": [
+        {
+          "name": "",
+          "rows": [
+            {
+              "key": "efem",
+              "label": "EFEM",
+              "models": [
+                "EFEM"
+              ]
+            },
+            {
+              "key": "vtm",
+              "label": "VTM",
+              "models": [
+                "VTM"
+              ]
+            }
+          ]
+        }
+      ]
     }
   }
 }
