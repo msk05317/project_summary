@@ -16,6 +16,7 @@ import '../config/app_config.dart';
 const double _kHeadH = 22;   // 머리글 한 줄 (x3 = 표 머리글 전체 높이)
 const double _kRowH = 52;    // 데이터 행 (양산 / 개발)
 const double _kTotalH = 32;  // 합계 행
+const double _kSecRowH = 38; // 섹션형 데이터 행 (행이 많아 낮게)
 
 const Color _navy = Color(0xFF0F2C59);
 const Color _line = Color(0xFFE5E7EB);
@@ -237,7 +238,110 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // ── 표 ────────────────────────────────────────────────────────────
+  // 백엔드가 두 가지 모양을 돌려준다.
+  //   layout: 'sections'  프로젝트별 행 구성 (챔버 — 기존/내재화/Dep 챔버)
+  //   그 외                양산/개발 두 줄 + 주차 (하바플레이트)
   Widget _table(Map<String, dynamic> d) {
+    if ((d['layout'] ?? '') == 'sections') return _sectionTable(d);
+    return _weekTable(d);
+  }
+
+  // ── 섹션형 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──────
+  Widget _sectionTable(Map<String, dynamic> d) {
+    final months = (d['months'] as List? ?? const []).map((e) => '$e').toList();
+    final sections = (d['sections'] as List? ?? const []).cast<Map>();
+    final total = (d['total'] as Map?) ?? const {};
+
+    final flat = <Map>[];
+    for (final sec in sections) {
+      flat.addAll((sec['rows'] as List? ?? const []).cast<Map>());
+    }
+    final hasNote = flat.any((r) => '${r['note'] ?? ''}'.trim().isNotEmpty);
+
+    List<String> col(String f) => [...flat.map((r) => _n(r[f])), _n(total[f])];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 구분 — 섹션 이름을 한 칸으로 묶어 세로로 이어 보이게 한다
+        SizedBox(
+          width: 74,
+          child: Column(
+            children: [
+              _cell('구분', _kHeadH * 2, head: true, align: TextAlign.left),
+              for (final sec in sections)
+                _cell('${sec['name']}',
+                    _kSecRowH * ((sec['rows'] as List? ?? const []).length),
+                    align: TextAlign.left, bold: true, size: 10),
+              _cell('', _kTotalH, total: true),
+            ],
+          ),
+        ),
+        SizedBox(
+          width: 84,
+          child: Column(
+            children: [
+              _cell('', _kHeadH * 2, head: true),
+              for (final r in flat)
+                _cell('${r['label']}', _kSecRowH, bold: true, size: 10.5),
+              _cell('합계', _kTotalH, total: true),
+            ],
+          ),
+        ),
+        SizedBox(
+          width: 52,
+          child: Column(
+            children: [
+              _cell('현황', _kHeadH * 2, head: true),
+              for (final r in flat) _cell('${r['status'] ?? ''}', _kSecRowH, size: 10),
+              _cell('', _kTotalH, total: true),
+            ],
+          ),
+        ),
+        _numCol2('PO 수량', col('po_qty'), 62),
+        _numCol2('실적', col('actual_total'), 56),
+        _numCol2('잔량', col('remaining'), 56),
+        for (final mon in months)
+          _numCol2(
+            _mon(mon),
+            [
+              ...flat.map((r) => _n(((r['months'] as Map?)?[mon] as Map?)?['plan'])),
+              _n(((total['months'] as Map?)?[mon] as Map?)?['plan']),
+            ],
+            52,
+          ),
+        if (hasNote)
+          SizedBox(
+            width: 150,
+            child: Column(
+              children: [
+                _cell('비고', _kHeadH * 2, head: true),
+                for (final r in flat)
+                  _cell('${r['note'] ?? ''}', _kSecRowH,
+                      align: TextAlign.left, size: 9.5),
+                _cell('', _kTotalH, total: true),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // 섹션형 머리글은 2단이라 별도 (주차형은 3단)
+  Widget _numCol2(String title, List<String> values, double w) {
+    return SizedBox(
+      width: w,
+      child: Column(
+        children: [
+          _cell(title, _kHeadH * 2, head: true),
+          for (var i = 0; i < values.length - 1; i++) _cell(values[i], _kSecRowH),
+          _cell(values.last, _kTotalH, total: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _weekTable(Map<String, dynamic> d) {
     final weeks = (d['weeks'] as List? ?? const []).map((e) => '$e').toList();
     final now = (d['current_week'] ?? '').toString();
     final rows = (d['rows'] as List? ?? const []).cast<Map>();

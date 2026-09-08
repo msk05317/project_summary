@@ -416,7 +416,12 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   }
 
   // 주차 현황 보드로 바뀐 프로젝트. 엑셀 이미지 대신 계산된 표를 그린다.
-  static const _boardProjects = {'hrva_plate', 'havaplate', 'hrva-plate'};
+  // 주차별 계획을 엑셀 이미지 대신 '주차 현황 보드'로 그리는 프로젝트.
+  // 행 구성은 백엔드 config/boards.json 이 갖고 있고, 없으면 양산/개발 2줄.
+  static const _boardProjects = {
+    'hrva_plate', 'havaplate', 'hrva-plate',
+    'chamber',
+  };
 
   Widget _buildWeeklyPlanSection() {
     if (_boardProjects.contains(widget.projectKey.toLowerCase())) {
