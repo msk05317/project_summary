@@ -5617,6 +5617,13 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-table thead th { position:sticky; top:0; z-index:5; background:#FBFCFE; }',
     '.mdl-empty-filter { padding:36px; text-align:center; color:#94A3B8; font-size:13px; }',
     '.mdl-input, .mdl-table select { height:34px; box-sizing:border-box; }',
+    /* 모델명 칸.
+       .mdl-input-name 을 위에서 160px 로 잡아뒀지만, 두 줄 뒤의
+       .mdl-input { width:96px } 이 같은 명시도라 나중 규칙이 이겨서
+       96px 로 줄어 있었다. 엔클로저처럼 '853-800575-413' 같이 앞자리가
+       같은 품번은 정작 구분되는 뒷자리가 잘려 안 보인다.
+       규칙 순서에 기대지 않도록 여기서 다시 잡는다. */
+    '.mdl-input-name { width:210px; min-width:210px; font-weight:700; color:#0F172A; text-align:left; letter-spacing:-0.01em; }',
     '.mdl-table select { padding:0 26px 0 10px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 9px center; }',
     '.mdl-table select:hover { background-color:#F1F5F9; }',
     '.mdl-table select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
