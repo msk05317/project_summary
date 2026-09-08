@@ -8227,6 +8227,7 @@ window._ovProjectKey = function() {
     var nowM = d.current_month || '';   // 이번 달 (빨간 테두리)
     function mk(m, extra) { return m === nowM ? ' class="nw ' + extra + '"' : ''; }
     var showSt = d.show_status !== false;
+    var showNote = d.show_note !== false;
 
     var head = '<tr>' +
       '<th style="min-width:86px;">구분</th>' +
@@ -8236,7 +8237,7 @@ window._ovProjectKey = function() {
       months.map(function(m) {
         return '<th' + mk(m, 'nw-l nw-r nw-t') + '>' + _wbMon(m) + '</th>';
       }).join('') +
-      '<th style="min-width:180px;">비고</th>' +
+      (showNote ? '<th style="min-width:180px;">비고</th>' : '') +
     '</tr>';
 
     var body = (d.sections || []).map(function(sec) {
@@ -8256,8 +8257,8 @@ window._ovProjectKey = function() {
             var c = (r.months || {})[m] || {};
             return '<td' + mk(m, 'nw-l nw-r') + '>' + _wbNum(c.plan) + '</td>';
           }).join('') +
-          '<td style="text-align:left;font-size:11px;color:#475569;">' +
-            _esc(r.note || '') + '</td>' +
+          (showNote ? '<td style="text-align:left;font-size:11px;color:#475569;">' +
+            _esc(r.note || '') + '</td>' : '') +
         '</tr>';
       }).join('');
     }).join('');
@@ -8272,7 +8273,7 @@ window._ovProjectKey = function() {
         var c = (t.months || {})[m] || {};
         return '<td' + mk(m, 'nw-l nw-r nw-b') + '>' + _wbNum(c.plan) + '</td>';
       }).join('') +
-      '<td></td>' +
+      (showNote ? '<td></td>' : '') +
     '</tr>';
 
     box.innerHTML = '<div class="ov-wrap-x" style="overflow-x:auto;">' +
@@ -8289,6 +8290,7 @@ window._ovProjectKey = function() {
     var wks = d.weeks || [];
     var now = d.current_week || '';
     var showSt = d.show_status !== false;
+    var showNote = d.show_note !== false;
     var lead = 2 + (showSt ? 1 : 0);   // 구분 + 행 (+현황)
 
     var head =
@@ -8300,7 +8302,7 @@ window._ovProjectKey = function() {
         '<th rowspan="3">' + _wbMon(d.prev_month) + '</th>' +
         '<th colspan="' + (wks.length * 2) + '">' + _wbMon(d.month) + '</th>' +
         '<th colspan="2" rowspan="2">' + _wbMon(d.month) + '</th>' +
-        '<th rowspan="3" style="min-width:170px;">비고</th>' +
+        (showNote ? '<th rowspan="3" style="min-width:170px;">비고</th>' : '') +
       '</tr><tr>' +
         wks.map(function(w) {
           return '<th colspan="2"' + (w === now ? ' class="nw nw-l nw-r nw-t"' : '') + '>' + w + '</th>';
@@ -8331,7 +8333,7 @@ window._ovProjectKey = function() {
               : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
           }).join('') +
           '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
-          '<td style="text-align:left;font-size:11px;color:#475569;">' + _esc(r.note || '') + '</td>' +
+          (showNote ? '<td style="text-align:left;font-size:11px;color:#475569;">' + _esc(r.note || '') + '</td>' : '') +
         '</tr>';
       }).join('');
     }).join('');
@@ -8347,7 +8349,8 @@ window._ovProjectKey = function() {
           ? '<td class="nw nw-l nw-b">' + _wbNum(c.plan) + '</td><td class="nw nw-r nw-b">' + _wbNum(c.actual) + '</td>'
           : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
       }).join('') +
-      '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td><td></td>' +
+      '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td>' +
+      (showNote ? '<td></td>' : '') +
     '</tr>';
 
     box.innerHTML = '<div class="ov-wrap-x" style="overflow-x:auto;">' +
@@ -8396,8 +8399,10 @@ window._ovProjectKey = function() {
                        '" type="text" inputmode="numeric" placeholder="자동" value="' +
                        (c.plan === undefined || c.plan === null ? '' : _esc(c.plan)) + '" style="width:100%"></td>';
               }).join('') +
-              '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="note" type="text" value="' +
-                _esc(v.note || '') + '" placeholder="예: FAIR 승인 완료 → 33주차" style="width:100%"></td>' +
+              (d.show_note !== false
+                ? '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="note" type="text" value="' +
+                  _esc(v.note || '') + '" placeholder="예: FAIR 승인 완료 → 33주차" style="width:100%"></td>'
+                : '') +
             '</tr>';
           });
         });
@@ -8419,7 +8424,7 @@ window._ovProjectKey = function() {
                 '<th style="min-width:88px">현황</th>' +
                 '<th style="min-width:110px">PO 수량</th><th style="min-width:110px">실적</th>' +
                 months.map(function(m) { return '<th style="min-width:96px">' + _wbMon(m) + ' 계획</th>'; }).join('') +
-                '<th style="min-width:230px">비고</th>' +
+                (d.show_note !== false ? '<th style="min-width:230px">비고</th>' : '') +
               '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
             '</div>' +
             '<div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid #E5E7EB">' +

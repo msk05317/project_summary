@@ -261,7 +261,9 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
     for (final sec in sections) {
       flat.addAll((sec['rows'] as List? ?? const []).cast<Map>());
     }
-    final hasNote = flat.any((r) => '${r['note'] ?? ''}'.trim().isNotEmpty);
+    // 비고 열: 프로젝트가 끄지 않았고(show_note) 실제로 적힌 게 있을 때만 그린다
+    final hasNote = d['show_note'] != false &&
+        flat.any((r) => '${r['note'] ?? ''}'.trim().isNotEmpty);
 
     // 주차 모드는 머리글이 3단(월 / 주차 / 계획·실적), 월 모드는 2단이다.
     final headSpan = byWeek ? 3 : 2;

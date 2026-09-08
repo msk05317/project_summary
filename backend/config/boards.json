@@ -15,7 +15,8 @@
     "",
     "exclude: 유형으로 묶되 그중 특정 품번은 뺀다 (009 직납 = 009 유형 - 자빌).",
     "columns: 'month' 는 월 열(챔버), 'week' 는 전월 + 이번달 주차 + 이번달 합계(엔클로저·하바 모양).",
-    "show_status: 현황 열을 그릴지. 엔클로저 엑셀에는 없어서 false."
+    "show_status: 현황 열을 그릴지. 엔클로저 엑셀에는 없어서 false.",
+    "show_note: 비고 열을 그릴지. 엔클로저는 적을 게 없어서 false."
   ],
   "boards": {
     "chamber": {
@@ -130,7 +131,8 @@
           ]
         }
       ],
-      "show_status": false
+      "show_status": false,
+      "show_note": false
     }
   }
 }

@@ -21291,6 +21291,7 @@ def _spec_board(project_key, proj, spec, month):
     return {"project_key": project_key, "month": month, "layout": "sections",
             "columns": col_mode, "months": months,
             "show_status": spec.get("show_status", True),
+            "show_note": spec.get("show_note", True),
             "weeks": weeks, "prev_month": prev_month,
             "current_week": ("W%02d" % _dt.date.today().isocalendar()[1]),
             # 오늘이 속한 달 — 그 열을 빨간 테두리로 표시한다
