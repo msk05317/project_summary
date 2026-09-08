@@ -6512,6 +6512,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         .then(function(res) {
           if (res.ok) {
             msg.textContent = '✅ 저장 완료 (진행률 ' + res.progress + '%)';
+            window.wbRefresh();
             msg.style.color = '#059669';
             const m = window._modelsData.find(function(x) { return x.id === d.model_id; });
             if (m) { m.dev_type = res.dev_type; m.progress = res.progress; }
@@ -6524,6 +6525,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
                 setTimeout(function() {
                   const msg2 = document.getElementById('mdl-proc-msg');
                   if (msg2) { msg2.textContent = '✅ 저장 완료 (진행률 ' + res.progress + '%)'; msg2.style.color = '#059669'; }
+                  window.wbRefresh();
                 }, 50);
               });
           } else {
@@ -6800,6 +6802,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       }
       window._phaseTouched = {};
       if (statusEl) { statusEl.textContent = _msg; statusEl.className = 'mdl-status ok'; }
+      window.wbRefresh();
       // 저장 성공: window._modelsData는 이미 sync된 상태 → renderTable만 호출 (재조회 X, 부드러운 UX)
       var tableBox = document.getElementById('mdl-table-box');
       if (tableBox) renderTable(document.getElementById("mdl-table-box"));
@@ -7832,6 +7835,7 @@ window._ovProjectKey = function() {
               var t = document.createElement('div');
               t.style.cssText = 'position:fixed;top:20px;right:20px;background:#059669;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
               t.textContent = '✅ ' + modelId + ' 저장 완료 (진행률 ' + res.progress + '%)';
+              window.wbRefresh();
               document.body.appendChild(t);
               setTimeout(function(){ t.remove(); }, 2500);
             } else {
@@ -8501,6 +8505,23 @@ window._ovProjectKey = function() {
       .catch(function(e) { alert('불러오기 실패: ' + e.message); });
   }
 
+  // 저장 직후 결과가 걸린 화면을 다시 그린다.
+  //
+  // 새로고침해야만 반영되던 걸 없애는 게 목적인데, 모델 목록이나 주차 계획
+  // 아코디언까지 다시 그리면 입력 중이던 값이 날아간다. 그래서 읽기 전용인
+  // 주차 현황 보드만 다시 그린다.
+  window.wbRefresh = function() {
+    try {
+      if (!document.getElementById('wb-board')) return;
+      var pk = window._ovProjectKey && window._ovProjectKey();
+      if (!pk) return;
+      var msel = document.getElementById('wp-month-sel');
+      window.renderWeeklyBoard(pk, (msel && msel.value) || '');
+    } catch (e) {
+      console.warn('[board] 자동 갱신 실패', e);
+    }
+  };
+
   window.renderWeeklyBoard = function(pk, month) {
     var box = document.getElementById('wb-board');
     if (!box) return;
@@ -8856,6 +8877,7 @@ window._ovProjectKey = function() {
               toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#059669;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease;';
               toast.textContent = '✅ ' + modelId + ' 저장 완료 (진행률 ' + res.progress + '%)';
               document.body.appendChild(toast);
+              window.wbRefresh();
               setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() { toast.remove(); }, 300); }, 2500);
             } else {
               alert('❌ 저장 실패: ' + (res.detail || '오류'));
