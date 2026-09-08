@@ -17149,7 +17149,7 @@ function resetWpModelPlan(idx) {
 </html>
 """
 
-def _week_shipment_answer(project_key, week, mode='qty', with_models=False):
+def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with_revenue=False):
     """주차 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     if not week:
         return None
@@ -17207,7 +17207,10 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False):
         _src = ((_data.get('projects') or {}).get(_model_key_alias(k)) or {}) \
             .get('weekly_summary') or {}
         _sc = ((_src.get('양산') or {}).get('weeks') or {}).get(week)
-        if isinstance(_sc, dict):
+        # 보드 스펙이 있는 프로젝트(엔클로저·파워박스·챔버…)는 모델별 값이 정본이다.
+        # weekly_summary 는 예전 주간보고 엑셀에서 들어온 값이라 뒤처져 있다
+        # (엔클로저 W37: 주간보고 110대 vs 모델 합계 106대 — 보드는 106 을 보여준다).
+        if isinstance(_sc, dict) and not _load_board_spec(_model_key_alias(k)):
             _yp, _ya = int(_sc.get('plan') or 0), int(_sc.get('actual') or 0)
         yp += _yp
         ya += _ya
@@ -17243,7 +17246,9 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False):
     else:
         lines.append(f"{week}({month}) {label} 출하 실적은 총 {ya + da}대입니다. "
                      f"(양산 {ya}대 / 개발 {da}대, 계획 {yp + dp}대)")
-        lines.append(f"매출로는 실적 ${rev:,} / 계획 기준 예상 ${prev:,}입니다.")
+        # 대수를 물었으면 대수만 답한다. 매출은 같이 물었을 때만 붙인다.
+        if with_revenue:
+            lines.append(f"매출로는 실적 ${rev:,} / 계획 기준 예상 ${prev:,}입니다.")
         ms = sorted(model_rows, key=lambda x: -x['actual']) if with_models else []
         if ms:
             lines.append('')
@@ -17256,7 +17261,7 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False):
     return '\n'.join(lines)
 
 
-def _month_shipment_answer(project_key, month, mode='qty', with_models=False):
+def _month_shipment_answer(project_key, month, mode='qty', with_models=False, with_revenue=False):
     """월 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     keys = []
     if project_key and project_key != 'all':
@@ -17363,7 +17368,8 @@ def _month_shipment_answer(project_key, month, mode='qty', with_models=False):
         total_plan_rev = g_yang['plan_revenue'] + g_dev['plan_revenue']
         lines.append(f"{month} {label} 출하 실적은 총 {total_a}대입니다. "
                      f"(양산 {g_yang['actual']}대 / 개발 {g_dev['actual']}대, 계획 {total_p}대)")
-        lines.append(f"매출로는 실적 ${total_rev:,} / 계획 기준 예상 ${total_plan_rev:,}입니다.")
+        if with_revenue:
+            lines.append(f"매출로는 실적 ${total_rev:,} / 계획 기준 예상 ${total_plan_rev:,}입니다.")
         lines.append('')
         lines.append('주차별 (계획 → 실적)')
         for w in weeks_sorted:
@@ -17499,7 +17505,7 @@ async def chat(payload: dict):
         if sess.get('last_scope') == 'week' and sess.get('last_week'):
             _wk_prev = sess.get('last_week')
             try:
-                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m, _want_models)
+                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m, _want_models, _rev_kw)
             except Exception as _e_ws:
                 _ans_w = None
                 print(f"[chat] 주차 즉답 실패(무시): {_e_ws}")
@@ -17515,7 +17521,7 @@ async def chat(payload: dict):
 
     if _scope_month and not _has_week_in_msg and (_qty_kw or _rev_kw):
         try:
-            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m, _want_models)
+            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m, _want_models, _rev_kw)
         except Exception as _e_ms:
             _ans_m = None
             print(f"[chat] 월 즉답 실패(무시): {_e_ms}")
@@ -17773,61 +17779,41 @@ async def chat(payload: dict):
                 month = _month_of_week(last_week) or _latest_data_month(pk)
                 weeks = _get_month_weeks(month) or ["W32", "W33", "W34", "W35"]
                 
-                # 양산: 모델별 weekly_plan × price 합산
-                mass_plan, mass_act, mass_rev = 0, 0, 0
-                mass_weekly = {}
-                for m in models:
-                    if m.get("group") != "양산":
-                        continue
-                    wp = (m.get("weekly_plan") or {}).get(month, {})
-                    price = m.get("price") or 0
-                    for w in weeks:
-                        cell = wp.get(w, {"plan": 0, "actual": 0})
-                        p, a = cell.get("plan", 0), cell.get("actual", 0)
-                        mass_weekly[w] = mass_weekly.get(w, {"plan": 0, "actual": 0, "revenue": 0})
-                        mass_weekly[w]["plan"] += p
-                        mass_weekly[w]["actual"] += a
-                        mass_weekly[w]["revenue"] += a * price
-                        mass_plan += p
-                        mass_act += a
-                        mass_rev += a * price
-                
-                # 개발: 그룹 weekly_summary 사용 (단가 $3,400)
-                DEV_PRICE = 3400
-                dev_ws = (proj.get("weekly_summary") or {}).get("개발") or {}
-                dev_weekly = dev_ws.get("weeks") or {}
-                dev_plan, dev_act, dev_rev = 0, 0, 0
-                for w in weeks:
-                    cell = dev_weekly.get(w, {"plan": 0, "actual": 0})
-                    p, a = cell.get("plan", 0), cell.get("actual", 0)
-                    dev_plan += p
-                    dev_act += a
-                    dev_rev += a * DEV_PRICE
-                
+                # 주차별 수량·매출은 보드·매출 카드와 같은 엔진(get_weekly_revenue)에서 받는다.
+                #
+                # 예전에는 여기서 따로 계산했다. 그러다 보니 같은 주차를 두 번 물으면
+                # 답이 갈렸다. 특히 실적이 0일 때 계획 매출을 $3,350 고정 단가로 냈는데,
+                # 판가가 $9,100~$11,803 인 엔클로저에서 계획 106대가 $355,100 으로 나왔다
+                # (실제 $1,001,256). 엔진을 하나로 두면 갈릴 수가 없다.
+                _wr = get_weekly_revenue(pk, month) or {}
+                _grp = _wr.get('groups') or {}
+                _yw = ((_grp.get('양산') or {}).get('weeks') or {})
+                _dw = ((_grp.get('개발') or {}).get('weeks') or {})
+                _ytot = ((_grp.get('양산') or {}).get('total') or {})
+                _dtot = ((_grp.get('개발') or {}).get('total') or {})
+
+                def _n(d, f):
+                    return int((d or {}).get(f) or 0)
+
                 ctx += f"주차별 매출 ({month}): "
                 for w in weeks:
-                    mv = mass_weekly.get(w, {"plan":0,"actual":0,"revenue":0})
-                    dv = dev_weekly.get(w, {"plan":0,"actual":0})
-                    d_rev = dv.get("actual", 0) * DEV_PRICE
-                    
-                    # 양산: 실적 0이면 계획 기준 예상 매출로 표기
-                    _mp, _ma, _mr = mv['plan'], mv['actual'], mv['revenue']
-                    if _ma == 0 and _mp > 0:
-                        _m_price_est = round(_mr / _ma) if _ma > 0 else 3350
-                        _mr_show = f"실적0→계획{_mp}대 예상${_mp * _m_price_est:,}"
-                    else:
-                        _mr_show = f"${_mr:,}"
-                    
-                    # 개발: 실적 0이면 계획 기준 예상 매출로 표기
-                    _dp, _da = dv.get('plan',0), dv.get('actual',0)
-                    if _da == 0 and _dp > 0:
-                        _dr_show = f"실적0→계획{_dp}대 예상${_dp * DEV_PRICE:,}"
-                    else:
-                        _dr_show = f"${d_rev:,}"
-                    
+                    mv, dv = _yw.get(w) or {}, _dw.get(w) or {}
+                    _mp, _ma = _n(mv, 'plan'), _n(mv, 'actual')
+                    _dp, _da = _n(dv, 'plan'), _n(dv, 'actual')
+                    # 실적이 0이면 '계획 기준 예상'임을 문장에 박아 둔다.
+                    # 그래야 LLM 이 예상 매출을 실적으로 바꿔 말하지 않는다.
+                    _mr_show = (f"실적0→계획{_mp}대 예상${_n(mv, 'plan_revenue'):,}"
+                                if _ma == 0 and _mp > 0 else f"${_n(mv, 'revenue'):,}")
+                    _dr_show = (f"실적0→계획{_dp}대 예상${_n(dv, 'plan_revenue'):,}"
+                                if _da == 0 and _dp > 0 else f"${_n(dv, 'revenue'):,}")
                     ctx += f"{w} 양산 {_mp}/{_ma} {_mr_show}, 개발 {_dp}/{_da} {_dr_show}; "
-                ctx += f"합계: 양산 {mass_plan}/{mass_act} ${mass_rev:,}, 개발 {dev_plan}/{dev_act} ${dev_rev:,}, 전체 매출 ${mass_rev + dev_rev:,}"
-                ctx += (" [산출 기준: 양산 매출 = 모델별 판가(price) × 실적 합산 (고정 단가 아님), "
+                ctx += (f"합계: 양산 {_n(_ytot,'plan')}/{_n(_ytot,'actual')} ${_n(_ytot,'revenue'):,}"
+                        f"(계획 기준 ${_n(_ytot,'plan_revenue'):,}), "
+                        f"개발 {_n(_dtot,'plan')}/{_n(_dtot,'actual')} ${_n(_dtot,'revenue'):,}"
+                        f"(계획 기준 ${_n(_dtot,'plan_revenue'):,}), "
+                        f"전체 매출 ${_n(_ytot,'revenue') + _n(_dtot,'revenue'):,}")
+                ctx += (" [산출 기준: 양산 매출 = 모델별 판가(price) × 수량 합산 (고정 단가 아님). "
+                        "계획 기준 예상 매출도 같은 판가로 계산한 값이다. "
                         "개발 매출 = 실적 × $3,400 고정. 계획(plan)과 실적(actual)은 서로 다른 값이다.]")
             except Exception as e:
                 print(f"[chat] weekly 계산 실패 {pk}: {e}")
