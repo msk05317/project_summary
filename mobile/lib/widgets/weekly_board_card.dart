@@ -341,6 +341,9 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
             ...flat.map((r) => [_n(r['month_plan']), _n(r['month_actual'])]),
             [_n(total['month_plan']), _n(total['month_actual'])],
           ], false),
+          if ((d['next_month'] ?? '').toString().isNotEmpty)
+            _numCol2(_mon('${d['next_month']}'), col('next_month_plan'), 46,
+                span: headSpan),
         ],
         if (hasNote)
           SizedBox(

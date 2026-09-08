@@ -422,6 +422,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     'hrva_plate', 'havaplate', 'hrva-plate',
     'chamber',
     'enclosure',
+    'powerbox',
   };
 
   Widget _buildWeeklyPlanSection() {

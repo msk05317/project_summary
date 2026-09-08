@@ -16,7 +16,11 @@
     "exclude: 유형으로 묶되 그중 특정 품번은 뺀다 (009 직납 = 009 유형 - 자빌).",
     "columns: 'month' 는 월 열(챔버), 'week' 는 전월 + 이번달 주차 + 이번달 합계(엔클로저·하바 모양).",
     "show_status: 현황 열을 그릴지. 엔클로저 엑셀에는 없어서 false.",
-    "show_note: 비고 열을 그릴지. 엔클로저는 적을 게 없어서 false."
+    "show_note: 비고 열을 그릴지. 엔클로저는 적을 게 없어서 false.",
+    "",
+    "group: 구분(양산/개발)으로 묶는다.",
+    "exclude_dev_type: 그 유형은 뺀다 (양산19종 = 양산 − EMA − AetherGDX).",
+    "next_month: 다음달 계획 열을 붙일지 (파워박스 엑셀의 '10월')."
   ],
   "boards": {
     "chamber": {
@@ -133,6 +137,51 @@
       ],
       "show_status": false,
       "show_note": false
+    },
+    "powerbox": {
+      "columns": "week",
+      "show_status": false,
+      "show_note": false,
+      "next_month": true,
+      "sections": [
+        {
+          "name": "",
+          "rows": [
+            {
+              "key": "aether",
+              "label": "AetherGDX",
+              "models": [
+                "925-800083-394"
+              ]
+            },
+            {
+              "key": "mass19",
+              "label": "양산19종",
+              "group": "양산",
+              "exclude_dev_type": [
+                "EMA"
+              ],
+              "exclude": [
+                "925-800083-394"
+              ]
+            },
+            {
+              "key": "dev22",
+              "label": "개발22종",
+              "group": "개발",
+              "exclude_dev_type": [
+                "EMA"
+              ]
+            },
+            {
+              "key": "ema10",
+              "label": "EMA 양산 10종",
+              "group": "양산",
+              "dev_type": "EMA"
+            }
+          ]
+        }
+      ]
     }
   }
 }

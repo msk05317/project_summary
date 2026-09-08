@@ -8291,6 +8291,7 @@ window._ovProjectKey = function() {
     var now = d.current_week || '';
     var showSt = d.show_status !== false;
     var showNote = d.show_note !== false;
+    var nextM = d.next_month || '';    // 다음달 계획 열 (파워박스)
     var lead = 2 + (showSt ? 1 : 0);   // 구분 + 행 (+현황)
 
     var head =
@@ -8302,6 +8303,7 @@ window._ovProjectKey = function() {
         '<th rowspan="3">' + _wbMon(d.prev_month) + '</th>' +
         '<th colspan="' + (wks.length * 2) + '">' + _wbMon(d.month) + '</th>' +
         '<th colspan="2" rowspan="2">' + _wbMon(d.month) + '</th>' +
+        (nextM ? '<th rowspan="3">' + _wbMon(nextM) + '</th>' : '') +
         (showNote ? '<th rowspan="3" style="min-width:170px;">비고</th>' : '') +
       '</tr><tr>' +
         wks.map(function(w) {
@@ -8333,6 +8335,7 @@ window._ovProjectKey = function() {
               : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
           }).join('') +
           '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
+          (nextM ? '<td>' + _wbNum(r.next_month_plan) + '</td>' : '') +
           (showNote ? '<td style="text-align:left;font-size:11px;color:#475569;">' + _esc(r.note || '') + '</td>' : '') +
         '</tr>';
       }).join('');
@@ -8350,6 +8353,7 @@ window._ovProjectKey = function() {
           : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
       }).join('') +
       '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td>' +
+      (nextM ? '<td>' + _wbNum(t.next_month_plan) + '</td>' : '') +
       (showNote ? '<td></td>' : '') +
     '</tr>';
 
@@ -8375,6 +8379,14 @@ window._ovProjectKey = function() {
       .then(function(r) { return r.json(); })
       .then(function(cur) {
         var man = cur.manual || {};
+        var byWeek = (d.columns === 'week');
+        // 기준 주차 기본값 = 지난 주차 (지금까지 확정된 마지막 주)
+        var defBaseWeek = (function() {
+          var w = String(d.current_week || '').replace('W', '');
+          var y = String(d.month || '').slice(0, 4);
+          var n = parseInt(w, 10);
+          return (y && n > 1) ? (y + '-W' + String(n - 1).padStart(2, '0')) : '';
+        })();
         var rowsHtml = '';
         (d.sections || []).forEach(function(sec) {
           (sec.rows || []).forEach(function(r, i) {
@@ -8388,11 +8400,18 @@ window._ovProjectKey = function() {
             rowsHtml += '<tr>' +
               (i === 0 ? '<td class="lbl" rowspan="' + sec.rows.length + '" style="vertical-align:middle">' + _esc(sec.name) + '</td>' : '') +
               '<td class="lbl">' + _esc(r.label) + '</td>' +
-              '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="status" type="text" ' +
-                'list="wb-status-list" value="' + _esc(v.status || '') + '" placeholder="' + _esc(r.status || '자동') +
-                '" style="width:100%"></td>' +
+              (d.show_status !== false
+                ? '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="status" type="text" ' +
+                  'list="wb-status-list" value="' + _esc(v.status || '') + '" placeholder="' + _esc(r.status || '자동') +
+                  '" style="width:100%"></td>'
+                : '') +
               '<td>' + inp(v.po_qty, 'po_qty', r.manual_row ? '직접 입력' : '모델 합계 ' + r.po_qty) + '</td>' +
-              '<td>' + inp(v.actual_total, 'actual_total', r.manual_row ? '직접 입력' : '모델 합계 ' + r.actual_total) + '</td>' +
+              (byWeek
+                ? '<td>' + inp(v.base_actual, 'base_actual', '누적 ' + r.actual_total) + '</td>' +
+                  '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="base_week" type="text" ' +
+                    'placeholder="' + _esc(defBaseWeek) + '" value="' + _esc(v.base_week || '') + '" style="width:100%"></td>' +
+                  '<td>' + inp(v.next_month_plan, 'next_month_plan', '자동 ' + (r.next_month_plan || 0)) + '</td>'
+                : '<td>' + inp(v.actual_total, 'actual_total', r.manual_row ? '직접 입력' : '모델 합계 ' + r.actual_total) + '</td>') +
               months.map(function(m) {
                 var c = mv[m] || {};
                 return '<td><input class="mdl-input wb-ri" data-row="' + _esc(r.key) + '" data-f="m:' + m +
@@ -8414,15 +8433,21 @@ window._ovProjectKey = function() {
             '<div class="ph-hd">' +
               '<h3>보드 행 입력</h3>' +
               '<p>여기 넣은 값이 그 행의 <b>PO 수량 · 실적</b> 이 됩니다. ' +
-              '<b>비워두면</b> 그 행에 묶인 모델들의 합계를 씁니다 (0 을 넣으면 0 으로 고정). ' +
-              '월 칸은 그 달 계획입니다.</p>' +
+              '<b>비워두면</b> 그 행에 묶인 모델들의 합계를 씁니다 (0 을 넣으면 0 으로 고정).<br>' +
+              '<b>기준 실적</b>은 그 시점까지의 누적 출하입니다. 예를 들어 지금 37주차면 ' +
+              '36주차까지의 총합을 적고 <b>기준 주차</b>에 <code>2026-W36</code> 을 넣습니다. ' +
+              '그 뒤로 주차 계획에 입력되는 실적은 여기에 자동으로 더해집니다.</p>' +
             '</div>' +
             '<datalist id="wb-status-list"><option value="완료"><option value="양산"><option value="개발"></datalist>' +
             '<div style="padding:14px 16px;overflow:auto;max-height:64vh">' +
               '<table class="wb-tbl"><thead><tr>' +
                 '<th style="min-width:84px">구분</th><th style="min-width:92px"></th>' +
-                '<th style="min-width:88px">현황</th>' +
-                '<th style="min-width:110px">PO 수량</th><th style="min-width:110px">실적</th>' +
+                (d.show_status !== false ? '<th style="min-width:88px">현황</th>' : '') +
+                '<th style="min-width:110px">PO 수량</th>' +
+                (byWeek
+                  ? '<th style="min-width:120px">기준 실적</th><th style="min-width:110px">기준 주차</th>' +
+                    '<th style="min-width:110px">' + _wbMon(d.next_month) + ' 계획</th>'
+                  : '<th style="min-width:110px">실적</th>') +
                 months.map(function(m) { return '<th style="min-width:96px">' + _wbMon(m) + ' 계획</th>'; }).join('') +
                 (d.show_note !== false ? '<th style="min-width:230px">비고</th>' : '') +
               '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' +

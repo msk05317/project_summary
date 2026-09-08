@@ -21115,20 +21115,56 @@ def _board_row_models(proj, row):
     """
     ids = [str(x).strip() for x in (row.get("models") or []) if str(x).strip()]
     dt = str(row.get("dev_type") or "").strip().upper()
+    grp = _norm_group(row.get("group")) if row.get("group") else None
     ex = {str(x).strip() for x in (row.get("exclude") or []) if str(x).strip()}
+    ex_dt = {str(x).strip().upper() for x in (row.get("exclude_dev_type") or []) if str(x).strip()}
     out = []
     for m in proj.get("models") or []:
         if not isinstance(m, dict):
             continue
         mid = str(m.get("id") or "").strip()
         pn = str(m.get("part_number") or "").strip()
+        mdt = str(m.get("dev_type") or "").strip().upper()
         if mid in ex or (pn and pn in ex):
             continue
-        if ids and (mid in ids or pn in ids):
-            out.append(m)
-        elif dt and str(m.get("dev_type") or "").strip().upper() == dt:
+        if ex_dt and mdt in ex_dt:
+            continue
+        if ids:
+            if mid in ids or pn in ids:
+                out.append(m)
+            continue
+        if grp and _norm_group(m.get("group")) != grp:
+            continue
+        if dt and mdt != dt:
+            continue
+        if grp or dt:
             out.append(m)
     return out
+
+
+def _row_actual_after(models, base_week):
+    """기준 주차 '다음' 주차부터의 실적 합.
+
+    담당자는 '지금 37주차니까 36주차까지의 누적'을 기준 실적으로 적는다.
+    그 뒤로 나가는 실적은 주차 계획에 입력되므로 여기서 더한다.
+    기준 주차를 안 적었으면 주차 실적을 더하지 않는다(누적값만 씀).
+    """
+    if not base_week:
+        return 0
+    try:
+        by, bw = str(base_week).upper().split("-W")
+        base_ord = int(by) * 100 + int(bw)
+    except Exception:
+        return 0
+    total = 0
+    for m in models:
+        for mon, bucket in (m.get("weekly_plan") or {}).items():
+            if not isinstance(bucket, dict):
+                continue
+            for w, c in bucket.items():
+                if _week_ord(mon, w) > base_ord:
+                    total += _as_int((c or {}).get("actual"))
+    return total
 
 
 def _board_week_qty(models, month, weeks):
@@ -21204,6 +21240,8 @@ def _spec_board(project_key, proj, spec, month):
     weeks = _get_month_weeks(month) if col_mode == "week" else []
     y, mm = int(str(month)[:4]), int(str(month)[5:7])
     prev_month = f"{y - 1}-12" if mm == 1 else f"{y}-{mm - 1:02d}"
+    next_month = f"{y + 1}-01" if mm == 12 else f"{y}-{mm + 1:02d}"
+    want_next = bool(spec.get("next_month"))
 
     span = int(spec.get("month_span") or 2)
     months = [] if col_mode == "week" else _board_months(month, span)
@@ -21222,7 +21260,15 @@ def _spec_board(project_key, proj, spec, month):
             po_m = sum(_as_int(m.get("po_qty")) for m in models)
             act_m = sum(_as_int(m.get("shipped_qty")) for m in models)
             po = _as_int(man["po_qty"]) if _has(man, "po_qty") else po_m
-            act = _as_int(man["actual_total"]) if _has(man, "actual_total") else act_m
+            # 실적: 기준 누적(base_actual) + 기준 주차 이후 주차 실적.
+            # 기준값을 안 적었으면 모델의 '실적 수량' 합계를 쓴다.
+            if _has(man, "base_actual"):
+                act = _as_int(man["base_actual"]) + _row_actual_after(
+                    models, man.get("base_week"))
+            elif _has(man, "actual_total"):
+                act = _as_int(man["actual_total"])
+            else:
+                act = act_m
 
             mq = {}
             man_mon = man.get("months") or {}
@@ -21234,7 +21280,7 @@ def _spec_board(project_key, proj, spec, month):
                     "actual": _as_int(mv["actual"]) if _has(mv, "actual") else calc["actual"],
                 }
 
-            wq, prev_act, mon_plan, mon_act = {}, 0, 0, 0
+            wq, prev_act, mon_plan, mon_act, next_plan = {}, 0, 0, 0, 0
             if col_mode == "week":
                 calc_w = _board_week_qty(models, month, weeks)
                 man_w = man.get("weeks") or {}
@@ -21249,6 +21295,10 @@ def _spec_board(project_key, proj, spec, month):
                 pc = _board_month_qty(models, prev_month) if models else {"plan": 0, "actual": 0}
                 prev_act = (_as_int(man["prev_month_actual"])
                             if _has(man, "prev_month_actual") else pc["actual"])
+                if want_next:
+                    nc = _board_month_qty(models, next_month) if models else {"plan": 0}
+                    next_plan = (_as_int(man["next_month_plan"])
+                                 if _has(man, "next_month_plan") else nc["plan"])
             r = {
                 "key": key,
                 "label": row.get("label") or key,
@@ -21263,6 +21313,9 @@ def _spec_board(project_key, proj, spec, month):
                 "prev_month_actual": prev_act,
                 "month_plan": mon_plan,
                 "month_actual": mon_act,
+                "next_month_plan": next_plan,
+                "base_actual": _as_int(man.get("base_actual")) if _has(man, "base_actual") else None,
+                "base_week": str(man.get("base_week") or ""),
                 "note": str(man.get("note") or row.get("note") or ""),
                 "manual_row": bool(row.get("manual")),
                 "po_manual": _has(man, "po_qty"),
@@ -21286,6 +21339,7 @@ def _spec_board(project_key, proj, spec, month):
         "prev_month_actual": sum(r["prev_month_actual"] for r in flat),
         "month_plan": sum(r["month_plan"] for r in flat),
         "month_actual": sum(r["month_actual"] for r in flat),
+        "next_month_plan": sum(r["next_month_plan"] for r in flat),
     }
     import datetime as _dt
     return {"project_key": project_key, "month": month, "layout": "sections",
@@ -21293,6 +21347,7 @@ def _spec_board(project_key, proj, spec, month):
             "show_status": spec.get("show_status", True),
             "show_note": spec.get("show_note", True),
             "weeks": weeks, "prev_month": prev_month,
+            "next_month": next_month if want_next else None,
             "current_week": ("W%02d" % _dt.date.today().isocalendar()[1]),
             # 오늘이 속한 달 — 그 열을 빨간 테두리로 표시한다
             # (주차형 보드의 current_week 와 같은 역할)
@@ -21332,9 +21387,13 @@ def put_board_rows(project_key: str, payload: dict,
         if not isinstance(v, dict):
             continue
         e = {}
-        for f in ("po_qty", "actual_total"):
+        for f in ("po_qty", "actual_total", "base_actual",
+                  "prev_month_actual", "next_month_plan"):
             if _has(v, f):
                 e[f] = _as_int(v[f])
+        bw = str(v.get("base_week") or "").strip().upper()
+        if bw:
+            e["base_week"] = bw
         mons = {}
         for mon, mv in (v.get("months") or {}).items():
             if not isinstance(mv, dict):
