@@ -17749,28 +17749,35 @@ async def chat(payload: dict):
                 else:
                     ctx += f"주간 계획: {str(wp)[:100]}"
             
-            # weekly_summary (양산/개발 그룹별 주차 현황 + 매출)
+            # 그룹 PO / 실적 / 잔량
+            #
+            # 예전에는 weekly_summary 를 그대로 부었다. 그건 옛 주간보고 엑셀에서 들어온
+            # 값이라 모델 목록을 고쳐도 따라오지 않는다. 엔클로저는 PO 4,873 을 들고
+            # 있었는데 모델 합계는 4,863 이었다 (엑셀의 '009 직납 154' vs 등록된 144).
+            # 화면(주차 현황 보드)은 모델 합계를 보여주므로, LLM 도 같은 걸 봐야 한다.
+            #
+            # 주차별 계획/실적은 여기서 다루지 않는다. 바로 아래 '주차별 매출' 블록이
+            # 이번 달 주차를 정확히 넣어 준다. 예전에는 여기서 W32~W35 를 코드에
+            # 박아 둬서, 9월을 물어도 8월 숫자가 같이 들어갔다.
             ws = proj.get("weekly_summary") or {}
-            if ws:
-                ctx += f"주차별 현황 (PO/실적/잔량): "
-                for gname in ["양산", "개발"]:
+            _spec_ctx = _load_board_spec(pk)
+            if _spec_ctx:
+                ctx += "그룹 현황 (PO/실적/잔량, 모델 합계): "
+                for gname, gm in (("양산", mass), ("개발", dev)):
+                    if not gm:
+                        continue
+                    _po = sum(_as_int(m.get("po_qty")) for m in gm)
+                    _sh = sum(_as_int(m.get("shipped_qty")) for m in gm)
+                    ctx += f"{gname} PO {_po} / 실적 {_sh} / 잔량 {max(0, _po - _sh)}; "
+            elif ws:
+                ctx += "그룹 현황 (PO/실적/잔량): "
+                for gname in ("양산", "개발"):
                     g = ws.get(gname) or {}
                     if g:
-                        ctx += f"{gname} PO {g.get('po_qty',0)} / 실적 {g.get('actual_total',0)} / 잔량 {g.get('remaining',0)}; "
-                ctx += "주차별: "
-                weeks_map = {}
-                for gname in ["양산", "개발"]:
-                    g = ws.get(gname) or {}
-                    for wname, wv in (g.get("weeks") or {}).items():
-                        weeks_map.setdefault(wname, {})[gname] = wv
-                for wname in ["W32", "W33", "W34", "W35"]:
-                    wcell = weeks_map.get(wname) or {}
-                    m = wcell.get("양산") or {}
-                    d = wcell.get("개발") or {}
-                    if m or d:
-                        ctx += f"{wname} 양산 {m.get('plan',0)}/{m.get('actual',0)}, 개발 {d.get('plan',0)}/{d.get('actual',0)}; "
-                if (ws.get("개발") or {}).get("price_fixed"):
-                    ctx += f"개발 단가 고정 ${ws['개발']['price_fixed']}; "
+                        ctx += (f"{gname} PO {g.get('po_qty', 0)} / 실적 {g.get('actual_total', 0)}"
+                                f" / 잔량 {g.get('remaining', 0)}; ")
+            if (ws.get("개발") or {}).get("price_fixed"):
+                ctx += f"개발 단가 고정 ${ws['개발']['price_fixed']}; "
             
             # 주차별 매출 (weekly-revenue v2)
             try:
