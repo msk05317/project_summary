@@ -21107,19 +21107,39 @@ def _load_board_spec(project_key):
 
 
 def _board_row_models(proj, row):
-    """행이 가리키는 모델 목록. models(품번 지정) 또는 dev_type(유형 전체)."""
+    """행이 가리키는 모델 목록.
+
+    models    품번 지정
+    dev_type  그 유형 전체
+    exclude   유형으로 묶되 그중 뺄 품번 (009 직납 = 009 유형 − 자빌)
+    """
     ids = [str(x).strip() for x in (row.get("models") or []) if str(x).strip()]
     dt = str(row.get("dev_type") or "").strip().upper()
+    ex = {str(x).strip() for x in (row.get("exclude") or []) if str(x).strip()}
     out = []
     for m in proj.get("models") or []:
         if not isinstance(m, dict):
             continue
         mid = str(m.get("id") or "").strip()
         pn = str(m.get("part_number") or "").strip()
+        if mid in ex or (pn and pn in ex):
+            continue
         if ids and (mid in ids or pn in ids):
             out.append(m)
         elif dt and str(m.get("dev_type") or "").strip().upper() == dt:
             out.append(m)
+    return out
+
+
+def _board_week_qty(models, month, weeks):
+    """그 달 주차별 계획/실적 합계."""
+    out = {w: {"plan": 0, "actual": 0} for w in weeks}
+    for m in models:
+        bucket = (m.get("weekly_plan") or {}).get(month) or {}
+        for w in weeks:
+            c = bucket.get(w) or {}
+            out[w]["plan"] += _as_int(c.get("plan"))
+            out[w]["actual"] += _as_int(c.get("actual"))
     return out
 
 
@@ -21180,8 +21200,13 @@ def _has(d, k):
 
 def _spec_board(project_key, proj, spec, month):
     """boards.json 스펙대로 그린 보드 (섹션 + 행)."""
+    col_mode = spec.get("columns") or "month"
+    weeks = _get_month_weeks(month) if col_mode == "week" else []
+    y, mm = int(str(month)[:4]), int(str(month)[5:7])
+    prev_month = f"{y - 1}-12" if mm == 1 else f"{y}-{mm - 1:02d}"
+
     span = int(spec.get("month_span") or 2)
-    months = _board_months(month, span)
+    months = [] if col_mode == "week" else _board_months(month, span)
     manual_store = (proj.get("board_manual") or {})
 
     sections, flat = [], []
@@ -21208,6 +21233,22 @@ def _spec_board(project_key, proj, spec, month):
                     "plan": _as_int(mv["plan"]) if _has(mv, "plan") else calc["plan"],
                     "actual": _as_int(mv["actual"]) if _has(mv, "actual") else calc["actual"],
                 }
+
+            wq, prev_act, mon_plan, mon_act = {}, 0, 0, 0
+            if col_mode == "week":
+                calc_w = _board_week_qty(models, month, weeks)
+                man_w = man.get("weeks") or {}
+                for w in weeks:
+                    mv = man_w.get(w) or {}
+                    wq[w] = {
+                        "plan": _as_int(mv["plan"]) if _has(mv, "plan") else calc_w[w]["plan"],
+                        "actual": _as_int(mv["actual"]) if _has(mv, "actual") else calc_w[w]["actual"],
+                    }
+                mon_plan = sum(v["plan"] for v in wq.values())
+                mon_act = sum(v["actual"] for v in wq.values())
+                pc = _board_month_qty(models, prev_month) if models else {"plan": 0, "actual": 0}
+                prev_act = (_as_int(man["prev_month_actual"])
+                            if _has(man, "prev_month_actual") else pc["actual"])
             r = {
                 "key": key,
                 "label": row.get("label") or key,
@@ -21218,6 +21259,10 @@ def _spec_board(project_key, proj, spec, month):
                 "actual_total": act,
                 "remaining": po - act,
                 "months": mq,
+                "weeks": wq,
+                "prev_month_actual": prev_act,
+                "month_plan": mon_plan,
+                "month_actual": mon_act,
                 "note": str(man.get("note") or row.get("note") or ""),
                 "manual_row": bool(row.get("manual")),
                 "po_manual": _has(man, "po_qty"),
@@ -21235,10 +21280,19 @@ def _spec_board(project_key, proj, spec, month):
         "months": {mon: {"plan": sum(r["months"][mon]["plan"] for r in flat),
                          "actual": sum(r["months"][mon]["actual"] for r in flat)}
                    for mon in months},
+        "weeks": {w: {"plan": sum(r["weeks"][w]["plan"] for r in flat),
+                      "actual": sum(r["weeks"][w]["actual"] for r in flat)}
+                  for w in weeks},
+        "prev_month_actual": sum(r["prev_month_actual"] for r in flat),
+        "month_plan": sum(r["month_plan"] for r in flat),
+        "month_actual": sum(r["month_actual"] for r in flat),
     }
     import datetime as _dt
     return {"project_key": project_key, "month": month, "layout": "sections",
-            "columns": spec.get("columns") or "month", "months": months,
+            "columns": col_mode, "months": months,
+            "show_status": spec.get("show_status", True),
+            "weeks": weeks, "prev_month": prev_month,
+            "current_week": ("W%02d" % _dt.date.today().isocalendar()[1]),
             # 오늘이 속한 달 — 그 열을 빨간 테두리로 표시한다
             # (주차형 보드의 current_week 와 같은 역할)
             "current_month": _dt.date.today().strftime("%Y-%m"),

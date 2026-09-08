@@ -8220,15 +8220,18 @@ window._ovProjectKey = function() {
 
   // ── 섹션형 보드 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──
   function _wbRenderSections(box, pk, d) {
+    window._wbSpecData = d;
+    if (d.columns === 'week') { _wbRenderSectionsWeek(box, d); return; }
+
     var months = d.months || [];
     var nowM = d.current_month || '';   // 이번 달 (빨간 테두리)
     function mk(m, extra) { return m === nowM ? ' class="nw ' + extra + '"' : ''; }
-    window._wbSpecData = d;
+    var showSt = d.show_status !== false;
 
     var head = '<tr>' +
       '<th style="min-width:86px;">구분</th>' +
       '<th style="min-width:96px;"></th>' +
-      '<th style="min-width:58px;">현황</th>' +
+      (showSt ? '<th style="min-width:58px;">현황</th>' : '') +
       '<th>PO 수량</th><th>실적</th><th>잔량</th>' +
       months.map(function(m) {
         return '<th' + mk(m, 'nw-l nw-r nw-t') + '>' + _wbMon(m) + '</th>';
@@ -8245,7 +8248,7 @@ window._ovProjectKey = function() {
               _esc(sec.name) + '</td>'
             : '') +
           '<td class="lbl">' + _esc(r.label) + '</td>' +
-          '<td>' + _esc(r.status || '') + '</td>' +
+          (showSt ? '<td>' + _esc(r.status || '') + '</td>' : '') +
           '<td>' + _wbNum(r.po_qty) + '</td>' +
           '<td>' + _wbNum(r.actual_total) + '</td>' +
           '<td>' + _wbNum(r.remaining) + '</td>' +
@@ -8261,7 +8264,7 @@ window._ovProjectKey = function() {
 
     var t = d.total || {};
     var foot = '<tr class="wb-total">' +
-      '<td colspan="3">합계</td>' +
+      '<td colspan="' + (showSt ? 3 : 2) + '">합계</td>' +
       '<td>' + _wbNum(t.po_qty) + '</td>' +
       '<td>' + _wbNum(t.actual_total) + '</td>' +
       '<td>' + _wbNum(t.remaining) + '</td>' +
@@ -8279,6 +8282,80 @@ window._ovProjectKey = function() {
       '행마다 <b>PO · 실적 · 증감 입력</b>에 넣은 값이 우선이고, 비워두면 그 행에 묶인 모델들의 합계를 씁니다. ' +
       '모델이 하나인 행(002 · 205 · 내재화)은 <b>모델 목록</b>에서 넣으면 진행률도 같이 잡힙니다. ' +
       '‘4종’처럼 모델이 없는 행과 ‘Dep 챔버 15종’처럼 묶음인 행은 여기서 바로 넣는 편이 낫습니다.</p>';
+  }
+
+  // 주차 모드 (엔클로저 — 전월 + 이번달 주차별 계획·실적 + 이번달 합계)
+  function _wbRenderSectionsWeek(box, d) {
+    var wks = d.weeks || [];
+    var now = d.current_week || '';
+    var showSt = d.show_status !== false;
+    var lead = 2 + (showSt ? 1 : 0);   // 구분 + 행 (+현황)
+
+    var head =
+      '<tr>' +
+        '<th rowspan="3" style="min-width:86px;">구분</th>' +
+        '<th rowspan="3" style="min-width:76px;"></th>' +
+        (showSt ? '<th rowspan="3" style="min-width:58px;">현황</th>' : '') +
+        '<th rowspan="3">PO 수량</th><th rowspan="3">실적</th><th rowspan="3">잔량</th>' +
+        '<th rowspan="3">' + _wbMon(d.prev_month) + '</th>' +
+        '<th colspan="' + (wks.length * 2) + '">' + _wbMon(d.month) + '</th>' +
+        '<th colspan="2" rowspan="2">' + _wbMon(d.month) + '</th>' +
+        '<th rowspan="3" style="min-width:170px;">비고</th>' +
+      '</tr><tr>' +
+        wks.map(function(w) {
+          return '<th colspan="2"' + (w === now ? ' class="nw nw-l nw-r nw-t"' : '') + '>' + w + '</th>';
+        }).join('') +
+      '</tr><tr>' +
+        wks.map(function(w) {
+          return w === now ? '<th class="nw nw-l">계획</th><th class="nw nw-r">실적</th>'
+                           : '<th>계획</th><th>실적</th>';
+        }).join('') +
+        '<th>계획</th><th>실적</th>' +
+      '</tr>';
+
+    var body = (d.sections || []).map(function(sec) {
+      var rows = sec.rows || [];
+      return rows.map(function(r, i) {
+        return '<tr>' +
+          (i === 0 ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' + _esc(sec.name) + '</td>' : '') +
+          '<td class="lbl">' + _esc(r.label) + '</td>' +
+          (showSt ? '<td>' + _esc(r.status || '') + '</td>' : '') +
+          '<td>' + _wbNum(r.po_qty) + '</td>' +
+          '<td>' + _wbNum(r.actual_total) + '</td>' +
+          '<td>' + _wbNum(r.remaining) + '</td>' +
+          '<td>' + _wbNum(r.prev_month_actual) + '</td>' +
+          wks.map(function(w) {
+            var c = (r.weeks || {})[w] || {};
+            return (w === now)
+              ? '<td class="nw nw-l">' + _wbNum(c.plan) + '</td><td class="nw nw-r">' + _wbNum(c.actual) + '</td>'
+              : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
+          }).join('') +
+          '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
+          '<td style="text-align:left;font-size:11px;color:#475569;">' + _esc(r.note || '') + '</td>' +
+        '</tr>';
+      }).join('');
+    }).join('');
+
+    var t = d.total || {};
+    var foot = '<tr class="wb-total">' +
+      '<td colspan="' + lead + '">합계</td>' +
+      '<td>' + _wbNum(t.po_qty) + '</td><td>' + _wbNum(t.actual_total) + '</td>' +
+      '<td>' + _wbNum(t.remaining) + '</td><td>' + _wbNum(t.prev_month_actual) + '</td>' +
+      wks.map(function(w) {
+        var c = (t.weeks || {})[w] || {};
+        return (w === now)
+          ? '<td class="nw nw-l nw-b">' + _wbNum(c.plan) + '</td><td class="nw nw-r nw-b">' + _wbNum(c.actual) + '</td>'
+          : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
+      }).join('') +
+      '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td><td></td>' +
+    '</tr>';
+
+    box.innerHTML = '<div class="ov-wrap-x" style="overflow-x:auto;">' +
+      '<table class="wb-tbl"><thead>' + head + '</thead><tbody>' + body + foot + '</tbody></table></div>' +
+      '<p class="mdl-hint" style="margin-top:10px;">' +
+      '<b style="color:#DC2626">빨간 테두리</b>가 이번 주차입니다. ' +
+      '주차 계획·실적은 그 행에 묶인 모델들의 주차별 계획 합계입니다. ' +
+      'PO 수량·실적은 <b>PO · 실적 · 증감 입력</b> 값이 우선이고, 비워두면 모델 합계를 씁니다.</p>';
   }
 
   function _esc(v) {

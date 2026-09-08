@@ -248,8 +248,12 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
 
   // ── 섹션형 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──────
   Widget _sectionTable(Map<String, dynamic> d) {
+    final byWeek = (d['columns'] ?? 'month') == 'week';
     final months = (d['months'] as List? ?? const []).map((e) => '$e').toList();
+    final weeks = (d['weeks'] as List? ?? const []).map((e) => '$e').toList();
     final nowMon = (d['current_month'] ?? '').toString();  // 이번 달 = 빨간 테두리
+    final nowWeek = (d['current_week'] ?? '').toString();  // 이번 주차 = 빨간 테두리
+    final showStatus = d['show_status'] != false;
     final sections = (d['sections'] as List? ?? const []).cast<Map>();
     final total = (d['total'] as Map?) ?? const {};
 
@@ -258,6 +262,9 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       flat.addAll((sec['rows'] as List? ?? const []).cast<Map>());
     }
     final hasNote = flat.any((r) => '${r['note'] ?? ''}'.trim().isNotEmpty);
+
+    // 주차 모드는 머리글이 3단(월 / 주차 / 계획·실적), 월 모드는 2단이다.
+    final headSpan = byWeek ? 3 : 2;
 
     List<String> col(String f) => [...flat.map((r) => _n(r[f])), _n(total[f])];
 
@@ -269,7 +276,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           width: 74,
           child: Column(
             children: [
-              _cell('구분', _kHeadH * 2, head: true, align: TextAlign.left),
+              _cell('구분', _kHeadH * headSpan, head: true, align: TextAlign.left),
               for (final sec in sections)
                 _cell('${sec['name']}',
                     _kSecRowH * ((sec['rows'] as List? ?? const []).length),
@@ -282,26 +289,27 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           width: 84,
           child: Column(
             children: [
-              _cell('', _kHeadH * 2, head: true),
+              _cell('', _kHeadH * headSpan, head: true),
               for (final r in flat)
                 _cell('${r['label']}', _kSecRowH, bold: true, size: 10.5),
               _cell('합계', _kTotalH, total: true),
             ],
           ),
         ),
-        SizedBox(
-          width: 52,
-          child: Column(
-            children: [
-              _cell('현황', _kHeadH * 2, head: true),
-              for (final r in flat) _cell('${r['status'] ?? ''}', _kSecRowH, size: 10),
-              _cell('', _kTotalH, total: true),
-            ],
+        if (showStatus)
+          SizedBox(
+            width: 52,
+            child: Column(
+              children: [
+                _cell('현황', _kHeadH * headSpan, head: true),
+                for (final r in flat) _cell('${r['status'] ?? ''}', _kSecRowH, size: 10),
+                _cell('', _kTotalH, total: true),
+              ],
+            ),
           ),
-        ),
-        _numCol2('PO 수량', col('po_qty'), 62),
-        _numCol2('실적', col('actual_total'), 56),
-        _numCol2('잔량', col('remaining'), 56),
+        _numCol2('PO 수량', col('po_qty'), 62, span: headSpan),
+        _numCol2('실적', col('actual_total'), 56, span: headSpan),
+        _numCol2('잔량', col('remaining'), 56, span: headSpan),
         for (final mon in months)
           _numCol2(
             _mon(mon),
@@ -311,13 +319,33 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
             ],
             52,
             isNow: mon == nowMon,
+            span: headSpan,
           ),
+        if (byWeek) ...[
+          _numCol2(_mon('${d['prev_month']}'), col('prev_month_actual'), 46,
+              span: headSpan),
+          for (final w in weeks)
+            _secPairCol(w, [
+              ...flat.map((r) => [
+                    _n(((r['weeks'] as Map?)?[w] as Map?)?['plan']),
+                    _n(((r['weeks'] as Map?)?[w] as Map?)?['actual']),
+                  ]),
+              [
+                _n(((total['weeks'] as Map?)?[w] as Map?)?['plan']),
+                _n(((total['weeks'] as Map?)?[w] as Map?)?['actual']),
+              ],
+            ], w == nowWeek),
+          _secPairCol(_mon('${d['month']}'), [
+            ...flat.map((r) => [_n(r['month_plan']), _n(r['month_actual'])]),
+            [_n(total['month_plan']), _n(total['month_actual'])],
+          ], false),
+        ],
         if (hasNote)
           SizedBox(
             width: 150,
             child: Column(
               children: [
-                _cell('비고', _kHeadH * 2, head: true),
+                _cell('비고', _kHeadH * headSpan, head: true),
                 for (final r in flat)
                   _cell('${r['note'] ?? ''}', _kSecRowH,
                       align: TextAlign.left, size: 9.5),
@@ -332,7 +360,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   // 섹션형 머리글은 2단이라 별도 (주차형은 3단)
   // isNow = 이번 달 열. 주차형의 이번 주차와 같게 빨간 테두리를 두른다.
   Widget _numCol2(String title, List<String> values, double w,
-      {bool isNow = false}) {
+      {bool isNow = false, int span = 2}) {
     return Container(
       width: w,
       decoration: isNow
@@ -345,10 +373,43 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           : null,
       child: Column(
         children: [
-          _cell(title, _kHeadH * 2, head: true, redHead: isNow),
+          _cell(title, _kHeadH * span, head: true, redHead: isNow),
           for (var i = 0; i < values.length - 1; i++)
             _cell(values[i], _kSecRowH, tint: isNow),
           _cell(values.last, _kTotalH, total: true, redHead: isNow),
+        ],
+      ),
+    );
+  }
+
+  // 섹션형의 계획/실적 두 칸 열 (머리글 3단: 제목 / 주차 / 계획·실적)
+  Widget _secPairCol(String title, List<List<String>> values, bool isNow) {
+    return Container(
+      width: 76,
+      decoration: isNow
+          ? const BoxDecoration(
+              border: Border(
+                left: BorderSide(color: _red, width: 2),
+                right: BorderSide(color: _red, width: 2),
+              ),
+            )
+          : null,
+      child: Column(
+        children: [
+          _cell(title, _kHeadH * 2, head: true, redHead: isNow),
+          Row(children: [
+            Expanded(child: _cell('계획', _kHeadH, head: true, redHead: isNow)),
+            Expanded(child: _cell('실적', _kHeadH, head: true, redHead: isNow)),
+          ]),
+          for (var i = 0; i < values.length - 1; i++)
+            Row(children: [
+              Expanded(child: _cell(values[i][0], _kSecRowH, tint: isNow)),
+              Expanded(child: _cell(values[i][1], _kSecRowH, tint: isNow)),
+            ]),
+          Row(children: [
+            Expanded(child: _cell(values.last[0], _kTotalH, total: true, redHead: isNow)),
+            Expanded(child: _cell(values.last[1], _kTotalH, total: true, redHead: isNow)),
+          ]),
         ],
       ),
     );

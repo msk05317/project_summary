@@ -421,6 +421,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   static const _boardProjects = {
     'hrva_plate', 'havaplate', 'hrva-plate',
     'chamber',
+    'enclosure',
   };
 
   Widget _buildWeeklyPlanSection() {

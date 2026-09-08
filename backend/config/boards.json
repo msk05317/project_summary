@@ -11,7 +11,11 @@
     "  manual   모델에 연결하지 않고 직접 넣는 값 (완료된 건 등)",
     "",
     "숫자(PO수량·실적)는 여기 두지 않는다. 모델 관리에서 입력한 값을 읽는다.",
-    "manual 행만 group-summary 에 저장된 값을 쓴다."
+    "manual 행만 group-summary 에 저장된 값을 쓴다.",
+    "",
+    "exclude: 유형으로 묶되 그중 특정 품번은 뺀다 (009 직납 = 009 유형 - 자빌).",
+    "columns: 'month' 는 월 열(챔버), 'week' 는 전월 + 이번달 주차 + 이번달 합계(엔클로저·하바 모양).",
+    "show_status: 현황 열을 그릴지. 엔클로저 엑셀에는 없어서 false."
   ],
   "boards": {
     "chamber": {
@@ -91,6 +95,42 @@
           ]
         }
       ]
+    },
+    "enclosure": {
+      "columns": "week",
+      "sections": [
+        {
+          "name": "413",
+          "rows": [
+            {
+              "key": "t413",
+              "label": "직납",
+              "dev_type": "413"
+            }
+          ]
+        },
+        {
+          "name": "009",
+          "rows": [
+            {
+              "key": "t009_direct",
+              "label": "직납",
+              "dev_type": "009",
+              "exclude": [
+                "714-025898-009"
+              ]
+            },
+            {
+              "key": "t009_jabil",
+              "label": "자빌",
+              "models": [
+                "714-025898-009"
+              ]
+            }
+          ]
+        }
+      ],
+      "show_status": false
     }
   }
 }
