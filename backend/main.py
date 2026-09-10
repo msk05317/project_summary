@@ -4878,42 +4878,37 @@ def list_projects():
     
     return {"projects": projects}
 @app.get("/admin/models/template")
-def admin_models_template(_admin: int = Depends(get_admin_session)):
-    """업로드된 모델 추가 양식 파일을 그대로 반환"""
-    from fastapi.responses import FileResponse
-    import os
-    
-    template_path = "uploads/model_add_template.xlsx"
-    if os.path.exists(template_path):
-        return FileResponse(
-            template_path,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename="모델 추가 양식.xlsx"
-        )
-    
-    # 파일이 없으면 기존 방식으로 동적 생성 (fallback)
-    from io import BytesIO
-    from openpyxl import Workbook
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Sheet1"
-    ws.cell(row=2, column=2, value="모델")
-    ws.cell(row=2, column=3, value="구분")
-    ws.cell(row=2, column=4, value="유형")
-    ws.cell(row=2, column=5, value="판가")
-    ws.cell(row=2, column=6, value="재료비")
-    ws.cell(row=3, column=2, value="853-XXXXX-001")
-    ws.cell(row=3, column=3, value="개발")
-    ws.cell(row=3, column=4, value="HVM")
-    ws.cell(row=3, column=5, value=9200)
-    ws.cell(row=3, column=6, value=8502)
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
+def admin_models_template(project_key: str = "", _admin: int = Depends(get_admin_session)):
+    """모델 등록용 빈 엑셀 양식.
+
+    예전에는 uploads/model_add_template.xlsx 라는 정적 파일을 그대로 내보냈고,
+    없으면 모델·구분·유형·판가·재료비 다섯 칸짜리를 만들어 줬다. 둘 다 파트넘버가
+    없다. 파트넘버가 없으면 임포터가 모델명으로 맞추는 수밖에 없고, 큐리처럼
+    '버스바' 5줄 '시트메탈' 6줄인 파일은 16줄이 7종으로 뭉개진다.
+    그래서 양식은 코드에서 만든다 (model_template.py). 임포터가 읽는 열과 항상 같다.
+
+    project_key 를 주면 그 프로젝트의 유형 목록이 드롭다운으로 들어간다.
+    """
+    from urllib.parse import quote
+    import model_template as _mt
+
+    label, types = "", []
+    key = (project_key or "").strip()
+    if key:
+        try:
+            label = _display_project_label(key)
+            proj = (_load_models().get("projects") or {}).get(_model_key_alias(key)) or {}
+            types = [t for t in (proj.get("types") or []) if str(t).strip()]
+        except Exception as _e:
+            print(f"[models/template] {key} 정보 조회 실패(무시): {_e}")
+
+    data = _mt.build_model_template(label, types)
+    fname = f"{label + ' ' if label else ''}모델 등록 양식.xlsx"
+    return Response(
+        content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=model_template.xlsx"},
+        headers={"Content-Disposition":
+                 f"attachment; filename=model_template.xlsx; filename*=UTF-8''{quote(fname)}"},
     )
 
 
@@ -4939,6 +4934,7 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
             if v is None:
                 continue
             t = str(v).strip()
+            k = t.replace(" ", "").replace(".", "").lower()
             if t in ("모델", "모델명"):
                 header_row = r
                 col_map["name"] = c
@@ -4950,6 +4946,14 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
                 col_map["price"] = c
             elif t.startswith("재료비"):
                 col_map["material_cost"] = c
+            elif k in ("파트넘버", "파트번호", "품번", "partno", "partnumber"):
+                col_map["part_number"] = c
+            elif k.startswith("po"):
+                col_map["po_qty"] = c
+            elif k in ("실적수량", "출하수량", "출하실적", "실적", "출하"):
+                col_map["shipped_qty"] = c
+            elif t == "비고":
+                col_map["note"] = c
         if header_row:
             break
     if not header_row or "name" not in col_map:
@@ -4981,14 +4985,25 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
     projs = data.setdefault("projects", {})
     proj = projs.setdefault(_key, {"models": []})
     models = proj.setdefault("models", [])
+    # 파트넘버가 있으면 그게 열쇠다.
+    #
+    # 예전에는 모델명으로만 맞췄다. 큐리 파일은 '버스바' 5줄, '시트메탈' 6줄이
+    # 파트넘버로만 갈리는데, 16줄이 7종으로 뭉개져 들어갔다. 마지막 줄만 남았다.
     by_name = {str(m.get("name", "")).strip().lower(): m for m in models}
+    by_pn = {}
+    for m in models:
+        _p = str(m.get("part_number") or "").strip().lower()
+        if _p:
+            by_pn[_p] = m
 
     added, updated, skipped = 0, 0, 0
     for r in range(header_row + 1, ws.max_row + 1):
         name_v = ws.cell(row=r, column=col_map["name"]).value
-        if name_v is None or not str(name_v).strip():
+        pn_v = ws.cell(row=r, column=col_map["part_number"]).value if col_map.get("part_number") else None
+        pn = str(pn_v).strip() if pn_v is not None else ""
+        if (name_v is None or not str(name_v).strip()) and not pn:
             continue
-        name = str(name_v).strip()
+        name = str(name_v).strip() if name_v is not None else pn
         group = str(ws.cell(row=r, column=col_map.get("group", 0)).value or "").strip() if col_map.get("group") else ""
         group = "개발" if group == "개발" else "양산"
         dev_type = str(ws.cell(row=r, column=col_map.get("dev_type", 0)).value or "").strip() if col_map.get("dev_type") else ""
@@ -5004,18 +5019,31 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
 
         price = _num(col_map.get("price"))
         mcost = _num(col_map.get("material_cost"))
+        _note = ""
+        if col_map.get("note"):
+            _note = str(ws.cell(row=r, column=col_map["note"]).value or "").strip()
 
-        existing = by_name.get(name.lower())
+        # 파트넘버가 있으면 그걸로 찾고, 없을 때만 모델명으로 찾는다.
+        if pn:
+            existing = by_pn.get(pn.lower())
+        else:
+            existing = by_name.get(name.lower())
+
         if existing is not None:
             existing["group"] = group
             if dev_type:
                 existing["dev_type"] = dev_type
             existing["price"] = price
             existing["material_cost"] = mcost
+            if pn:
+                existing["part_number"] = pn
+                existing["name"] = name
+            if _note:
+                existing["note"] = _note
             updated += 1
         else:
             entry = {
-                "id": name,
+                "id": pn or name,
                 "name": name,
                 "group": group,
                 "dev_type": dev_type,
@@ -5024,11 +5052,25 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
                 "status": "정상",
                 "progress": 0,
             }
+            if pn:
+                entry["part_number"] = pn
+            if _note:
+                entry["note"] = _note
             if group == "개발":
                 entry["process"] = _default_process()
             models.append(entry)
-            by_name[name.lower()] = entry
+            by_name.setdefault(name.lower(), entry)
+            if pn:
+                by_pn[pn.lower()] = entry
+            existing = entry
             added += 1
+
+        # 수량은 열이 있을 때만 건드린다. 열이 없는데 0 으로 덮으면
+        # 이미 쌓인 PO·출하가 사라진다.
+        if col_map.get("po_qty"):
+            existing["po_qty"] = int(_num(col_map["po_qty"]))
+        if col_map.get("shipped_qty"):
+            existing["shipped_qty"] = int(_num(col_map["shipped_qty"]))
 
     models.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
 

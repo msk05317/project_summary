@@ -6658,7 +6658,11 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     var input = document.getElementById('mdl-excel-input');
     var wrap = document.getElementById('mdl-table-box');
     if (!upBtn || !input) return;
-    if (tplBtn) tplBtn.onclick = function(){ window.location.href = '/admin/models/template'; };
+    // 프로젝트를 알려주면 그 프로젝트의 유형이 드롭다운으로 들어간다
+    if (tplBtn) tplBtn.onclick = function(){
+      window.location.href = '/admin/models/template?project_key=' +
+        encodeURIComponent(_currentProjectKey || '');
+    };
     upBtn.onclick = function(){ input.click(); };
     input.onchange = function(){ if (input.files && input.files[0]) doExcelUpload(input.files[0]); input.value = ''; };
     if (wrap && !wrap.dataset.excelDrop) {
