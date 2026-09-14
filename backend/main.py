@@ -23667,6 +23667,47 @@ if __name__ == "__main__":
 # 사람이 적은 메모는 건드리지 않는다 — _looks_auto_note 가 모양으로 가른다.
 # 한 번 지우고 나면 다음 기동에는 걸리는 게 없어 아무 일도 하지 않는다.
 # _save_models 가 덮어쓰기 전에 백업을 남기므로 되돌릴 수단도 있다.
+# 반도체사업부의 '주차별 계획 원본'(엑셀을 올려 이미지로 붙여 둔 것)을 뗀다.
+# 주차 현황 보드가 그 자리를 대신하므로 원본은 더 볼 일이 없다.
+# 챔버만 남긴다.
+#
+# 주의: 여기서 지우는 건 프로젝트에 붙은 weekly_plan(photo_ref) 하나다.
+# 모델마다 들고 있는 weekly_plan(월·주차별 계획·실적)은 다른 값이고 건드리지 않는다.
+_PLAN_KEEP = {"chamber"}
+
+
+def _cleanup_plan_originals() -> None:
+    try:
+        import config_loader as _c
+        keys = [p.get("id") for p in _c.get_projects(division_id="semiconductor")]
+    except Exception as e:
+        print(f"[cleanup] 반도체 프로젝트 목록 조회 실패: {e}")
+        return
+    try:
+        data = _load_models()
+        hit = []
+        for key in keys:
+            if not key or key in _PLAN_KEEP:
+                continue
+            proj = (data.get("projects") or {}).get(key)
+            if not isinstance(proj, dict):
+                continue
+            plan = proj.get("weekly_plan")
+            if not isinstance(plan, dict) or not plan.get("photo_ref"):
+                continue
+            try:
+                _delete_note_photo(plan["photo_ref"])
+            except Exception:
+                pass
+            del proj["weekly_plan"]
+            hit.append(f"{key}({plan.get('file_name') or '이름없음'})")
+        if hit:
+            _save_models(data)
+            print(f"[cleanup] 주차별 계획 원본 {len(hit)}건 제거: {', '.join(hit)}")
+    except Exception as e:
+        print(f"[cleanup] 주차별 계획 원본 정리 실패(무시하고 계속): {e}")
+
+
 def _cleanup_auto_notes() -> None:
     try:
         data = _load_models()
@@ -23685,3 +23726,4 @@ def _cleanup_auto_notes() -> None:
 
 
 _cleanup_auto_notes()
+_cleanup_plan_originals()
