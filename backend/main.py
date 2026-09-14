@@ -23488,3 +23488,32 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+
+
+# ── 기동할 때 한 번 지나가는 정리 ──────────────────────────────────────
+#
+# 예전 임포터가 비고에 적어 두던 단계 나열을 지운다.
+#   '10 FAIR Approval: Not yet · 11 LAP Test: Not yet'
+# 비고는 사람이 적는 칸이고, 저 내용은 이미 단계 상태로 들어가 있다.
+#
+# 사람이 적은 메모는 건드리지 않는다 — _looks_auto_note 가 모양으로 가른다.
+# 한 번 지우고 나면 다음 기동에는 걸리는 게 없어 아무 일도 하지 않는다.
+# _save_models 가 덮어쓰기 전에 백업을 남기므로 되돌릴 수단도 있다.
+def _cleanup_auto_notes() -> None:
+    try:
+        data = _load_models()
+        hit = []
+        for pkey, proj in (data.get("projects") or {}).items():
+            for m in (proj or {}).get("models") or []:
+                if isinstance(m, dict) and _looks_auto_note(m.get("note")):
+                    m["note"] = ""
+                    hit.append(f"{pkey}/{m.get('id')}")
+        if hit:
+            _save_models(data)
+            print(f"[cleanup] 자동으로 적힌 비고 {len(hit)}건 삭제: {', '.join(hit[:5])}"
+                  + (" ..." if len(hit) > 5 else ""))
+    except Exception as e:
+        print(f"[cleanup] 비고 정리 실패(무시하고 계속): {e}")
+
+
+_cleanup_auto_notes()
