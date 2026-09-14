@@ -7439,6 +7439,7 @@ var sidebarSel = document.getElementById('v2-division-select');
             '<div class="ov-menu-wrap">' +
               '<button type="button" class="ov-btn" id="mdl-import-btn" aria-haspopup="true" aria-expanded="false">📁 엑셀 ▾</button>' +
               '<div class="ov-menu" id="mdl-import-menu" hidden>' +
+                '<button type="button" id="mdl-bloom-btn" hidden>📊 일 보고 자료 올리기</button>' +
                 '<button type="button" id="mdl-excel-btn">📥 모델·주간보고 엑셀 올리기</button>' +
                 '<button type="button" id="mdl-proc-excel-btn">📅 개발 프로세스 엑셀 올리기</button>' +
                 '<div class="sep"></div>' +
@@ -9391,6 +9392,35 @@ window._ovProjectKey = function() {
     return Number(p[1]) + '/' + Number(p[2]) + ' ' + _BD_DOW[d.getDay()];
   }
 
+
+  // 블룸은 모델을 안 쓴다. '엑셀 ▾' 메뉴에서 반도체용 항목을 감추고
+  // 일 보고 자료 올리기만 남긴다 — 여기를 제일 먼저 찾게 된다.
+  window._bdSyncMenu = function(pk) {
+    var daily = window._bdIsDaily(pk);
+    var bloomBtn = document.getElementById('mdl-bloom-btn');
+    ['mdl-excel-btn', 'mdl-proc-excel-btn', 'mdl-excel-tpl-btn', 'mdl-proc-reset-btn']
+      .forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.hidden = daily;
+      });
+    document.querySelectorAll('#mdl-import-menu .sep').forEach(function(el) {
+      el.hidden = daily;
+    });
+    if (!bloomBtn) return;
+    bloomBtn.hidden = !daily;
+    if (daily && !bloomBtn.dataset.wired) {
+      bloomBtn.dataset.wired = '1';
+      bloomBtn.onclick = function() {
+        var menu = document.getElementById('mdl-import-menu');
+        if (menu) menu.hidden = true;
+        window._bdWireUpload();
+        var fl = document.getElementById('pf-file');
+        if (fl) fl.click();
+        else alert("'일 보고 자료' 탭에서 올려주세요.");
+      };
+    }
+  };
+
   window.renderDailyBoard = function(pk, box) {
     box = box || document.getElementById('wb-board');
     if (!box) return;
@@ -9578,6 +9608,7 @@ window._ovProjectKey = function() {
 
     var srcCard = document.getElementById('wp-src-card');
     // 블룸은 '날짜 x 품목 x 공정' 이라 주차 보드가 아니라 일 보드를 그린다
+    if (window._bdSyncMenu) window._bdSyncMenu(pk);
     if (window._bdIsDaily(pk)) {
       if (srcCard) srcCard.style.display = 'none';
       var msel0 = document.getElementById('wp-month-sel');
