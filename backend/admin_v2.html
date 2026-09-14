@@ -8589,7 +8589,7 @@ window._ovProjectKey = function() {
             '<td><span class="mdl-group-badge mdl-group-' +
               (r.group === '개발' ? 'dev' : 'mass') + '">' + _aiE(r.group) + '</span></td>' +
             '<td class="auto-num">' + (r.price ? r.price.toLocaleString('ko-KR') : '-') + '</td>' +
-            '<td class="auto-num">' + r.cost_total.toLocaleString('ko-KR') + '</td>' +
+            '<td class="auto-num">' + (r.quote ? r.quote.toLocaleString('ko-KR') : '-') + '</td>' +
             '<td class="auto-num">' + r.qty.toLocaleString('ko-KR') + '</td>' +
             '<td class="auto-num">' + r.revenue.toLocaleString('ko-KR') + '억</td>' +
           '</tr>' +
@@ -8597,17 +8597,17 @@ window._ovProjectKey = function() {
           // 시트마다 원가 열이 달라서, 한 칸을 놓쳐도 숫자는 그럴듯하게 나온다.
           (r.total_gap
             ? '<tr><td></td><td colspan="7" style="color:#B45309;font-size:11.5px;' +
-              'background:#FFFBEB;padding:5px 8px">원가 합계가 엑셀의 합계와 ' +
+              'background:#FFFBEB;padding:5px 8px">판가 합계가 엑셀의 합계와 ' +
               Math.abs(r.total_gap).toLocaleString('ko-KR') + '원 ' +
               (r.total_gap > 0 ? '많습니다' : '적습니다') +
-              ' — 엑셀에 원가 열이 더 있는지 봐 주세요</td></tr>'
+              ' — 엑셀에 금액 열이 더 있는지 봐 주세요</td></tr>'
             : '');
         }).join('');
         return '<h4 class="ai-ph">' + _aiE(p) + ' <small>' + byProj[p].length + '개</small></h4>' +
           '<table class="wb-tbl"><thead><tr>' +
             '<th style="width:44px"></th><th style="min-width:170px">제품명</th>' +
             '<th style="min-width:100px">최종고객사</th><th style="width:70px">단계</th>' +
-            '<th style="min-width:90px">판가</th><th style="min-width:90px">원가</th>' +
+            '<th style="min-width:90px">판가</th><th style="min-width:90px">외화 견적</th>' +
             '<th style="min-width:100px">계약 물량</th><th style="min-width:90px">매출</th>' +
           '</tr></thead><tbody>' + items + '</tbody></table>';
       }).join('');

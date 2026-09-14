@@ -92,7 +92,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     return AutoProjectRow(
       key: key, label: '', products: 0, mass: 0, dev: 0,
       qty: 0, revenue: 0, yearQty: 0, yearRevenue: 0,
-      share: 0, overCost: 0, overCostNames: const [],
+      share: 0,
     );
   }
 
@@ -193,7 +193,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       subValue: has ? '/ ${AutoFmt.eok(a.revenue)}' : '',
       // 배지에는 '읽고 나서 할 일이 있는 것'만 띄운다.
       // 올해 비중 같은 건 바로 위 숫자 두 개가 이미 말하고 있다.
-      pillText: a.overCost > 0 ? '원가 초과 ${a.overCost}종' : '',
+      pillText: '',
       pillColor: AppColors.statusRed,
       ratio: a.yearShare,
       barColor: AppColors.todayBlue,
@@ -214,11 +214,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
   Widget _autoRow(_ProjectItem p) {
     final r = _autoOf(p.id);
     final has = r.hasContract;
-    final over = r.overCost > 0;
-    // 점은 상태, 막대는 계약 매출 비중. 한 표시에 둘을 담지 않는다.
-    final dot = !has
-        ? AppColors.statusGray
-        : (over ? AppColors.summaryCaution : AppColors.todayBlue);
+    final dot = has ? AppColors.todayBlue : AppColors.statusGray;
     return AutomotiveRowCard(
       dotColor: dot,
       name: p.koreanName,
@@ -228,12 +224,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       barColor: AppColors.todayBlue,
       meta1: has ? '${_auto.year}년 ${AutoFmt.eok(r.yearRevenue)}' : '계약 미등록',
       meta2: '제품 ${r.products}종',
-      trailing: !has
-          ? '등록 전'
-          : (over
-              ? '원가 초과 ${r.overCost}종'
-              : '비중 ${(r.share * 100).round()}%'),
-      trailingColor: over ? AppColors.statusRed : null,
+      trailing: has ? '비중 ${(r.share * 100).round()}%' : '등록 전',
       isFavorite: _favoriteProjects.contains(p.id),
       isSelected: _selectedProjectId == p.id,
       onTap: () => _tapProject(p.id, p.koreanName),
@@ -888,13 +879,6 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                       );
                     },
                   ),
-                  if (_isAuto && _auto.overCost > 0) ...[
-                    const SizedBox(height: 10),
-                    AutomotiveWarnStrip(
-                      count: _auto.overCost,
-                      names: _auto.overCostNames,
-                    ),
-                  ],
                   if (!_isAuto && data.delayed + data.warning > 0) ...[
                     const SizedBox(height: 10),
                     DivisionAttentionBanner(

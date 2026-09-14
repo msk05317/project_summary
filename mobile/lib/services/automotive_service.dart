@@ -82,7 +82,6 @@ class AutomotiveService {
     }
 
     final rows = <AutoProjectRow>[];
-    final over = <String>[];
     for (var i = 0; i < keys.length; i++) {
       final s = list[i];
       if (!s.loaded) continue;
@@ -98,10 +97,7 @@ class AutomotiveService {
         yearQty: cell?.qty ?? 0,
         yearRevenue: cell?.revenue ?? 0,
         share: total > 0 ? s.revenue / total : 0,
-        overCost: s.overCost,
-        overCostNames: s.overCostNames,
       ));
-      over.addAll(s.overCostNames);
     }
     if (rows.isEmpty) return AutoDivisionSummary.empty;
 
@@ -136,8 +132,6 @@ class AutomotiveService {
       revenue: total,
       yearQty: rows.fold(0, (a, r) => a + r.yearQty),
       yearRevenue: rows.fold(0.0, (a, r) => a + r.yearRevenue),
-      overCost: over.length,
-      overCostNames: over,
       loaded: true,
     );
   }

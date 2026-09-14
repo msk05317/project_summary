@@ -13902,12 +13902,13 @@ async def _pbx_read_upload(file, month):
 def get_automotive_summary(project_key: str):
     """자동차사업부 제품 요약 — 앱 화면이 그리는 값.
 
-    수량·원가·원가율을 앱에서 다시 계산하지 않게 여기서 낸다.
+    수량·금액을 앱에서 다시 계산하지 않게 여기서 낸다.
     Admin 과 앱이 같은 숫자를 보게 하려면 계산이 한 군데 있어야 한다.
 
-        원가 합계 = 재료비 + 공정비 + 관리이윤 + 감가상각 + 물류
-        판가(원)  = 판가 직접입력 값, 없으면 외화 단가 × 환율
-        원가율    = 원가 합계 ÷ 판가
+        판가 = 재료비 + 공정비 + 관리이윤 + 감가상각 + 물류
+               관리이윤이 들어간 값이다. 원가가 아니다.
+        견적 = 엑셀 '판가' 열 — 외화 단가 × 환율로 적어 둔 참고값.
+               판가와 다를 수 있고, 개발품은 비어 있다.
     """
     key = _model_key_alias(project_key.strip())
     proj = (_load_models().get("projects") or {}).get(key) or {}
@@ -13920,9 +13921,9 @@ def get_automotive_summary(project_key: str):
         a = m.get("auto")
         if not isinstance(a, dict) or not a:
             continue
-        cost = {k: _as_money((a.get("cost") or {}).get(k)) for k in COST}
-        total = sum(cost.values())
-        price = _as_money(a.get("price_krw")) or (
+        parts = {k: _as_money((a.get("cost") or {}).get(k)) for k in COST}
+        price = sum(parts.values())
+        quote = _as_money(a.get("price_krw")) or (
             _as_money(a.get("price_fx")) * _as_money(a.get("fx_rate")))
         contract = {}
         for y, cell in (a.get("contract") or {}).items():
@@ -13943,10 +13944,10 @@ def get_automotive_summary(project_key: str):
             "tonnage": _as_int(a.get("tonnage")),
             "defect_rate": _as_money(a.get("defect_rate")),
             "price": round(price),
-            "cost": {k: round(v) for k, v in cost.items()},
-            "cost_total": round(total),
-            # 판가가 없으면(개발품) 원가율은 낼 수 없다. 0 으로 눕히지 않고 비운다.
-            "cost_ratio": round(total / price, 4) if price > 0 else None,
+            "parts": {k: round(v) for k, v in parts.items()},
+            "quote": round(quote),
+            "quote_fx": _as_money(a.get("price_fx")) or None,
+            "quote_rate": _as_money(a.get("fx_rate")) or None,
             "contract": contract,
             "qty_total": qty, "revenue_total": round(rev, 4),
         })
@@ -13957,9 +13958,6 @@ def get_automotive_summary(project_key: str):
                    "revenue": round(sum(p["contract"].get(y, {}).get("revenue", 0)
                                         for p in products), 4)}
                for y in ylist}
-    over = [p["name"] for p in products
-            if p["cost_ratio"] is not None and p["cost_ratio"] >= 1]
-
     return {
         "project_key": key,
         "label": _display_project_label(key),
@@ -13972,8 +13970,6 @@ def get_automotive_summary(project_key: str):
             "dev": sum(1 for p in products if p["group"] == "개발"),
             "qty": sum(p["qty_total"] for p in products),
             "revenue": round(sum(p["revenue_total"] for p in products), 4),
-            "over_cost": len(over),
-            "over_cost_names": over,
         },
     }
 
@@ -14008,8 +14004,6 @@ def get_automotive_division_summary(year: int = 0):
             "revenue": t.get("revenue", 0),
             "year_qty": _as_int(cell.get("qty")),
             "year_revenue": round(_as_money(cell.get("revenue")), 4),
-            "over_cost": t.get("over_cost", 0),
-            "over_cost_names": t.get("over_cost_names") or [],
             "by_year": by,
         })
 
@@ -14030,7 +14024,6 @@ def get_automotive_division_summary(year: int = 0):
         }
         for y in ylist
     }
-    over_names = [n for r in rows for n in r["over_cost_names"]]
     for r in rows:
         r.pop("by_year", None)
 
@@ -14048,8 +14041,6 @@ def get_automotive_division_summary(year: int = 0):
             "revenue": total_rev,
             "year_qty": sum(r["year_qty"] for r in rows),
             "year_revenue": round(sum(r["year_revenue"] for r in rows), 4),
-            "over_cost": len(over_names),
-            "over_cost_names": over_names,
         },
     }
 
@@ -14130,8 +14121,10 @@ def _auto_diff(parsed):
                 cur = m
                 break
         a = r["auto"]
-        cost = a.get("cost") or {}
-        price = _as_money(a.get("price_krw")) or (
+        parts = a.get("cost") or {}
+        # 판가 = 다섯 항목 합계. 엑셀 '판가' 열은 외화 견적이라 따로 둔다.
+        price = sum(_as_money(v) for v in parts.values())
+        quote = _as_money(a.get("price_krw")) or (
             _as_money(a.get("price_fx")) * _as_money(a.get("fx_rate")))
         rows.append({
             "row": r["row"], "customer": r["customer"],
@@ -14139,8 +14132,8 @@ def _auto_diff(parsed):
             "project_key": pid, "project_label": label.get(pid, pid),
             "product": r["product"], "group": r["group"],
             "is_new": cur is None,
-            "cost_total": round(sum(_as_money(v) for v in cost.values())),
             "price": round(price),
+            "quote": round(quote),
             "qty": sum(_as_int(v.get("qty")) for v in (a.get("contract") or {}).values()),
             "revenue": round(sum(_as_money(v.get("revenue"))
                                  for v in (a.get("contract") or {}).values()), 1),

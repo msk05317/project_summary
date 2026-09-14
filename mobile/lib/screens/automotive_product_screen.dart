@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import '../design/design.dart';
 import '../models/automotive.dart';
 import '../components/division/automotive_hero_card.dart';
-import '../widgets/automotive_overview_card.dart' show kAutoCost;
+import '../widgets/automotive_overview_card.dart' show kAutoPriceParts;
 
 class AutomotiveProductScreen extends StatelessWidget {
   final AutoProduct product;
@@ -26,8 +26,6 @@ class AutomotiveProductScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = product;
-    final over = p.overCost;
-    final margin = p.marginPerUnit;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
@@ -58,30 +56,24 @@ class AutomotiveProductScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           AutomotiveHeroCard(
-            title: '대당 원가 / 판가',
+            title: '대당 판가',
             rightLabel: _headLine(p),
-            bigValue: AutoFmt.won(p.costTotal),
-            subValue: p.price > 0 ? '/ ${AutoFmt.won(p.price)}' : '/ 판가 미등록',
-            pillText: p.costRatio == null
-                ? '판가 없음'
-                : '원가율 ${AutoFmt.pct(p.costRatio)}',
-            pillColor: p.costRatio == null
-                ? AppColors.textHint
-                : (over ? AppColors.statusRed : AppColors.summaryNormal),
-            // 판가를 1로 두고 원가가 어디까지 찼는지. 넘으면 꽉 찬다.
-            ratio: p.costRatio == null ? 0 : p.costRatio!.clamp(0.0, 1.0),
-            barColor: p.costRatio == null
-                ? AppColors.statusGray
-                : (over ? AppColors.statusRed : AppColors.summaryNormal),
-            leftLabel: '대당 손익',
-            leftValue: margin == null
-                ? '-'
-                : '${margin >= 0 ? '+' : '-'}${AutoFmt.won(margin.abs())}',
-            rightStatLabel: '계약 물량',
-            rightStatValue: '${AutoFmt.comma(p.qtyTotal)}대',
+            bigValue: AutoFmt.won(p.price),
+            subValue: '',
+            pillText: p.group,
+            pillColor: p.group == '개발'
+                ? AppColors.summaryCaution
+                : AppColors.todayBlue,
+            showBar: false,
+            ratio: 0,
+            barColor: AppColors.todayBlue,
+            leftLabel: '계약 물량',
+            leftValue: '${AutoFmt.comma(p.qtyTotal)}대',
+            rightStatLabel: '계약 매출',
+            rightStatValue: AutoFmt.eok(p.revenueTotal),
           ),
           const SizedBox(height: 10),
-          _CostCard(product: p),
+          _PriceCard(product: p),
           const SizedBox(height: 10),
           _ContractCard(product: p),
           const SizedBox(height: 10),
@@ -101,25 +93,25 @@ class AutomotiveProductScreen extends StatelessWidget {
   }
 }
 
-/// 원가 다섯 덩어리. 조각 사이를 2px 띄우고 범례에 값을 적는다 —
+/// 판가를 이루는 다섯 덩어리. 조각 사이를 2px 띄우고 범례에 값을 적는다 —
 /// 색만으로 구분하게 두지 않는다.
-class _CostCard extends StatelessWidget {
+class _PriceCard extends StatelessWidget {
   final AutoProduct product;
-  const _CostCard({required this.product});
+  const _PriceCard({required this.product});
 
   @override
   Widget build(BuildContext context) {
     final p = product;
     final items = <(String, String, Color, int)>[];
-    for (final (key, label, color) in kAutoCost) {
-      final v = p.cost[key] ?? 0;
+    for (final (key, label, color) in kAutoPriceParts) {
+      final v = p.parts[key] ?? 0;
       if (v > 0) items.add((key, label, color, v));
     }
     if (items.isEmpty) return const SizedBox.shrink();
 
     return _Card(
-      title: '원가 구성',
-      trailing: '합계 ${AutoFmt.won(p.costTotal)}',
+      title: '판가 구성',
+      trailing: '합계 ${AutoFmt.won(p.price)}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -170,9 +162,7 @@ class _CostCard extends StatelessWidget {
                   SizedBox(
                     width: 38,
                     child: Text(
-                      p.costTotal > 0
-                          ? '${(it.$4 * 100 / p.costTotal).round()}%'
-                          : '-',
+                      p.price > 0 ? '${(it.$4 * 100 / p.price).round()}%' : '-',
                       textAlign: TextAlign.right,
                       style: AppText.caption.copyWith(
                           fontSize: 12, color: AppColors.textHint),
@@ -273,6 +263,12 @@ class _SpecCard extends StatelessWidget {
       if (p.weightKg > 0) ('제품 중량', '${p.weightKg} kg'),
       if (p.tonnage > 0) ('주조톤수', '${AutoFmt.comma(p.tonnage)} ton'),
       if (p.defectRate > 0) ('불량률', AutoFmt.ratio(p.defectRate)),
+      // 엑셀 '판가' 열. 판가(다섯 항목 합계)와 다른 값이라 참고로만 적는다.
+      if (p.quote > 0)
+        ('외화 견적 (참고)',
+            p.quoteFx != null && p.quoteRate != null
+                ? '${p.quoteFx} × ${AutoFmt.comma(p.quoteRate!)} = ${AutoFmt.won(p.quote)}'
+                : AutoFmt.won(p.quote)),
       ('구분', p.group),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();

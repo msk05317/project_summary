@@ -17,12 +17,12 @@ import '../components/division/automotive_hero_card.dart';
 import '../components/division/automotive_row_card.dart';
 import '../screens/automotive_product_screen.dart';
 
-/// 원가 5항목 색 — OneView 카테고리 팔레트에서 고른 다섯. 순서는 고정이다.
+/// 판가 5항목 색 — OneView 카테고리 팔레트에서 고른 다섯. 순서는 고정이다.
 /// 제품이 바뀌어도 재료비는 늘 같은 색이다. 상태색(초록·빨강)은 뺐다 —
 /// 원가율 표시와 겹치면 읽는 사람이 헷갈린다.
 /// 색만으로 구분하게 두지 않는다: 범례를 늘 띄우고, 큰 두 항목은 값을 적고,
 /// 조각 사이를 2px 띄운다.
-const List<(String, String, Color)> kAutoCost = [
+const List<(String, String, Color)> kAutoPriceParts = [
   ('material', '재료비', Color(0xFF1D4ED8)),
   ('process', '공정비', Color(0xFFB45309)),
   ('admin', '관리이윤', Color(0xFF9333EA)),
@@ -95,7 +95,6 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
     final y = s.years;
     final span = y.isEmpty ? '' : '${y.first}–${y.last} · ${y.length}년';
     final has = s.revenue > 0;
-    final over = s.overCost > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -105,8 +104,7 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
           rightLabel: span,
           bigValue: has ? AutoFmt.eok(yearRev) : '',
           subValue: has ? '/ ${AutoFmt.eok(s.revenue)}' : '',
-          // 배지에는 '읽고 나서 할 일이 있는 것'만 띄운다.
-          pillText: over ? '원가 초과 ${s.overCost}종' : '',
+          pillText: '',
           pillColor: AppColors.statusRed,
           ratio: s.revenue > 0 ? yearRev / s.revenue : 0,
           barColor: AppColors.todayBlue,
@@ -128,10 +126,6 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
           const SizedBox(height: 10),
           _Note(s.loaded ? '등록된 제품이 없습니다' : '불러오지 못했습니다'),
         ] else ...[
-          if (over) ...[
-            const SizedBox(height: 10),
-            AutomotiveWarnStrip(count: s.overCost, names: s.overCostNames),
-          ],
           if (y.isNotEmpty) ...[
             const SizedBox(height: 10),
             _YearChart(years: y, byYear: s.byYear),
@@ -161,12 +155,7 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
   }
 
   Widget _productRow(AutoProduct p, AutoProjectSummary s) {
-    final over = p.overCost;
-    // 점은 상태(원가 초과·판가 미등록), 막대는 계약 매출 비중.
-    // 한 표시에 두 가지를 담으면 무엇을 뜻하는지 아무도 모르게 된다.
-    final dot = p.price <= 0
-        ? AppColors.statusGray
-        : (over ? AppColors.summaryCaution : AppColors.todayBlue);
+    final dot = p.price > 0 ? AppColors.todayBlue : AppColors.statusGray;
     // 꼬리표는 '누구 차에 들어가나'를 말한다. 최종고객사가 고객사와 같은
     // 이름이면 한 번 더 적을 이유가 없다.
     final label = widget.projectName.isNotEmpty ? widget.projectName : s.label;
@@ -183,11 +172,10 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
       ratio: s.revenue > 0 ? p.revenueTotal / s.revenue : 0,
       barColor: AppColors.todayBlue,
       meta1: p.price > 0 ? '판가 ${AutoFmt.won(p.price)}' : '판가 미등록',
-      meta2: '원가 ${AutoFmt.won(p.costTotal)}',
-      trailing: p.costRatio == null
-          ? '원가율 -'
-          : '원가율 ${AutoFmt.pct(p.costRatio)}',
-      trailingColor: over ? AppColors.statusRed : null,
+      meta2: p.sop.isNotEmpty ? 'SOP ${p.sop}' : '',
+      trailing: s.revenue > 0
+          ? '비중 ${(p.revenueTotal * 100 / s.revenue).round()}%'
+          : '',
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(

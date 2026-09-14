@@ -18,6 +18,10 @@ class AutomotiveHeroCard extends StatelessWidget {
   final Color pillColor;
   final double ratio;       // 0~1
   final Color barColor;
+
+  /// 게이지가 뜻하는 게 없는 화면(제품 상세)에서는 끈다.
+  /// 뜻 없는 막대를 그려 두면 읽는 사람이 뜻을 찾는다.
+  final bool showBar;
   final String leftLabel;
   final String leftValue;
   final String rightStatLabel;
@@ -37,6 +41,7 @@ class AutomotiveHeroCard extends StatelessWidget {
     required this.pillColor,
     required this.ratio,
     required this.barColor,
+    this.showBar = true,
     required this.leftLabel,
     required this.leftValue,
     required this.rightStatLabel,
@@ -181,16 +186,18 @@ class AutomotiveHeroCard extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: ratio.clamp(0.0, 1.0),
-              minHeight: 6,
-              backgroundColor: Colors.white.withValues(alpha: 0.16),
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+          if (showBar) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: ratio.clamp(0.0, 1.0),
+                minHeight: 6,
+                backgroundColor: Colors.white.withValues(alpha: 0.16),
+                valueColor: AlwaysStoppedAnimation<Color>(barColor),
+              ),
             ),
-          ),
+          ],
         ],
         const SizedBox(height: 12),
         Row(
@@ -275,76 +282,6 @@ class _Skeleton extends StatelessWidget {
         const SizedBox(height: 16),
         bar(150, 14),
       ],
-    );
-  }
-}
-
-/// 원가가 판가를 넘는 제품이 있을 때만 뜨는 빨간 띠.
-/// 숫자만 보면 못 넘어가는 값이라 카드 밖으로 한 줄 꺼내 둔다.
-class AutomotiveWarnStrip extends StatelessWidget {
-  final int count;
-  final List<String> names;
-  final VoidCallback? onTap;
-
-  const AutomotiveWarnStrip({
-    super.key,
-    required this.count,
-    required this.names,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final shown = names.take(3).join(' · ');
-    final more = names.length > 3 ? ' 외 ${names.length - 3}종' : '';
-    final body = Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        border: Border.all(color: const Color(0xFFFECACA)),
-        borderRadius: BorderRadius.circular(AppRadius.md),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 16,
-            height: 16,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: AppColors.statusRed,
-              shape: BoxShape.circle,
-            ),
-            child: const Text('!',
-                style: TextStyle(
-                    fontSize: 11,
-                    height: 1.1,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white)),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              shown.isEmpty
-                  ? '원가가 판가를 넘는 제품 $count종'
-                  : '원가가 판가를 넘는 제품 $count종 — $shown$more',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF7F1D1D),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onTap == null) return body;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: body,
     );
   }
 }

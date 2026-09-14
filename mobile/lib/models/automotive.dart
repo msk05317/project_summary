@@ -81,8 +81,6 @@ class AutoProjectRow {
   final int yearQty;
   final double yearRevenue;
   final double share; // 사업부 전체 계약 매출에서 차지하는 몫 (막대 길이)
-  final int overCost; // 원가가 판가를 넘는 제품 수
-  final List<String> overCostNames;
 
   const AutoProjectRow({
     required this.key,
@@ -95,8 +93,6 @@ class AutoProjectRow {
     required this.yearQty,
     required this.yearRevenue,
     required this.share,
-    required this.overCost,
-    required this.overCostNames,
   });
 
   bool get hasContract => revenue > 0 || qty > 0;
@@ -112,9 +108,6 @@ class AutoProjectRow {
         yearQty: _i(j['year_qty']),
         yearRevenue: _d(j['year_revenue']),
         share: _d(j['share']),
-        overCost: _i(j['over_cost']),
-        overCostNames:
-            ((j['over_cost_names'] as List?) ?? []).map(_s).toList(),
       );
 }
 
@@ -130,8 +123,6 @@ class AutoDivisionSummary {
   final double revenue;
   final int yearQty;
   final double yearRevenue;
-  final int overCost;
-  final List<String> overCostNames;
   final bool loaded;
 
   const AutoDivisionSummary({
@@ -146,8 +137,6 @@ class AutoDivisionSummary {
     required this.revenue,
     required this.yearQty,
     required this.yearRevenue,
-    required this.overCost,
-    required this.overCostNames,
     required this.loaded,
   });
 
@@ -163,8 +152,6 @@ class AutoDivisionSummary {
     revenue: 0,
     yearQty: 0,
     yearRevenue: 0,
-    overCost: 0,
-    overCostNames: [],
     loaded: false,
   );
 
@@ -188,9 +175,6 @@ class AutoDivisionSummary {
       revenue: _d(t['revenue']),
       yearQty: _i(t['year_qty']),
       yearRevenue: _d(t['year_revenue']),
-      overCost: _i(t['over_cost']),
-      overCostNames:
-          ((t['over_cost_names'] as List?) ?? []).map(_s).toList(),
       loaded: true,
     );
   }
@@ -210,10 +194,17 @@ class AutoProduct {
   final double weightKg;
   final int tonnage;
   final double defectRate;
-  final int price;      // 원
-  final Map<String, int> cost; // material/process/admin/depr/logi
-  final int costTotal;
-  final double? costRatio;     // 판가가 없으면 null — 0 으로 눕히지 않는다
+
+  /// 대당 판가 = 다섯 항목 합계. 관리이윤이 들어간 값이라 원가가 아니다.
+  final int price;
+  final Map<String, int> parts; // material/process/admin/depr/logi
+
+  /// 엑셀 '판가' 열 — 외화 단가 × 환율로 적어 둔 참고값.
+  /// 판가와 다를 수 있고, 개발품은 0 이다.
+  final int quote;
+  final double? quoteFx;
+  final double? quoteRate;
+
   final Map<String, AutoYearCell> contract;
   final int qtyTotal;
   final double revenueTotal;
@@ -231,22 +222,18 @@ class AutoProduct {
     required this.tonnage,
     required this.defectRate,
     required this.price,
-    required this.cost,
-    required this.costTotal,
-    required this.costRatio,
+    required this.parts,
+    required this.quote,
+    required this.quoteFx,
+    required this.quoteRate,
     required this.contract,
     required this.qtyTotal,
     required this.revenueTotal,
   });
 
-  bool get overCost => costRatio != null && costRatio! >= 1;
-
-  /// 대당 손익 (판가 - 원가). 판가가 없으면 null.
-  int? get marginPerUnit => price > 0 ? price - costTotal : null;
-
   factory AutoProduct.fromJson(Map j) {
     final c = <String, int>{};
-    final raw = (j['cost'] as Map?) ?? {};
+    final raw = (j['parts'] as Map?) ?? {};
     raw.forEach((k, v) => c['$k'] = _i(v));
     return AutoProduct(
       id: _s(j['id']),
@@ -261,9 +248,10 @@ class AutoProduct {
       tonnage: _i(j['tonnage']),
       defectRate: _d(j['defect_rate']),
       price: _i(j['price']),
-      cost: c,
-      costTotal: _i(j['cost_total']),
-      costRatio: j['cost_ratio'] == null ? null : _d(j['cost_ratio']),
+      parts: c,
+      quote: _i(j['quote']),
+      quoteFx: j['quote_fx'] == null ? null : _d(j['quote_fx']),
+      quoteRate: j['quote_rate'] == null ? null : _d(j['quote_rate']),
       contract: AutoYearCell.mapOf(j['contract']),
       qtyTotal: _i(j['qty_total']),
       revenueTotal: _d(j['revenue_total']),
@@ -281,8 +269,6 @@ class AutoProjectSummary {
   final int dev;
   final int qty;
   final double revenue;
-  final int overCost;
-  final List<String> overCostNames;
   final bool loaded;
 
   const AutoProjectSummary({
@@ -295,8 +281,6 @@ class AutoProjectSummary {
     required this.dev,
     required this.qty,
     required this.revenue,
-    required this.overCost,
-    required this.overCostNames,
     required this.loaded,
   });
 
@@ -310,8 +294,6 @@ class AutoProjectSummary {
     dev: 0,
     qty: 0,
     revenue: 0,
-    overCost: 0,
-    overCostNames: [],
     loaded: false,
   );
 
@@ -332,9 +314,6 @@ class AutoProjectSummary {
       dev: _i(t['dev']),
       qty: _i(t['qty']),
       revenue: _d(t['revenue']),
-      overCost: _i(t['over_cost']),
-      overCostNames:
-          ((t['over_cost_names'] as List?) ?? []).map(_s).toList(),
       loaded: true,
     );
   }
