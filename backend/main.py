@@ -13597,14 +13597,17 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             entry["dev_type"] = dev_type
             proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
-            entry["process"] = proc if isinstance(proc, list) and len(proc) in (12, 13) else _default_process()
+            # 단계 수는 프로젝트마다 다르다 — 파워박스 15, EMA 14, 메이저모듈 12.
+            # 예전엔 12·13 만 인정해서, 엑셀로 넣은 14·15 단계가 이 화면을
+            # 저장하는 순간 통째로 빈 13단계 기본틀로 바뀌었다.
+            entry["process"] = proc if isinstance(proc, list) and proc else _default_process()
         else:
             # 양산으로 넘어가도 개발 때 쌓인 유형/공정 이력은 지우지 않는다.
             _dt = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             if _dt:
                 entry["dev_type"] = _dt
             _proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
-            if isinstance(_proc, list) and len(_proc) in (12, 13):
+            if isinstance(_proc, list) and _proc:
                 entry["process"] = _proc
         normalized.append(entry)
 
