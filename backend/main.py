@@ -22771,10 +22771,24 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
     raw = await file.read()
     wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
     
+    # 시트 이름 → 프로젝트. 단계는 엑셀 1행 머리글에서 읽는다.
+    # 단계 수와 순서가 시트마다 다르고(파워박스 15, EMA 14, 메이저모듈 12)
+    # 앞으로도 바뀐다 — 여기 적어 두면 엑셀이 바뀔 때마다 어긋난다.
     _PB = {
-        'majormodule': {'proj': 'major_module', 'steps': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','Source Inspection','FAIR 작성','FAIR 승인','PRR 작성','PRR 승인','최종 승인'], 'price': False, 'dt': ''},
-        'pbx': {'proj': 'powerbox', 'steps': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','LA 입고','LAIR 작성','LAIR 승인','Source Inspection','FAIR 작성','FAIR 승인','PRR','최종 승인'], 'price': True, 'dt': ''},
-        'ema': {'proj': 'powerbox', 'steps': ['FA PO','자재 발주','자재 입고','CB','BV1','BV2','LA 입고','LAIR 작성','LAIR 승인','Source Inspection','FAIR 작성','FAIR 승인','CDR','최종 승인'], 'price': False, 'dt': 'EMA'},
+        'majormodule': {'proj': 'major_module', 'dt': ''},
+        'pbx': {'proj': 'powerbox', 'dt': ''},
+        'ema': {'proj': 'powerbox', 'dt': 'EMA'},
+    }
+    # 영문 단계명 → 우리말. 없는 건 엑셀에 적힌 그대로 쓴다.
+    _STEP_KO = {
+        'fa po': 'FA PO', 'material order': '자재 발주', 'material receiving': '자재 입고',
+        'cb': 'CB', 'bv1': 'BV1', 'bv2': 'BV2',
+        'source inspection': 'Source Inspection', 'la receiving': 'LA 입고',
+        'lair preparation': 'LAIR 작성', 'lair approval': 'LAIR 승인',
+        'fair preparation': 'FAIR 작성', 'fair approval': 'FAIR 승인',
+        'prr preparation': 'PRR 작성', 'prr approval': 'PRR 승인',
+        'cdr': 'CDR', 'final approval': '최종 승인',
+        'final approval complete': '최종 승인', 'machining (assy)': '가공',
     }
     
     def _pn(s): return _re.sub(r'\s+', '', str(s or '')).strip()
@@ -22785,34 +22799,63 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
         s = str(v).strip()
         return '' if s.startswith('=') else s
     
+    import process_import as _pi
+
     for skey, cfg in _PB.items():
         ws = next((wb[n] for n in wb.sheetnames if n.strip().lower() == skey), None)
         if not ws: continue
         proj = data.get('projects', {}).get(cfg['proj'])
         if not proj: continue
+
+        # 계획·실적 열은 1행 머리글에서 찾는다. 자리를 번호로 세면
+        # 'Model' 열이 있는 시트(PBX·MajorModule)와 없는 시트(EMA)가
+        # 한 칸씩 밀려서, 실적이 계획 칸으로 들어간다.
+        head_row, pn_col, sheet_steps, comment_col = _pi.find_layout(ws)
+        if not sheet_steps:
+            print(f"[import-xlsx] '{ws.title}' 시트에서 단계 머리글을 못 찾음")
+            continue
+        n_steps = len(sheet_steps)
+
+        # 판가·재료비도 머리글로 찾는다. 없으면 건드리지 않는다.
+        price_col = cost_col = None
+        for c in range(pn_col + 1, ws.max_column + 1):
+            for rr in (head_row, head_row + 1):
+                t = _pn(ws.cell(rr, c).value).lower()
+                if t in ('판가', 'price', 'unitprice', '단가'):
+                    price_col = price_col or c
+                elif t in ('재료비', 'materialcost', 'material'):
+                    cost_col = cost_col or c
+
         models = proj.get('models', [])
-        for row in ws.iter_rows(min_row=3, values_only=True):
-            pn = _pn(row[1] if len(row) > 1 else None)
-            if not pn: continue
+        for r in range(head_row + 2, ws.max_row + 1):
+            pn = _pn(ws.cell(r, pn_col).value)
+            if not pn or pn.lower() in ('total', '합계'): continue
             m = next((x for x in models if _pn(x.get('part_number')) == pn or _pn(x.get('id')) == pn), None)
             if not m: skipped.append(f"{skey}:{pn}"); continue
             steps, done = [], 0
-            for i, sname in enumerate(cfg['steps']):
-                p, a = 3 + i * 2, 4 + i * 2
-                planned = _cs(row[p] if len(row) > p else None)
-                actual = _cs(row[a] if len(row) > a else None)
+            for i, (no, en, pc, ac) in enumerate(sheet_steps):
+                planned = _cs(ws.cell(r, pc).value) if pc >= 1 else ''
+                actual = _cs(ws.cell(r, ac).value) if ac >= 1 else ''
                 status = '완료' if actual else ''
                 if status == '완료': done += 1
-                steps.append({'key': f'step_{i+1}', 'name': f'{i+1:02d} {sname}', 'group': '발주' if i < 3 else ('제작·검사' if i < len(cfg['steps'])-5 else '승인'), 'expected': planned, 'actual': actual, 'status': status})
+                name = _STEP_KO.get(en.strip().lower(), en.strip())
+                steps.append({
+                    'key': f'step_{i+1}',
+                    'name': f'{no:02d} {name}',
+                    'group': '발주' if i < 3 else ('제작·검사' if i < n_steps - 5 else '승인'),
+                    'expected': planned, 'actual': actual, 'status': status,
+                })
             m['process'] = steps
-            m['progress'] = round(done / len(cfg['steps']) * 100)
+            m['progress'] = round(done / n_steps * 100) if n_steps else 0
+            # 개발 일정표에 올라온 모델이다. 양산으로 잡혀 있으면 바로잡는다.
+            m['group'] = '개발'
             if cfg['dt']: m['dev_type'] = cfg['dt']
             applied.append(f"{skey}:{pn}")
-            if cfg['price']:
-                price, mcost = _cs(row[28] if len(row) > 28 else ''), _cs(row[29] if len(row) > 29 else '')
-                _pv = _as_money(price, None)
+            if price_col:
+                _pv = _as_money(_cs(ws.cell(r, price_col).value), None)
                 if _pv is not None: m['price'] = _pv
-                _mv = _as_money(mcost, None)
+            if cost_col:
+                _mv = _as_money(_cs(ws.cell(r, cost_col).value), None)
                 if _mv is not None: m['material_cost'] = _mv
     # ── 위 시트(pbx/ema/majormodule)가 하나도 안 걸리면 일반 Process Schedule 형식으로 처리 ──
     if not applied:
