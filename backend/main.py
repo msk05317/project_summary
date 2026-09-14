@@ -22161,6 +22161,34 @@ def _board_row_status(models, spec_status, manual_status=None):
     return "개발"
 
 
+def _board_row_note(models, spec_note, manual_note=None):
+    """'비고' 칸.
+
+    보드에서 직접 넣은 값 > boards.json 에 적힌 값 > 모델에 적어둔 메모 순.
+    모델 목록의 '그 외 특이사항 · 메모'(m['note'])를 적어놓고 보드에는 안 뜬다는
+    얘기가 나와서 마지막 단계를 붙였다. '문제 · 리스크'(m['issues'])는 따로
+    이슈 화면에서 쓰는 값이라 여기로 끌어오지 않는다.
+
+    행에 모델이 여러 개면 어느 모델 얘기인지 알 수 있게 모델명을 앞에 붙인다.
+    """
+    if manual_note and str(manual_note).strip():
+        return str(manual_note).strip()
+    if spec_note and str(spec_note).strip():
+        return str(spec_note).strip()
+    lines, seen = [], set()
+    multi = len(models or []) > 1
+    for m in (models or []):
+        if not isinstance(m, dict):
+            continue
+        txt = str(m.get("note") or "").strip()
+        if not txt or txt in seen:
+            continue
+        seen.add(txt)
+        name = str(m.get("id") or m.get("name") or "").strip()
+        lines.append(f"{name}: {txt}" if (multi and name) else txt)
+    return "\n".join(lines)
+
+
 def _board_month_qty(models, mon):
     """그 달 계획/실적 합계. 모델별 weekly_plan 을 월 소유 규칙대로 더한다."""
     weeks = _get_month_weeks(mon)
@@ -22279,7 +22307,7 @@ def _spec_board(project_key, proj, spec, month):
                 "next_month_plan": next_plan,
                 "base_actual": _as_int(man.get("base_actual")) if _has(man, "base_actual") else None,
                 "base_week": str(man.get("base_week") or ""),
-                "note": str(man.get("note") or row.get("note") or ""),
+                "note": _board_row_note(models, row.get("note"), man.get("note")),
                 "manual_row": bool(row.get("manual")),
                 "po_manual": _has(man, "po_qty"),
                 "actual_manual": _has(man, "actual_total"),
