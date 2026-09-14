@@ -105,12 +105,11 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
           rightLabel: span,
           bigValue: has ? AutoFmt.eok(yearRev) : '',
           subValue: has ? '/ ${AutoFmt.eok(s.revenue)}' : '',
-          pillText: !has
-              ? ''
-              : (over ? '원가 초과 ${s.overCost}종' : '올해 ${_pct(yearRev, s.revenue)}%'),
-          pillColor: over ? AppColors.statusRed : AppColors.summaryCaution,
+          // 배지에는 '읽고 나서 할 일이 있는 것'만 띄운다.
+          pillText: over ? '원가 초과 ${s.overCost}종' : '',
+          pillColor: AppColors.statusRed,
           ratio: s.revenue > 0 ? yearRev / s.revenue : 0,
-          barColor: over ? AppColors.summaryCaution : AppColors.todayBlue,
+          barColor: AppColors.todayBlue,
           leftLabel: '계약 물량 ($_year → 전체)',
           leftValue: has
               ? '${AutoFmt.qtyShort(yearQty, unit: '')} → ${AutoFmt.qtyShort(s.qty)}'
@@ -160,9 +159,6 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
       ],
     );
   }
-
-  int _pct(num part, num whole) =>
-      whole > 0 ? (part * 100 / whole).round() : 0;
 
   Widget _productRow(AutoProduct p, AutoProjectSummary s) {
     final over = p.overCost;

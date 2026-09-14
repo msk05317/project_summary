@@ -32,6 +32,11 @@ HEAD = {
     "재료비": "c_material", "부품비": "c_parts", "주조비": "c_casting",
     "가공비": "c_machining", "관리이윤": "c_margin", "감가상각": "c_depr",
     "포장": "c_packing", "물류": "c_logi",
+    # 시트마다 원가를 쪼갠 정도가 다르다. 주조비·가공비로 나뉜 시트가 있고
+    # 공정비 한 칸으로만 있는 시트가 있다. 둘 다 읽는다.
+    "공정비": "c_process",
+    # 엑셀이 스스로 낸 합계. 우리가 모은 다섯 덩어리와 맞는지 대조용으로만 쓴다.
+    "합계": "c_total",
     "판가": "price", "불량률": "defect_rate",
     "현재단계": "stage", "SOP시점": "sop",
 }
@@ -140,16 +145,29 @@ def _read_sheet(ws, hdr, wsf=None):
             c = cols.get(name)
             return _merged_value(ws, row, c) if c else None
 
-        # 원가 여덟 칸 → 다섯 덩어리
+        # 원가 칸들 → 다섯 덩어리
         g = lambda k: _num(cell(k)) or 0.0          # noqa: E731
+        # 공정비는 시트에 따라 주조비+가공비로 나뉘어 있거나 한 칸으로만 있다.
+        # 나뉜 칸이 있으면 그걸 쓰고, 없을 때만 공정비 칸을 쓴다.
+        # (나뉜 시트의 '공정비' 칸은 포장·물류까지 섞인 다른 합이라 같이 더하면 겹친다)
+        process = g("c_casting") + g("c_machining") or g("c_process")
         cost = {
             "material": g("c_material") + g("c_parts") + g("c_packing"),
-            "process": g("c_casting") + g("c_machining"),
+            "process": process,
             "admin": g("c_margin"),
             "depr": g("c_depr"),
             "logi": g("c_logi"),
         }
         cost = {k: v for k, v in cost.items() if v}
+
+        # 엑셀이 적어 둔 합계와 맞는지 본다. 열 구성이 시트마다 달라서
+        # 한 칸을 놓쳐도 숫자는 그럴듯하게 나온다 — 그때 잡히는 건 이 대조뿐이다.
+        excel_total = _num(cell("c_total"))
+        total_gap = None
+        if excel_total:
+            gap = sum(cost.values()) - excel_total
+            if abs(gap) > max(1.0, excel_total * 0.005):
+                total_gap = round(gap, 1)
 
         # 판가 — 수식이면 외화 단가와 환율을 살린다
         price_fx = fx_rate = price_krw = None
@@ -182,6 +200,7 @@ def _read_sheet(ws, hdr, wsf=None):
             "customer": cust,
             "product": product,
             "group": "개발" if "개발" in stage else "양산",
+            "total_gap": total_gap,
             "auto": _clean({
                 "model_name": _s(cell("model_name")),
                 "end_customer": _s(cell("end_customer")),
@@ -191,7 +210,8 @@ def _read_sheet(ws, hdr, wsf=None):
                 "weight_kg": _num(cell("weight_kg")),
                 "tonnage": _num(cell("tonnage")),
                 "defect_rate": _num(cell("defect_rate")),
-                "currency": ("EUR" if fx_rate == 1650 else "USD") if fx_rate else None,
+                # 통화는 엑셀에 없다. 환율만 보고 EUR/USD 를 찍던 걸 뺀다 —
+                # 맞을 수도 있지만 근거가 없으면 적지 않는 게 낫다.
                 "price_fx": price_fx,
                 "fx_rate": fx_rate,
                 "price_krw": price_krw,

@@ -264,14 +264,15 @@ class _SpecCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = product;
+    // 엑셀에 있는 것만 적는다. 없는 값을 채워 넣으면 그게 사실처럼 읽힌다.
+    // (계약 통화는 엑셀에 열이 없어서 뺐다 — 환율만 보고 찍던 값이었다)
     final rows = <(String, String)>[
-      if (p.site.isNotEmpty) ('생산지', p.site),
+      if (p.site.isNotEmpty) ('납품 위치', p.site),
       if (p.method.isNotEmpty) ('공법', p.method),
       if (p.sop.isNotEmpty) ('양산 시작 (SOP)', p.sop),
       if (p.weightKg > 0) ('제품 중량', '${p.weightKg} kg'),
-      if (p.tonnage > 0) ('형체력', '${AutoFmt.comma(p.tonnage)} t'),
-      if (p.defectRate > 0) ('불량률', '${p.defectRate} %'),
-      if (p.currency.isNotEmpty) ('계약 통화', p.currency),
+      if (p.tonnage > 0) ('주조톤수', '${AutoFmt.comma(p.tonnage)} ton'),
+      if (p.defectRate > 0) ('불량률', AutoFmt.ratio(p.defectRate)),
       ('구분', p.group),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();

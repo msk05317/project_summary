@@ -6229,6 +6229,11 @@ window.renderAdminV2ByDivision = function(){
   }
 
   // ── 목록 ──────────────────────────────────────────────────────────
+  // 엑셀은 비율을 소수로 적는다. 0.31 은 31% 다.
+  function _autoPct(v) {
+    return (Math.round(_aN(v) * 1000) / 10) + '%';
+  }
+
   window._autoRenderTable = function(container, list) {
     var tq = 0, tr = 0, over = 0, mass = 0;
     list.forEach(function(m) {
@@ -6275,7 +6280,7 @@ window.renderAdminV2ByDivision = function(){
         '<td class="pm2">' + _aE(a.sop) + '</td>' +
         '<td class="auto-num">' + (a.weight_kg ? a.weight_kg : '-') + '</td>' +
         '<td class="auto-num">' + (a.tonnage ? _aF(_aN(a.tonnage)) : '-') + '</td>' +
-        '<td class="auto-num">' + (a.defect_rate ? _aN(a.defect_rate).toFixed(2) + '%' : '-') + '</td>' +
+        '<td class="auto-num">' + (a.defect_rate ? _autoPct(a.defect_rate) : '-') + '</td>' +
         '<td class="auto-num">' + (k.price ? _aF(k.price) : '-') + '</td>' +
         '<td class="auto-num">' + (t ? _aF(t) : '-') + '</td>' +
         '<td class="auto-num ' + _ratioCls(k.ratio) + '">' +
@@ -6372,7 +6377,8 @@ window.renderAdminV2ByDivision = function(){
             sel('공법', 'method', a.method || '고압주조', window._AUTO_METHOD) +
             inp('제품중량 (KG)', 'weight_kg', a.weight_kg === undefined ? '' : a.weight_kg, '5.07') +
             inp('주조톤수 (TON)', 'tonnage', a.tonnage === undefined ? '' : a.tonnage, '3500') +
-            inp('불량률 (%)', 'defect_rate', a.defect_rate === undefined ? '' : a.defect_rate, '0.30') +
+            inp('불량률 (%)', 'defect_rate',
+                a.defect_rate === undefined ? '' : Math.round(_aN(a.defect_rate) * 1000) / 10, '31') +
             sel('현재단계', 'group', m.group === '개발' ? '개발' : '양산', ['양산', '개발']) +
             inp('SOP 시점', 'sop', a.sop || '', '2024년 4월') +
           '</div></section>' +
@@ -6460,9 +6466,13 @@ window.renderAdminV2ByDivision = function(){
       ['model_name', 'end_customer', 'car_model', 'site', 'method', 'sop', 'currency'].forEach(function(kk) {
         if (String(d.auto[kk] || '').trim()) out[kk] = String(d.auto[kk]).trim();
       });
-      ['weight_kg', 'tonnage', 'defect_rate', 'price_fx', 'fx_rate', 'price_krw'].forEach(function(kk) {
+      ['weight_kg', 'tonnage', 'price_fx', 'fx_rate', 'price_krw'].forEach(function(kk) {
         if (String(d.auto[kk] === undefined ? '' : d.auto[kk]).trim() !== '') out[kk] = _aN(d.auto[kk]);
       });
+      // 불량률은 화면에서 퍼센트로 받고 소수로 저장한다 — 엑셀이 그 모양이다.
+      if (String(d.auto.defect_rate === undefined ? '' : d.auto.defect_rate).trim() !== '') {
+        out.defect_rate = Math.round(_aN(d.auto.defect_rate) * 100) / 10000;
+      }
       window._AUTO_COST.forEach(function(p) {
         var v = d.auto.cost[p[0]];
         if (String(v === undefined ? '' : v).trim() !== '') out.cost[p[0]] = _aN(v);
@@ -8582,7 +8592,16 @@ window._ovProjectKey = function() {
             '<td class="auto-num">' + r.cost_total.toLocaleString('ko-KR') + '</td>' +
             '<td class="auto-num">' + r.qty.toLocaleString('ko-KR') + '</td>' +
             '<td class="auto-num">' + r.revenue.toLocaleString('ko-KR') + '억</td>' +
-          '</tr>';
+          '</tr>' +
+          // 엑셀이 적어 둔 합계와 우리가 모은 원가가 어긋나면 그 줄 밑에 알린다.
+          // 시트마다 원가 열이 달라서, 한 칸을 놓쳐도 숫자는 그럴듯하게 나온다.
+          (r.total_gap
+            ? '<tr><td></td><td colspan="7" style="color:#B45309;font-size:11.5px;' +
+              'background:#FFFBEB;padding:5px 8px">원가 합계가 엑셀의 합계와 ' +
+              Math.abs(r.total_gap).toLocaleString('ko-KR') + '원 ' +
+              (r.total_gap > 0 ? '많습니다' : '적습니다') +
+              ' — 엑셀에 원가 열이 더 있는지 봐 주세요</td></tr>'
+            : '');
         }).join('');
         return '<h4 class="ai-ph">' + _aiE(p) + ' <small>' + byProj[p].length + '개</small></h4>' +
           '<table class="wb-tbl"><thead><tr>' +

@@ -98,14 +98,69 @@ def test_원가를_다섯_덩어리로_묶는다():
 def test_판가는_외화단가와_환율로_나뉜다():
     a = _parse()["rows"][0]["auto"]
     assert a["price_fx"] == 27.06 and a["fx_rate"] == 1350, a
-    assert a["currency"] == "USD"
     assert round(a["price_fx"] * a["fx_rate"]) == 36531
 
 
-def test_환율_1650이면_유로로_본다():
+def _wb_slim():
+    """공정비가 한 칸으로만 있는 시트 (실제 '양산주요제품 (3)' 모양).
+
+    주조비·가공비 칸이 아예 없다. 이 모양을 못 읽으면 공정비가 0 이 되고,
+    원가가 통째로 비어 보이는데도 합계는 그럴듯하게 나온다.
+    """
+    from openpyxl import Workbook
+    head = ["고객사", "제품명", "모델명", "최종고객사", "차종", "납품 위치",
+            "제품중량\n(KG)", "주조톤수\n(TON)", "구분",
+            "재료비", "공정비", "관리이윤", "감가상각", "물류",
+            "합계\n(원화)", "판가\n(원화)", "불량률 \n(%)", "현재단계", "SOP시점"]
+    wb = Workbook(); ws = wb.active; ws.title = "양산주요제품 (3)"
+    for i, h in enumerate(head, start=2):
+        ws.cell(4, i, h)
+    ycol = 2 + len(head) + 1
+    ws.cell(4, ycol - 1, "총")
+    ws.cell(4, ycol, "2026")
+    ws.cell(5, 2, "셰플러")
+    vals = ["SVCT", "", "기아자동차", "EV3", "한국\n/이천공장", 5.07, 3500, "비용",
+            25830, 17115, 2848, 2951, 1806, 50550, 36531, 0.3, "양산", "2024년 4월"]
+    for i, v in enumerate(vals, start=3):
+        ws.cell(5, i, v)
+    ws.cell(5, ycol, 116755)
+    ws.cell(6, ycol, 56.74)
+    ws.cell(7, 2, "총 매출")
+    return wb
+
+
+def test_공정비가_한_칸인_시트도_읽는다():
+    r = ai.parse(_wb_slim(), None, "양산주요제품 (3)")["rows"][0]
+    c = r["auto"]["cost"]
+    assert round(c["process"]) == 17115, c
+    assert round(c["material"]) == 25830, c
+    assert round(sum(c.values())) == 50550, sum(c.values())
+    assert r["total_gap"] is None, r["total_gap"]
+
+
+def test_나뉜_시트는_주조비_가공비를_쓴다():
+    """같은 시트에 '공정비' 칸이 또 있어도 겹쳐 더하지 않는다."""
+    r = _parse()["rows"][0]
+    c = r["auto"]["cost"]
+    assert round(c["process"]) == round(10768.11 + 6347.12), c
+    assert r["total_gap"] is None, r["total_gap"]
+
+
+def test_합계가_안_맞으면_표시한다():
+    """열 하나를 놓쳐도 숫자는 그럴듯하게 나온다. 엑셀 합계와 대조해서 잡는다."""
+    wb = _wb_slim()
+    wb["양산주요제품 (3)"].cell(5, 16, 99999)      # 합계(원화) 칸만 딴판으로
+    r = ai.parse(wb, None, "양산주요제품 (3)")["rows"][0]
+    assert r["total_gap"] is not None and r["total_gap"] < 0, r["total_gap"]
+
+
+def test_통화는_적지_않는다():
+    """엑셀에 통화 열이 없다. 환율만 보고 USD/EUR 를 찍던 걸 뺐다."""
+    a = _parse()["rows"][0]["auto"]
+    assert "currency" not in a, a
     wb = _wb(price_formula="=8.55*1650")
-    a = ai.parse(wb, wb, "양산주요제품")["rows"][0]["auto"]
-    assert a["currency"] == "EUR" and a["fx_rate"] == 1650, a
+    a2 = ai.parse(wb, wb, "양산주요제품")["rows"][0]["auto"]
+    assert "currency" not in a2 and a2["fx_rate"] == 1650, a2
 
 
 def test_수식이_아니면_원화로_넣는다():

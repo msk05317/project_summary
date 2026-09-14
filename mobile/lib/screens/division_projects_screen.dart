@@ -191,16 +191,20 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       rightLabel: span,
       bigValue: has ? AutoFmt.eok(a.yearRevenue) : '',
       subValue: has ? '/ ${AutoFmt.eok(a.revenue)}' : '',
-      pillText: has ? '올해 ${(a.yearShare * 100).round()}%' : '',
-      pillColor: AppColors.summaryCaution,
+      // 배지에는 '읽고 나서 할 일이 있는 것'만 띄운다.
+      // 올해 비중 같은 건 바로 위 숫자 두 개가 이미 말하고 있다.
+      pillText: a.overCost > 0 ? '원가 초과 ${a.overCost}종' : '',
+      pillColor: AppColors.statusRed,
       ratio: a.yearShare,
-      barColor: AppColors.summaryCaution,
+      barColor: AppColors.todayBlue,
       leftLabel: '계약 물량 (${a.year > 0 ? a.year : DateTime.now().year} → 전체)',
       leftValue: has
           ? '${AutoFmt.qtyShort(a.yearQty, unit: '')} → ${AutoFmt.qtyShort(a.qty)}'
           : '-',
-      rightStatLabel: '원가 초과 제품',
-      rightStatValue: a.overCost > 0 ? '${a.overCost}종' : '없음',
+      rightStatLabel: '고객사 · 제품',
+      rightStatValue: has
+          ? '${a.withContract}곳 · ${a.totalProducts}종'
+          : '-',
       loading: _autoLoading && !a.loaded,
       loaded: a.loaded,
       emptyText: '등록된 계약이 없습니다',

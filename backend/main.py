@@ -13942,7 +13942,6 @@ def get_automotive_summary(project_key: str):
             "weight_kg": _as_money(a.get("weight_kg")),
             "tonnage": _as_int(a.get("tonnage")),
             "defect_rate": _as_money(a.get("defect_rate")),
-            "currency": a.get("currency") or "",
             "price": round(price),
             "cost": {k: round(v) for k, v in cost.items()},
             "cost_total": round(total),
@@ -14147,6 +14146,9 @@ def _auto_diff(parsed):
                                  for v in (a.get("contract") or {}).values()), 1),
             "end_customer": _ai.canonical(a.get("end_customer", ""), names),
             "sop": a.get("sop", ""),
+            # 엑셀이 적어 둔 합계와 우리가 모은 다섯 덩어리가 어긋난 금액.
+            # 시트마다 원가 열이 달라서 한 칸을 놓쳐도 숫자는 그럴듯하게 나온다.
+            "total_gap": r.get("total_gap"),
         })
 
     return {"sheet": parsed["sheet"], "years": parsed["years"],

@@ -39,6 +39,14 @@ class AutoFmt {
   /// 0.1384 → '138%'
   static String pct(double? r, {int digits = 0}) =>
       r == null ? '-' : '${(r * 100).toStringAsFixed(digits)}%';
+
+  /// 엑셀은 비율을 소수로 적는다 — 0.31 은 31% 다.
+  /// 0.31 → '31%', 0.315 → '31.5%'
+  static String ratio(double v) {
+    final n = v * 100;
+    final s = n.toStringAsFixed(1);
+    return '${s.endsWith('.0') ? s.substring(0, s.length - 2) : s}%';
+  }
 }
 
 class AutoYearCell {
@@ -196,13 +204,12 @@ class AutoProduct {
   final String group; // '양산' | '개발'
   final String endCustomer;
   final String carModel;
-  final String site;
-  final String method;
+  final String site;   // 납품 위치 ('한국/이천공장', '인도 (CIF)')
+  final String method; // 공법
   final String sop;
   final double weightKg;
   final int tonnage;
   final double defectRate;
-  final String currency;
   final int price;      // 원
   final Map<String, int> cost; // material/process/admin/depr/logi
   final int costTotal;
@@ -223,7 +230,6 @@ class AutoProduct {
     required this.weightKg,
     required this.tonnage,
     required this.defectRate,
-    required this.currency,
     required this.price,
     required this.cost,
     required this.costTotal,
@@ -254,7 +260,6 @@ class AutoProduct {
       weightKg: _d(j['weight_kg']),
       tonnage: _i(j['tonnage']),
       defectRate: _d(j['defect_rate']),
-      currency: _s(j['currency']),
       price: _i(j['price']),
       cost: c,
       costTotal: _i(j['cost_total']),
