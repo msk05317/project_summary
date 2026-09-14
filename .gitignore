@@ -157,3 +157,6 @@ mobile/android/key.properties
 
 # 보드 비고 AI 요약 캐시 (배포마다 다시 채워진다)
 backend/board_note_cache.json
+
+# 운영 데이터 백업 (내 컴퓨터에만 둔다)
+backups/
