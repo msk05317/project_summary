@@ -6234,12 +6234,13 @@ window.renderAdminV2ByDivision = function(){
     return (Math.round(_aN(v) * 1000) / 10) + '%';
   }
 
-  // 섹션 이름 밑에 재고 한 줄 (프레임 'CEFEM BE / 재고 79')
-  function _wbStock(sec) {
+  // 섹션 이름 밑에 재고 한 줄 (프레임 'CEFEM BE / 재고 79').
+  // 이 파일은 <script> 가 여러 개라 window 에 붙여야 다른 블록에서 보인다.
+  window._wbStock = function(sec) {
     if (sec == null || sec.stock == null || sec.stock === '') return '';
     return '<div style="font-size:10.5px;font-weight:600;color:#94A3B8;margin-top:2px">재고 '
       + Number(sec.stock).toLocaleString('ko-KR') + '</div>';
-  }
+  };
 
   window._autoRenderTable = function(container, list) {
     var tq = 0, tr = 0, over = 0, mass = 0;
@@ -9013,7 +9014,7 @@ window._ovProjectKey = function() {
         return '<tr>' +
           (hasSec && i === 0
             ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' +
-              _esc(sec.name) + _wbStock(sec) + '</td>'
+              _esc(sec.name) + window._wbStock(sec) + '</td>'
             : '') +
           '<td class="lbl">' + _esc(r.label) + '</td>' +
           (showSt ? '<td>' + _esc(r.status || '') + '</td>' : '') +
@@ -9091,7 +9092,7 @@ window._ovProjectKey = function() {
       var rows = sec.rows || [];
       return rows.map(function(r, i) {
         return '<tr>' +
-          (hasSec && i === 0 ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' + _esc(sec.name) + _wbStock(sec) + '</td>' : '') +
+          (hasSec && i === 0 ? '<td class="lbl" rowspan="' + rows.length + '" style="vertical-align:middle;">' + _esc(sec.name) + window._wbStock(sec) + '</td>' : '') +
           '<td class="lbl">' + _esc(r.label) + '</td>' +
           (showSt ? '<td>' + _esc(r.status || '') + '</td>' : '') +
           '<td>' + _wbNum(r.po_qty) + '</td>' +
