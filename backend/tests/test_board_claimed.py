@@ -64,16 +64,20 @@ for sec in spec['sections']:
 assert not dup, f'두 행에 겹쳐 잡힌 모델: {dup}'
 ok += 1
 
-# ── 엔클로저: 손으로 적어둔 exclude 와 결과가 같아야 한다 (회귀 방지)
+# ── 엔클로저: 자빌로 지목한 모델이 직납에 겹쳐 잡히면 안 된다
+#    (t009_direct 의 손으로 적어둔 exclude 를 걷어낸 자리를 자동 제외가 메운다)
 EN = {'models': [{'id': '714-025898-009', 'group': '양산', 'dev_type': '009'},
-                 {'id': '714-000000-009', 'group': '양산', 'dev_type': '009'},
-                 {'id': '714-000000-413', 'group': '양산', 'dev_type': '413'}]}
+                 {'id': '853-800575-389', 'group': '양산', 'dev_type': '009'},
+                 {'id': '853-800575-413', 'group': '양산', 'dev_type': '413'}]}
 es = BOARDS['enclosure']
 ec = claimed_of(es)
+assert '714-025898-009' in ec, f'자빌 모델이 지목 목록에 없다: {ec}'
 direct = [m['id'] for m in rows_of(EN, find(es, 't009_direct'), ec)]
 jabil = [m['id'] for m in rows_of(EN, find(es, 't009_jabil'), ec)]
-assert direct == ['714-000000-009'], direct
+assert direct == ['853-800575-389'], direct
 assert jabil == ['714-025898-009'], jabil
+assert not any('exclude' in r for sec in es['sections'] for r in sec['rows']), \
+    '자동 제외가 있는데 exclude 를 다시 손으로 적었다'
 ok += 1
 
 # ── 파워박스: AetherGDX 가 양산19종에 섞이면 안 된다

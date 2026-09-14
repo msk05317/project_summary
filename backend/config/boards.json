@@ -121,10 +121,7 @@
             {
               "key": "t009_direct",
               "label": "직납",
-              "dev_type": "009",
-              "exclude": [
-                "714-025898-009"
-              ]
+              "dev_type": "009"
             },
             {
               "key": "t009_jabil",
