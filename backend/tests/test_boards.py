@@ -108,6 +108,24 @@ def test_powerbox_partition():
     assert len(hits) == 51, len(hits)
 
 
+
+# ── 프레임: CEFEM BE / FE 를 화성·VN 두 줄로 ──────────────────────────
+def test_프레임_보드는_CEFEM_BE_FE_로_나뉜다():
+    import json, pathlib as _p
+    spec = json.loads((_p.Path(__file__).resolve().parents[1] / 'config' / 'boards.json')
+                      .read_text(encoding='utf-8'))['boards']['frame']
+    secs = spec['sections']
+    assert [x['name'] for x in secs] == ['CEFEM BE', 'CEFEM FE'], secs
+    for x in secs:
+        assert [r['label'] for r in x['rows']] == ['화성', 'VN'], x
+        assert x.get('stock'), x            # 이름 밑에 적을 재고
+    # 행이 가리키는 품번이 실제로 등록돼 있어야 한다
+    want = {'CEFEM BE(HS)', 'CEFEM BE(VN)', 'CEFEM FE(HS)', 'CEFEM FE(VN)'}
+    got = {m for x in secs for r in x['rows'] for m in r['models']}
+    assert got == want, got
+    # 주차형 + 다음달 열 (지금 화면과 같은 모양)
+    assert spec['columns'] == 'week' and spec['next_month'] is True
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in sorted(globals().items()):

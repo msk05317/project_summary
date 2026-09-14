@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-08",
+  "updated_at": "2026-09-14",
   "_note": [
     "프로젝트별 '주차 현황 보드'의 행 구성.",
     "여기에 스펙이 없는 프로젝트는 예전처럼 양산/개발 두 줄로 그린다(하바플레이트).",
@@ -20,7 +20,8 @@
     "",
     "group: 구분(양산/개발)으로 묶는다.",
     "exclude_dev_type: 그 유형은 뺀다 (양산19종 = 양산 − EMA − AetherGDX).",
-    "next_month: 다음달 계획 열을 붙일지 (파워박스 엑셀의 '10월')."
+    "next_month: 다음달 계획 열을 붙일지 (파워박스 엑셀의 '10월').",
+    "stock: 섹션 이름 밑에 적는 재고. 프로젝트의 board_stock 에 값이 있으면 그게 이긴다."
   ],
   "boards": {
     "chamber": {
@@ -204,6 +205,54 @@
               "label": "VTM",
               "models": [
                 "VTM"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "frame": {
+      "columns": "week",
+      "show_status": false,
+      "show_note": false,
+      "next_month": true,
+      "sections": [
+        {
+          "name": "CEFEM BE",
+          "stock": 79,
+          "rows": [
+            {
+              "key": "be_hs",
+              "label": "화성",
+              "models": [
+                "CEFEM BE(HS)"
+              ]
+            },
+            {
+              "key": "be_vn",
+              "label": "VN",
+              "models": [
+                "CEFEM BE(VN)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "CEFEM FE",
+          "stock": 64,
+          "rows": [
+            {
+              "key": "fe_hs",
+              "label": "화성",
+              "models": [
+                "CEFEM FE(HS)"
+              ]
+            },
+            {
+              "key": "fe_vn",
+              "label": "VN",
+              "models": [
+                "CEFEM FE(VN)"
               ]
             }
           ]

@@ -22206,6 +22206,9 @@ def _spec_board(project_key, proj, spec, month):
     span = int(spec.get("month_span") or 2)
     months = [] if col_mode == "week" else _board_months(month, span)
     manual_store = (proj.get("board_manual") or {})
+    # 섹션 이름 밑에 적는 재고. 설정에 기본값을 두고, 프로젝트에 적어 둔 게
+    # 있으면 그게 이긴다 — 재고는 주마다 바뀌므로 설정 파일에 묶어 두면 안 된다.
+    stock_store = (proj.get("board_stock") or {})
 
     sections, flat = [], []
     for sec in (spec.get("sections") or []):
@@ -22283,7 +22286,10 @@ def _spec_board(project_key, proj, spec, month):
             }
             srows.append(r)
             flat.append(r)
-        sections.append({"name": sec.get("name") or "", "rows": srows})
+        _sname = sec.get("name") or ""
+        _stock = stock_store.get(_sname, sec.get("stock"))
+        sections.append({"name": _sname, "rows": srows,
+                         "stock": _as_int(_stock) if _stock not in (None, "") else None})
 
     total = {
         "label": "합계",
@@ -22324,7 +22330,8 @@ def get_board_rows(project_key: str):
     return {"project_key": _key,
             "has_spec": bool(spec),
             "spec": spec or {},
-            "manual": proj.get("board_manual") or {}}
+            "manual": proj.get("board_manual") or {},
+            "stock": proj.get("board_stock") or {}}
 
 
 @app.put("/admin/projects/{project_key}/board-rows")
@@ -22341,6 +22348,17 @@ def put_board_rows(project_key: str, payload: dict,
     rows = payload.get("rows")
     if not isinstance(rows, dict):
         raise HTTPException(status_code=400, detail="rows 는 객체여야 합니다")
+
+    # 섹션 재고 (프레임의 'CEFEM BE 재고: 79'). 빈 문자열이면 지운다.
+    if isinstance(payload.get("stock"), dict):
+        keep = {}
+        for name, v in payload["stock"].items():
+            if str(v).strip() != "":
+                keep[str(name)] = _as_int(v)
+        if keep:
+            proj["board_stock"] = keep
+        else:
+            proj.pop("board_stock", None)
 
     store = {}
     for k, v in rows.items():

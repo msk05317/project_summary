@@ -284,7 +284,11 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
               children: [
                 _cell('구분', _kHeadH * headSpan, head: true, align: TextAlign.left),
                 for (final sec in sections)
-                  _cell('${sec['name']}',
+                  // 재고가 있으면 이름 밑에 한 줄 더 (프레임 'CEFEM BE / 재고 79')
+                  _cell(
+                      sec['stock'] == null
+                          ? '${sec['name']}'
+                          : '${sec['name']}\n재고 ${sec['stock']}',
                       _kSecRowH * ((sec['rows'] as List? ?? const []).length),
                       align: TextAlign.left, bold: true, size: 10),
                 _cell('', _kTotalH, total: true),
