@@ -22,11 +22,15 @@ import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/favorites_service.dart';
 import '../services/overview_service.dart';
+import '../services/automotive_service.dart';
+import '../models/automotive.dart';
 import '../components/division/division_immediate_check.dart'
     show DivisionImmediateItem, ImmediatePriority;
 import '../components/division/division_revenue_hero.dart';
 import '../components/division/division_attention_banner.dart';
 import '../components/division/project_revenue_row.dart';
+import '../components/division/automotive_hero_card.dart';
+import '../components/division/automotive_row_card.dart';
 import '../components/home/search_filter_row.dart';
 import '../components/home/bottom_prompt_bar.dart';
 import '../components/home/app_bottom_nav.dart';
@@ -73,6 +77,25 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
   OverviewSummary _overview = OverviewSummary.empty;
   bool _overviewLoading = true;
 
+  /// 자동차사업부는 월 실적이 아니라 연 단위 계약이라 따로 받는다.
+  /// (/divisions/automotive/summary — 고객사별 계약 매출·물량·원가 초과)
+  AutoDivisionSummary _auto = AutoDivisionSummary.empty;
+  bool _autoLoading = true;
+
+  bool get _isAuto => widget.division.id == AutomotiveService.divisionId;
+
+  AutoProjectRow _autoOf(String key) {
+    for (final r in _auto.projects) {
+      if (r.key == key) return r;
+    }
+    // 아직 계약이 안 올라온 고객사. 빈 줄로 두고 '등록 전'으로 보여준다.
+    return AutoProjectRow(
+      key: key, label: '', products: 0, mass: 0, dev: 0,
+      qty: 0, revenue: 0, yearQty: 0, yearRevenue: 0,
+      share: 0, overCost: 0, overCostNames: const [],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +103,17 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     _loadFavorites();
     _loadProgress();
     _loadOverview();
+    if (_isAuto) _loadAuto();
+  }
+
+  Future<void> _loadAuto() async {
+    if (mounted) setState(() => _autoLoading = true);
+    final s = await AutomotiveService.division();
+    if (!mounted) return;
+    setState(() {
+      _auto = s;
+      _autoLoading = false;
+    });
   }
 
   Future<void> _loadProgress() async {
@@ -137,11 +171,77 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     });
   }
 
+  // ── 자동차사업부 전용 블록 ─────────────────────────────────────────
+  //
+  // 반도체와 같은 카드를 쓰되 들어가는 말만 계약 기준으로 바꾼다.
+  //   이번 달 실적 → 올해 계약 매출,  출하 → 계약 물량,  진행률 → 매출 비중
+  // 그래서 사업부를 옮겨도 읽는 자리는 그대로다.
+
+  Widget _autoHero() {
+    final a = _auto;
+    final y = a.years;
+    final span = y.isEmpty ? '' : '${y.first}–${y.last} · ${y.length}년';
+    final has = a.revenue > 0;
+    return AutomotiveHeroCard(
+      title: '계약 매출  ${a.year > 0 ? a.year : DateTime.now().year}년 / 전체',
+      rightLabel: span,
+      bigValue: has ? AutoFmt.eok(a.yearRevenue) : '',
+      subValue: has ? '/ ${AutoFmt.eok(a.revenue)}' : '',
+      pillText: has ? '올해 ${(a.yearShare * 100).round()}%' : '',
+      pillColor: AppColors.summaryCaution,
+      ratio: a.yearShare,
+      barColor: AppColors.summaryCaution,
+      leftLabel: '계약 물량 (${a.year > 0 ? a.year : DateTime.now().year} → 전체)',
+      leftValue: has
+          ? '${AutoFmt.qtyShort(a.yearQty, unit: '')} → ${AutoFmt.qtyShort(a.qty)}'
+          : '-',
+      rightStatLabel: '원가 초과 제품',
+      rightStatValue: a.overCost > 0 ? '${a.overCost}종' : '없음',
+      loading: _autoLoading && !a.loaded,
+      loaded: a.loaded,
+      emptyText: '등록된 계약이 없습니다',
+    );
+  }
+
+  Widget _autoRow(_ProjectItem p) {
+    final r = _autoOf(p.id);
+    final has = r.hasContract;
+    final over = r.overCost > 0;
+    final accent = !has
+        ? AppColors.statusGray
+        : (over ? AppColors.summaryCaution : AppColors.todayBlue);
+    return AutomotiveRowCard(
+      dotColor: accent,
+      name: p.koreanName,
+      value: has ? AutoFmt.eok(r.revenue) : '—',
+      subValue: has ? '/ ${AutoFmt.qtyShort(r.qty)}' : '',
+      ratio: r.share,
+      barColor: accent,
+      meta1: has ? '${_auto.year}년 ${AutoFmt.eok(r.yearRevenue)}' : '계약 미등록',
+      meta2: '제품 ${r.products}종',
+      trailing: !has
+          ? '등록 전'
+          : (over
+              ? '원가 초과 ${r.overCost}종'
+              : '비중 ${(r.share * 100).round()}%'),
+      trailingColor: over ? AppColors.statusRed : null,
+      isFavorite: _favoriteProjects.contains(p.id),
+      isSelected: _selectedProjectId == p.id,
+      onTap: () => _tapProject(p.id, p.koreanName),
+      onToggleFavorite: () => _toggleFavorite(p.id),
+    );
+  }
+
   Future<void> _refresh() async {
     setState(() {
       _future = DashboardService.fetchCards();
     });
-    await Future.wait([_future, _loadProgress(), _loadOverview()]);
+    await Future.wait([
+      _future,
+      _loadProgress(),
+      _loadOverview(),
+      if (_isAuto) _loadAuto(),
+    ]);
   }
 
   String _statusLabel(String status) {
@@ -410,6 +510,13 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       final aFav = _favoriteProjects.contains(a.id);
       final bFav = _favoriteProjects.contains(b.id);
       if (aFav != bFav) return aFav ? -1 : 1;
+      // 자동차는 월 매출이 없다. /overview 값으로 줄을 세우면 순서가 무작위가 된다.
+      if (_isAuto) {
+        final ar = _autoOf(a.id).revenue;
+        final br = _autoOf(b.id).revenue;
+        if (ar != br) return br.compareTo(ar);
+        return a.koreanName.compareTo(b.koreanName);
+      }
       if (a.hasRevenue != b.hasRevenue) return a.hasRevenue ? -1 : 1;
       if (a.hasData != b.hasData) return a.hasData ? -1 : 1;
 
@@ -748,7 +855,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
-                  DivisionRevenueHero(
+                  if (_isAuto)
+                    _autoHero()
+                  else
+                    DivisionRevenueHero(
                     month: _overview.month,
                     revenue: _overview.revenue,
                     planRevenue: _overview.planRevenue,
@@ -769,7 +879,14 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                       );
                     },
                   ),
-                  if (data.delayed + data.warning > 0) ...[
+                  if (_isAuto && _auto.overCost > 0) ...[
+                    const SizedBox(height: 10),
+                    AutomotiveWarnStrip(
+                      count: _auto.overCost,
+                      names: _auto.overCostNames,
+                    ),
+                  ],
+                  if (!_isAuto && data.delayed + data.warning > 0) ...[
                     const SizedBox(height: 10),
                     DivisionAttentionBanner(
                       count: data.delayed + data.warning,
@@ -802,7 +919,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${_sort.label} · ${visibleProjects.length}건',
+                        '${_isAuto ? '계약 매출순' : _sort.label} · ${visibleProjects.length}건',
                         style: AppText.caption.copyWith(
                           fontSize: 11.5,
                           color: AppColors.textHint,
@@ -857,6 +974,12 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                         ),
                       ),
                     )
+                  else if (_isAuto) ...[
+                    for (final p in visibleProjects) ...[
+                      _autoRow(p),
+                      const SizedBox(height: 8),
+                    ],
+                  ]
                   else ...[
                     for (final p in withRevenue) ...[
                       ProjectRevenueRow(

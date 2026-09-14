@@ -83,7 +83,25 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
         title: Text(widget.projectName, style: AppText.bodyStrong.copyWith(fontSize: 17)),
         iconTheme: const IconThemeData(color: Color(0xFF111827)),
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
+      // 자동차사업부는 주차·진행률로 움직이지 않는다. 모델 목록 대신
+      // 계약 화면(요약 → 연도별 매출 → 제품)만 그린다.
+      body: _isAutomotive
+          ? RefreshIndicator(
+              onRefresh: () async {
+                setState(() => _autoReload++);
+              },
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  AutomotiveOverviewCard(
+                    key: ValueKey('auto-$_autoReload'),
+                    projectKey: widget.projectKey,
+                    projectName: widget.projectName,
+                  ),
+                ],
+              ),
+            )
+          : FutureBuilder<Map<String, dynamic>>(
         future: _modelsFuture,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -430,14 +448,16 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   };
 
   /// 자동차사업부인가. 프로젝트 키가 전부 auto_ 로 시작해 고객사가 늘어도 따라온다.
+  /// 자동차 화면을 다시 받게 하는 값. 당겨서 새로고침할 때만 올린다.
+  int _autoReload = 0;
+
   bool get _isAutomotive =>
       widget.projectKey.toLowerCase().startsWith('auto_');
 
   Widget _buildWeeklyPlanSection() {
     // 자동차사업부는 주차 계획이 아니라 연도별 계약으로 움직인다.
-    if (_isAutomotive) {
-      return AutomotiveOverviewCard(projectKey: widget.projectKey);
-    }
+    // 계약 화면은 본문이 직접 그리므로 여기서는 아무것도 두지 않는다.
+    if (_isAutomotive) return const SizedBox.shrink();
     if (_boardProjects.contains(widget.projectKey.toLowerCase())) {
       return WeeklyBoardCard(projectKey: widget.projectKey);
     }

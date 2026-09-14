@@ -13748,6 +13748,82 @@ def get_automotive_summary(project_key: str):
     }
 
 
+@app.get("/divisions/automotive/summary")
+def get_automotive_division_summary(year: int = 0):
+    """자동차사업부 전체 요약 — 앱 '고객사 목록' 화면이 그리는 값.
+
+    고객사별 합계를 앱에서 다시 더하지 않게 여기서 낸다.
+    제품 단위 계산은 /projects/{key}/automotive-summary 한 곳에만 두고
+    여기서는 그 결과를 고객사별로 모으기만 한다. 두 화면이 갈리지 않게.
+    """
+    import datetime as _dt
+
+    cur = int(year) if year else _dt.date.today().year
+    rows, years = [], set()
+    for p in _auto_projects():
+        s = get_automotive_summary(p["id"])
+        t = s.get("totals") or {}
+        by = s.get("by_year") or {}
+        years.update(s.get("years") or [])
+        cell = by.get(str(cur)) or {}
+        rows.append({
+            # 앱은 프로젝트 id 로 화면을 연다. 별칭이 걸린 키를 돌려주면 못 찾는다.
+            "key": p["id"],
+            "model_key": s.get("project_key") or p["id"],
+            "label": p.get("label") or s.get("label"),
+            "products": t.get("products", 0),
+            "mass": t.get("mass", 0),
+            "dev": t.get("dev", 0),
+            "qty": t.get("qty", 0),
+            "revenue": t.get("revenue", 0),
+            "year_qty": _as_int(cell.get("qty")),
+            "year_revenue": round(_as_money(cell.get("revenue")), 4),
+            "over_cost": t.get("over_cost", 0),
+            "over_cost_names": t.get("over_cost_names") or [],
+            "by_year": by,
+        })
+
+    total_rev = round(sum(r["revenue"] for r in rows), 4)
+    for r in rows:
+        # 막대 길이로 쓴다. 전체가 0이면 0 — 앱에서 0 으로 나누지 않게 여기서 막는다.
+        r["share"] = round(r["revenue"] / total_rev, 4) if total_rev > 0 else 0.0
+
+    # 계약이 잡힌 고객사가 위로. 같으면 이름순 — 순서가 매번 바뀌면 못 읽는다.
+    rows.sort(key=lambda r: (-r["revenue"], r["label"]))
+
+    ylist = sorted(years)
+    by_year = {
+        y: {
+            "qty": sum(_as_int((r["by_year"].get(y) or {}).get("qty")) for r in rows),
+            "revenue": round(sum(_as_money((r["by_year"].get(y) or {}).get("revenue"))
+                                 for r in rows), 4),
+        }
+        for y in ylist
+    }
+    over_names = [n for r in rows for n in r["over_cost_names"]]
+    for r in rows:
+        r.pop("by_year", None)
+
+    return {
+        "division_id": "automotive",
+        "year": cur,
+        "years": ylist,
+        "projects": rows,
+        "by_year": by_year,
+        "totals": {
+            "projects": len(rows),
+            "with_contract": sum(1 for r in rows if r["revenue"] > 0),
+            "products": sum(r["products"] for r in rows),
+            "qty": sum(r["qty"] for r in rows),
+            "revenue": total_rev,
+            "year_qty": sum(r["year_qty"] for r in rows),
+            "year_revenue": round(sum(r["year_revenue"] for r in rows), 4),
+            "over_cost": len(over_names),
+            "over_cost_names": over_names,
+        },
+    }
+
+
 # ── 자동차사업부 제품 엑셀 ────────────────────────────────────────────
 #
 # 한 파일에 여러 고객사가 섞여 있다. 고객사가 곧 프로젝트이므로 행마다
