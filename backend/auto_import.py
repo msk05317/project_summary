@@ -225,6 +225,30 @@ def sheets(wb, wb_formula=None):
     return out
 
 
+def name_labels(projects):
+    """별칭 → 등록된 표기. 엑셀에 '스탈란티스' 로 적혀 있어도 화면에는
+    등록된 '스텔란티스' 로 나가게 하려고 쓴다."""
+    out = {}
+    for p in projects:
+        lab = _s(p.get("label"))
+        if not lab:
+            continue
+        for nm in [lab] + list(p.get("aliases") or []):
+            k = _key(nm).lower()
+            if k:
+                out.setdefault(k, lab)
+    return out
+
+
+def canonical(name, labels):
+    """등록된 고객사 이름이면 등록 표기로 바꾼다.
+
+    모르는 이름은 손대지 않는다. 최종고객사 칸에는 기아자동차·현대자동차·CEER·PSA
+    처럼 프로젝트가 아닌 회사도 들어온다.
+    """
+    return labels.get(_key(name).lower(), _s(name))
+
+
 def match_projects(rows, projects):
     """고객사 이름 → 프로젝트 키.
 

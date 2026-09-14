@@ -13724,6 +13724,9 @@ def _auto_diff(parsed):
 
     projects = _auto_projects()
     label = {p["id"]: p["label"] for p in projects}
+    # 엑셀 표기가 등록과 다를 수 있다 ('스탈란티스' vs '스텔란티스').
+    # 화면에도 저장에도 등록된 표기로 나간다.
+    names = _ai.name_labels(projects)
     pmap = _ai.match_projects(parsed["rows"], projects)
     data = _load_models()
 
@@ -13745,6 +13748,7 @@ def _auto_diff(parsed):
             _as_money(a.get("price_fx")) * _as_money(a.get("fx_rate")))
         rows.append({
             "row": r["row"], "customer": r["customer"],
+            "customer_label": label.get(pid, r["customer"]),
             "project_key": pid, "project_label": label.get(pid, pid),
             "product": r["product"], "group": r["group"],
             "is_new": cur is None,
@@ -13753,7 +13757,7 @@ def _auto_diff(parsed):
             "qty": sum(_as_int(v.get("qty")) for v in (a.get("contract") or {}).values()),
             "revenue": round(sum(_as_money(v.get("revenue"))
                                  for v in (a.get("contract") or {}).values()), 1),
-            "end_customer": a.get("end_customer", ""),
+            "end_customer": _ai.canonical(a.get("end_customer", ""), names),
             "sop": a.get("sop", ""),
         })
 
@@ -13789,6 +13793,7 @@ async def admin_auto_import_apply(
     orig, parsed, _avail = await _auto_read_upload(file, sheet)
     projects = _auto_projects()
     pmap = _ai.match_projects(parsed["rows"], projects)
+    names = _ai.name_labels(projects)
     drop = {s.strip() for s in (skip or "").split("|") if s.strip()}
 
     data = _load_models()
@@ -13814,6 +13819,10 @@ async def admin_auto_import_apply(
         cur["name"] = r["product"]
         cur["group"] = r["group"]
         # auto 묶음은 통째로 갈아끼운다. 엑셀이 이 제품의 정본이다.
+        # 최종고객사만 등록 표기로 맞춘다 ('스탈란티스' → '스텔란티스').
+        # 기아자동차·CEER 처럼 등록에 없는 회사는 그대로 둔다.
+        if r["auto"].get("end_customer"):
+            r["auto"]["end_customer"] = _ai.canonical(r["auto"]["end_customer"], names)
         cur["auto"] = r["auto"]
         # 원가율을 다른 화면에서도 쓸 수 있게 판가·재료비 칸에도 원화로 남긴다
         a = r["auto"]

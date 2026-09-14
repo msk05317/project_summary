@@ -136,6 +136,24 @@ def test_고객사는_별칭까지_맞추고_모르면_비워둔다():
     assert got["셰플러"] is None, got
 
 
+def test_등록된_표기로_바꿔서_보여준다():
+    """엑셀은 '스탈란티스', 등록은 '스텔란티스'. 화면에는 등록 표기가 나가야 한다.
+
+    최종고객사 칸에는 기아자동차·CEER 처럼 프로젝트가 아닌 회사도 온다.
+    그건 손대면 안 된다.
+    """
+    projs = [{"id": "auto_stellantis", "label": "스텔란티스",
+              "aliases": ["Stellantis", "스탈란티스"]},
+             {"id": "auto_valeo", "label": "발레오", "aliases": ["Valeo"]}]
+    names = ai.name_labels(projs)
+    assert ai.canonical("스탈란티스", names) == "스텔란티스"
+    assert ai.canonical("Stellantis", names) == "스텔란티스"
+    assert ai.canonical("Valeo", names) == "발레오"
+    # 등록에 없는 회사는 그대로
+    for n in ("기아자동차", "현대자동차", "CEER", "PSA"):
+        assert ai.canonical(n, names) == n, n
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in sorted(globals().items()):
