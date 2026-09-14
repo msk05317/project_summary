@@ -92,7 +92,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     return AutoProjectRow(
       key: key, label: '', products: 0, mass: 0, dev: 0,
       qty: 0, revenue: 0, yearQty: 0, yearRevenue: 0,
-      share: 0,
+      share: 0, costRatio: null,
     );
   }
 
@@ -191,10 +191,9 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       rightLabel: span,
       bigValue: has ? AutoFmt.eok(a.yearRevenue) : '',
       subValue: has ? '/ ${AutoFmt.eok(a.revenue)}' : '',
-      // 배지에는 '읽고 나서 할 일이 있는 것'만 띄운다.
-      // 올해 비중 같은 건 바로 위 숫자 두 개가 이미 말하고 있다.
-      pillText: '',
-      pillColor: AppColors.statusRed,
+      // 원가율 = (판가 − 관리이윤) ÷ 판가. 물량으로 가중한 사업부 전체 값.
+      pillText: a.costRatio == null ? '' : '원가율 ${AutoFmt.pct(a.costRatio, digits: 1)}',
+      pillColor: AppColors.todayBlue,
       ratio: a.yearShare,
       barColor: AppColors.todayBlue,
       leftLabel: '계약 물량 (${a.year > 0 ? a.year : DateTime.now().year} → 전체)',
@@ -224,7 +223,11 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       barColor: AppColors.todayBlue,
       meta1: has ? '${_auto.year}년 ${AutoFmt.eok(r.yearRevenue)}' : '계약 미등록',
       meta2: '제품 ${r.products}종',
-      trailing: has ? '비중 ${(r.share * 100).round()}%' : '등록 전',
+      trailing: !has
+          ? '등록 전'
+          : (r.costRatio == null
+              ? '비중 ${(r.share * 100).round()}%'
+              : '원가율 ${AutoFmt.pct(r.costRatio, digits: 1)}'),
       isFavorite: _favoriteProjects.contains(p.id),
       isSelected: _selectedProjectId == p.id,
       onTap: () => _tapProject(p.id, p.koreanName),

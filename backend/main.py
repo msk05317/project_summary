@@ -13905,10 +13905,16 @@ def get_automotive_summary(project_key: str):
     수량·금액을 앱에서 다시 계산하지 않게 여기서 낸다.
     Admin 과 앱이 같은 숫자를 보게 하려면 계산이 한 군데 있어야 한다.
 
-        판가 = 재료비 + 공정비 + 관리이윤 + 감가상각 + 물류
-               관리이윤이 들어간 값이다. 원가가 아니다.
-        견적 = 엑셀 '판가' 열 — 외화 단가 × 환율로 적어 둔 참고값.
-               판가와 다를 수 있고, 개발품은 비어 있다.
+        판가   = 재료비 + 공정비 + 관리이윤 + 감가상각 + 물류
+        원가   = 판가 − 관리이윤 (관리이윤은 원가가 아니다)
+        원가율 = 원가 ÷ 판가
+        견적   = 엑셀 '판가' 열 — 외화 단가 × 환율로 적어 둔 참고값.
+                 판가와 다를 수 있고, 개발품은 비어 있다.
+
+    묶음 원가율은 제품별 원가율의 평균이 아니라 물량으로 가중한다.
+    한 대 팔리는 제품과 백만 대 팔리는 제품을 같은 무게로 두면 안 된다.
+
+        묶음 원가율 = Σ(원가 × 물량) ÷ Σ(판가 × 물량)
     """
     key = _model_key_alias(project_key.strip())
     proj = (_load_models().get("projects") or {}).get(key) or {}
@@ -13923,6 +13929,7 @@ def get_automotive_summary(project_key: str):
             continue
         parts = {k: _as_money((a.get("cost") or {}).get(k)) for k in COST}
         price = sum(parts.values())
+        cost = price - parts.get("admin", 0.0)
         quote = _as_money(a.get("price_krw")) or (
             _as_money(a.get("price_fx")) * _as_money(a.get("fx_rate")))
         contract = {}
@@ -13944,6 +13951,8 @@ def get_automotive_summary(project_key: str):
             "tonnage": _as_int(a.get("tonnage")),
             "defect_rate": _as_money(a.get("defect_rate")),
             "price": round(price),
+            "cost": round(cost),
+            "cost_ratio": round(cost / price, 4) if price > 0 else None,
             "parts": {k: round(v) for k, v in parts.items()},
             "quote": round(quote),
             "quote_fx": _as_money(a.get("price_fx")) or None,
@@ -13951,6 +13960,10 @@ def get_automotive_summary(project_key: str):
             "contract": contract,
             "qty_total": qty, "revenue_total": round(rev, 4),
         })
+
+    # 묶음 원가율 — 물량으로 가중한다
+    wc = sum(p["cost"] * p["qty_total"] for p in products)
+    wp = sum(p["price"] * p["qty_total"] for p in products)
 
     products.sort(key=lambda p: (-p["revenue_total"], p["name"]))
     ylist = sorted(years)
@@ -13970,6 +13983,10 @@ def get_automotive_summary(project_key: str):
             "dev": sum(1 for p in products if p["group"] == "개발"),
             "qty": sum(p["qty_total"] for p in products),
             "revenue": round(sum(p["revenue_total"] for p in products), 4),
+            "cost_ratio": round(wc / wp, 4) if wp > 0 else None,
+            # 사업부 합계에서 다시 가중하려면 분자·분모가 필요하다
+            "cost_weighted": round(wc),
+            "price_weighted": round(wp),
         },
     }
 
@@ -14004,6 +14021,9 @@ def get_automotive_division_summary(year: int = 0):
             "revenue": t.get("revenue", 0),
             "year_qty": _as_int(cell.get("qty")),
             "year_revenue": round(_as_money(cell.get("revenue")), 4),
+            "cost_ratio": t.get("cost_ratio"),
+            "_wc": _as_money(t.get("cost_weighted")),
+            "_wp": _as_money(t.get("price_weighted")),
             "by_year": by,
         })
 
@@ -14024,6 +14044,8 @@ def get_automotive_division_summary(year: int = 0):
         }
         for y in ylist
     }
+    wc = sum(r.pop("_wc", 0) for r in rows)
+    wp = sum(r.pop("_wp", 0) for r in rows)
     for r in rows:
         r.pop("by_year", None)
 
@@ -14041,6 +14063,7 @@ def get_automotive_division_summary(year: int = 0):
             "revenue": total_rev,
             "year_qty": sum(r["year_qty"] for r in rows),
             "year_revenue": round(sum(r["year_revenue"] for r in rows), 4),
+            "cost_ratio": round(wc / wp, 4) if wp > 0 else None,
         },
     }
 

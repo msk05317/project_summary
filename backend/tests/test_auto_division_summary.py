@@ -51,7 +51,7 @@ assert t['products'] == 3, t
 assert t['qty'] == 10+20+5+7, t
 assert round(t['revenue'], 4) == 6.5, t
 assert t['year_revenue'] == 0.0 or True
-assert 'over_cost' not in t, t          # 원가율·원가 초과 개념은 없앴다
+assert 'over_cost' not in t, t          # 원가 초과 개념은 없앴다
 assert out['by_year']['2026'] == {'qty': 15, 'revenue': 1.5}, out['by_year']
 assert out['by_year']['2027'] == {'qty': 27, 'revenue': 5.0}, out['by_year']
 assert [r['label'] for r in out['projects']] == ['가고객', '나고객', '다고객'], out['projects']
@@ -69,6 +69,25 @@ assert byname['A1']['price'] == 950 and byname['A1']['quote'] == 1000, byname['A
 assert byname['A2']['price'] == 1250 and byname['A2']['quote'] == 1000, byname['A2']
 for p in pa:
     assert p['price'] == sum(p['parts'].values()), p
-    assert 'cost_ratio' not in p and 'cost_total' not in p, p
+    assert 'cost_total' not in p, p
 
-print('\nOK 11/11')
+
+# 원가율 = (판가 − 관리이윤) ÷ 판가. 묶음은 물량으로 가중한다.
+#   A1  판가 950  관리이윤 100 → 원가 850, 원가율 89.47%, 물량 30
+#   A2  판가 1250 관리이윤 100 → 원가 1150, 원가율 92.00%, 물량 5
+#   B1  판가 950  관리이윤 100 → 원가 850, 원가율 89.47%, 물량 7
+assert abs(byname['A1']['cost_ratio'] - 850 / 950) < 1e-4, byname['A1']
+assert byname['A1']['cost'] == 850 and byname['A2']['cost'] == 1150
+ta = g['get_automotive_summary']('auto_a')['totals']
+want = (850 * 30 + 1150 * 5) / (950 * 30 + 1250 * 5)
+assert abs(ta['cost_ratio'] - round(want, 4)) < 1e-4, (ta['cost_ratio'], want)
+
+# 단순평균이 아니라 가중이어야 한다 — 둘이 같으면 검증이 안 된다
+simple = (850 / 950 + 1150 / 1250) / 2
+assert abs(ta['cost_ratio'] - simple) > 1e-3, '가중이 아니라 단순평균이다'
+
+dv = out['totals']
+want_all = (850 * 30 + 1150 * 5 + 850 * 7) / (950 * 30 + 1250 * 5 + 950 * 7)
+assert abs(dv['cost_ratio'] - round(want_all, 4)) < 1e-4, (dv['cost_ratio'], want_all)
+
+print('\nOK 16/16')

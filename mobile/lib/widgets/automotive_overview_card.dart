@@ -104,8 +104,9 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
           rightLabel: span,
           bigValue: has ? AutoFmt.eok(yearRev) : '',
           subValue: has ? '/ ${AutoFmt.eok(s.revenue)}' : '',
-          pillText: '',
-          pillColor: AppColors.statusRed,
+          pillText:
+              s.costRatio == null ? '' : '원가율 ${AutoFmt.pct(s.costRatio, digits: 1)}',
+          pillColor: AppColors.todayBlue,
           ratio: s.revenue > 0 ? yearRev / s.revenue : 0,
           barColor: AppColors.todayBlue,
           leftLabel: '계약 물량 ($_year → 전체)',
@@ -173,9 +174,9 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
       barColor: AppColors.todayBlue,
       meta1: p.price > 0 ? '판가 ${AutoFmt.won(p.price)}' : '판가 미등록',
       meta2: p.sop.isNotEmpty ? 'SOP ${p.sop}' : '',
-      trailing: s.revenue > 0
-          ? '비중 ${(p.revenueTotal * 100 / s.revenue).round()}%'
-          : '',
+      trailing: p.costRatio == null
+          ? ''
+          : '원가율 ${AutoFmt.pct(p.costRatio, digits: 1)}',
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(

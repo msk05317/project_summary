@@ -97,6 +97,7 @@ class AutomotiveService {
         yearQty: cell?.qty ?? 0,
         yearRevenue: cell?.revenue ?? 0,
         share: total > 0 ? s.revenue / total : 0,
+        costRatio: s.costRatio,
       ));
     }
     if (rows.isEmpty) return AutoDivisionSummary.empty;
@@ -105,6 +106,10 @@ class AutomotiveService {
       final c = b.revenue.compareTo(a.revenue);
       return c != 0 ? c : a.label.compareTo(b.label);
     });
+
+    // 묶음 원가율은 제품별 평균이 아니라 물량으로 가중한다.
+    final wc = list.fold<double>(0, (a, s) => a + s.costWeighted);
+    final wp = list.fold<double>(0, (a, s) => a + s.priceWeighted);
 
     final ylist = years.toList()..sort();
     final byYear = <String, AutoYearCell>{};
@@ -132,6 +137,7 @@ class AutomotiveService {
       revenue: total,
       yearQty: rows.fold(0, (a, r) => a + r.yearQty),
       yearRevenue: rows.fold(0.0, (a, r) => a + r.yearRevenue),
+      costRatio: wp > 0 ? wc / wp : null,
       loaded: true,
     );
   }

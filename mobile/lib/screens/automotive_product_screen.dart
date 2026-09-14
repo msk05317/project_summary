@@ -60,10 +60,10 @@ class AutomotiveProductScreen extends StatelessWidget {
             rightLabel: _headLine(p),
             bigValue: AutoFmt.won(p.price),
             subValue: '',
-            pillText: p.group,
-            pillColor: p.group == '개발'
-                ? AppColors.summaryCaution
-                : AppColors.todayBlue,
+            pillText: p.costRatio == null
+                ? p.group
+                : '원가율 ${AutoFmt.pct(p.costRatio, digits: 1)}',
+            pillColor: AppColors.todayBlue,
             showBar: false,
             ratio: 0,
             barColor: AppColors.todayBlue,
@@ -111,7 +111,7 @@ class _PriceCard extends StatelessWidget {
 
     return _Card(
       title: '판가 구성',
-      trailing: '합계 ${AutoFmt.won(p.price)}',
+      trailing: '원가 ${AutoFmt.won(p.cost)} · 합계 ${AutoFmt.won(p.price)}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -81,6 +81,7 @@ class AutoProjectRow {
   final int yearQty;
   final double yearRevenue;
   final double share; // 사업부 전체 계약 매출에서 차지하는 몫 (막대 길이)
+  final double? costRatio; // 물량으로 가중한 원가율
 
   const AutoProjectRow({
     required this.key,
@@ -93,6 +94,7 @@ class AutoProjectRow {
     required this.yearQty,
     required this.yearRevenue,
     required this.share,
+    required this.costRatio,
   });
 
   bool get hasContract => revenue > 0 || qty > 0;
@@ -108,6 +110,7 @@ class AutoProjectRow {
         yearQty: _i(j['year_qty']),
         yearRevenue: _d(j['year_revenue']),
         share: _d(j['share']),
+        costRatio: j['cost_ratio'] == null ? null : _d(j['cost_ratio']),
       );
 }
 
@@ -123,6 +126,7 @@ class AutoDivisionSummary {
   final double revenue;
   final int yearQty;
   final double yearRevenue;
+  final double? costRatio;
   final bool loaded;
 
   const AutoDivisionSummary({
@@ -137,6 +141,7 @@ class AutoDivisionSummary {
     required this.revenue,
     required this.yearQty,
     required this.yearRevenue,
+    required this.costRatio,
     required this.loaded,
   });
 
@@ -152,6 +157,7 @@ class AutoDivisionSummary {
     revenue: 0,
     yearQty: 0,
     yearRevenue: 0,
+    costRatio: null,
     loaded: false,
   );
 
@@ -175,6 +181,7 @@ class AutoDivisionSummary {
       revenue: _d(t['revenue']),
       yearQty: _i(t['year_qty']),
       yearRevenue: _d(t['year_revenue']),
+      costRatio: t['cost_ratio'] == null ? null : _d(t['cost_ratio']),
       loaded: true,
     );
   }
@@ -197,6 +204,11 @@ class AutoProduct {
 
   /// 대당 판가 = 다섯 항목 합계. 관리이윤이 들어간 값이라 원가가 아니다.
   final int price;
+
+  /// 원가 = 판가 − 관리이윤. 원가율 = 원가 ÷ 판가.
+  final int cost;
+  final double? costRatio;
+
   final Map<String, int> parts; // material/process/admin/depr/logi
 
   /// 엑셀 '판가' 열 — 외화 단가 × 환율로 적어 둔 참고값.
@@ -222,6 +234,8 @@ class AutoProduct {
     required this.tonnage,
     required this.defectRate,
     required this.price,
+    required this.cost,
+    required this.costRatio,
     required this.parts,
     required this.quote,
     required this.quoteFx,
@@ -248,6 +262,8 @@ class AutoProduct {
       tonnage: _i(j['tonnage']),
       defectRate: _d(j['defect_rate']),
       price: _i(j['price']),
+      cost: _i(j['cost']),
+      costRatio: j['cost_ratio'] == null ? null : _d(j['cost_ratio']),
       parts: c,
       quote: _i(j['quote']),
       quoteFx: j['quote_fx'] == null ? null : _d(j['quote_fx']),
@@ -269,6 +285,12 @@ class AutoProjectSummary {
   final int dev;
   final int qty;
   final double revenue;
+  final double? costRatio;
+
+  /// 사업부 합계에서 다시 가중하려면 분자·분모가 필요하다
+  final double costWeighted;
+  final double priceWeighted;
+
   final bool loaded;
 
   const AutoProjectSummary({
@@ -281,6 +303,9 @@ class AutoProjectSummary {
     required this.dev,
     required this.qty,
     required this.revenue,
+    required this.costRatio,
+    required this.costWeighted,
+    required this.priceWeighted,
     required this.loaded,
   });
 
@@ -294,6 +319,9 @@ class AutoProjectSummary {
     dev: 0,
     qty: 0,
     revenue: 0,
+    costRatio: null,
+    costWeighted: 0,
+    priceWeighted: 0,
     loaded: false,
   );
 
@@ -314,6 +342,9 @@ class AutoProjectSummary {
       dev: _i(t['dev']),
       qty: _i(t['qty']),
       revenue: _d(t['revenue']),
+      costRatio: t['cost_ratio'] == null ? null : _d(t['cost_ratio']),
+      costWeighted: _d(t['cost_weighted']),
+      priceWeighted: _d(t['price_weighted']),
       loaded: true,
     );
   }
