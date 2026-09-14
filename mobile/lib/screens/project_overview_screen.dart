@@ -8,6 +8,7 @@ import 'model_cost_list_screen.dart';
 import '../models/weekly_revenue.dart';
 import '../widgets/weekly_revenue_card.dart';
 import '../widgets/weekly_board_card.dart';
+import '../widgets/automotive_overview_card.dart';
 import '../services/api_service.dart';
 
 class ProjectOverviewScreen extends StatefulWidget {
@@ -427,6 +428,11 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   };
 
   Widget _buildWeeklyPlanSection() {
+    // 자동차사업부는 주차 계획이 아니라 연도별 계약으로 움직인다.
+    // 프로젝트 키가 전부 auto_ 로 시작하므로 고객사가 늘어도 따라온다.
+    if (widget.projectKey.toLowerCase().startsWith('auto_')) {
+      return AutomotiveOverviewCard(projectKey: widget.projectKey);
+    }
     if (_boardProjects.contains(widget.projectKey.toLowerCase())) {
       return WeeklyBoardCard(projectKey: widget.projectKey);
     }

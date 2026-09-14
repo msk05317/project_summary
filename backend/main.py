@@ -13667,6 +13667,87 @@ async def _pbx_read_upload(file, month):
     return orig, _pbx_pick_sheet(wb, month)
 
 
+@app.get("/projects/{project_key}/automotive-summary")
+def get_automotive_summary(project_key: str):
+    """자동차사업부 제품 요약 — 앱 화면이 그리는 값.
+
+    수량·원가·원가율을 앱에서 다시 계산하지 않게 여기서 낸다.
+    Admin 과 앱이 같은 숫자를 보게 하려면 계산이 한 군데 있어야 한다.
+
+        원가 합계 = 재료비 + 공정비 + 관리이윤 + 감가상각 + 물류
+        판가(원)  = 판가 직접입력 값, 없으면 외화 단가 × 환율
+        원가율    = 원가 합계 ÷ 판가
+    """
+    key = _model_key_alias(project_key.strip())
+    proj = (_load_models().get("projects") or {}).get(key) or {}
+
+    COST = ["material", "process", "admin", "depr", "logi"]
+    products, years = [], set()
+    for m in proj.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        a = m.get("auto")
+        if not isinstance(a, dict) or not a:
+            continue
+        cost = {k: _as_money((a.get("cost") or {}).get(k)) for k in COST}
+        total = sum(cost.values())
+        price = _as_money(a.get("price_krw")) or (
+            _as_money(a.get("price_fx")) * _as_money(a.get("fx_rate")))
+        contract = {}
+        for y, cell in (a.get("contract") or {}).items():
+            y = str(y)
+            years.add(y)
+            contract[y] = {"qty": _as_int((cell or {}).get("qty")),
+                           "revenue": round(_as_money((cell or {}).get("revenue")), 4)}
+        qty = sum(c["qty"] for c in contract.values())
+        rev = sum(c["revenue"] for c in contract.values())
+        products.append({
+            "id": m.get("id"), "name": m.get("name") or m.get("id"),
+            "group": m.get("group") or "양산",
+            "end_customer": a.get("end_customer") or "",
+            "car_model": a.get("car_model") or "",
+            "site": a.get("site") or "", "method": a.get("method") or "",
+            "sop": a.get("sop") or "",
+            "weight_kg": _as_money(a.get("weight_kg")),
+            "tonnage": _as_int(a.get("tonnage")),
+            "defect_rate": _as_money(a.get("defect_rate")),
+            "currency": a.get("currency") or "",
+            "price": round(price),
+            "cost": {k: round(v) for k, v in cost.items()},
+            "cost_total": round(total),
+            # 판가가 없으면(개발품) 원가율은 낼 수 없다. 0 으로 눕히지 않고 비운다.
+            "cost_ratio": round(total / price, 4) if price > 0 else None,
+            "contract": contract,
+            "qty_total": qty, "revenue_total": round(rev, 4),
+        })
+
+    products.sort(key=lambda p: (-p["revenue_total"], p["name"]))
+    ylist = sorted(years)
+    by_year = {y: {"qty": sum(p["contract"].get(y, {}).get("qty", 0) for p in products),
+                   "revenue": round(sum(p["contract"].get(y, {}).get("revenue", 0)
+                                        for p in products), 4)}
+               for y in ylist}
+    over = [p["name"] for p in products
+            if p["cost_ratio"] is not None and p["cost_ratio"] >= 1]
+
+    return {
+        "project_key": key,
+        "label": _display_project_label(key),
+        "years": ylist,
+        "products": products,
+        "by_year": by_year,
+        "totals": {
+            "products": len(products),
+            "mass": sum(1 for p in products if p["group"] != "개발"),
+            "dev": sum(1 for p in products if p["group"] == "개발"),
+            "qty": sum(p["qty_total"] for p in products),
+            "revenue": round(sum(p["revenue_total"] for p in products), 4),
+            "over_cost": len(over),
+            "over_cost_names": over,
+        },
+    }
+
+
 # ── 자동차사업부 제품 엑셀 ────────────────────────────────────────────
 #
 # 한 파일에 여러 고객사가 섞여 있다. 고객사가 곧 프로젝트이므로 행마다
