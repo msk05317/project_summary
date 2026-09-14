@@ -13,7 +13,8 @@ for n in ast.walk(ast.parse(src)):
         n.decorator_list = []
         grab[n.name] = ast.unparse(n)
 assert want <= set(grab), set(grab)
-g = {'_STEP_NA': {'na', 'n/a', '-', '--', 'tbd', '미정', '해당없음', '없음', 'x'}}
+g = {'_STEP_NA': {'na', 'n/a', '-', '--', 'tbd', '미정', '해당없음', '없음', 'x'},
+     '_STEP_PICKED': ('완료', '진행중', '대기', '미승인', '미제출')}
 exec('\n\n'.join(grab.values()), g)
 date, actual, prog = g['_step_date'], g['_step_actual'], g['_process_progress']
 rolled = g['_process_rolled']
@@ -105,15 +106,41 @@ assert r[13] == '진행중' and r[14] == '', r
 assert prog(prr) == 87, prog(prr)
 ok += 1
 
-# 진행중이 기준선보다 앞이면 그것도 완료로 본다.
-# 뒤쪽 단계가 끝났다면 앞의 '진행중' 은 이미 지나온 자리다.
+# 앞쪽에 '진행중' 이 있어도 사람이 고른 값이라 덮지 않는다.
+# 빈 자리(02)만 채운다.
 mix = P(('', '진행중'), ('', ''), ('', '완료'), ('', ''))
-assert [s['status'] for s in rolled(mix)] == ['완료', '완료', '완료', ''], rolled(mix)
+assert [s['status'] for s in rolled(mix)] == ['진행중', '완료', '완료', ''], rolled(mix)
 ok += 1
 
 # 진행중만 있고 완료가 하나도 없어도 그 앞은 채운다
 only = P(('', ''), ('', '진행중'), ('', ''))
 assert [s['status'] for s in rolled(only)] == ['완료', '진행중', ''], rolled(only)
+ok += 1
+
+# ── 사람이 고른 상태가 추측보다 우선한다 ─────────────────────────────
+
+# Striker Oxide 모양: 15 최종 승인이 '대기' 인데 실적일이 있다.
+# 실적일이 있으면 끝난 자리로 본다 — 그래야 그 앞이 다 채워진다.
+# ('최종승인이 대기로 떠도 그 전은 다 완료' 규칙)
+striker = P(*([('', '완료')] * 5 + [('', '')] * 9 + [('2026-10-14', '대기')]))
+r = [s['status'] for s in rolled(striker)]
+assert r[:14] == ['완료'] * 14, r
+assert r[14] == '대기', r
+ok += 1
+
+# BV2 를 진행중으로 바꿔 놓으면, 뒤 단계가 끝나도 완료로 덮지 않는다
+bv2 = P(*([('', '완료')] * 5 + [('', '진행중')] + [('', '')] * 7 + [('', '완료')] + [('', '')]))
+assert len(bv2) == 15
+r = [s['status'] for s in rolled(bv2)]
+assert r[5] == '진행중', r          # 고른 값이 그대로
+assert r[:5] == ['완료'] * 5, r
+assert r[6:14] == ['완료'] * 8, r   # 빈 자리만 채운다
+assert r[14] == '', r
+ok += 1
+
+# 사람이 '대기' 로 골라 둔 자리도 덮지 않는다
+keep = P(('', '완료'), ('', '대기'), ('', ''), ('', '완료'))
+assert [s['status'] for s in rolled(keep)] == ['완료', '대기', '완료', '완료'], rolled(keep)
 ok += 1
 
 # 채워도 원본은 그대로다 (저장된 값은 엑셀이 적은 그대로 둔다)
@@ -140,7 +167,7 @@ r = rolled(P(('2026-01-01', ''), ('', ''), ('', '완료')))
 assert r[0]['actual'] == '2026-01-01' and r[1]['status'] == '완료'
 ok += 1
 
-print(f'전부 통과 ({ok}/19)')
+print(f'전부 통과 ({ok}/22)')
 
 # ── 비고: 사람이 적은 것만 남긴다 ────────────────────────────────────
 import re as _re

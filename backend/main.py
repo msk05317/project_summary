@@ -20968,6 +20968,10 @@ def _latest_data_month(project_key=None):
                     months.add(_mo)
     return max(months) if months else _dt.date.today().strftime("%Y-%m")
 
+# 사람이 직접 고른 상태. 추측보다 우선한다.
+_STEP_PICKED = ("완료", "진행중", "대기", "미승인", "미제출")
+
+
 def _process_step_done(s) -> bool:
     """실적일이 있거나 상태가 '완료' 면 완료로 본다."""
     s = s or {}
@@ -20987,6 +20991,10 @@ def _process_rolled(proc: list) -> list:
     끝나기도 한다. 그런 자리는 기준선 앞에 놓이면서 저절로 채워진다.
     기준선 자리 자체는 건드리지 않는다 — 진행중이면 진행중으로 남는다.
 
+    채우는 건 상태가 비어 있는 자리뿐이다. 사람이 골라 둔 상태(진행중·대기)는
+    그대로 둔다 — BV2 를 진행중으로 바꿔 놨는데 뒤 단계가 끝났다고 해서
+    도로 완료로 덮으면, 고칠 수가 없다.
+
     저장된 값은 건드리지 않는다. 엑셀이 적은 그대로 두고 보여줄 때만 채운다.
     """
     if not proc:
@@ -20999,7 +21007,8 @@ def _process_rolled(proc: list) -> list:
         return proc
     out = []
     for i, s in enumerate(proc):
-        if i < last and not _process_step_done(s):
+        picked = str((s or {}).get("status") or "").strip() in _STEP_PICKED
+        if i < last and not picked and not _process_step_done(s):
             t = dict(s or {})
             t["status"] = "완료"
             out.append(t)
