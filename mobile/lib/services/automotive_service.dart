@@ -21,11 +21,27 @@ class AutomotiveService {
   /// 서버보다 오래 산다. 그 엔드포인트가 없는 서버(배포 전)에 붙으면
   /// 화면이 통째로 빈다 — 그래서 고객사별 요약을 모아 같은 값을 만든다.
   /// 두 길 모두 제품 단위 계산은 서버가 낸 값을 그대로 쓰므로 숫자는 같다.
+  // 홈 화면과 사업부 화면이 같은 값을 쓴다. 앱을 열자마자 두 번 받지 않게
+  // 잠깐 들고 있는다. 당겨서 새로고침할 때는 force 로 지운다.
+  static AutoDivisionSummary? _cache;
+  static DateTime? _cacheAt;
+  static const Duration _cacheTtl = Duration(seconds: 60);
+
   static Future<AutoDivisionSummary> division({
     int? year,
     List<String> keys = const [],
+    bool force = false,
   }) async {
     final y = year ?? DateTime.now().year;
+    final hit = _cache;
+    final at = _cacheAt;
+    if (!force &&
+        hit != null &&
+        hit.loaded &&
+        at != null &&
+        DateTime.now().difference(at) < _cacheTtl) {
+      return hit;
+    }
     try {
       final r = await http
           .get(Uri.parse('$kApiBaseUrl/divisions/automotive/summary?year=$y'))
@@ -34,14 +50,22 @@ class AutomotiveService {
         final j = jsonDecode(utf8.decode(r.bodyBytes));
         if (j is Map) {
           final s = AutoDivisionSummary.fromJson(j);
-          if (s.projects.isNotEmpty) return s;
+          if (s.projects.isNotEmpty) return _keep(s);
         }
       }
     } catch (_) {
       // 아래 우회로로 간다
     }
     if (keys.isEmpty) return AutoDivisionSummary.empty;
-    return _fromProjects(keys, y);
+    return _keep(await _fromProjects(keys, y));
+  }
+
+  static AutoDivisionSummary _keep(AutoDivisionSummary s) {
+    if (s.loaded) {
+      _cache = s;
+      _cacheAt = DateTime.now();
+    }
+    return s;
   }
 
   /// 고객사별 요약을 받아 사업부 합계를 만든다 (우회로).

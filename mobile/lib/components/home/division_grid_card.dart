@@ -28,17 +28,24 @@ class DivisionGridCard extends StatelessWidget {
     required this.isFavorite,
     required this.onTap,
     required this.onToggleFavorite,
+    this.customStatus,
   });
 
   final String divisionId;
   final String label;
   final int projectCount;
   final DivisionStatus status;
+
+  /// 주차 보고로 움직이지 않는 사업부가 있다. 자동차는 연 단위 계약이라
+  /// /dashboard 에 카드가 없고, 그러면 내용이 있어도 '진행 데이터 없음'이 된다.
+  /// 그런 사업부는 무엇이 있는지 직접 적는다 (예: '계약 2,651.9억').
+  final String? customStatus;
+
   final bool isFavorite;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
 
-  bool get _quiet => status == DivisionStatus.empty;
+  bool get _quiet => customStatus == null && status == DivisionStatus.empty;
 
   @override
   Widget build(BuildContext context) {
@@ -127,9 +134,11 @@ class DivisionGridCard extends StatelessWidget {
   }
 
   Widget _statusPill() {
-    final c = _statusColor(status);
+    final c = customStatus != null
+        ? AppColors.todayBlue
+        : _statusColor(status);
     final text = Text(
-      _statusLabel(status),
+      customStatus ?? _statusLabel(status),
       style: AppText.caption.copyWith(
         fontSize: 11.5,
         fontWeight: _quiet ? FontWeight.w500 : FontWeight.w700,

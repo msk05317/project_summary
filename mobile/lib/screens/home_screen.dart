@@ -26,6 +26,8 @@ import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/overview_service.dart';
+import '../services/automotive_service.dart';
+import '../models/automotive.dart';
 import 'division_projects_screen.dart';
 import 'immediate_check_screen.dart';
 import 'calendar_screen.dart';
@@ -224,7 +226,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _progressFuture = ProgressService.fetch();
     _overviewFuture = OverviewService.fetch();
     _loadFavDivisions();
+    _loadAuto();
+  }
 
+  /// 자동차사업부는 주차 보고가 없어 /dashboard 카드가 안 잡힌다.
+  /// 계약이 올라와 있는데도 '진행 데이터 없음'으로 보이던 이유가 이거다.
+  AutoDivisionSummary _auto = AutoDivisionSummary.empty;
+
+  Future<void> _loadAuto({bool force = false}) async {
+    List<String> keys = const [];
+    try {
+      final divs = await _divisionsFuture;
+      for (final d in divs) {
+        if (d.id == AutomotiveService.divisionId) {
+          keys = d.projects.map((p) => p.id).toList();
+          break;
+        }
+      }
+    } catch (_) {
+      // 사업부 목록을 못 받아도 합계 엔드포인트는 따로 시도한다
+    }
+    final s = await AutomotiveService.division(keys: keys, force: force);
+    if (!mounted) return;
+    setState(() => _auto = s);
+  }
+
+  /// 진행률이 없는 사업부에 무엇이 있는지 한 마디로 적는다.
+  String? _divisionNote(String divisionId) {
+    if (divisionId != AutomotiveService.divisionId) return null;
+    if (_auto.revenue <= 0) return null;
+    return '계약 ${AutoFmt.eok(_auto.revenue)}';
   }
 
   // 화면 전체 새로고침.
@@ -234,6 +265,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _dashboardFuture = DashboardService.fetchCards();
         _progressFuture = ProgressService.fetch();
         _overviewFuture = OverviewService.fetch();
+        _loadAuto(force: true);
     });
     _loadFavDivisions(); // 사업부 즐겨찾기 Set 로딩
     await Future.wait(
@@ -308,7 +340,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // - 데이터 소스는 /dashboard 응답 (DashboardCard 리스트).
   //   각 카드의 division_id 가 일치하는 카드 중 status 가 RED/YELLOW 면 활성.
   DivisionStatus _divisionStatus(String divisionId, List<DashboardCard> cards) {
-    return computeDivisionStatus(divisionId, cards);
+    final s = computeDivisionStatus(divisionId, cards);
+    // 자동차는 주차 보고가 아니라 계약으로 움직인다. 계약이 올라와 있으면
+    // '진행 데이터 없음'이 아니다 — 상태 필터에도 걸려야 한다.
+    if (s == DivisionStatus.empty &&
+        divisionId == AutomotiveService.divisionId &&
+        _auto.revenue > 0) {
+      return DivisionStatus.active;
+    }
+    return s;
   }
 
   // 즉시 확인 1줄용 핵심 내용 추출.
@@ -718,6 +758,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       dashboardFuture: _dashboardFuture,
                       favoriteDivisionIds: _favDivisions,
                       divisionStatus: _divisionStatus,
+                      divisionNote: _divisionNote,
                       onToggleFavorite: _toggleDivisionFavorite,
                       // 검색/필터 (시안 v2 신규)
                       query: _query,
@@ -976,6 +1017,10 @@ class _DivisionsSection extends StatelessWidget {
   final Future<List<DashboardCard>> dashboardFuture;
   final Set<String> favoriteDivisionIds;
   final DivisionStatus Function(String divisionId, List<DashboardCard> cards) divisionStatus;
+
+  /// 진행률이 없는 사업부에 붙일 한 마디 (없으면 null).
+  final String? Function(String divisionId) divisionNote;
+
   final void Function(String divisionId) onToggleFavorite;
 
   // 검색/필터
@@ -995,6 +1040,7 @@ class _DivisionsSection extends StatelessWidget {
     required this.dashboardFuture,
     required this.favoriteDivisionIds,
     required this.divisionStatus,
+    required this.divisionNote,
     required this.onToggleFavorite,
     required this.query,
     required this.matchDivision,
@@ -1134,6 +1180,7 @@ class _DivisionsSection extends StatelessWidget {
                             label: d.label,
                             projectCount: d.projects.length,
                             status: divisionStatus(d.id, cards),
+                            customStatus: divisionNote(d.id),
                             isFavorite: true,
                             onTap: () => onTapItem(d),
                             onToggleFavorite: () => onToggleFavorite(d.id),
@@ -1308,6 +1355,7 @@ class _DivisionsSection extends StatelessWidget {
                         label: d.label,
                         projectCount: d.projects.length,
                         status: divisionStatus(d.id, cards),
+                        customStatus: divisionNote(d.id),
                         isFavorite: favoriteDivisionIds.contains(d.id),
                         onTap: () => onTapItem(d),
                         onToggleFavorite: () => onToggleFavorite(d.id),
