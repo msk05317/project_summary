@@ -169,9 +169,13 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
     final accent = p.price <= 0
         ? AppColors.statusGray
         : (over ? AppColors.summaryCaution : AppColors.todayBlue);
-    final badge = [p.endCustomer, p.carModel]
-        .where((e) => e.isNotEmpty)
-        .join(' ');
+    // 꼬리표는 '누구 차에 들어가나'를 말한다. 최종고객사가 고객사와 같은
+    // 이름이면 한 번 더 적을 이유가 없다.
+    final label = widget.projectName.isNotEmpty ? widget.projectName : s.label;
+    final badge = [
+      if (p.endCustomer.isNotEmpty && p.endCustomer != label) p.endCustomer,
+      if (p.carModel.isNotEmpty) p.carModel,
+    ].join(' ');
     return AutomotiveRowCard(
       dotColor: accent,
       name: p.name,
@@ -191,8 +195,7 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
           MaterialPageRoute(
             builder: (_) => AutomotiveProductScreen(
               product: p,
-              projectLabel:
-                  widget.projectName.isNotEmpty ? widget.projectName : s.label,
+              projectLabel: label,
             ),
           ),
         );
@@ -260,8 +263,10 @@ class _YearChart extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          // 높이를 나눠 쓴다: 값 16 + 5 + 막대 97 + 6 + 연도 16 = 140.
+          // 글자 칸을 고정해 두지 않으면 글꼴에 따라 한두 픽셀씩 넘친다.
           SizedBox(
-            height: 132,
+            height: _kChartH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -283,6 +288,10 @@ class _YearChart extends StatelessWidget {
   }
 }
 
+const double _kChartH = 144;
+const double _kChartLabel = 16;
+const double _kChartBarMax = 97;
+
 class _Bar extends StatelessWidget {
   final String year;
   final double value;
@@ -298,24 +307,35 @@ class _Bar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final h = max <= 0 ? 0.0 : (value / max) * 96;
+    var h = max <= 0 ? 0.0 : (value / max) * _kChartBarMax;
+    // 값이 있는데 막대가 안 보이면 0 과 구분이 안 된다. 최소 2px 은 남긴다.
+    if (value > 0 && h < 2) h = 2;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 5),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          if (peak)
-            Text(
-              value.toStringAsFixed(1),
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: AppColors.headerNavy,
-              ),
-            ),
-          if (peak) const SizedBox(height: 5),
+          SizedBox(
+            height: _kChartLabel,
+            child: peak
+                ? FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.headerNavy,
+                      ),
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 5),
           Container(
-            height: h < 2 && value > 0 ? 2 : h,
+            height: h,
             decoration: BoxDecoration(
               color: peak
                   ? AppColors.headerNavy
@@ -324,14 +344,18 @@ class _Bar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              year,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: peak ? FontWeight.w700 : FontWeight.w500,
-                color: peak ? AppColors.textSub : AppColors.textHint,
+          SizedBox(
+            height: _kChartLabel,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                year,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  height: 1.2,
+                  fontWeight: peak ? FontWeight.w700 : FontWeight.w500,
+                  color: peak ? AppColors.textSub : AppColors.textHint,
+                ),
               ),
             ),
           ),

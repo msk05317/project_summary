@@ -108,7 +108,11 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 
   Future<void> _loadAuto() async {
     if (mounted) setState(() => _autoLoading = true);
-    final s = await AutomotiveService.division();
+    // 사업부 합계 엔드포인트가 없는 서버에 붙어도 화면이 비지 않게
+    // 고객사 키를 같이 넘긴다 (우회로에서 고객사별로 받아 모은다).
+    final s = await AutomotiveService.division(
+      keys: widget.division.projects.map((p) => p.id).toList(),
+    );
     if (!mounted) return;
     setState(() {
       _auto = s;
