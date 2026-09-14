@@ -13593,20 +13593,25 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         _ph = _norm_phases(m.get("phases") if m.get("phases") is not None else old.get("phases"))
         if _ph:
             entry["phases"] = _ph
+        # 프로세스는 이 화면에서 편집하지 않는다. 그런데 목록을 열 때 받아 둔
+        # 사본을 저장할 때 같이 돌려보내서, 그 사이에 'Process 입력' 에서
+        # 고친 내용이 옛날 값으로 덮여 되돌아갔다.
+        # 보낸 값을 무시하고 서버에 있는 것을 그대로 둔다 — 프로세스를 바꾸는
+        # 문은 PUT .../models/{id}/process 하나뿐이어야 한다.
+        _proc = old.get("process")
         if group == "개발":
             dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             entry["dev_type"] = dev_type
-            proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
             # 단계 수는 프로젝트마다 다르다 — 파워박스 15, EMA 14, 메이저모듈 12.
-            # 예전엔 12·13 만 인정해서, 엑셀로 넣은 14·15 단계가 이 화면을
-            # 저장하는 순간 통째로 빈 13단계 기본틀로 바뀌었다.
-            entry["process"] = proc if isinstance(proc, list) and proc else _default_process()
+            entry["process"] = _proc if isinstance(_proc, list) and _proc else _default_process()
+            # 진행률도 프로세스에서 다시 낸다. 보낸 값을 그대로 쓰면
+            # 방금 고친 단계가 옛날 진행률로 되돌아간다.
+            entry["progress"] = _process_progress(entry["process"])
         else:
             # 양산으로 넘어가도 개발 때 쌓인 유형/공정 이력은 지우지 않는다.
             _dt = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
             if _dt:
                 entry["dev_type"] = _dt
-            _proc = m.get("process") if isinstance(m.get("process"), list) else old.get("process")
             if isinstance(_proc, list) and _proc:
                 entry["process"] = _proc
         normalized.append(entry)

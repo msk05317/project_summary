@@ -15,7 +15,7 @@ assert not bad, bad
 ok += 1
 
 # 2. 저장 경로는 '비어 있지 않으면 그대로' 여야 한다
-assert 'entry["process"] = proc if isinstance(proc, list) and proc else _default_process()' in SRC
+assert 'entry["process"] = _proc if isinstance(_proc, list) and _proc else _default_process()' in SRC
 ok += 1
 assert 'if isinstance(_proc, list) and _proc:\n                entry["process"] = _proc' in SRC
 ok += 1
@@ -33,4 +33,27 @@ ok += 1
 assert len(keep([])) == 13 and len(keep(None)) == 13
 ok += 1
 
-print(f'전부 통과 ({ok}/5)')
+# 6. 목록 저장이 보낸 프로세스를 무시하고 서버 것을 쓰는가.
+#    목록 화면은 프로세스를 편집하지 않는다. 열 때 받아 둔 사본을 그대로
+#    돌려보내므로, 그걸 쓰면 그 사이 'Process 입력' 에서 고친 게 되돌아간다.
+assert '_proc = old.get("process")' in SRC, '보낸 값을 그대로 쓰고 있다'
+assert 'm.get("process") if isinstance(m.get("process"), list) else old.get("process")' \
+    not in SRC, '아직 목록이 보낸 process 를 서버 것보다 앞에 둔다'
+ok += 1
+
+# 7. 개발 진행률은 프로세스에서 다시 낸다 (보낸 값을 믿지 않는다)
+assert 'entry["progress"] = _process_progress(entry["process"])' in SRC
+ok += 1
+
+# 8. 저장 흐름을 흉내 내어 되돌아가지 않는지 본다
+def save(payload_model, stored_old):
+    proc = stored_old.get('process')          # 보낸 값이 아니라 서버 것
+    return proc if isinstance(proc, list) and proc else ['기본'] * 13
+
+서버 = {'process': [{'key': 'step_13', 'status': '진행중'}]}
+목록이_보낸_옛날값 = {'process': [{'key': 'step_13', 'status': '대기'}]}
+got = save(목록이_보낸_옛날값, 서버)
+assert got[0]['status'] == '진행중', got
+ok += 1
+
+print(f'전부 통과 ({ok}/8)')
