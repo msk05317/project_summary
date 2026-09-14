@@ -357,13 +357,14 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
         ],
         if (hasNote)
           SizedBox(
-            width: 150,
+            // 메모가 한두 줄짜리 문장이라 150 이면 대부분 잘렸다.
+            width: 190,
             child: Column(
               children: [
                 _cell('비고', _kHeadH * headSpan, head: true),
                 for (final r in flat)
                   _cell('${r['note'] ?? ''}', _kSecRowH,
-                      align: TextAlign.left, size: 9.5),
+                      align: TextAlign.left, size: 9.5, maxLines: 3),
                 _cell('', _kTotalH, total: true),
               ],
             ),
@@ -594,6 +595,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       bool tint = false,
       bool bold = false,
       double? size,
+      int maxLines = 2,
       TextAlign align = TextAlign.center}) {
     Color bg = Colors.white;
     Color fg = const Color(0xFF0F172A);
@@ -623,7 +625,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       ),
       child: Text(text,
           textAlign: align,
-          maxLines: 2,
+          maxLines: maxLines,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: size ?? (head || total ? 9.5 : 10.5),
