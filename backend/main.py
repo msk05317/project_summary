@@ -20978,56 +20978,77 @@ def _process_step_done(s) -> bool:
     return bool(str(s.get("actual") or "").strip()) or s.get("status") == "완료"
 
 
-def _process_rolled(proc: list) -> list:
-    """가장 멀리 간 단계보다 앞에 있는 단계는 끝난 것으로 채운 사본을 준다.
-
-    공정은 순서대로 간다. PRR 승인을 하고 있으면 그 앞은 다 지나온 것이다.
-    일정표에는 그 모델에 없는 단계나 굳이 안 적은 단계가 빈칸으로 남는데,
-    지나온 자리의 빈칸은 '아직 안 한 일' 이 아니라 '적지 않은 일' 이다.
-    중간이 숭숭 빈 채로 두면 어디까지 갔는지 읽는 사람이 알 수 없다.
-
-    기준선은 '끝났거나 하고 있는' 마지막 자리다 — 단계 이름이나 순서에
-    기대지 않는다. LAIR 과 FAIR 은 순서가 바뀌기도 하고, BV 는 BV1 에서
-    끝나기도 한다. 그런 자리는 기준선 앞에 놓이면서 저절로 채워진다.
-    기준선 자리 자체는 건드리지 않는다 — 진행중이면 진행중으로 남는다.
-
-    채우는 건 상태가 비어 있는 자리뿐이다. 사람이 골라 둔 상태(진행중·대기)는
-    그대로 둔다 — BV2 를 진행중으로 바꿔 놨는데 뒤 단계가 끝났다고 해서
-    도로 완료로 덮으면, 고칠 수가 없다.
-
-    저장된 값은 건드리지 않는다. 엑셀이 적은 그대로 두고 보여줄 때만 채운다.
-    """
-    if not proc:
-        return proc
-    last = -1
-    for i, s in enumerate(proc):
-        if _process_step_active(s):
-            last = i
-    if last < 0:
-        return proc
-    out = []
-    for i, s in enumerate(proc):
-        picked = str((s or {}).get("status") or "").strip() in _STEP_PICKED
-        if i < last and not picked and not _process_step_done(s):
-            t = dict(s or {})
-            t["status"] = "완료"
-            out.append(t)
-        else:
-            out.append(s)
-    return out
-
-
 def _process_step_active(s) -> bool:
-    """끝났거나 하고 있는 중. '어디까지 갔나' 를 재는 기준이다."""
+    """끝났거나 하고 있는 중."""
     return _process_step_done(s) or (s or {}).get("status") == "진행중"
 
 
+def _process_rolled(proc: list) -> list:
+    """지금 어디까지 왔는지 한 자리로 정하고, 앞은 완료 뒤는 대기로 맞춘 사본.
+
+    공정은 순서대로 간다. 그래서 '현재 위치' 한 곳만 정하면 나머지는 따라온다.
+
+        현재 위치 앞  → 완료 (지나온 자리다. 빈칸은 안 적은 것뿐)
+        현재 위치     → 그대로
+        현재 위치 뒤  → 대기 (아직 오지 않은 자리다)
+
+    현재 위치를 정하는 순서
+      1) 최종 승인이 진행중이거나 끝났으면 거기가 현재 위치다.
+         다 끝난 건이라 앞이 전부 완료가 된다.
+      2) 아니면 '진행중' 으로 골라 둔 첫 자리. BV2 를 진행중으로 바꿔 놓으면
+         그 뒤는 아직 안 한 일이므로 전부 대기로 내린다.
+      3) 그것도 없으면 마지막으로 끝난 자리.
+
+    단계 이름이나 순서에 기대지 않는다 — LAIR 과 FAIR 은 순서가 바뀌고
+    BV 는 BV1 에서 끝나기도 한다. 그런 자리는 현재 위치 앞뒤에 놓이면서
+    저절로 정리된다.
+
+    저장된 값은 건드리지 않는다. 보여줄 때만 맞춘다.
+    """
+    if not proc:
+        return proc
+    n = len(proc)
+    cur = -1
+    if _process_step_active(proc[-1]):
+        cur = n - 1
+    else:
+        for i, s in enumerate(proc):
+            if str((s or {}).get("status") or "").strip() == "진행중":
+                cur = i
+                break
+        if cur < 0:
+            for i, s in enumerate(proc):
+                if _process_step_done(s):
+                    cur = i
+    if cur < 0:
+        return proc
+
+    out = []
+    for i, s in enumerate(proc):
+        t = dict(s or {})
+        if i < cur:
+            t["status"] = "완료"
+        elif i > cur:
+            # 아직 오지 않은 자리. 실적일이 남아 있으면 같이 내린다 —
+            # '대기' 라면서 실적일이 찍혀 있으면 어느 쪽이 맞는지 알 수 없다.
+            t["status"] = "대기"
+            t["actual"] = ""
+        elif _process_step_done(t):
+            t["status"] = "완료"
+        out.append(t)
+    return out
+
+
 def _process_progress(proc: list) -> int:
-    """끝난 단계 수 ÷ 전체 단계 수. 지나온 자리의 빈칸은 끝난 것으로 센다."""
+    """완료로 맞춰진 단계 수 ÷ 전체 단계 수.
+
+    현재 위치 뒤는 대기로 내려가므로 진행률에 안 들어간다.
+    진행중도 끝난 게 아니라서 안 센다.
+    """
     if not proc:
         return 0
     rolled = _process_rolled(proc)
-    done = sum(1 for s in rolled if _process_step_done(s))
+    done = sum(1 for s in rolled if (s or {}).get("status") == "완료")
     return round(done / len(rolled) * 100)
 
 

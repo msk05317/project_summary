@@ -53,121 +53,76 @@ def P(*st):
     return [{'name': f'{i+1:02d}', 'actual': a, 'status': s}
             for i, (a, s) in enumerate(st)]
 
-# Mahabali MPD 모양 — 10개 완료, 5개 빈칸, 마지막(최종 승인)은 완료.
-# 최종 승인까지 떨어졌으면 중간 빈칸은 '안 한 일'이 아니라 '안 적은 일'이다.
+# ── 현재 위치 한 자리: 앞은 완료, 뒤는 대기 ─────────────────────────
+#
+#   1) 최종 승인이 진행중·완료면 거기가 현재 위치 → 앞이 전부 완료
+#   2) 아니면 '진행중' 으로 골라 둔 첫 자리
+#   3) 그것도 없으면 마지막으로 끝난 자리
+
+S = lambda r: [x['status'] for x in r]
+
+# 1) 최종 승인까지 완료 (Mahabali MPD) → 전부 완료
 mpd = P(*([('', '완료')] * 6 + [('', '')] * 3 + [('', '완료')] * 3 + [('', '')] * 2 + [('', '완료')]))
 assert len(mpd) == 15
-assert prog(mpd) == 100, prog(mpd)
-assert all(s['status'] == '완료' for s in rolled(mpd)), rolled(mpd)
+assert S(rolled(mpd)) == ['완료'] * 15, S(rolled(mpd))
+assert prog(mpd) == 100
 ok += 1
 
-# 마지막으로 끝난 단계 앞은 채우고, 그 뒤는 그대로 둔다.
-# 공정은 순서대로 가니 3번이 끝났으면 2번도 지나온 것이다.
-half = P(('', '완료'), ('', ''), ('', '완료'), ('', ''), ('', ''))
-assert [s['status'] for s in rolled(half)] == ['완료', '완료', '완료', '', ''], rolled(half)
-assert prog(half) == 60, prog(half)
+# 1) 최종 승인이 '진행중' 이어도 앞은 전부 완료. 자기 자리는 그대로.
+lastdoing = P(*([('', '완료')] * 3 + [('', '')] * 11 + [('', '진행중')]))
+assert S(rolled(lastdoing)) == ['완료'] * 14 + ['진행중'], S(rolled(lastdoing))
+assert prog(lastdoing) == 93, prog(lastdoing)
 ok += 1
 
-# VXT AHM HX 모양 — 12번이 마지막 완료. 13·14·15 는 대기로 남는다.
+# 2) BV2(06) 가 진행중이면 그 뒤는 전부 대기로 내려간다 — 저장된 완료까지.
+#    Striker Oxide 화면이 이 모양이었다.
+bv2 = P(*([('', '완료')] * 5 + [('', '진행중')] + [('', '완료')] * 8 + [('', '대기')]))
+r = S(rolled(bv2))
+assert r[:5] == ['완료'] * 5, r
+assert r[5] == '진행중', r
+assert r[6:] == ['대기'] * 9, r
+assert prog(bv2) == 33, prog(bv2)
+ok += 1
+
+# 뒤로 내릴 때 실적일도 같이 내린다 — '대기' 인데 실적일이 찍혀 있으면 안 된다
+late = [{'name': '01', 'actual': '', 'status': '진행중'},
+        {'name': '02', 'actual': '2026-01-01', 'status': '완료'},
+        {'name': '03', 'actual': '', 'status': ''}]
+rl = rolled(late)
+assert rl[0]['status'] == '진행중', rl[0]
+assert rl[1]['status'] == '대기' and rl[1]['actual'] == '', rl[1]
+assert late[1]['actual'] == '2026-01-01', '원본을 건드렸다'
+ok += 1
+
+# 3) 진행중이 없으면 마지막으로 끝난 자리가 현재 위치
 hx = P(*([('', '완료')] * 5 + [('', '')] * 4 + [('', '완료')] + [('', '')] +
          [('', '완료')] + [('', '')] * 3))
-assert len(hx) == 15
-r = [s['status'] for s in rolled(hx)]
+r = S(rolled(hx))
 assert r[:12] == ['완료'] * 12, r
-assert r[12:] == ['', '', ''], r
+assert r[12:] == ['대기'] * 3, r
 assert prog(hx) == 80, prog(hx)
 ok += 1
 
-# 하나도 안 끝났으면 아무것도 채우지 않는다
-none = P(('', ''), ('', ''), ('', ''))
-assert [s['status'] for s in rolled(none)] == ['', '', '']
-ok += 1
-
-# ── 기준선은 '끝났거나 하고 있는' 마지막 자리 ────────────────────────
-# 단계 이름·순서에 기대지 않는다. LAIR·FAIR 은 순서가 바뀌고
-# BV 는 BV1 에서 끝나기도 한다.
-
-# 05 BV1 까지 완료, 06 BV2 는 없는 모델, 08 LAIR 작성이 진행중
-# → 07 까지 완료로 채우고, 08 은 진행중 그대로 둔다
-bv = P(*([('', '완료')] * 5 + [('', '')] * 2 + [('', '진행중')] + [('', '')] * 7))
-r = [s['status'] for s in rolled(bv)]
-assert r[:7] == ['완료'] * 7, r
-assert r[7] == '진행중', r
-assert r[8:] == [''] * 7, r
-# 진행중은 끝난 게 아니다 — 7/15
-assert prog(bv) == 47, prog(bv)
-ok += 1
-
-# 14 PRR 승인이 진행중 → 앞 13개 전부 완료, 15 는 대기
-prr = P(*([('', '')] * 13 + [('', '진행중')] + [('', '')]))
-r = [s['status'] for s in rolled(prr)]
-assert r[:13] == ['완료'] * 13, r
-assert r[13] == '진행중' and r[14] == '', r
-assert prog(prr) == 87, prog(prr)
-ok += 1
-
-# 앞쪽에 '진행중' 이 있어도 사람이 고른 값이라 덮지 않는다.
-# 빈 자리(02)만 채운다.
-mix = P(('', '진행중'), ('', ''), ('', '완료'), ('', ''))
-assert [s['status'] for s in rolled(mix)] == ['진행중', '완료', '완료', ''], rolled(mix)
-ok += 1
-
-# 진행중만 있고 완료가 하나도 없어도 그 앞은 채운다
-only = P(('', ''), ('', '진행중'), ('', ''))
-assert [s['status'] for s in rolled(only)] == ['완료', '진행중', ''], rolled(only)
-ok += 1
-
-# ── 사람이 고른 상태가 추측보다 우선한다 ─────────────────────────────
-
-# Striker Oxide 모양: 15 최종 승인이 '대기' 인데 실적일이 있다.
-# 실적일이 있으면 끝난 자리로 본다 — 그래야 그 앞이 다 채워진다.
-# ('최종승인이 대기로 떠도 그 전은 다 완료' 규칙)
+# 최종 승인이 '대기' 라도 실적일이 있으면 끝난 자리로 본다 (Striker Oxide)
 striker = P(*([('', '완료')] * 5 + [('', '')] * 9 + [('2026-10-14', '대기')]))
-r = [s['status'] for s in rolled(striker)]
+r = S(rolled(striker))
 assert r[:14] == ['완료'] * 14, r
-assert r[14] == '대기', r
+assert r[14] == '완료', r      # 실적일이 있으니 현재 위치이자 완료
 ok += 1
 
-# BV2 를 진행중으로 바꿔 놓으면, 뒤 단계가 끝나도 완료로 덮지 않는다
-bv2 = P(*([('', '완료')] * 5 + [('', '진행중')] + [('', '')] * 7 + [('', '완료')] + [('', '')]))
-assert len(bv2) == 15
-r = [s['status'] for s in rolled(bv2)]
-assert r[5] == '진행중', r          # 고른 값이 그대로
-assert r[:5] == ['완료'] * 5, r
-assert r[6:14] == ['완료'] * 8, r   # 빈 자리만 채운다
-assert r[14] == '', r
+# 하나도 안 끝났으면 아무것도 바꾸지 않는다
+none = P(('', ''), ('', ''), ('', ''))
+assert S(rolled(none)) == ['', '', '']
+assert prog(none) == 0
 ok += 1
 
-# 사람이 '대기' 로 골라 둔 자리도 덮지 않는다
-keep = P(('', '완료'), ('', '대기'), ('', ''), ('', '완료'))
-assert [s['status'] for s in rolled(keep)] == ['완료', '대기', '완료', '완료'], rolled(keep)
+# 원본은 그대로 (저장된 값은 엑셀이 적은 그대로 둔다)
+before = [x['status'] for x in bv2]
+rolled(bv2)
+assert [x['status'] for x in bv2] == before
 ok += 1
 
-# 채워도 원본은 그대로다 (저장된 값은 엑셀이 적은 그대로 둔다)
-before = [s['status'] for s in half]
-rolled(half)
-assert [s['status'] for s in half] == before
-ok += 1
-
-# 전부 완료면 100
-assert prog(P(*[('', '완료')] * 5)) == 100
-ok += 1
-
-# 하나도 없으면 0
-assert prog(P(*[('', '')] * 5)) == 0
-assert prog([]) == 0 and rolled([]) == []
-ok += 1
-
-# 실적일만 있고 상태가 비어도 완료로 센다
-assert prog(P(('2026-01-01', ''), ('', ''))) == 50
-ok += 1
-
-# 실적일이 있는 단계는 날짜를 잃지 않는다
-r = rolled(P(('2026-01-01', ''), ('', ''), ('', '완료')))
-assert r[0]['actual'] == '2026-01-01' and r[1]['status'] == '완료'
-ok += 1
-
-print(f'전부 통과 ({ok}/22)')
+print(f'전부 통과 ({ok}/14)')
 
 # ── 비고: 사람이 적은 것만 남긴다 ────────────────────────────────────
 import re as _re
