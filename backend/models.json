@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-31T10:13:58.377593",
+  "updated_at": "2026-08-31T04:05:20.634804",
   "projects": {
     "cup": {
       "models": [
@@ -4121,27 +4121,27 @@
           "status": "정상",
           "price": 3150,
           "material_cost": 0,
-          "po_qty": 70,
-          "shipped_qty": 0,
-          "due_text": "2026-08 주차계획 · 잔여 70개",
+          "po_qty": 80,
+          "shipped_qty": 126,
+          "due_text": "2026-08 주차계획 · 잔여 -46개",
           "issues": "",
           "weekly_plan": {
             "2026-08": {
               "W32": {
-                "plan": 10,
-                "actual": 0
+                "plan": 20,
+                "actual": 10
               },
               "W33": {
                 "plan": 20,
-                "actual": 0
+                "actual": 31
               },
               "W34": {
                 "plan": 20,
-                "actual": 0
+                "actual": 11
               },
               "W35": {
                 "plan": 20,
-                "actual": 0
+                "actual": 74
               }
             },
             "2026-09": {
@@ -4163,7 +4163,7 @@
               }
             }
           },
-          "weekly_progress": 0.0
+          "weekly_progress": 100.0
         },
         {
           "id": "839-B74773-001",
@@ -4206,16 +4206,16 @@
           "weekly_plan": {
             "2026-08": {
               "W32": {
-                "plan": 0,
-                "actual": 0
+                "plan": 20,
+                "actual": 31
               },
               "W33": {
-                "plan": 0,
-                "actual": 0
+                "plan": 8,
+                "actual": 11
               },
               "W34": {
-                "plan": 0,
-                "actual": 0
+                "plan": 20,
+                "actual": 14
               },
               "W35": {
                 "plan": 0,
@@ -4223,7 +4223,7 @@
               }
             }
           },
-          "weekly_progress": 0.0
+          "weekly_progress": 100.0
         },
         {
           "id": "839-272117-005",
@@ -4233,49 +4233,31 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 68,
-          "shipped_qty": 0,
-          "due_text": "2026-08 주차계획 · 잔여 68개",
+          "po_qty": 54,
+          "shipped_qty": 7,
+          "due_text": "2026-08 주차계획 · 잔여 47개",
           "issues": "",
           "weekly_plan": {
             "2026-08": {
               "W32": {
-                "plan": 20,
+                "plan": 16,
                 "actual": 0
               },
               "W33": {
-                "plan": 16,
-                "actual": 0
+                "plan": 8,
+                "actual": 1
               },
               "W34": {
-                "plan": 16,
+                "plan": 10,
                 "actual": 0
               },
               "W35": {
-                "plan": 16,
-                "actual": 0
-              }
-            },
-            "2026-09": {
-              "W36": {
                 "plan": 20,
-                "actual": 0
-              },
-              "W37": {
-                "plan": 16,
-                "actual": 0
-              },
-              "W38": {
-                "plan": 16,
-                "actual": 0
-              },
-              "W39": {
-                "plan": 16,
-                "actual": 0
+                "actual": 6
               }
             }
           },
-          "weekly_progress": 0.0
+          "weekly_progress": 13.0
         },
         {
           "id": "839-272117-006",
@@ -4285,49 +4267,10 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 22,
+          "po_qty": 0,
           "shipped_qty": 0,
-          "due_text": "2026-08 주차계획 · 잔여 22개",
-          "issues": "",
-          "weekly_plan": {
-            "2026-09": {
-              "W36": {
-                "plan": 3,
-                "actual": 0
-              },
-              "W37": {
-                "plan": 19,
-                "actual": 0
-              },
-              "W38": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W39": {
-                "plan": 0,
-                "actual": 0
-              }
-            },
-            "2026-08": {
-              "W32": {
-                "plan": 3,
-                "actual": 0
-              },
-              "W33": {
-                "plan": 19,
-                "actual": 0
-              },
-              "W34": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W35": {
-                "plan": 0,
-                "actual": 0
-              }
-            }
-          },
-          "weekly_progress": 0.0
+          "due_text": "",
+          "issues": ""
         },
         {
           "id": "713-B99529-002",
@@ -4431,31 +4374,10 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 1,
+          "po_qty": 0,
           "shipped_qty": 0,
-          "due_text": "2026-09 주차계획 · 잔여 1개",
-          "issues": "",
-          "weekly_plan": {
-            "2026-09": {
-              "W36": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W37": {
-                "plan": 1,
-                "actual": 0
-              },
-              "W38": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W39": {
-                "plan": 0,
-                "actual": 0
-              }
-            }
-          },
-          "weekly_progress": 0.0
+          "due_text": "",
+          "issues": ""
         },
         {
           "id": "713-C18446-001",
@@ -4491,31 +4413,10 @@
           "status": "정상",
           "price": 3400,
           "material_cost": 0,
-          "po_qty": 12,
+          "po_qty": 0,
           "shipped_qty": 0,
-          "due_text": "2026-09 주차계획 · 잔여 12개",
-          "issues": "",
-          "weekly_plan": {
-            "2026-09": {
-              "W36": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W37": {
-                "plan": 0,
-                "actual": 0
-              },
-              "W38": {
-                "plan": 12,
-                "actual": 0
-              },
-              "W39": {
-                "plan": 0,
-                "actual": 0
-              }
-            }
-          },
-          "weekly_progress": 0.0
+          "due_text": "",
+          "issues": ""
         },
         {
           "id": "713-C08288-001",
@@ -4544,24 +4445,6 @@
                 "actual": 0
               },
               "W35": {
-                "plan": 20,
-                "actual": 0
-              }
-            },
-            "2026-09": {
-              "W36": {
-                "plan": 20,
-                "actual": 0
-              },
-              "W37": {
-                "plan": 20,
-                "actual": 0
-              },
-              "W38": {
-                "plan": 20,
-                "actual": 0
-              },
-              "W39": {
                 "plan": 20,
                 "actual": 0
               }
@@ -4687,7 +4570,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "15-464943-00",
@@ -4807,7 +4698,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-194460-014",
@@ -4927,7 +4826,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-194460-001",
@@ -5047,7 +4954,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-311273-005",
@@ -5167,7 +5082,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "15-422974-00",
@@ -5287,7 +5210,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "15-427225-00",
@@ -5407,7 +5338,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "15-450600-00",
@@ -5527,7 +5466,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "15-453089-00",
@@ -5647,7 +5594,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-170619-003",
@@ -5767,7 +5722,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-189188-001",
@@ -5887,7 +5850,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-335748-001",
@@ -6007,7 +5978,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-335749-001",
@@ -6127,7 +6106,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-A33832-046",
@@ -6247,7 +6234,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-B05830-001",
@@ -6367,7 +6362,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-B56833-003",
@@ -6487,7 +6490,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-C08296-001",
@@ -6607,7 +6618,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-B76049-005",
@@ -6727,7 +6746,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-B81114-001",
@@ -6847,7 +6874,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-B81114-002",
@@ -6967,7 +7002,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-C24148-001",
@@ -7087,7 +7130,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-C30790-001",
@@ -7207,7 +7258,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-C32896-002",
@@ -7327,7 +7386,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-C32896-003",
@@ -7447,7 +7514,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-C33234-010",
@@ -7567,7 +7642,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-D23686-001",
@@ -7687,7 +7770,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-D32695-001",
@@ -7807,7 +7898,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-D40058-001",
@@ -7927,7 +8026,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-D98561-001",
@@ -8047,7 +8154,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-D98588-001",
@@ -8167,7 +8282,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E03284-001",
@@ -8287,7 +8410,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E03287-001",
@@ -8407,7 +8538,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E08318-001",
@@ -8527,7 +8666,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E17168-001",
@@ -8647,7 +8794,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E18070-001",
@@ -8767,7 +8922,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E24477-001",
@@ -8887,7 +9050,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E24478-001",
@@ -9007,7 +9178,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E26461-001",
@@ -9127,7 +9306,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E28099-001",
@@ -9247,7 +9434,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         },
         {
           "id": "713-E28195-001",
@@ -9367,7 +9562,15 @@
               "actual": "",
               "status": ""
             }
-          ]
+          ],
+          "weekly_plan": {
+            "2026-08": {
+              "W35": {
+                "plan": 0,
+                "actual": 0
+              }
+            }
+          }
         }
       ],
       "status_note": "",
@@ -9378,8 +9581,8 @@
       "weekly_summary": {
         "양산": {
           "po_qty": 3339,
-          "actual_total": 2558,
-          "remaining": 781,
+          "actual_total": 2488,
+          "remaining": 851,
           "weeks": {
             "W32": {
               "plan": 76,
@@ -9395,7 +9598,7 @@
             },
             "W35": {
               "plan": 77,
-              "actual": 159
+              "actual": 89
             }
           },
           "next_month_plan": 370,
@@ -9430,8 +9633,8 @@
       },
       "weekly_plan": {
         "file_name": "하바플레이트.xlsx",
-        "uploaded_at": "2026-08-31T09:56:06.730679",
-        "photo_ref": "hrva_plate/plan_2026-08-31_34d9e658.png"
+        "uploaded_at": "2026-08-31T01:12:34.459664",
+        "photo_ref": "hrva_plate/plan_2026-08-31_e51c57a0.png"
       }
     },
     "plating_cell": {

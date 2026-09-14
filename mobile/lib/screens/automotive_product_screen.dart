@@ -203,10 +203,13 @@ class _ContractCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 7),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(
-              color: head ? AppColors.borderDefault : AppColors.dividerSoft,
-              width: head ? 1 : (sum ? 0 : 1),
-            ),
+            // 합계 줄은 위에만 선을 긋는다. 아래에도 그으면 카드 끝과 겹친다.
+            bottom: sum
+                ? BorderSide.none
+                : BorderSide(
+                    color:
+                        head ? AppColors.borderDefault : AppColors.dividerSoft,
+                  ),
             top: sum
                 ? const BorderSide(color: AppColors.borderDefault)
                 : BorderSide.none,

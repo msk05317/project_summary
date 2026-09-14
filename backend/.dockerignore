@@ -1,6 +1,8 @@
-note_assets/
+venv/
+uploads/
+slides/
+slide_images/
+cropped/
 *.bak*
 __pycache__/
-*.pyc
-.git/
-.pytest_cache/
+.rag_cache/
