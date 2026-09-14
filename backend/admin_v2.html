@@ -5630,61 +5630,59 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-warn-bar { margin:0 0 10px; padding:9px 12px; border:1px solid #FECACA; background:#FEF2F2;' +
       ' border-radius:8px; font-size:12px; color:#7F1D1D; }',
     // ── 자동차사업부 제품 화면 (이 사업부에만 적용) ──
-    ':root { --ak1:#1D4ED8; --ak2:#4F82E8; --ak3:#89AEF2; --ak4:#B9CFF8; --ak5:#DCE7FB; }',
+    //
+    // 색·테두리·글자 크기는 전부 기존 모델 관리 화면 값을 쓴다. 표 자체는
+    // .mdl-table 을 그대로 물려받으므로 머리글·행 간격이 반도체 화면과 같다.
+    // 여기서 새로 정의하는 건 이 화면에만 있는 것(요약 타일·원가 비중 막대)뿐이다.
     '.auto-sum-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr));' +
-      ' gap:12px; margin:0 0 16px; }',
-    '.auto-tile { background:#fff; border:1px solid #E5E9F0; border-radius:10px; padding:13px 15px; }',
-    '.auto-tile .v { font-size:20px; font-weight:800; letter-spacing:-0.01em; color:#16202E;' +
+      ' gap:10px; margin:0 0 14px; }',
+    '.auto-tile { background:#fff; border:1px solid #E4E7EC; border-radius:12px; padding:14px 16px; }',
+    '.auto-tile .v { font-size:19px; font-weight:800; color:#0F172A; letter-spacing:-0.01em;' +
       ' font-variant-numeric:tabular-nums; }',
-    '.auto-tile .k { font-size:12px; color:#6B7688; margin-top:1px; }',
+    '.auto-tile .k { font-size:12px; color:#64748B; margin-top:2px; }',
     '.auto-tile.warn { border-color:#FECACA; background:#FEF2F2; }',
     '.auto-tile.warn .v { color:#DC2626; }',
     '.auto-table td { vertical-align:middle; }',
     '.auto-table .auto-td-name { cursor:pointer; }',
-    '.auto-table .pn { font-weight:700; color:#16202E; }',
-    '.auto-table .auto-td-name:hover .pn { color:#1D4ED8; text-decoration:underline; }',
-    '.auto-table .pm { font-size:11px; color:#95A0B0; margin-top:1px; }',
-    '.auto-table .pm2 { font-size:12px; color:#6B7688; }',
-    '.auto-num { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }',
-    '.auto-good { color:#0B6E4F; } .auto-warn { color:#B45309; } .auto-bad { color:#DC2626; }',
-    '.auto-na { color:#CBD5E1; font-weight:500; }',
-    '.auto-tag { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700;' +
-      ' white-space:nowrap; }',
-    '.auto-tag.m { background:#E6F2EC; color:#0B6E4F; }',
-    '.auto-tag.d { background:#FBF0E3; color:#B45309; }',
-    '.auto-tag.g { background:#EEF1F6; color:#6B7688; }',
-    '.auto-bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:#EDF0F5;' +
+    '.auto-table .pn { font-weight:700; color:#0F172A; font-size:13px; letter-spacing:-0.01em; }',
+    '.auto-table .auto-td-name:hover .pn { color:#2563EB; text-decoration:underline; }',
+    '.auto-table .pm { font-size:11px; color:#94A3B8; margin-top:2px; }',
+    '.auto-table .pm2 { font-size:12px; color:#475569; }',
+    '.auto-num { text-align:right; font-weight:700; color:#334155;' +
+      ' font-variant-numeric:tabular-nums; }',
+    '.auto-good { color:#059669; } .auto-warn { color:#D97706; } .auto-bad { color:#DC2626; }',
+    '.auto-na { color:#94A3B8; font-weight:500; }',
+    '.mdl-group-plain { background:#F1F5F9; color:#475569; }',
+    '.auto-bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:#EDF0F4;' +
       ' min-width:130px; }',
     '.auto-bar i { display:block; height:100%; }',
-    '.auto-blab { font-size:11px; color:#95A0B0; margin-top:4px; white-space:nowrap; }',
-    '.auto-total td { background:#0B2B4F; color:#fff; font-weight:800; }',
-    '.auto-hint { margin:12px 2px 0; font-size:12px; color:#95A0B0; line-height:1.7; }',
-    '.auto-box .auto-body { padding:4px 18px 8px; overflow:auto; max-height:64vh; }',
-    '.auto-box section { padding:15px 0; border-bottom:1px solid #EEF1F5; }',
+    '.auto-blab { font-size:11px; color:#94A3B8; margin-top:4px; white-space:nowrap; }',
+    '.auto-total td { background:#0F2C59; color:#fff; font-weight:800; }',
+    '.auto-hint { margin:12px 2px 0; font-size:12px; color:#94A3B8; line-height:1.7; }',
+    '.auto-box .auto-body { padding:4px 20px 8px; overflow:auto; max-height:64vh; }',
+    '.auto-box section { padding:15px 0; border-bottom:1px solid #EDF0F4; }',
     '.auto-box section:last-child { border-bottom:0; }',
-    '.auto-box h4 { margin:0 0 12px; font-size:14px; font-weight:800; color:#0B2B4F; }',
-    '.auto-box h4 small { font-weight:500; color:#95A0B0; margin-left:6px; font-size:12px; }',
-    '.auto-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:13px; }',
-    '.auto-f label { display:flex; align-items:center; gap:6px; font-size:12px; color:#6B7688;' +
-      ' margin-bottom:5px; }',
-    '.auto-f input, .auto-f select { width:100%; padding:8px 10px; border:1px solid #D3DAE5;' +
-      ' border-radius:7px; background:#fff; font:inherit; }',
-    '.auto-f input:focus, .auto-f select:focus { outline:2px solid #1D4ED8; outline-offset:-1px; }',
-    '.auto-sw { width:11px; height:11px; border-radius:2px; display:inline-block; }',
-    '.auto-note { margin-top:11px; padding:9px 12px; background:#F8FAFC; border:1px solid #ECEFF3;' +
-      ' border-radius:8px; font-size:12px; color:#4B5563; }',
-    '.auto-note b { color:#16202E; font-size:13px; }',
-    '.auto-share { margin-top:5px; font-size:11px; color:#95A0B0; }',
-    '.auto-sub { font-size:11px; color:#95A0B0; font-weight:500; }',
+    '.auto-box h4 { margin:0 0 12px; font-size:14px; font-weight:800; color:#0F172A; }',
+    '.auto-box h4 small { font-weight:500; color:#94A3B8; margin-left:6px; font-size:12px; }',
+    '.auto-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:12px; }',
+    '.auto-f label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700;' +
+      ' color:#64748B; margin-bottom:5px; }',
+    '.auto-f .mdl-input { width:100%; text-align:left; }',
+    '.auto-sw { width:10px; height:10px; border-radius:2px; display:inline-block; }',
+    '.auto-note { margin-top:11px; padding:9px 12px; background:#F7F9FC; border:1px solid #EDF0F4;' +
+      ' border-radius:8px; font-size:12px; color:#475569; }',
+    '.auto-note b { color:#0F172A; font-size:13px; }',
+    '.auto-share { margin-top:5px; font-size:11px; color:#94A3B8; }',
+    '.auto-sub { font-size:11px; color:#94A3B8; font-weight:500; }',
     '.auto-yr { display:grid; grid-template-columns:96px repeat(6,1fr) 96px; gap:8px;' +
       ' align-items:center; margin-bottom:8px; }',
-    '.auto-yr .h { font-size:12px; color:#6B7688; text-align:center; }',
-    '.auto-yr .lab { font-size:12px; color:#6B7688; }',
-    '.auto-yr input { width:100%; padding:7px 6px; border:1px solid #D3DAE5; border-radius:6px;' +
-      ' text-align:right; font-variant-numeric:tabular-nums; font:inherit; }',
-    '.auto-ysum { text-align:right; font-weight:800; font-variant-numeric:tabular-nums; }',
-    '.auto-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 16px;' +
-      ' border-top:1px solid #E5E7EB; }',    '.mdl-table select { padding:0 26px 0 10px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 9px center; }',
+    '.auto-yr .h { font-size:11px; font-weight:700; color:#94A3B8; text-align:center; }',
+    '.auto-yr .lab { font-size:11px; font-weight:700; color:#64748B; }',
+    '.auto-yr .mdl-input { width:100%; text-align:right; }',
+    '.auto-ysum { text-align:right; font-weight:800; color:#0F172A;' +
+      ' font-variant-numeric:tabular-nums; }',
+    '.auto-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 20px;' +
+      ' border-top:1px solid #E5E7EB; }',   '.mdl-table select { padding:0 26px 0 10px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 9px center; }',
     '.mdl-table select:hover { background-color:#F1F5F9; }',
     '.mdl-table select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
     '.mdl-memo { min-height:34px; }',
@@ -6183,11 +6181,12 @@ window.renderAdminV2ByDivision = function(){
   // ══════════════════════════════════════════════════════════════════
 
   window._AUTO_COST = [
-    ['material', '재료비', 'var(--ak1)'],
-    ['process', '공정비', 'var(--ak2)'],
-    ['admin', '관리이윤', 'var(--ak3)'],
-    ['depr', '감가상각', 'var(--ak4)'],
-    ['logi', '물류', 'var(--ak5)']
+    // 색은 보드 표 남색(#0F2C59)에서 옅어지는 한 갈래로만 쓴다.
+    ['material', '재료비', '#0F2C59'],
+    ['process', '공정비', '#1E4E7E'],
+    ['admin', '관리이윤', '#4A7FA8'],
+    ['depr', '감가상각', '#8FB2CC'],
+    ['logi', '물류', '#D3E0EA']
   ];
   window._AUTO_YEARS = ['2026', '2027', '2028', '2029', '2030', '2031'];
   window._AUTO_METHOD = ['고압주조', '저압주조', '기타'];
@@ -6269,8 +6268,9 @@ window.renderAdminV2ByDivision = function(){
         '<td>' + _aE(a.end_customer) +
           (a.car_model ? '<div class="pm">' + _aE(a.car_model) + '</div>' : '') + '</td>' +
         '<td class="pm2">' + _aE(String(a.site || '').replace(/\n/g, ' ')) + '</td>' +
-        '<td>' + (a.method ? '<span class="auto-tag g">' + _aE(a.method) + '</span>' : '') + '</td>' +
-        '<td><span class="auto-tag ' + (m.group === '개발' ? 'd' : 'm') + '">' +
+        '<td>' + (a.method ? '<span class="mdl-group-badge mdl-group-plain">' +
+          _aE(a.method) + '</span>' : '') + '</td>' +
+        '<td><span class="mdl-group-badge mdl-group-' + (m.group === '개발' ? 'dev' : 'mass') + '">' +
           (m.group === '개발' ? '개발' : '양산') + '</span></td>' +
         '<td class="pm2">' + _aE(a.sop) + '</td>' +
         '<td class="auto-num">' + (a.weight_kg ? a.weight_kg : '-') + '</td>' +
@@ -6330,19 +6330,19 @@ window.renderAdminV2ByDivision = function(){
 
     function inp(label, key, val, ph) {
       return '<div class="auto-f"><label>' + _aE(label) + '</label>' +
-        '<input class="auto-in" data-k="' + key + '" value="' + _aE(val) + '"' +
+        '<input class="mdl-input auto-in" data-k="' + key + '" value="' + _aE(val) + '"' +
         (ph ? ' placeholder="' + _aE(ph) + '"' : '') + '></div>';
     }
     function sel(label, key, val, opts) {
       return '<div class="auto-f"><label>' + _aE(label) + '</label>' +
-        '<select class="auto-in" data-k="' + key + '">' + opts.map(function(o) {
+        '<select class="mdl-input auto-in" data-k="' + key + '">' + opts.map(function(o) {
           return '<option value="' + _aE(o) + '"' + (String(val) === o ? ' selected' : '') + '>' + _aE(o) + '</option>';
         }).join('') + '</select></div>';
     }
 
     var costHtml = window._AUTO_COST.map(function(p) {
       return '<div class="auto-f"><label><span class="auto-sw" style="background:' + p[2] + '"></span>' +
-        p[1] + '</label><input class="auto-in" data-k="cost.' + p[0] + '" inputmode="decimal" value="' +
+        p[1] + '</label><input class="mdl-input auto-in" data-k="cost.' + p[0] + '" inputmode="decimal" value="' +
         _aE(a.cost[p[0]] === undefined ? '' : a.cost[p[0]]) + '"></div>';
     }).join('');
 
@@ -6350,7 +6350,7 @@ window.renderAdminV2ByDivision = function(){
       return '<span class="lab">' + (field === 'qty' ? '물량 (EA)' : '매출 (억원)') + '</span>' +
         window._AUTO_YEARS.map(function(y) {
           var e = a.contract[y] || {};
-          return '<input class="auto-in ' + cls + '" data-k="contract.' + y + '.' + field +
+          return '<input class="mdl-input auto-in ' + cls + '" data-k="contract.' + y + '.' + field +
             '" inputmode="decimal" value="' + _aE(e[field] === undefined ? '' : e[field]) + '">';
         }).join('') + '<span class="auto-ysum" id="auto-ysum-' + field + '">0</span>';
     }
