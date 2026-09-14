@@ -91,3 +91,34 @@ assert r[0]['actual'] == '2026-01-01' and r[1]['status'] == '완료'
 ok += 1
 
 print(f'전부 통과 ({ok}/13)')
+
+# ── 비고: 사람이 적은 것만 남긴다 ────────────────────────────────────
+import re as _re
+_auto_src = {}
+for _n in ast.walk(ast.parse(src)):
+    if isinstance(_n, ast.FunctionDef) and _n.name == '_looks_auto_note':
+        _n.decorator_list = []
+        _auto_src['f'] = ast.unparse(_n)
+assert _auto_src, '_looks_auto_note 를 못 찾음'
+_g2 = {'re': _re,
+       '_AUTO_NOTE_RE': _re.compile(r'^\s*\d{2}\s+[^:]+:[^·]+(·\s*\d{2}\s+[^:]+:[^·]+)*\s*$')}
+exec(_auto_src['f'], _g2)
+auto = _g2['_looks_auto_note']
+ok2 = 0
+
+# 예전 업로드가 적어 두던 모양 → 지운다
+for t in ('10 FAIR Approval: Not yet · 11 LAP Test: Not yet',
+          '03 Material Receiving: In stock · 10 FAIR Approval: Not yet · 11 LAP Test: Not yet',
+          '04 Machining (Assembly): Not yet · 06 LAIR Preparation: Not yet',
+          '06 LAIR Preparation: Not yet'):
+    assert auto(t), t
+ok2 += 1
+
+# 사람이 적은 메모는 건드리지 않는다
+for t in ('자재 지연, 8월 말 입고 예정', '고객사 확인 중', '', '   ',
+          '2026년 9월 출하 예정', 'PRR 일정 미정 — 담당자 확인 필요',
+          '10월 3일 회의 결과 반영'):
+    assert not auto(t), t
+ok2 += 1
+
+print(f'비고 판별 통과 ({ok2}/2)')

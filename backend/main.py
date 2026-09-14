@@ -22795,6 +22795,15 @@ async def admin_price_import_xlsx(project_key: str, file: UploadFile = File(...)
 # NA 도 완료로 세고 '완료' 글자를 날짜 칸에 밀어 넣었다.
 _STEP_NA = {'na', 'n/a', '-', '--', 'tbd', '미정', '해당없음', '없음', 'x'}
 
+# 예전 임포터가 비고에 적어 두던 모양: '10 FAIR Approval: Not yet · 11 LAP Test: Not yet'
+_AUTO_NOTE_RE = re.compile(r'^\s*\d{2}\s+[^:]+:[^·]+(·\s*\d{2}\s+[^:]+:[^·]+)*\s*$')
+
+
+def _looks_auto_note(note) -> bool:
+    """비고가 사람 글이 아니라 예전 업로드가 적어 둔 단계 나열인가."""
+    t = str(note or '').strip()
+    return bool(t) and bool(_AUTO_NOTE_RE.match(t))
+
 
 def _step_date(raw: str) -> str:
     """날짜면 'YYYY-MM-DD', 아니면 빈칸. 날짜 칸에 글자를 넣지 않는다."""
@@ -22946,9 +22955,12 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
             m['progress'] = _process_progress(proc)
             if m.get('group') != '개발':
                 m['group'] = '개발'
-            memo = ' · '.join([x for x in ([row.get('comment')] + (row.get('notes') or [])) if x])
-            if memo:
-                m['note'] = memo
+            # 비고는 사람이 적는 칸이다. 엑셀 칸에 'Not yet' · 'In stock' 같은
+            # 글자가 있다고 해서 그걸 모아 비고에 적지 않는다 — 40종이 전부
+            # 단계 상태 나열로 덮여 정작 적어 둔 메모가 묻힌다.
+            # 그 글자들은 단계 상태(대기·진행중)로 이미 반영돼 있다.
+            if _looks_auto_note(m.get('note')):
+                m['note'] = ''       # 예전 업로드가 적어 둔 것만 지운다
             applied.append(pn)
         print(f"[process/import-xlsx] Process Schedule 형식 인식 → {_key} {len(applied)}종")
 
