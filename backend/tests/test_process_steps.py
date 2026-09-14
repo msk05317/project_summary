@@ -60,10 +60,26 @@ assert prog(mpd) == 100, prog(mpd)
 assert all(s['status'] == '완료' for s in rolled(mpd)), rolled(mpd)
 ok += 1
 
-# 최종 승인이 안 끝났으면 채우지 않는다 — 끝난 것만 센다
+# 마지막으로 끝난 단계 앞은 채우고, 그 뒤는 그대로 둔다.
+# 공정은 순서대로 가니 3번이 끝났으면 2번도 지나온 것이다.
 half = P(('', '완료'), ('', ''), ('', '완료'), ('', ''), ('', ''))
-assert prog(half) == 40, prog(half)
-assert [s['status'] for s in rolled(half)] == ['완료', '', '완료', '', ''], rolled(half)
+assert [s['status'] for s in rolled(half)] == ['완료', '완료', '완료', '', ''], rolled(half)
+assert prog(half) == 60, prog(half)
+ok += 1
+
+# VXT AHM HX 모양 — 12번이 마지막 완료. 13·14·15 는 대기로 남는다.
+hx = P(*([('', '완료')] * 5 + [('', '')] * 4 + [('', '완료')] + [('', '')] +
+         [('', '완료')] + [('', '')] * 3))
+assert len(hx) == 15
+r = [s['status'] for s in rolled(hx)]
+assert r[:12] == ['완료'] * 12, r
+assert r[12:] == ['', '', ''], r
+assert prog(hx) == 80, prog(hx)
+ok += 1
+
+# 하나도 안 끝났으면 아무것도 채우지 않는다
+none = P(('', ''), ('', ''), ('', ''))
+assert [s['status'] for s in rolled(none)] == ['', '', '']
 ok += 1
 
 # 채워도 원본은 그대로다 (저장된 값은 엑셀이 적은 그대로 둔다)
@@ -90,7 +106,7 @@ r = rolled(P(('2026-01-01', ''), ('', ''), ('', '완료')))
 assert r[0]['actual'] == '2026-01-01' and r[1]['status'] == '완료'
 ok += 1
 
-print(f'전부 통과 ({ok}/13)')
+print(f'전부 통과 ({ok}/15)')
 
 # ── 비고: 사람이 적은 것만 남긴다 ────────────────────────────────────
 import re as _re

@@ -20970,36 +20970,43 @@ def _process_step_done(s) -> bool:
 
 
 def _process_rolled(proc: list) -> list:
-    """최종 승인이 끝났으면 앞 단계도 끝난 것으로 채운 사본을 준다.
+    """마지막으로 끝난 단계보다 앞에 있는 단계는 끝난 것으로 채운 사본을 준다.
 
+    공정은 순서대로 간다. 10번이 끝났으면 6·7·8·9 도 지나온 것이다.
     일정표에는 그 모델에 없는 단계(파워박스의 LAIR)나 굳이 안 적은 단계가
-    빈칸으로 남는다. 최종 승인까지 떨어진 모델에서 그 빈칸은 '아직 안 한 일'
-    이 아니라 '적지 않은 일' 이다. 화면에 절반만 체크된 채로 두면 끝난 건지
-    아닌지 읽는 사람이 알 수 없다.
+    빈칸으로 남는데, 지나온 자리의 빈칸은 '아직 안 한 일' 이 아니라
+    '적지 않은 일' 이다. 중간이 숭숭 빈 채로 두면 어디까지 갔는지
+    읽는 사람이 알 수 없다.
 
+    마지막 단계까지 끝났으면 결과적으로 전부 완료가 된다.
     저장된 값은 건드리지 않는다 — 엑셀이 적은 그대로 둔다. 보여줄 때만 채운다.
     """
-    if not proc or not _process_step_done(proc[-1]):
+    if not proc:
+        return proc
+    last = -1
+    for i, s in enumerate(proc):
+        if _process_step_done(s):
+            last = i
+    if last < 0:
         return proc
     out = []
-    for s in proc:
-        if _process_step_done(s):
-            out.append(s)
-        else:
+    for i, s in enumerate(proc):
+        if i < last and not _process_step_done(s):
             t = dict(s or {})
             t["status"] = "완료"
             out.append(t)
+        else:
+            out.append(s)
     return out
 
 
 def _process_progress(proc: list) -> int:
-    """끝난 단계 수 ÷ 전체 단계 수. 최종 승인이 끝났으면 100%."""
+    """끝난 단계 수 ÷ 전체 단계 수. 지나온 자리의 빈칸은 끝난 것으로 센다."""
     if not proc:
         return 0
-    if _process_step_done(proc[-1]):
-        return 100
-    done = sum(1 for s in proc if _process_step_done(s))
-    return round(done / len(proc) * 100)
+    rolled = _process_rolled(proc)
+    done = sum(1 for s in rolled if _process_step_done(s))
+    return round(done / len(rolled) * 100)
 
 
 
@@ -21011,12 +21018,12 @@ def _model_progress(m: dict) -> int:
         return round(min(100.0, sh / po * 100.0)) if po > 0 else 0
     proc = m.get('process') or []
     if proc:
-        if _process_step_done(proc[-1]) and str(proc[-1].get('status') or '') not in ('미승인', '미제출'):
-            return 100
-        done = sum(1 for s in proc
+        # 규칙은 _process_rolled 한 곳에 있다. 여기서 따로 세면 화면마다 갈린다.
+        rolled = _process_rolled(proc)
+        done = sum(1 for s in rolled
                    if (str(s.get('actual') or '').strip() or str(s.get('status') or '') == '완료')
                    and str(s.get('status') or '') not in ('미승인', '미제출'))
-        return round(done / len(proc) * 100)
+        return round(done / len(rolled) * 100)
     return int(m.get('progress') or 0)
 
 def _combined_project_progress(proj: dict) -> float:
