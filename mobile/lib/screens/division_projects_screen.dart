@@ -24,6 +24,9 @@ import '../services/favorites_service.dart';
 import '../services/overview_service.dart';
 import '../services/automotive_service.dart';
 import '../models/automotive.dart';
+import '../models/bloom_daily.dart';
+import '../services/bloom_service.dart';
+import '../widgets/bloom_today_card.dart';
 import '../components/division/division_immediate_check.dart'
     show DivisionImmediateItem, ImmediatePriority;
 import '../components/division/division_revenue_hero.dart';
@@ -84,6 +87,15 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 
   bool get _isAuto => widget.division.id == AutomotiveService.divisionId;
 
+  /// 블룸은 '날짜 x 품목 x 공정' 이라 주차 실적이 아니라 일 보드를 본다.
+  BloomDailyBoard _bloom = BloomDailyBoard.empty;
+  bool get _isBloom => widget.division.id == BloomService.divisionId;
+
+  Future<void> _loadBloom() async {
+    final b = await BloomService.board(force: true);
+    if (mounted) setState(() => _bloom = b);
+  }
+
   AutoProjectRow _autoOf(String key) {
     for (final r in _auto.projects) {
       if (r.key == key) return r;
@@ -104,6 +116,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     _loadProgress();
     _loadOverview();
     if (_isAuto) _loadAuto();
+    if (_isBloom) _loadBloom();
   }
 
   Future<void> _loadAuto() async {
@@ -244,6 +257,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       _loadProgress(),
       _loadOverview(),
       if (_isAuto) _loadAuto(),
+      if (_isBloom) _loadBloom(),
     ]);
   }
 
@@ -858,6 +872,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
+                  if (_isBloom && _bloom.hasBoard) ...[
+                    BloomTodayCard(board: _bloom),
+                    const SizedBox(height: 12),
+                  ],
                   if (_isAuto)
                     _autoHero()
                   else
