@@ -106,7 +106,9 @@ def _year_for_month(mon, today=None):
 def find_layout(ws, grid):
     """(하위머리글행, 라벨열, 주차쌍, 월쌍, 정보열, 사이트열) 반환."""
     sub_row = None
-    for r in range(1, min(ws.max_row, 12) + 1):
+    # 시트 위쪽에 요약 블록이 먼저 오는 경우가 있다(CURIE 는 '계획/실적' 줄이 13행).
+    # 12행까지만 보다가 표를 통째로 못 찾았다.
+    for r in range(1, min(ws.max_row, 24) + 1):
         plans = sum(1 for c in range(1, ws.max_column + 1) if _s(grid.get((r, c))) == "계획")
         if plans >= 2:
             sub_row = r
@@ -117,7 +119,14 @@ def find_layout(ws, grid):
     # 라벨 열: 하위머리글 행 아래에서 텍스트가 있는 첫 열
     label_col = None
     for c in range(1, ws.max_column + 1):
-        head = _s(grid.get((sub_row - 2, c))) + _s(grid.get((sub_row - 1, c))) + _s(grid.get((sub_row, c)))
+        # 머리글이 세로로 병합돼 있으면 같은 글자가 여러 행에 퍼져 있다
+        # ('모델명모델명모델명'). 중복을 걷어내고 본다.
+        uniq = []
+        for r in range(max(1, sub_row - 2), sub_row + 1):
+            t = _s(grid.get((r, c)))
+            if t and t not in uniq:
+                uniq.append(t)
+        head = "".join(uniq).replace("\n", "").replace(" ", "")
         if head in ("구분", "모델", "모델명", "파트번호", "품명"):
             label_col = c
             break
@@ -164,7 +173,7 @@ def find_layout(ws, grid):
             info["rem"] = c
 
     # 계획/실적 쌍 → 주차 or 월
-    week_pairs, month_pairs = [], []
+    week_pairs, month_pairs, total_pairs = [], [], []
     c = (site_col or label_col) + 1
     while c <= ws.max_column:
         if _s(grid.get((sub_row, c))) != "계획":
@@ -195,9 +204,18 @@ def find_layout(ws, grid):
         entry = (month_no, c, act_c)
         if week is not None:
             week_pairs.append((week,) + entry)
-        elif not is_total:
+        elif is_total:
+            total_pairs.append(entry)
+        else:
             month_pairs.append(entry)
         c = (act_c or c) + 1
+
+    # 'N월 합계' 열은 보통 그 달 주차 열과 겹치므로 버린다. 다만 주차 열이
+    # 아예 없는 달(CURIE 의 7월)은 합계가 그 달의 유일한 값이라 살려둔다.
+    week_months = {mon for _, mon, _, _ in week_pairs}
+    for entry in total_pairs:
+        if entry[0] not in week_months:
+            month_pairs.append(entry)
 
     return sub_row, label_col, week_pairs, month_pairs, info, site_col
 
