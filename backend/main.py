@@ -20970,22 +20970,25 @@ def _process_step_done(s) -> bool:
 
 
 def _process_rolled(proc: list) -> list:
-    """마지막으로 끝난 단계보다 앞에 있는 단계는 끝난 것으로 채운 사본을 준다.
+    """가장 멀리 간 단계보다 앞에 있는 단계는 끝난 것으로 채운 사본을 준다.
 
-    공정은 순서대로 간다. 10번이 끝났으면 6·7·8·9 도 지나온 것이다.
-    일정표에는 그 모델에 없는 단계(파워박스의 LAIR)나 굳이 안 적은 단계가
-    빈칸으로 남는데, 지나온 자리의 빈칸은 '아직 안 한 일' 이 아니라
-    '적지 않은 일' 이다. 중간이 숭숭 빈 채로 두면 어디까지 갔는지
-    읽는 사람이 알 수 없다.
+    공정은 순서대로 간다. PRR 승인을 하고 있으면 그 앞은 다 지나온 것이다.
+    일정표에는 그 모델에 없는 단계나 굳이 안 적은 단계가 빈칸으로 남는데,
+    지나온 자리의 빈칸은 '아직 안 한 일' 이 아니라 '적지 않은 일' 이다.
+    중간이 숭숭 빈 채로 두면 어디까지 갔는지 읽는 사람이 알 수 없다.
 
-    마지막 단계까지 끝났으면 결과적으로 전부 완료가 된다.
-    저장된 값은 건드리지 않는다 — 엑셀이 적은 그대로 둔다. 보여줄 때만 채운다.
+    기준선은 '끝났거나 하고 있는' 마지막 자리다 — 단계 이름이나 순서에
+    기대지 않는다. LAIR 과 FAIR 은 순서가 바뀌기도 하고, BV 는 BV1 에서
+    끝나기도 한다. 그런 자리는 기준선 앞에 놓이면서 저절로 채워진다.
+    기준선 자리 자체는 건드리지 않는다 — 진행중이면 진행중으로 남는다.
+
+    저장된 값은 건드리지 않는다. 엑셀이 적은 그대로 두고 보여줄 때만 채운다.
     """
     if not proc:
         return proc
     last = -1
     for i, s in enumerate(proc):
-        if _process_step_done(s):
+        if _process_step_active(s):
             last = i
     if last < 0:
         return proc
@@ -20998,6 +21001,11 @@ def _process_rolled(proc: list) -> list:
         else:
             out.append(s)
     return out
+
+
+def _process_step_active(s) -> bool:
+    """끝났거나 하고 있는 중. '어디까지 갔나' 를 재는 기준이다."""
+    return _process_step_done(s) or (s or {}).get("status") == "진행중"
 
 
 def _process_progress(proc: list) -> int:

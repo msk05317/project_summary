@@ -6,7 +6,7 @@ SRC = pathlib.Path(__file__).resolve().parents[1] / 'main.py'
 sys.path.insert(0, str(SRC.parent))
 src = SRC.read_text(encoding='utf-8')
 want = {'_step_date', '_step_actual', '_process_step_done', '_process_progress',
-        '_process_rolled'}
+        '_process_rolled', '_process_step_active'}
 grab = {}
 for n in ast.walk(ast.parse(src)):
     if isinstance(n, ast.FunctionDef) and n.name in want:
@@ -82,6 +82,40 @@ none = P(('', ''), ('', ''), ('', ''))
 assert [s['status'] for s in rolled(none)] == ['', '', '']
 ok += 1
 
+# ── 기준선은 '끝났거나 하고 있는' 마지막 자리 ────────────────────────
+# 단계 이름·순서에 기대지 않는다. LAIR·FAIR 은 순서가 바뀌고
+# BV 는 BV1 에서 끝나기도 한다.
+
+# 05 BV1 까지 완료, 06 BV2 는 없는 모델, 08 LAIR 작성이 진행중
+# → 07 까지 완료로 채우고, 08 은 진행중 그대로 둔다
+bv = P(*([('', '완료')] * 5 + [('', '')] * 2 + [('', '진행중')] + [('', '')] * 7))
+r = [s['status'] for s in rolled(bv)]
+assert r[:7] == ['완료'] * 7, r
+assert r[7] == '진행중', r
+assert r[8:] == [''] * 7, r
+# 진행중은 끝난 게 아니다 — 7/15
+assert prog(bv) == 47, prog(bv)
+ok += 1
+
+# 14 PRR 승인이 진행중 → 앞 13개 전부 완료, 15 는 대기
+prr = P(*([('', '')] * 13 + [('', '진행중')] + [('', '')]))
+r = [s['status'] for s in rolled(prr)]
+assert r[:13] == ['완료'] * 13, r
+assert r[13] == '진행중' and r[14] == '', r
+assert prog(prr) == 87, prog(prr)
+ok += 1
+
+# 진행중이 기준선보다 앞이면 그것도 완료로 본다.
+# 뒤쪽 단계가 끝났다면 앞의 '진행중' 은 이미 지나온 자리다.
+mix = P(('', '진행중'), ('', ''), ('', '완료'), ('', ''))
+assert [s['status'] for s in rolled(mix)] == ['완료', '완료', '완료', ''], rolled(mix)
+ok += 1
+
+# 진행중만 있고 완료가 하나도 없어도 그 앞은 채운다
+only = P(('', ''), ('', '진행중'), ('', ''))
+assert [s['status'] for s in rolled(only)] == ['완료', '진행중', ''], rolled(only)
+ok += 1
+
 # 채워도 원본은 그대로다 (저장된 값은 엑셀이 적은 그대로 둔다)
 before = [s['status'] for s in half]
 rolled(half)
@@ -106,7 +140,7 @@ r = rolled(P(('2026-01-01', ''), ('', ''), ('', '완료')))
 assert r[0]['actual'] == '2026-01-01' and r[1]['status'] == '완료'
 ok += 1
 
-print(f'전부 통과 ({ok}/15)')
+print(f'전부 통과 ({ok}/19)')
 
 # ── 비고: 사람이 적은 것만 남긴다 ────────────────────────────────────
 import re as _re
