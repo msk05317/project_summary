@@ -13667,6 +13667,176 @@ async def _pbx_read_upload(file, month):
     return orig, _pbx_pick_sheet(wb, month)
 
 
+# ── 자동차사업부 제품 엑셀 ────────────────────────────────────────────
+#
+# 한 파일에 여러 고객사가 섞여 있다. 고객사가 곧 프로젝트이므로 행마다
+# 어느 프로젝트로 갈지 갈라서 넣는다. 저장 전에 무엇이 어디로 가는지 먼저 보여준다.
+#
+# 제품명이 열쇠다. 같은 이름이 다른 고객사에 있어도(케피코 DCDC / 발레오 DCDC)
+# 프로젝트가 다르니 섞이지 않는다.
+
+
+def _auto_projects():
+    """자동차사업부 프로젝트 (라벨·별칭까지) — 고객사 이름을 여기에 맞춘다."""
+    out = []
+    try:
+        for p in _cl.get_projects(division_id="automotive", visible_only=True):
+            out.append({"id": p.get("id"), "label": p.get("label"),
+                        "aliases": list(p.get("aliases") or [])})
+    except Exception as e:
+        print(f"[auto-import] 프로젝트 목록 조회 실패: {e}")
+    return out
+
+
+async def _auto_read_upload(file, sheet):
+    """업로드된 엑셀을 열어 제품표를 읽는다 → (파일명, parsed, 시트목록)"""
+    orig = file.filename or "products.xlsx"
+    if not orig.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="xlsx/xlsm 파일만 올릴 수 있습니다")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일입니다")
+
+    from io import BytesIO
+    import openpyxl
+    import auto_import as _ai
+
+    try:
+        wbv = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+        wbf = openpyxl.load_workbook(BytesIO(raw))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+
+    avail = _ai.sheets(wbv, wbf)
+    parsed = _ai.parse(wbv, wbf, (sheet or "").strip() or None)
+    if not parsed:
+        if avail:
+            raise HTTPException(status_code=400, detail="그 시트를 찾지 못했습니다. 읽히는 시트: "
+                                                        + ", ".join(g["sheet"] for g in avail))
+        raise HTTPException(status_code=400,
+                            detail="'고객사'와 '제품명' 머리글이 있는 시트를 찾지 못했습니다")
+    return orig, parsed, avail
+
+
+def _auto_diff(parsed):
+    """엑셀 행 ↔ 등록된 제품 대조표. 저장은 하지 않는다."""
+    import auto_import as _ai
+
+    projects = _auto_projects()
+    label = {p["id"]: p["label"] for p in projects}
+    pmap = _ai.match_projects(parsed["rows"], projects)
+    data = _load_models()
+
+    rows, missing = [], []
+    for r in parsed["rows"]:
+        pid = pmap.get(r["customer"])
+        if not pid:
+            missing.append({"customer": r["customer"], "product": r["product"], "row": r["row"]})
+            continue
+        proj = (data.get("projects") or {}).get(pid) or {}
+        cur = None
+        for m in proj.get("models") or []:
+            if str(m.get("id")) == r["product"] or str(m.get("name")) == r["product"]:
+                cur = m
+                break
+        a = r["auto"]
+        cost = a.get("cost") or {}
+        price = _as_money(a.get("price_krw")) or (
+            _as_money(a.get("price_fx")) * _as_money(a.get("fx_rate")))
+        rows.append({
+            "row": r["row"], "customer": r["customer"],
+            "project_key": pid, "project_label": label.get(pid, pid),
+            "product": r["product"], "group": r["group"],
+            "is_new": cur is None,
+            "cost_total": round(sum(_as_money(v) for v in cost.values())),
+            "price": round(price),
+            "qty": sum(_as_int(v.get("qty")) for v in (a.get("contract") or {}).values()),
+            "revenue": round(sum(_as_money(v.get("revenue"))
+                                 for v in (a.get("contract") or {}).values()), 1),
+            "end_customer": a.get("end_customer", ""),
+            "sop": a.get("sop", ""),
+        })
+
+    return {"sheet": parsed["sheet"], "years": parsed["years"],
+            "rows": rows, "unmatched": missing,
+            "projects": sorted({r["project_label"] for r in rows})}
+
+
+@app.post("/admin/automotive/product-import/preview")
+async def admin_auto_import_preview(
+    file: UploadFile = File(...),
+    sheet: str = Form(""),
+    _admin: int = Depends(get_admin_session),
+):
+    """올린 파일이 무엇을 어디로 넣는지 먼저 보여준다. 저장하지 않는다."""
+    orig, parsed, avail = await _auto_read_upload(file, sheet)
+    out = _auto_diff(parsed)
+    out.update({"ok": True, "file_name": orig,
+                "available": [g["sheet"] for g in avail]})
+    return out
+
+
+@app.post("/admin/automotive/product-import/apply")
+async def admin_auto_import_apply(
+    file: UploadFile = File(...),
+    sheet: str = Form(""),
+    skip: str = Form(""),
+    _admin: int = Depends(get_admin_session),
+):
+    """미리보기에서 확인한 내용을 저장한다."""
+    import auto_import as _ai
+
+    orig, parsed, _avail = await _auto_read_upload(file, sheet)
+    projects = _auto_projects()
+    pmap = _ai.match_projects(parsed["rows"], projects)
+    drop = {s.strip() for s in (skip or "").split("|") if s.strip()}
+
+    data = _load_models()
+    added = updated = 0
+    touched = set()
+    for r in parsed["rows"]:
+        pid = pmap.get(r["customer"])
+        if not pid or (r["customer"] + "/" + r["product"]) in drop:
+            continue
+        proj = data.setdefault("projects", {}).setdefault(pid, {"models": []})
+        models = proj.setdefault("models", [])
+        cur = None
+        for m in models:
+            if str(m.get("id")) == r["product"] or str(m.get("name")) == r["product"]:
+                cur = m
+                break
+        if cur is None:
+            cur = {"id": r["product"], "name": r["product"], "status": "정상", "progress": 0}
+            models.append(cur)
+            added += 1
+        else:
+            updated += 1
+        cur["name"] = r["product"]
+        cur["group"] = r["group"]
+        # auto 묶음은 통째로 갈아끼운다. 엑셀이 이 제품의 정본이다.
+        cur["auto"] = r["auto"]
+        # 원가율을 다른 화면에서도 쓸 수 있게 판가·재료비 칸에도 원화로 남긴다
+        a = r["auto"]
+        cur["price"] = round(_as_money(a.get("price_krw")) or
+                             (_as_money(a.get("price_fx")) * _as_money(a.get("fx_rate"))))
+        cur["material_cost"] = round(_as_money((a.get("cost") or {}).get("material")))
+        touched.add(pid)
+
+    for pid in touched:
+        proj = data["projects"][pid]
+        proj["models"].sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+        proj["product_file"] = {
+            "file_name": orig, "sheet": parsed["sheet"],
+            "uploaded_at": __import__("datetime").datetime.now().isoformat(),
+        }
+    _save_models(data)
+    print(f"[auto-import] '{orig}' {parsed['sheet']}: 신규 {added}, 갱신 {updated}, "
+          f"프로젝트 {len(touched)}개, 건너뜀 {len(drop)}")
+    return {"ok": True, "file_name": orig, "sheet": parsed["sheet"],
+            "added": added, "updated": updated,
+            "projects": sorted(touched), "skipped": len(drop)}
+
+
 @app.post("/admin/projects/{project_key}/plan-file/preview")
 async def admin_plan_file_preview(
     project_key: str,

@@ -6504,7 +6504,14 @@ window.renderAdminV2ByDivision = function(){
     var _pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) || '';
     if (['sdi','fluence','epc_power'].indexOf(_pk) >= 0) { _projIsEss = true; }
     else if (_pk) { _projIsEss = false; }
-    // 자동차사업부는 열 구성이 아예 다르다 (원가 8항목·외화 판가·연도별 계약물량)
+    // 엑셀 버튼도 갈린다. 자동차는 제품 엑셀(고객사 여러 곳이 한 파일)을 쓴다.
+    var _aiBtn = document.getElementById('auto-import-btn');
+    var _mdlExcelWrap = document.querySelector('#mdl-import-btn');
+    if (_aiBtn) _aiBtn.hidden = !window._projIsAuto;
+    if (_mdlExcelWrap && _mdlExcelWrap.parentElement) {
+      _mdlExcelWrap.parentElement.hidden = !!window._projIsAuto;
+    }
+    // 자동차사업부는 열 구성이 아예 다르다 (원가·공법·연도별 계약물량)
     if (window._projIsAuto && window._autoRenderTable) {
       var _al = (window._modelsData || []).slice();
       var _aq = String((document.getElementById('mdl-search') || {}).value || '').toLowerCase();
@@ -7388,6 +7395,8 @@ var sidebarSel = document.getElementById('v2-division-select');
                 '<button type="button" class="danger" id="mdl-proc-reset-btn">🔄 프로세스 전체 초기화</button>' +
               '</div>' +
             '</div>' +
+            '<input type="file" id="auto-import-file" accept=".xlsx,.xlsm" style="display:none;">' +
+            '<button type="button" class="ov-btn" id="auto-import-btn" hidden>📁 제품 엑셀 올리기</button>' +
             '<input type="file" id="mdl-excel-input" accept=".xlsx,.xls,.xlsm" style="display:none;">' +
             '<input type="file" id="mdl-proc-excel-input" accept=".xlsx,.xls,.xlsm" style="display:none;">' +
             '<div class="ov-search"><span class="ico">🔍</span>' +
@@ -8537,6 +8546,140 @@ window._ovProjectKey = function() {
             if (window.wbRefresh) window.wbRefresh();
           })
           .catch(function(e) { close(); alert('반영 실패: ' + e.message); });
+      };
+    }
+
+    // ── 자동차사업부 제품 엑셀 올리기 ────────────────────────────────
+    //
+    // 한 파일에 여러 고객사가 섞여 있다. 고객사가 곧 프로젝트라 행마다 갈라서
+    // 들어간다. 지금 보고 있는 프로젝트 하나에만 들어가는 게 아니므로,
+    // 저장 전에 어느 고객사로 몇 개가 가는지 먼저 보여준다.
+    function _aiE(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function _aiPreview(f, d) {
+      var rows = d.rows || [];
+      var byProj = {};
+      rows.forEach(function(r) {
+        (byProj[r.project_label] = byProj[r.project_label] || []).push(r);
+      });
+      var nNew = rows.filter(function(r) { return r.is_new; }).length;
+
+      var body = Object.keys(byProj).map(function(p) {
+        var items = byProj[p].map(function(r) {
+          return '<tr>' +
+            '<td style="text-align:center"><input type="checkbox" class="ai-ck" checked data-k="' +
+              _aiE(r.customer + '/' + r.product) + '"></td>' +
+            '<td class="lbl">' + _aiE(r.product) +
+              (r.is_new ? ' <span class="mdl-group-badge mdl-group-mass">신규</span>' : '') + '</td>' +
+            '<td>' + _aiE(r.end_customer) + '</td>' +
+            '<td><span class="mdl-group-badge mdl-group-' +
+              (r.group === '개발' ? 'dev' : 'mass') + '">' + _aiE(r.group) + '</span></td>' +
+            '<td class="auto-num">' + (r.price ? r.price.toLocaleString('ko-KR') : '-') + '</td>' +
+            '<td class="auto-num">' + r.cost_total.toLocaleString('ko-KR') + '</td>' +
+            '<td class="auto-num">' + r.qty.toLocaleString('ko-KR') + '</td>' +
+            '<td class="auto-num">' + r.revenue.toLocaleString('ko-KR') + '억</td>' +
+          '</tr>';
+        }).join('');
+        return '<h4 class="ai-ph">' + _aiE(p) + ' <small>' + byProj[p].length + '개</small></h4>' +
+          '<table class="wb-tbl"><thead><tr>' +
+            '<th style="width:44px"></th><th style="min-width:170px">제품명</th>' +
+            '<th style="min-width:100px">최종고객사</th><th style="width:70px">단계</th>' +
+            '<th style="min-width:90px">판가</th><th style="min-width:90px">원가</th>' +
+            '<th style="min-width:100px">계약 물량</th><th style="min-width:90px">매출</th>' +
+          '</tr></thead><tbody>' + items + '</tbody></table>';
+      }).join('');
+
+      var un = (d.unmatched || []).map(function(u) {
+        return '<li>' + _aiE(u.customer) + ' · ' + _aiE(u.product) +
+               ' <span class="auto-sub">(' + u.row + '행)</span></li>';
+      }).join('');
+
+      var back = document.createElement('div');
+      back.className = 'ph-back';
+      back.innerHTML =
+        '<div class="ph-box auto-box" style="width:min(1080px,96vw)">' +
+          '<div class="ph-hd"><h3>제품 엑셀 반영 · ' + _aiE(d.sheet) + '</h3>' +
+          '<p><b>' + _aiE(d.file_name) + '</b> — 제품 <b>' + rows.length + '</b>개' +
+          (nNew ? ' (신규 <b>' + nNew + '</b>개)' : '') + ' · 고객사 <b>' +
+          (d.projects || []).length + '</b>곳 · 연도 ' + (d.years || []).join(', ') + '<br>' +
+          '원가는 다섯 덩어리로 묶어서 들어갑니다 (재료비＝재료비+부품비+포장, 공정비＝주조비+가공비). ' +
+          '<b>공법은 엑셀에 없어서 비어 있습니다</b> — 등록 후 제품별로 넣어 주세요.</p></div>' +
+          (un
+            ? '<div style="margin:0 20px;padding:10px 12px;background:#FEF2F2;border:1px solid #FECACA;' +
+              'border-radius:8px;font-size:12px;color:#7F1D1D">' +
+              '<b>고객사를 못 찾아 건너뛰는 제품 ' + (d.unmatched || []).length + '개</b>' +
+              '<ul style="margin:6px 0 0 16px">' + un + '</ul>' +
+              '자동차사업부에 그 고객사를 추가하거나, 이름이 조금 다르면 별칭에 넣어 주세요.</div>'
+            : '') +
+          '<div class="auto-body">' + body + '</div>' +
+          '<div class="auto-foot">' +
+            '<button type="button" class="ov-btn" id="ai-cancel">취소</button>' +
+            '<button type="button" class="ov-btn ov-btn-primary" id="ai-ok">이대로 저장</button>' +
+          '</div></div>';
+      document.body.appendChild(back);
+
+      function close() { back.remove(); }
+      back.querySelector('#ai-cancel').onclick = close;
+      back.onclick = function(e) { if (e.target === back) close(); };
+      back.querySelector('#ai-ok').onclick = function() {
+        var btn = this, skip = [];
+        back.querySelectorAll('.ai-ck').forEach(function(el) {
+          if (!el.checked) skip.push(el.dataset.k);
+        });
+        var fd = new FormData();
+        fd.append('file', f);
+        fd.append('sheet', d.sheet);
+        fd.append('skip', skip.join('|'));
+        btn.disabled = true;
+        btn.textContent = '저장 중...';
+        fetch('/admin/automotive/product-import/apply',
+              { method: 'POST', credentials: 'same-origin', body: fd })
+          .then(function(r) { return r.json(); })
+          .then(function(res) {
+            close();
+            if (!res.ok) { alert('반영 실패: ' + (res.detail || '알 수 없는 오류')); return; }
+            if (window.mdlToast) {
+              window.mdlToast('신규 ' + res.added + ' · 갱신 ' + res.updated +
+                              ' · 고객사 ' + (res.projects || []).length + '곳');
+            }
+            if (window.loadModelList) window.loadModelList();
+            else location.reload();
+          })
+          .catch(function(e) { close(); alert('반영 실패: ' + e.message); });
+      };
+    }
+
+    var aiUp = document.getElementById('auto-import-btn');
+    var aiFile = document.getElementById('auto-import-file');
+    if (aiUp && aiFile && !aiUp.dataset.wired) {
+      aiUp.dataset.wired = '1';
+      aiUp.onclick = function() { aiFile.click(); };
+      aiFile.onchange = function() {
+        var f = aiFile.files && aiFile.files[0];
+        if (!f) return;
+        var fd = new FormData();
+        fd.append('file', f);
+        aiUp.disabled = true;
+        aiUp.textContent = '읽는 중...';
+        fetch('/admin/automotive/product-import/preview',
+              { method: 'POST', credentials: 'same-origin', body: fd })
+          .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j || {} }; }); })
+          .then(function(x) {
+            aiUp.disabled = false;
+            aiUp.textContent = '📁 제품 엑셀 올리기';
+            aiFile.value = '';
+            if (!x.ok || !x.j.ok) { alert('읽기 실패: ' + (x.j.detail || '알 수 없는 오류')); return; }
+            _aiPreview(f, x.j);
+          })
+          .catch(function(e) {
+            aiUp.disabled = false;
+            aiUp.textContent = '📁 제품 엑셀 올리기';
+            alert('읽기 실패: ' + e.message);
+          });
       };
     }
 
