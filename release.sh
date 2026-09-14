@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# OneView 앱 릴리스 — 빌드부터 배포까지 한 번에.
+# OneView 앱 릴리스 — 빌드부터 배포까지.
 #
 #   ./release.sh                  → pubspec 버전 그대로
 #   ./release.sh 2.3.1 24         → 버전·코드를 지정
 #
 # 하는 일
-#   1) pubspec 버전 확인 (인자를 주면 그 값으로 고쳐 쓴다)
+#   1) 버전 확인 (인자를 주면 pubspec 을 그 값으로 고친다)
 #   2) APK 빌드
-#   3) GitHub 릴리스 만들고 APK 올리기
+#   3) GitHub 릴리스에 APK 올리기
+#        gh 가 되면 자동, 안 되면 브라우저와 Finder 를 열어 주고 기다린다
 #   4) app_version.json 을 그 버전으로 맞추고 커밋 + push
-#   5) 서버가 배포돼 있으면 APK 를 서버에도 올린다 (저장소를 비공개로
-#      돌린 뒤에도 앱이 받을 수 있게)
 #
-# 4번까지 끝나면 기존 사용자가 앱을 켤 때 업데이트 팝업이 뜬다.
+# 4번이 올라가야 기존 사용자 앱에 업데이트 팝업이 뜬다.
+# 그래서 APK 가 올라간 걸 확인한 다음에만 push 한다 — 순서가 뒤집히면
+# 그 사이에 앱을 켠 사람이 없는 파일을 받으러 간다.
 set -euo pipefail
 cd "$(dirname "$0")"
 
+REPO=msk05317/project_summary
 step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
 die()  { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
 command -v flutter >/dev/null || die "flutter 가 없습니다."
-command -v gh >/dev/null || die "gh(GitHub CLI)가 없습니다.  brew install gh && gh auth login"
-gh auth status >/dev/null 2>&1 || die "gh 로그인이 안 돼 있습니다.  gh auth login"
 
 # ── 1. 버전
 PUBSPEC=mobile/pubspec.yaml
@@ -35,10 +35,8 @@ else
 fi
 [ -n "$VER" ] && [ -n "$CODE" ] || die "pubspec 에서 버전을 못 읽었습니다."
 TAG="v$VER"
+NOTES=$(python3 -c "import json;print(json.load(open('backend/app_version.json'))['release_notes'])")
 step "릴리스 $TAG (코드 $CODE)"
-
-gh release view "$TAG" >/dev/null 2>&1 && \
-  die "$TAG 릴리스가 이미 있습니다. 버전을 올리세요:  ./release.sh 2.3.1 24"
 
 # ── 2. 빌드
 step "APK 빌드"
@@ -50,16 +48,45 @@ WARN
 ( cd mobile && flutter build apk --release )
 APK=mobile/build/app/outputs/flutter-apk/app-release.apk
 [ -f "$APK" ] || die "APK 가 안 만들어졌습니다: $APK"
-echo "  $(du -h "$APK" | cut -f1)"
+echo "  $(du -h "$APK" | cut -f1)  $APK"
 
-# ── 3. 변경 내용 (app_version.json 에 적어둔 걸 그대로 쓴다)
-NOTES=$(python3 -c "import json;print(json.load(open('backend/app_version.json'))['release_notes'])")
+# ── 3. 릴리스에 APK 올리기
+step "GitHub 릴리스에 APK 올리기"
+UPLOADED=0
+if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+  if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+    echo "  $TAG 가 이미 있습니다. 파일만 덮어씁니다."
+    gh release upload "$TAG" "$APK" --repo "$REPO" --clobber && UPLOADED=1
+  else
+    gh release create "$TAG" "$APK" --repo "$REPO" --title "$TAG" --notes "$NOTES" && UPLOADED=1
+  fi
+fi
 
-# ── 4. GitHub 릴리스
-step "GitHub 릴리스 올리기"
-gh release create "$TAG" "$APK" --title "$TAG" --notes "$NOTES"
+if [ "$UPLOADED" = 0 ]; then
+  # gh 가 안 되는 경우(회사망에서 TLS 를 가로채면 인증서 검증이 막힌다).
+  # 브라우저는 그 인증서를 믿으므로 손으로 올리면 된다.
+  URL=$(python3 - "$TAG" "$NOTES" <<'PY'
+import sys, urllib.parse
+tag, notes = sys.argv[1], sys.argv[2]
+q = urllib.parse.urlencode({'tag': tag, 'title': tag, 'body': notes})
+print(f'https://github.com/msk05317/project_summary/releases/new?{q}')
+PY
+)
+  cat <<EOF
+  gh 로는 못 올립니다. 브라우저로 올려 주세요.
 
-# ── 5. 버전 파일 맞추고 push  ← 이게 올라가야 팝업이 뜬다
+    1) 방금 연 Finder 창의 app-release.apk 를
+    2) 방금 연 GitHub 페이지 아래 'Attach binaries' 칸에 끌어다 놓고
+    3) 'Publish release' 를 누르세요. (태그·제목·내용은 채워져 있습니다)
+EOF
+  open -R "$APK" 2>/dev/null || true
+  open "$URL" 2>/dev/null || echo "  $URL"
+  printf '\n  다 올리셨으면 Enter, 그만두려면 Ctrl+C: '
+  read -r _
+  echo "  확인했습니다."
+fi
+
+# ── 4. 버전 파일 맞추고 push  ← 이게 올라가야 팝업이 뜬다
 step "app_version.json 갱신 + push"
 python3 - "$VER" "$CODE" <<'PY'
 import json, sys, pathlib
@@ -76,18 +103,5 @@ git add backend/app_version.json "$PUBSPEC"
 git diff --cached --quiet || git commit -m "release $TAG"
 git push
 
-# ── 6. 서버에도 올려 둔다 (있으면)
-step "서버에 APK 올리기 (선택)"
-BASE=https://project-summary-mkoo.fly.dev
-if [ -n "${ONEVIEW_ADMIN_COOKIE:-}" ]; then
-  curl -sS -X POST "$BASE/admin/app/release" \
-    -H "Cookie: admin_auth=$ONEVIEW_ADMIN_COOKIE" \
-    -F "file=@$APK" -F "latest_version=$VER" -F "latest_version_code=$CODE" \
-    -F "release_notes=$NOTES" | head -c 300
-  echo
-else
-  echo "  건너뜀 — $BASE/admin/app 에서 직접 올리셔도 됩니다."
-  echo "  (저장소를 비공개로 돌릴 거면 이 단계가 필요합니다)"
-fi
-
 printf '\n\033[32m✓ %s 배포 완료. 앱을 켜면 업데이트 팝업이 뜹니다.\033[0m\n' "$TAG"
+printf '  확인: https://raw.githubusercontent.com/%s/main/backend/app_version.json\n' "$REPO"
