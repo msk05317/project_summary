@@ -7421,7 +7421,7 @@ var sidebarSel = document.getElementById('v2-division-select');
           '<div id="mdl-picker"></div>' +
           '<div class="mdl-tabs" id="mdl-tabs" hidden>' +
             '<button type="button" class="mdl-tab is-active" data-mtab="list">모델 목록 <span id="mdl-tab-count" class="mdl-badge">0</span></button>' +
-            '<button type="button" class="mdl-tab" data-mtab="plan">주차별 계획</button>' +
+            '<button type="button" class="mdl-tab" data-mtab="plan" id="mdl-tab-plan">주차별 계획</button>' +
           '</div>' +
         '</div>' +
 
@@ -9582,6 +9582,8 @@ window._ovProjectKey = function() {
       if (srcCard) srcCard.style.display = 'none';
       var msel0 = document.getElementById('wp-month-sel');
       if (msel0) msel0.style.display = 'none';
+      var _tab = document.getElementById('mdl-tab-plan');
+      if (_tab) _tab.textContent = '일 보고 자료';
       var _t = document.getElementById('wb-title');
       var _sb = document.getElementById('wb-sub');
       if (_t) _t.textContent = '일 보고 자료';
@@ -9595,6 +9597,8 @@ window._ovProjectKey = function() {
     if (srcCard) srcCard.style.display = (WB_REPLACES_SRC.indexOf(pk) >= 0) ? 'none' : '';
     var _msel1 = document.getElementById('wp-month-sel');
     if (_msel1) _msel1.style.display = '';
+    var _tab1 = document.getElementById('mdl-tab-plan');
+    if (_tab1) _tab1.textContent = '주차별 계획';
     var _t1 = document.getElementById('wb-title');
     var _sb1 = document.getElementById('wb-sub');
     if (_t1) _t1.textContent = '주차 현황 보드';
