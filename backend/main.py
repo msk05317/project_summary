@@ -20969,16 +20969,35 @@ def _process_step_done(s) -> bool:
     return bool(str(s.get("actual") or "").strip()) or s.get("status") == "완료"
 
 
-def _process_progress(proc: list) -> int:
-    """끝난 단계 수 ÷ 전체 단계 수.
+def _process_rolled(proc: list) -> list:
+    """최종 승인이 끝났으면 앞 단계도 끝난 것으로 채운 사본을 준다.
 
-    예전에는 최종 승인이 완료면 중간과 무관하게 100% 로 쳤다.
-    그러면 같은 화면에서 '15/15 단계' 라고 하면서 다섯 단계는 대기로
-    보인다 — 어느 쪽이 맞는지 읽는 사람이 알 수 없다.
-    비어 있는 단계는 비어 있는 대로 센다.
+    일정표에는 그 모델에 없는 단계(파워박스의 LAIR)나 굳이 안 적은 단계가
+    빈칸으로 남는다. 최종 승인까지 떨어진 모델에서 그 빈칸은 '아직 안 한 일'
+    이 아니라 '적지 않은 일' 이다. 화면에 절반만 체크된 채로 두면 끝난 건지
+    아닌지 읽는 사람이 알 수 없다.
+
+    저장된 값은 건드리지 않는다 — 엑셀이 적은 그대로 둔다. 보여줄 때만 채운다.
     """
+    if not proc or not _process_step_done(proc[-1]):
+        return proc
+    out = []
+    for s in proc:
+        if _process_step_done(s):
+            out.append(s)
+        else:
+            t = dict(s or {})
+            t["status"] = "완료"
+            out.append(t)
+    return out
+
+
+def _process_progress(proc: list) -> int:
+    """끝난 단계 수 ÷ 전체 단계 수. 최종 승인이 끝났으면 100%."""
     if not proc:
         return 0
+    if _process_step_done(proc[-1]):
+        return 100
     done = sum(1 for s in proc if _process_step_done(s))
     return round(done / len(proc) * 100)
 
@@ -20992,6 +21011,8 @@ def _model_progress(m: dict) -> int:
         return round(min(100.0, sh / po * 100.0)) if po > 0 else 0
     proc = m.get('process') or []
     if proc:
+        if _process_step_done(proc[-1]) and str(proc[-1].get('status') or '') not in ('미승인', '미제출'):
+            return 100
         done = sum(1 for s in proc
                    if (str(s.get('actual') or '').strip() or str(s.get('status') or '') == '완료')
                    and str(s.get('status') or '') not in ('미승인', '미제출'))
@@ -22504,8 +22525,10 @@ def get_model_process(project_key: str, model_id: str):
         if isinstance(m, dict) and (m.get("id") or "").lower() == model_id.lower():
             if m.get("group") != "개발":
                 raise HTTPException(status_code=400, detail="개발 모델만 프로세스가 있습니다.")
-            proc = _ensure_process(m)
+            _ensure_process(m)
             _save_models(data)
+            # 저장은 엑셀이 적은 그대로, 보여줄 때만 최종 승인 기준으로 채운다
+            proc = _process_rolled(m.get("process") or [])
             done = sum(1 for s in proc
                        if (str(s.get("actual") or "").strip() or str(s.get("status") or "") == "완료")
                        and str(s.get("status") or "") not in ("미승인", "미제출"))
