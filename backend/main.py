@@ -13348,8 +13348,10 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         }
         old = old_map.get(mid) or {}
         # 이 화면에서 편집하지 않는 값은 기존 것을 그대로 승계 (덮어써서 날아가지 않게)
+        # auto = 자동차사업부 전용 묶음 (원가 8항목·외화 판가·연도별 계약물량).
+        # 이 화면에서 편집하지 않는 프로젝트에서는 통째로 승계된다.
         for _keep in ("weekly_plan", "weekly_progress", "weekly_summary",
-                      "part_number", "current_expected", "current_stage"):
+                      "part_number", "current_expected", "current_stage", "auto"):
             if m.get(_keep) is not None:
                 entry[_keep] = m.get(_keep)
             elif old.get(_keep) is not None:

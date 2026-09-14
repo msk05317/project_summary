@@ -5629,6 +5629,37 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-price-warn { margin-top:3px; font-size:10px; font-weight:700; color:#DC2626; text-align:right; cursor:help; }',
     '.mdl-warn-bar { margin:0 0 10px; padding:9px 12px; border:1px solid #FECACA; background:#FEF2F2;' +
       ' border-radius:8px; font-size:12px; color:#7F1D1D; }',
+    // ── 자동차사업부 제품 화면 ──
+    '.auto-table td { vertical-align: middle; }',
+    '.auto-table .auto-td-name { cursor:pointer; }',
+    '.auto-table .auto-td-name:hover b { color:#156082; text-decoration:underline; }',
+    '.auto-sub { font-size:11px; color:#9CA3AF; font-weight:500; margin-top:2px; }',
+    '.auto-sub2 { font-size:11px; color:#6B7280; }',
+    '.auto-num { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }',
+    '.auto-good { color:#196B24; }',
+    '.auto-warn { color:#E97132; }',
+    '.auto-bad  { color:#DC2626; }',
+    '.auto-na   { color:#CBD5E1; font-weight:500; }',
+    '.auto-stage { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; }',
+    '.auto-stage-mass { background:#E8F1F6; color:#156082; }',
+    '.auto-stage-dev  { background:#FDF0E6; color:#E97132; }',
+    '.auto-total td { background:#0E2841; color:#FFFFFF; font-weight:800; }',
+    '.auto-box .auto-body { padding:4px 18px 8px; overflow:auto; max-height:64vh; }',
+    '.auto-box section { padding:14px 0; border-bottom:1px solid #EEF1F5; }',
+    '.auto-box section:last-child { border-bottom:0; }',
+    '.auto-box h4 { margin:0 0 10px; font-size:13px; font-weight:800; color:#0E2841; }',
+    '.auto-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px 14px; }',
+    '.auto-f { display:flex; flex-direction:column; gap:4px; }',
+    '.auto-f-wide { grid-column:span 2; }',
+    '.auto-f > span { font-size:11px; font-weight:700; color:#6B7280; }',
+    '.auto-f .mdl-input { width:100%; text-align:left; }',
+    '.auto-sum { margin-top:10px; padding:9px 12px; background:#F8FAFC; border:1px solid #ECEFF3;' +
+      ' border-radius:8px; font-size:12px; color:#4B5563; }',
+    '.auto-sum b { color:#111827; font-size:13px; }',
+    '.auto-ytbl td .mdl-input { text-align:right; }',
+    '.auto-ytbl .lbl { font-weight:700; color:#0E2841; }',
+    '.auto-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 16px;' +
+      ' border-top:1px solid #E5E7EB; }',
     '.mdl-table select { padding:0 26px 0 10px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; appearance:none; background-image:url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M1 1l4 4 4-4" stroke="%2364748B" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>\'); background-repeat:no-repeat; background-position:right 9px center; }',
     '.mdl-table select:hover { background-color:#F1F5F9; }',
     '.mdl-table select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
@@ -6110,6 +6141,317 @@ window.renderAdminV2ByDivision = function(){
     setTimeout(function() { if (el.parentNode) el.remove(); }, 7000);
   };
 
+  // ══════════════════════════════════════════════════════════════════
+  //  자동차사업부 제품 화면
+  //
+  //  반도체와 데이터 모양이 다르다. 품번·주차계획이 아니라
+  //  원가 8항목 · 외화 판가 · 연도별 계약물량이다. 열이 서른 개쯤 되는데
+  //  한 줄에 다 넣으면 가로스크롤만 길어지므로,
+  //  목록은 '읽는 줄'만 두고 편집은 모달에서 한다.
+  //
+  //  원가는 m.auto 아래 한 묶음으로 들어간다. 저장은 기존 모델 저장을 그대로 탄다.
+  // ══════════════════════════════════════════════════════════════════
+
+  window._AUTO_COST = [
+    ['material', '재료비'], ['parts', '부품비'], ['casting', '주조비'],
+    ['machining', '가공비'], ['margin', '관리이윤'], ['depreciation', '감가상각'],
+    ['packing', '포장'], ['logistics', '물류']
+  ];
+  window._AUTO_YEARS = ['2026', '2027', '2028', '2029', '2030', '2031'];
+
+  function _aN(v) {
+    if (v === null || v === undefined || v === '') return 0;
+    var n = parseFloat(String(v).replace(/,/g, ''));
+    return isFinite(n) ? n : 0;
+  }
+  function _aE(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function _aFmt(n, d) {
+    if (!isFinite(n)) return '-';
+    return n.toLocaleString('ko-KR', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
+  }
+
+  // 시트의 계산 규칙 그대로:
+  //   공정비 = 부품비+주조비+가공비+관리이윤+감가상각+포장+물류
+  //   합계   = 재료비 + 공정비
+  //   판가(원화) = 외화단가 × 환율
+  window._autoCalc = function(m) {
+    var a = (m && m.auto) || {};
+    var c = a.cost || {};
+    var proc = 0;
+    window._AUTO_COST.forEach(function(p) {
+      if (p[0] !== 'material') proc += _aN(c[p[0]]);
+    });
+    var total = _aN(c.material) + proc;
+    var price = _aN(a.price_krw);
+    if (!price) price = _aN(a.price_fx) * _aN(a.fx_rate);
+    var qty = 0, rev = 0;
+    window._AUTO_YEARS.forEach(function(y) {
+      var e = (a.contract || {})[y] || {};
+      qty += _aN(e.qty);
+      rev += _aN(e.revenue);
+    });
+    return {
+      proc: proc, total: total, price: price,
+      ratio: price > 0 ? total / price : null,   // 원가율
+      margin: price - total,                      // 대당 손익
+      qty: qty, rev: rev,
+      // 매출(억원)을 물량으로 나눈 실질 단가. 판가와 다르면 그게 신호다.
+      unit: qty > 0 ? (rev * 100000000) / qty : null
+    };
+  };
+
+  function _ratioClass(r) {
+    if (r === null) return 'auto-na';
+    if (r >= 1) return 'auto-bad';
+    if (r >= 0.9) return 'auto-warn';
+    return 'auto-good';
+  }
+
+  // ── 목록 ──────────────────────────────────────────────────────────
+  window._autoRenderTable = function(container, list) {
+    if (!list.length) {
+      container.innerHTML = '<div class="mdl-empty">등록된 제품이 없습니다. ' +
+        '＋ 모델 추가로 만들거나 엑셀을 올리세요.</div>';
+      return;
+    }
+    var rows = list.map(function(m) {
+      var a = m.auto || {}, k = window._autoCalc(m);
+      var stage = m.group === '개발' ? '개발' : '양산';
+      return '<tr class="auto-row" data-model-id="' + _aE(m.id) + '">' +
+        '<td class="auto-td-name"><b>' + _aE(m.name || m.id) + '</b>' +
+          (a.sop ? '<div class="auto-sub">SOP ' + _aE(a.sop) + '</div>' : '') + '</td>' +
+        '<td>' + _aE(a.end_customer) +
+          (a.car_model ? '<div class="auto-sub">' + _aE(a.car_model) + '</div>' : '') + '</td>' +
+        '<td><span class="auto-stage auto-stage-' + (stage === '개발' ? 'dev' : 'mass') + '">' +
+          stage + '</span></td>' +
+        '<td class="auto-sub2">' + _aE(String(a.site || '').replace(/\n/g, ' ')) + '</td>' +
+        '<td class="auto-num">' + (k.price ? _aFmt(k.price) : '-') + '</td>' +
+        '<td class="auto-num">' + (k.total ? _aFmt(k.total) : '-') + '</td>' +
+        '<td class="auto-num ' + _ratioClass(k.ratio) + '">' +
+          (k.ratio === null ? '-' : (k.ratio * 100).toFixed(1) + '%') + '</td>' +
+        '<td class="auto-num">' + (k.qty ? _aFmt(k.qty) : '-') + '</td>' +
+        '<td class="auto-num">' + (k.rev ? _aFmt(k.rev, 1) : '-') + '</td>' +
+        '<td class="mdl-td-actions">' +
+          '<button type="button" class="ov-btn ov-btn-icon auto-edit" title="펼쳐서 편집">✏️</button>' +
+          '<button type="button" class="ov-btn ov-btn-icon mdl-row-del" title="삭제">🗑</button>' +
+        '</td></tr>';
+    }).join('');
+
+    // 사업부 합계 — 이 표가 존재하는 이유에 가까운 줄이다
+    var tq = 0, tr = 0, over = 0;
+    list.forEach(function(m) {
+      var k = window._autoCalc(m);
+      tq += k.qty; tr += k.rev;
+      if (k.ratio !== null && k.ratio >= 1) over++;
+    });
+
+    container.innerHTML =
+      (over ? '<div class="mdl-warn-bar">원가가 판가 이상인 제품 ' + over + '개 — ' +
+              '원가율 칸이 빨간 줄입니다.</div>' : '') +
+      '<table class="mdl-table auto-table"><thead><tr>' +
+        '<th>제품명</th><th>최종고객사 · 차종</th><th>단계</th><th>납품 위치</th>' +
+        '<th class="mdl-th-num">판가(원)</th><th class="mdl-th-num">원가(원)</th>' +
+        '<th class="mdl-th-num">원가율</th>' +
+        '<th class="mdl-th-num">총 물량</th><th class="mdl-th-num">총 매출(억)</th>' +
+        '<th style="width:86px">관리</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody>' +
+      '<tfoot><tr class="auto-total">' +
+        '<td colspan="7">합계 · 제품 ' + list.length + '종</td>' +
+        '<td class="auto-num">' + _aFmt(tq) + '</td>' +
+        '<td class="auto-num">' + _aFmt(tr, 1) + '</td><td></td>' +
+      '</tr></tfoot></table>';
+
+    container.querySelectorAll('.auto-row').forEach(function(tr2) {
+      function open(e) {
+        if (e.target.closest('.mdl-row-del')) return;
+        window._autoOpenEditor(tr2.dataset.modelId);
+      }
+      tr2.querySelector('.auto-edit').onclick = open;
+      tr2.querySelector('.auto-td-name').onclick = open;
+    });
+  };
+
+  // ── 편집 모달 ──────────────────────────────────────────────────────
+  window._autoOpenEditor = function(modelId) {
+    var m = (window._modelsData || []).find(function(x) { return String(x.id) === String(modelId); });
+    if (!m) return;
+    if (!m.auto) m.auto = {};
+    var a = m.auto;
+    a.cost = a.cost || {};
+    a.contract = a.contract || {};
+
+    function f(label, key, val, ph, wide) {
+      return '<label class="auto-f' + (wide ? ' auto-f-wide' : '') + '">' +
+        '<span>' + _aE(label) + '</span>' +
+        '<input class="mdl-input auto-in" data-k="' + key + '" value="' + _aE(val) + '"' +
+        (ph ? ' placeholder="' + _aE(ph) + '"' : '') + '></label>';
+    }
+
+    var costHtml = window._AUTO_COST.map(function(p) {
+      return '<label class="auto-f"><span>' + p[1] + '</span>' +
+        '<input class="mdl-input auto-in auto-cost" data-k="cost.' + p[0] + '" inputmode="decimal" value="' +
+        _aE(a.cost[p[0]] === undefined ? '' : a.cost[p[0]]) + '"></label>';
+    }).join('');
+
+    var yearHtml = window._AUTO_YEARS.map(function(y) {
+      var e = a.contract[y] || {};
+      return '<tr><td class="lbl">' + y + '</td>' +
+        '<td><input class="mdl-input auto-in auto-qty" data-k="contract.' + y + '.qty" inputmode="numeric" value="' +
+          _aE(e.qty === undefined ? '' : e.qty) + '" style="width:100%"></td>' +
+        '<td><input class="mdl-input auto-in auto-rev" data-k="contract.' + y + '.revenue" inputmode="decimal" value="' +
+          _aE(e.revenue === undefined ? '' : e.revenue) + '" style="width:100%"></td>' +
+        '<td class="auto-num auto-yunit" data-y="' + y + '">-</td></tr>';
+    }).join('');
+
+    var back = document.createElement('div');
+    back.className = 'ph-back';
+    back.innerHTML =
+      '<div class="ph-box auto-box" style="width:min(1100px,96vw)">' +
+        '<div class="ph-hd">' +
+          '<h3>' + _aE(m.name || m.id) + '</h3>' +
+          '<p>원가는 <b>원화</b> 기준입니다. 판가는 <b>외화 단가 × 환율</b>로 계산합니다 ' +
+          '(원화로 직접 넣으시려면 판가(원) 칸에 적으세요 — 그 값이 우선합니다).</p>' +
+        '</div>' +
+        '<div class="auto-body">' +
+          '<section><h4>제품 정보</h4><div class="auto-grid">' +
+            f('제품명', 'name', m.name || '') +
+            f('최종고객사', 'end_customer', a.end_customer || '') +
+            f('차종', 'car_model', a.car_model || '') +
+            f('납품 위치', 'site', String(a.site || '').replace(/\n/g, ' ')) +
+            '<label class="auto-f"><span>현재 단계</span>' +
+              '<select class="mdl-input auto-in" data-k="group">' +
+              '<option value="양산"' + (m.group !== '개발' ? ' selected' : '') + '>양산</option>' +
+              '<option value="개발"' + (m.group === '개발' ? ' selected' : '') + '>개발</option>' +
+              '</select></label>' +
+            f('SOP 시점', 'sop', a.sop || '', '예: 2026년 11월') +
+            f('제품중량(KG)', 'weight_kg', a.weight_kg === undefined ? '' : a.weight_kg) +
+            f('주조톤수(TON)', 'tonnage', a.tonnage === undefined ? '' : a.tonnage) +
+            f('불량률(%)', 'defect_rate', a.defect_rate === undefined ? '' : a.defect_rate) +
+          '</div></section>' +
+
+          '<section><h4>판가</h4><div class="auto-grid">' +
+            '<label class="auto-f"><span>통화</span>' +
+              '<select class="mdl-input auto-in" data-k="currency">' +
+              ['USD', 'EUR', 'KRW'].map(function(c) {
+                return '<option value="' + c + '"' + ((a.currency || 'USD') === c ? ' selected' : '') + '>' + c + '</option>';
+              }).join('') + '</select></label>' +
+            f('외화 단가', 'price_fx', a.price_fx === undefined ? '' : a.price_fx) +
+            f('환율', 'fx_rate', a.fx_rate === undefined ? '' : a.fx_rate, '예: 1350') +
+            f('판가(원) 직접 입력', 'price_krw', a.price_krw === undefined ? '' : a.price_krw, '비우면 외화×환율') +
+          '</div>' +
+          '<div class="auto-sum" id="auto-sum-price"></div></section>' +
+
+          '<section><h4>원가 (원화)</h4><div class="auto-grid">' + costHtml + '</div>' +
+          '<div class="auto-sum" id="auto-sum-cost"></div></section>' +
+
+          '<section><h4>연도별 계약물량</h4>' +
+            '<table class="wb-tbl auto-ytbl"><thead><tr>' +
+              '<th style="width:80px">연도</th><th>물량</th><th>매출(억원)</th>' +
+              '<th style="width:190px">매출÷물량</th>' +
+            '</tr></thead><tbody>' + yearHtml + '</tbody></table>' +
+            '<div class="auto-sum" id="auto-sum-year"></div></section>' +
+        '</div>' +
+        '<div class="auto-foot">' +
+          '<button type="button" class="ov-btn" id="auto-cancel">취소</button>' +
+          '<button type="button" class="ov-btn ov-btn-primary" id="auto-ok">확인</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(back);
+
+    function collect() {
+      var draft = { name: m.name, group: m.group, auto: JSON.parse(JSON.stringify(a)) };
+      back.querySelectorAll('.auto-in').forEach(function(el) {
+        var k = el.dataset.k, v = el.value;
+        if (k === 'name') draft.name = v;
+        else if (k === 'group') draft.group = v;
+        else if (k.indexOf('cost.') === 0) draft.auto.cost[k.slice(5)] = v;
+        else if (k.indexOf('contract.') === 0) {
+          var p = k.split('.');
+          draft.auto.contract[p[1]] = draft.auto.contract[p[1]] || {};
+          draft.auto.contract[p[1]][p[2]] = v;
+        } else draft.auto[k] = v;
+      });
+      return draft;
+    }
+
+    function recalc() {
+      var d = collect(), k = window._autoCalc(d);
+      var ratio = k.ratio === null ? '-' : (k.ratio * 100).toFixed(1) + '%';
+      back.querySelector('#auto-sum-price').innerHTML =
+        '판가(원) <b>' + (k.price ? _aFmt(k.price) : '-') + '</b>';
+      back.querySelector('#auto-sum-cost').innerHTML =
+        '공정비 <b>' + _aFmt(k.proc) + '</b> · 합계 <b>' + _aFmt(k.total) + '</b>' +
+        ' · 원가율 <b class="' + _ratioClass(k.ratio) + '">' + ratio + '</b>' +
+        (k.price ? ' · 대당 ' + (k.margin >= 0 ? '이익 ' : '손실 ') +
+          '<b class="' + (k.margin >= 0 ? 'auto-good' : 'auto-bad') + '">' +
+          _aFmt(Math.abs(k.margin)) + '원</b>' : '');
+      back.querySelectorAll('.auto-yunit').forEach(function(td) {
+        var e = (d.auto.contract || {})[td.dataset.y] || {};
+        var q = _aN(e.qty), r = _aN(e.revenue);
+        if (!q || !r) { td.textContent = '-'; td.className = 'auto-num auto-yunit'; return;
+        }
+        var u = (r * 100000000) / q;
+        var gap = k.price ? u / k.price : null;
+        td.innerHTML = _aFmt(u) + '원' +
+          (gap ? ' <span class="auto-sub">판가의 ' + gap.toFixed(2) + '배</span>' : '');
+        td.className = 'auto-num auto-yunit' +
+          (gap && (gap < 0.95 || gap > 1.05) ? ' auto-warn' : '');
+      });
+      back.querySelector('#auto-sum-year').innerHTML =
+        '총 물량 <b>' + _aFmt(k.qty) + '</b> · 총 매출 <b>' + _aFmt(k.rev, 1) + '억원</b>' +
+        (k.unit ? ' · 평균 단가 <b>' + _aFmt(k.unit) + '원</b>' : '');
+    }
+
+    back.querySelectorAll('.auto-in').forEach(function(el) {
+      el.addEventListener('input', recalc);
+      el.addEventListener('change', recalc);
+    });
+    recalc();
+
+    function close() { back.remove(); }
+    back.querySelector('#auto-cancel').onclick = close;
+    back.onclick = function(e) { if (e.target === back) close(); };
+    back.querySelector('#auto-ok').onclick = function() {
+      var d = collect();
+      m.name = d.name;
+      m.group = d.group;
+      // 숫자로 저장한다. 문자열로 두면 합계가 문자열 이어붙이기가 된다.
+      var out = { cost: {}, contract: {} };
+      ['end_customer', 'car_model', 'site', 'sop', 'currency'].forEach(function(kk) {
+        if (String(d.auto[kk] || '').trim()) out[kk] = String(d.auto[kk]).trim();
+      });
+      ['weight_kg', 'tonnage', 'defect_rate', 'price_fx', 'fx_rate', 'price_krw'].forEach(function(kk) {
+        if (String(d.auto[kk] || '').trim() !== '') out[kk] = _aN(d.auto[kk]);
+      });
+      window._AUTO_COST.forEach(function(p) {
+        var v = d.auto.cost[p[0]];
+        if (String(v === undefined ? '' : v).trim() !== '') out.cost[p[0]] = _aN(v);
+      });
+      window._AUTO_YEARS.forEach(function(y) {
+        var e = d.auto.contract[y] || {};
+        var q = String(e.qty === undefined ? '' : e.qty).trim();
+        var r = String(e.revenue === undefined ? '' : e.revenue).trim();
+        if (q !== '' || r !== '') {
+          out.contract[y] = {};
+          if (q !== '') out.contract[y].qty = _aN(q);
+          if (r !== '') out.contract[y].revenue = _aN(r);
+        }
+      });
+      m.auto = out;
+      // 원가율을 다른 화면에서도 쓸 수 있게 판가/재료비 칸에도 원화로 남긴다
+      var k = window._autoCalc(m);
+      m.price = k.price || 0;
+      m.material_cost = _aN(out.cost.material);
+      close();
+      var box = document.getElementById('mdl-table-box');
+      if (box) window.renderTable(box);
+      if (window.mdlToast) window.mdlToast('수정했습니다 — 저장을 눌러야 반영됩니다');
+    };
+  };
+
   window.renderTable = function renderTable(container) {
     // 프로세스 편집에서 돌아올 때 툴바·노트·유형바 복원
     ['mdl-toolbar', 'mdl-note-card', 'mdl-types-bar'].forEach(function(id) {
@@ -6125,6 +6467,30 @@ window.renderAdminV2ByDivision = function(){
     var _pk = (typeof _currentProjectKey !== 'undefined' && _currentProjectKey) || '';
     if (['sdi','fluence','epc_power'].indexOf(_pk) >= 0) { _projIsEss = true; }
     else if (_pk) { _projIsEss = false; }
+    // 자동차사업부는 열 구성이 아예 다르다 (원가 8항목·외화 판가·연도별 계약물량)
+    if (window._projIsAuto && window._autoRenderTable) {
+      var _al = (window._modelsData || []).slice();
+      var _aq = String((document.getElementById('mdl-search') || {}).value || '').toLowerCase();
+      if (_aq) {
+        _al = _al.filter(function(m) {
+          return String(m.name || m.id || '').toLowerCase().indexOf(_aq) >= 0;
+        });
+      }
+      window._autoRenderTable(container, _al);
+      var _tc = document.getElementById('mdl-tab-count');
+      if (_tc) _tc.textContent = (window._modelsData || []).length;
+      container.querySelectorAll('.mdl-row-del').forEach(function(b) {
+        b.onclick = function() {
+          var id = b.closest('tr').dataset.modelId;
+          if (!confirm('이 제품을 지울까요?')) return;
+          window._modelsData = (window._modelsData || []).filter(function(x) {
+            return String(x.id) !== String(id);
+          });
+          window.renderTable(container);
+        };
+      });
+      return;
+    }
     // ESS 프로젝트 키 기반으로 강제 설정
     var currentProj = document.getElementById('mdl-proj-select');
     if (currentProj && ['sdi', 'fluence', 'epc_power'].includes(currentProj.value)) {
@@ -6800,6 +7166,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     fetch('/projects').then(function(r){ return r.json(); }).then(function(d){
       var p = (d.projects || []).find(function(x){ return x.key === projectKey || x.project_id === projectKey; });
       _projIsEss = !!(p && (p.division_id === 'ess' || ['sdi', 'fluence', 'epc_power'].includes(projectKey)));
+      window._projIsAuto = !!(p && p.division_id === 'automotive');
       
       // ESS 확인 후 모델 데이터 로드
       return fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/models', { credentials: 'same-origin' });

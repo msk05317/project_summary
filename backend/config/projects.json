@@ -578,6 +578,23 @@
       "order": 3
     },
     {
+      "id": "auto_valeo",
+      "division_id": "automotive",
+      "label": "발레오",
+      "badge_label": "발레오",
+      "aliases": [
+        "Valeo",
+        "발레오",
+        "valeo"
+      ],
+      "keywords": [
+        "발레오",
+        "Valeo"
+      ],
+      "visible": true,
+      "order": 4
+    },
+    {
       "id": "auto_high_pressure_casting",
       "division_id": "automotive",
       "label": "고압주조",
@@ -592,7 +609,7 @@
         "HPDC"
       ],
       "visible": true,
-      "order": 4
+      "order": 5
     },
     {
       "id": "auto_low_pressure_casting",
@@ -609,7 +626,7 @@
         "LPDC"
       ],
       "visible": true,
-      "order": 5
+      "order": 6
     },
     {
       "id": "auto_etc",
@@ -625,7 +642,7 @@
         "기타"
       ],
       "visible": true,
-      "order": 6
+      "order": 7
     },
     {
       "id": "arista_pcb",
