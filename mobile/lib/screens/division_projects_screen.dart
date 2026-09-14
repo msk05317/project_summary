@@ -211,16 +211,17 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     final r = _autoOf(p.id);
     final has = r.hasContract;
     final over = r.overCost > 0;
-    final accent = !has
+    // 점은 상태, 막대는 계약 매출 비중. 한 표시에 둘을 담지 않는다.
+    final dot = !has
         ? AppColors.statusGray
         : (over ? AppColors.summaryCaution : AppColors.todayBlue);
     return AutomotiveRowCard(
-      dotColor: accent,
+      dotColor: dot,
       name: p.koreanName,
       value: has ? AutoFmt.eok(r.revenue) : '—',
       subValue: has ? '/ ${AutoFmt.qtyShort(r.qty)}' : '',
       ratio: r.share,
-      barColor: accent,
+      barColor: AppColors.todayBlue,
       meta1: has ? '${_auto.year}년 ${AutoFmt.eok(r.yearRevenue)}' : '계약 미등록',
       meta2: '제품 ${r.products}종',
       trailing: !has

@@ -65,10 +65,14 @@ class AutomotiveProductScreen extends StatelessWidget {
             pillText: p.costRatio == null
                 ? '판가 없음'
                 : '원가율 ${AutoFmt.pct(p.costRatio)}',
-            pillColor: over ? AppColors.statusRed : AppColors.summaryNormal,
+            pillColor: p.costRatio == null
+                ? AppColors.textHint
+                : (over ? AppColors.statusRed : AppColors.summaryNormal),
             // 판가를 1로 두고 원가가 어디까지 찼는지. 넘으면 꽉 찬다.
             ratio: p.costRatio == null ? 0 : p.costRatio!.clamp(0.0, 1.0),
-            barColor: over ? AppColors.statusRed : AppColors.summaryNormal,
+            barColor: p.costRatio == null
+                ? AppColors.statusGray
+                : (over ? AppColors.statusRed : AppColors.summaryNormal),
             leftLabel: '대당 손익',
             leftValue: margin == null
                 ? '-'
@@ -280,16 +284,22 @@ class _SpecCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.$1,
-                      style: AppText.caption.copyWith(
-                          fontSize: 12.5, color: AppColors.textMute)),
-                  const Spacer(),
-                  Flexible(
+                  // 이름 칸을 고정해야 값이 한 줄로 선다.
+                  // Spacer 와 Flexible 을 같이 두면 둘 다 flex 라 남는 폭을
+                  // 반씩 나눠 갖고, 값이 줄마다 다른 자리에서 시작한다.
+                  SizedBox(
+                    width: 112,
+                    child: Text(r.$1,
+                        style: AppText.caption.copyWith(
+                            fontSize: 12.5, color: AppColors.textMute)),
+                  ),
+                  Expanded(
                     child: Text(
                       r.$2,
                       textAlign: TextAlign.right,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 12.5,

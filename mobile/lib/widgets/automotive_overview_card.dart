@@ -166,7 +166,9 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
 
   Widget _productRow(AutoProduct p, AutoProjectSummary s) {
     final over = p.overCost;
-    final accent = p.price <= 0
+    // 점은 상태(원가 초과·판가 미등록), 막대는 계약 매출 비중.
+    // 한 표시에 두 가지를 담으면 무엇을 뜻하는지 아무도 모르게 된다.
+    final dot = p.price <= 0
         ? AppColors.statusGray
         : (over ? AppColors.summaryCaution : AppColors.todayBlue);
     // 꼬리표는 '누구 차에 들어가나'를 말한다. 최종고객사가 고객사와 같은
@@ -177,13 +179,13 @@ class _AutomotiveOverviewCardState extends State<AutomotiveOverviewCard> {
       if (p.carModel.isNotEmpty) p.carModel,
     ].join(' ');
     return AutomotiveRowCard(
-      dotColor: accent,
+      dotColor: dot,
       name: p.name,
       badge: badge,
       value: AutoFmt.eok(p.revenueTotal),
       subValue: '/ ${AutoFmt.qtyShort(p.qtyTotal)}',
       ratio: s.revenue > 0 ? p.revenueTotal / s.revenue : 0,
-      barColor: accent,
+      barColor: AppColors.todayBlue,
       meta1: p.price > 0 ? '판가 ${AutoFmt.won(p.price)}' : '판가 미등록',
       meta2: '원가 ${AutoFmt.won(p.costTotal)}',
       trailing: p.costRatio == null
@@ -219,25 +221,37 @@ class _Note extends StatelessWidget {
 }
 
 /// 연도별 계약 매출. 한 계열뿐이라 범례는 두지 않고 제목이 계열 이름이다.
-/// 값은 가장 큰 해에만 적는다 — 막대마다 숫자를 붙이면 그림이 표가 된다.
-class _YearChart extends StatelessWidget {
+///
+/// 막대마다 숫자를 붙이면 그림이 표가 된다. 그래서 값은 한 해만 띄우고,
+/// 다른 해가 궁금하면 그 막대를 누른다 — 처음엔 가장 큰 해를 띄워 둔다.
+class _YearChart extends StatefulWidget {
   final List<String> years;
   final Map<String, AutoYearCell> byYear;
 
   const _YearChart({required this.years, required this.byYear});
 
   @override
+  State<_YearChart> createState() => _YearChartState();
+}
+
+class _YearChartState extends State<_YearChart> {
+  String? _sel;
+
+  @override
   Widget build(BuildContext context) {
     double max = 0;
     String peak = '';
-    for (final y in years) {
-      final v = byYear[y]?.revenue ?? 0;
+    for (final y in widget.years) {
+      final v = widget.byYear[y]?.revenue ?? 0;
       if (v > max) {
         max = v;
         peak = y;
       }
     }
     if (max <= 0) return const SizedBox.shrink();
+
+    final sel = (_sel != null && widget.byYear.containsKey(_sel)) ? _sel! : peak;
+    final cell = widget.byYear[sel];
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
@@ -270,15 +284,53 @@ class _YearChart extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (final y in years)
+                for (final y in widget.years)
                   Expanded(
-                    child: _Bar(
-                      year: y,
-                      value: byYear[y]?.revenue ?? 0,
-                      max: max,
-                      peak: y == peak,
+                    // 막대가 짧은 해도 눌러야 하니 칸 전체를 과녁으로 쓴다.
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => _sel = y),
+                      child: _Bar(
+                        year: y,
+                        value: widget.byYear[y]?.revenue ?? 0,
+                        max: max,
+                        selected: y == sel,
+                      ),
                     ),
                   ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.statusGraySoft,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Row(
+              children: [
+                Text('$sel년',
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.headerNavy)),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    '물량 ${AutoFmt.comma(cell?.qty ?? 0)}대',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(
+                        fontSize: 12, color: AppColors.textMute),
+                  ),
+                ),
+                const Spacer(),
+                Text(AutoFmt.eok(cell?.revenue ?? 0),
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textMain)),
               ],
             ),
           ),
@@ -296,13 +348,13 @@ class _Bar extends StatelessWidget {
   final String year;
   final double value;
   final double max;
-  final bool peak;
+  final bool selected;
 
   const _Bar({
     required this.year,
     required this.value,
     required this.max,
-    required this.peak,
+    required this.selected,
   });
 
   @override
@@ -318,7 +370,7 @@ class _Bar extends StatelessWidget {
         children: [
           SizedBox(
             height: _kChartLabel,
-            child: peak
+            child: selected
                 ? FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
@@ -337,7 +389,7 @@ class _Bar extends StatelessWidget {
           Container(
             height: h,
             decoration: BoxDecoration(
-              color: peak
+              color: selected
                   ? AppColors.headerNavy
                   : AppColors.todayBlue.withValues(alpha: 0.55),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
@@ -353,8 +405,8 @@ class _Bar extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10.5,
                   height: 1.2,
-                  fontWeight: peak ? FontWeight.w700 : FontWeight.w500,
-                  color: peak ? AppColors.textSub : AppColors.textHint,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? AppColors.textSub : AppColors.textHint,
                 ),
               ),
             ),
