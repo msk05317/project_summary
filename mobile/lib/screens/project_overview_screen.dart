@@ -211,7 +211,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 // ── 주차별 계획 (엑셀 → PNG, 탭하면 확대)
                 _buildWeeklyPlanSection(),
                 // ── 주차별 매출 현황
-                FutureBuilder<WeeklyRevenue?>(
+                // 자동차사업부는 주차로 움직이지 않는다. 연도별 계약이 기준이라
+                // 위의 제품 화면이 그 자리를 대신한다.
+                if (!_isAutomotive) FutureBuilder<WeeklyRevenue?>(
                   future: fetchWeeklyRevenue(widget.projectKey),
                   builder: (context, snap) {
                     if (snap.connectionState == ConnectionState.waiting) {
@@ -427,10 +429,13 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     'major_module',
   };
 
+  /// 자동차사업부인가. 프로젝트 키가 전부 auto_ 로 시작해 고객사가 늘어도 따라온다.
+  bool get _isAutomotive =>
+      widget.projectKey.toLowerCase().startsWith('auto_');
+
   Widget _buildWeeklyPlanSection() {
     // 자동차사업부는 주차 계획이 아니라 연도별 계약으로 움직인다.
-    // 프로젝트 키가 전부 auto_ 로 시작하므로 고객사가 늘어도 따라온다.
-    if (widget.projectKey.toLowerCase().startsWith('auto_')) {
+    if (_isAutomotive) {
       return AutomotiveOverviewCard(projectKey: widget.projectKey);
     }
     if (_boardProjects.contains(widget.projectKey.toLowerCase())) {
