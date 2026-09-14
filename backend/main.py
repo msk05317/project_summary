@@ -2253,25 +2253,186 @@ def get_product_detail(doc_id: str, product_name: str):
 # =========================================================
 # 4. 프로젝트별 보기
 # =========================================================
-APP_VERSION_FILE = BASE_DIR / "app_version.json" if "BASE_DIR" in globals() else Path("app_version.json")
-APP_APK_FILE = Path("app_release.apk")
+
+_APP_RELEASE_HTML = """<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>앱 배포 · OneView Admin</title>
+<style>
+:root{--navy:#0E2841;--line:#E5E7EB;--t1:#111827;--t2:#4B5563;--t3:#6B7280;
+      --hint:#9CA3AF;--blue:#2563EB;--red:#DC2626;--green:#059669;--soft:#F1F5F9}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+     background:#F8FAFC;color:var(--t1);padding:28px 16px 60px}
+.wrap{max-width:660px;margin:0 auto}
+h1{font-size:19px;font-weight:700;color:var(--navy)}
+.sub{font-size:13px;color:var(--t3);margin:6px 0 20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+.card h2{font-size:14px;font-weight:700;margin-bottom:14px}
+.row{display:flex;align-items:center;padding:7px 0;font-size:13px;border-bottom:1px solid #F1F5F9}
+.row:last-child{border-bottom:0}
+.row b{width:132px;color:var(--t3);font-weight:500;flex:0 0 auto}
+.row span{flex:1;text-align:right;font-weight:600}
+label{display:block;font-size:12.5px;color:var(--t2);font-weight:600;margin:12px 0 5px}
+input[type=text],input[type=number],textarea{width:100%;border:1px solid var(--line);border-radius:8px;
+  padding:9px 11px;font-size:13.5px;font-family:inherit;color:var(--t1)}
+textarea{min-height:82px;resize:vertical;line-height:1.5}
+input[type=file]{font-size:13px;margin-top:4px}
+.chk{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--t2)}
+.btn{margin-top:18px;width:100%;border:0;border-radius:9px;background:var(--navy);color:#fff;
+  padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn:disabled{opacity:.55;cursor:default}
+.warn{background:#FFFBEB;border:1px solid #FDE68A;color:#78350F;border-radius:9px;
+  padding:11px 13px;font-size:12.5px;line-height:1.6;margin-bottom:14px}
+.msg{margin-top:13px;font-size:13px;font-weight:600;line-height:1.5}
+.ok{color:var(--green)} .err{color:var(--red)}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;margin-top:13px;display:none}
+.bar>i{display:block;height:100%;background:var(--blue);width:0}
+a.back{display:inline-block;margin-bottom:14px;font-size:13px;color:var(--blue);text-decoration:none}
+</style></head><body><div class="wrap">
+<a class="back" href="/admin/v2">‹ 관리자로</a>
+<h1>앱 배포</h1>
+<p class="sub">APK 를 올리면 바로 반영됩니다. 서버를 다시 배포할 필요 없습니다.</p>
+
+<div class="card"><h2>지금 서버가 내주는 버전</h2><div id="cur">불러오는 중…</div></div>
+
+<div class="card">
+  <h2>새 버전 올리기</h2>
+  <div class="warn">
+    <b>버전 코드는 반드시 올려야 합니다.</b> 안드로이드는 같거나 낮은 번호의 APK 를
+    기존 앱 위에 설치하지 않고, 이유도 알려주지 않습니다.<br>
+    APK 를 만든 <b>서명 키</b>가 지금 깔린 앱과 달라도 설치가 막힙니다.
+  </div>
+  <form id="f">
+    <label>APK 파일</label>
+    <input type="file" name="file" accept=".apk" id="file">
+    <label>버전 (예: 2.3.0)</label>
+    <input type="text" name="latest_version" id="ver" placeholder="2.3.0">
+    <label>버전 코드 (pubspec 의 + 뒤 숫자)</label>
+    <input type="number" name="latest_version_code" id="code" placeholder="23">
+    <label>변경 내용 — 앱 팝업에 그대로 보입니다</label>
+    <textarea name="release_notes" id="notes" placeholder="무엇이 바뀌었는지 한두 줄"></textarea>
+    <div class="chk"><input type="checkbox" id="force"> <span>강제 업데이트 (끄지 못하게)</span></div>
+    <div class="bar" id="bar"><i></i></div>
+    <button class="btn" id="go" type="submit">올리기</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+</div>
+<script>
+var E=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+function mb(n){return n>0?(n/1048576).toFixed(1)+' MB':'-';}
+function load(){
+  fetch('/admin/app/release',{credentials:'same-origin'})
+   .then(function(r){return r.json();})
+   .then(function(d){
+     var v=d.version||{},a=d.apk||{};
+     document.getElementById('cur').innerHTML =
+       '<div class="row"><b>버전</b><span>'+E(v.latest_version)+' (코드 '+E(v.latest_version_code)+')</span></div>'+
+       '<div class="row"><b>받는 곳</b><span>'+E(v.download_url)+'</span></div>'+
+       '<div class="row"><b>서버의 APK</b><span>'+(a.exists?mb(a.bytes)+' · '+E(a.uploaded_at):'없음')+'</span></div>'+
+       '<div class="row"><b>강제 업데이트</b><span>'+(v.force_update?'켬':'끔')+'</span></div>'+
+       '<div class="row"><b>변경 내용</b><span>'+E(v.release_notes||'-')+'</span></div>';
+     if(!document.getElementById('ver').value) document.getElementById('ver').value=v.latest_version||'';
+     if(!document.getElementById('code').value)
+       document.getElementById('code').value=(parseInt(v.latest_version_code||0,10)+1);
+   })
+   .catch(function(e){document.getElementById('cur').textContent='불러오지 못했습니다: '+e.message;});
+}
+load();
+document.getElementById('f').onsubmit=function(ev){
+  ev.preventDefault();
+  var msg=document.getElementById('msg'), go=document.getElementById('go');
+  var bar=document.getElementById('bar'), fi=bar.firstChild;
+  msg.textContent=''; msg.className='msg';
+  var fd=new FormData();
+  var f=document.getElementById('file').files[0];
+  if(f) fd.append('file',f);
+  fd.append('latest_version',document.getElementById('ver').value);
+  fd.append('latest_version_code',document.getElementById('code').value);
+  fd.append('release_notes',document.getElementById('notes').value);
+  fd.append('force_update',document.getElementById('force').checked?'true':'false');
+  go.disabled=true; go.textContent='올리는 중…'; bar.style.display='block';
+  var x=new XMLHttpRequest();
+  x.open('POST','/admin/app/release');
+  x.withCredentials=true;
+  x.upload.onprogress=function(e){ if(e.lengthComputable) fi.style.width=(e.loaded/e.total*100)+'%'; };
+  x.onload=function(){
+    go.disabled=false; go.textContent='올리기'; bar.style.display='none'; fi.style.width='0';
+    var d={}; try{ d=JSON.parse(x.responseText); }catch(e){}
+    if(x.status===200 && d.ok){
+      msg.className='msg ok';
+      msg.textContent='올렸습니다. '+(d.apk_bytes?mb(d.apk_bytes)+' · ':'')+'앱을 켜면 팝업이 뜹니다.';
+      document.getElementById('file').value='';
+      load();
+    }else{
+      msg.className='msg err';
+      msg.textContent='실패: '+(d.detail||('HTTP '+x.status));
+    }
+  };
+  x.onerror=function(){
+    go.disabled=false; go.textContent='올리기'; bar.style.display='none';
+    msg.className='msg err'; msg.textContent='실패: 연결이 끊겼습니다';
+  };
+  x.send(fd);
+};
+</script></body></html>"""
+
+
+@app.get("/admin/app", response_class=HTMLResponse)
+def admin_app_page(admin_auth: Optional[str] = Cookie(default=None)):
+    """APK 올리는 화면. 배포 없이 새 버전을 내보낼 수 있다."""
+    if not _verify_session(admin_auth):
+        return RedirectResponse(url="/admin/login?next=/admin/app", status_code=302)
+    return HTMLResponse(_APP_RELEASE_HTML)
+
+
+# ── 앱 배포 ───────────────────────────────────────────────────────────
+#
+# APK 와 버전 파일은 볼륨(/data)에 둔다. 이미지에 넣으면 80MB 짜리를
+# 배포마다 같이 굽게 되고, 버전만 바꾸려 해도 배포를 해야 한다.
+# 볼륨에 있으면 올리는 즉시 반영된다.
+#
+# 저장소가 비공개면 GitHub 릴리스 주소는 로그인 없이 못 받는다.
+# 그래서 앱이 이미 쓰는 이 서버가 APK 를 직접 내려준다.
+APP_VERSION_FILE = DATA_DIR / "app_version.json"
+APP_VERSION_SEED = BASE_DIR / "app_version.json"   # 볼륨에 없으면 이걸 쓴다
+APP_APK_FILE = DATA_DIR / "app_release.apk"
+
+APP_VERSION_FALLBACK = {
+    "latest_version": "1.0.0",
+    "latest_version_code": 1,
+    "download_url": "/app/download",
+    "release_notes": "",
+    "force_update": False,
+}
+
+
+def _read_app_version() -> dict:
+    """볼륨 → 이미지 → 기본값 순. 볼륨에 올린 게 있으면 그게 정본이다."""
+    for path in (APP_VERSION_FILE, APP_VERSION_SEED):
+        try:
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                if isinstance(d, dict) and d:
+                    return d
+        except Exception as e:
+            print(f"[APP_VERSION] {path} 읽기 실패: {e}")
+    return dict(APP_VERSION_FALLBACK)
 
 
 @app.get("/app/version")
 def get_app_version():
     """앱 시작 시 호출. 최신 버전 정보 반환."""
-    try:
-        with open("app_version.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        data = {
-            "latest_version": "1.0.0",
-            "latest_version_code": 1,
-            "download_url": "/app/download",
-            "release_notes": "",
-            "force_update": False,
-        }
-    print(f"[APP_VERSION] 반환: {data}")
+    data = _read_app_version()
+    # APK 가 서버에 올라와 있으면 받는 곳을 서버로 돌린다.
+    # (비공개 저장소의 릴리스 주소는 앱이 못 받는다)
+    if APP_APK_FILE.exists():
+        data = dict(data)
+        data["download_url"] = "/app/download"
+        data["apk_url"] = "/app/download"
     return data
 
 
@@ -2279,14 +2440,84 @@ def get_app_version():
 def download_app_apk():
     """최신 APK 다운로드."""
     from fastapi.responses import FileResponse
-    apk_path = Path("app_release.apk")
-    if not apk_path.exists():
-        raise HTTPException(status_code=404, detail="APK not uploaded yet")
-    return FileResponse(
-        path=str(apk_path),
-        media_type="application/vnd.android.package-archive",
-        filename="app_release.apk",
-    )
+    for apk_path in (APP_APK_FILE, BASE_DIR / "app_release.apk"):
+        if apk_path.exists():
+            return FileResponse(
+                path=str(apk_path),
+                media_type="application/vnd.android.package-archive",
+                filename="app_release.apk",
+            )
+    raise HTTPException(status_code=404, detail="APK not uploaded yet")
+
+
+@app.get("/admin/app/release")
+def admin_app_release(_admin: int = Depends(get_admin_session)):
+    """지금 서버가 내주고 있는 버전과 APK 상태."""
+    size = APP_APK_FILE.stat().st_size if APP_APK_FILE.exists() else 0
+    mtime = ""
+    if APP_APK_FILE.exists():
+        mtime = datetime.fromtimestamp(
+            APP_APK_FILE.stat().st_mtime).isoformat(timespec="seconds")
+    return {
+        "ok": True,
+        "version": _read_app_version(),
+        "apk": {"exists": APP_APK_FILE.exists(), "bytes": size,
+                "uploaded_at": mtime},
+    }
+
+
+@app.post("/admin/app/release")
+async def admin_app_release_upload(
+    file: UploadFile = File(None),
+    latest_version: str = Form(""),
+    latest_version_code: int = Form(0),
+    release_notes: str = Form(""),
+    force_update: bool = Form(False),
+    _admin: int = Depends(get_admin_session),
+):
+    """새 APK 와 버전 정보를 올린다. 올리는 즉시 앱에 뜬다 (배포 불필요).
+
+    versionCode 는 반드시 올라가야 한다. 안드로이드는 같거나 낮은 번호의
+    APK 를 기존 앱 위에 설치하지 않는다 — 설치 실패 이유도 알려주지 않는다.
+    """
+    cur = _read_app_version()
+    ver = (latest_version or "").strip() or cur.get("latest_version", "1.0.0")
+    code = int(latest_version_code or 0) or _as_int(cur.get("latest_version_code"), 1)
+    old_code = _as_int(cur.get("latest_version_code"), 0)
+    # 같은 코드로 다시 올리는 건 둔다 — 망친 빌드를 갈아 끼울 때 쓴다.
+    # (앱은 '더 높을 때만' 팝업을 띄우므로 이미 받은 사람을 괴롭히지 않는다)
+    if code < old_code:
+        raise HTTPException(
+            status_code=400,
+            detail=f"버전 코드를 낮출 수 없습니다. 지금 {old_code}, 받은 값 {code}")
+
+    wrote = 0
+    if file is not None and (file.filename or ""):
+        if not (file.filename or "").lower().endswith(".apk"):
+            raise HTTPException(status_code=400, detail="apk 파일만 올릴 수 있습니다")
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="빈 파일입니다")
+        # 받다 끊겨도 멀쩡한 APK 가 남아 있게, 다 받은 뒤에 바꿔 끼운다.
+        tmp = APP_APK_FILE.with_suffix(".apk.part")
+        tmp.write_bytes(raw)
+        tmp.replace(APP_APK_FILE)
+        wrote = len(raw)
+
+    data = dict(cur)
+    data.update({
+        "latest_version": ver,
+        "latest_version_code": code,
+        "download_url": "/app/download",
+        "apk_url": "/app/download",
+        "release_notes": release_notes if release_notes.strip() else cur.get("release_notes", ""),
+        "force_update": bool(force_update),
+    })
+    APP_VERSION_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"[APP_VERSION] {ver}+{code} 등록, APK {wrote} bytes")
+    return {"ok": True, "version": data, "apk_bytes": wrote,
+            "apk_exists": APP_APK_FILE.exists()}
 
 
 NOTES_FILE = DATA_DIR / "notes.json"
