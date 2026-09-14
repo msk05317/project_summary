@@ -22161,7 +22161,110 @@ def _board_row_status(models, spec_status, manual_status=None):
     return "개발"
 
 
-def _board_row_note(models, spec_note, manual_note=None):
+_NOTE_ROLLUP_MIN = 3        # 메모가 붙은 모델이 이 개수 이상이면 나열 대신 묶는다
+_BOARD_NOTE_CACHE_PATH = _Path_hl(__file__).parent / "board_note_cache.json"
+
+
+def _note_groups(models):
+    """행에 묶인 모델들의 메모를 같은 문구끼리 묶는다.
+
+    [(문구, 종수)] 를 많은 순으로 돌려준다. 줄바꿈은 한 칸 띄어쓰기로 편다.
+    """
+    acc, order = {}, []
+    for m in (models or []):
+        if not isinstance(m, dict):
+            continue
+        txt = " ".join(str(m.get("note") or "").split())
+        if not txt:
+            continue
+        if txt not in acc:
+            acc[txt] = 0
+            order.append(txt)
+        acc[txt] += 1
+    return sorted(((t, acc[t]) for t in order), key=lambda kv: -kv[1])
+
+
+def _note_rollup_text(groups):
+    """AI 없이 묶는 기본형: '카이저 원소재 11월말 입고 예정 10종 · 1EA 황삭 완료 1종'."""
+    return " · ".join(f"{t} {c}종" for t, c in groups)
+
+
+def _note_total_ok(text, total):
+    """요약문의 'N종' 합이 실제 종수와 같은지.
+
+    AI 가 종수를 지어내면 보드 숫자와 어긋나므로, 안 맞으면 요약을 버린다.
+    """
+    import re as _re
+    nums = [int(x) for x in _re.findall(r"(\d+)\s*종", text or "")]
+    return bool(nums) and sum(nums) == total
+
+
+def _ai_board_note(groups):
+    """묶음 행(Dep 챔버 15종 등)의 메모를 상태별 종수로 요약한다.
+
+    모델이 열몇 개씩 묶인 행은 메모를 그대로 이으면 읽을 수가 없다.
+    '원소재 입고 대기 10종 · 조립 완료 3종' 처럼 상태별로 접어서 보여준다.
+    같은 입력이면 캐시를 쓰고, 키가 없거나 실패하면 _note_rollup_text 로 떨어진다.
+    """
+    if not groups:
+        return ""
+    total = sum(c for _, c in groups)
+    raw = "\n".join(f"{c}종: {t}" for t, c in groups)
+    key = _hashlib_hl.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+    try:
+        cache = _json_hl.loads(_BOARD_NOTE_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        cache = {}
+    if key in cache:
+        return cache[key]
+
+    result = ""
+    try:
+        if client is not None:
+            prompt = (
+                "반도체 부품 생산 현황표의 '비고' 칸을 만든다. "
+                "여러 모델의 진행 메모를 상태별로 묶어 '상태 N종' 형태로 요약해라.\n"
+                "규칙:\n"
+                "- 항목은 ' · ' 로 구분하고 3~5개 이내로 줄인다.\n"
+                "- 각 항목은 '상태 N종' 형태. 상태는 12자 이내 명사형.\n"
+                "- N종의 합은 반드시 입력의 종수 합과 같아야 한다 (지어내지 말 것).\n"
+                "- 많은 것부터 적는다. 날짜는 꼭 필요한 것만 남긴다.\n"
+                "- 설명·머리말 없이 요약문 한 줄만 출력.\n"
+                "예시 입력: '10종: 카이저 원소재 11월말 입고 예정 / 3종: 1EA 조립 완료 (고객측 확인 중) / "
+                "1종: 1EA 황삭 완료'\n"
+                "예시 출력: '원소재 입고 대기 10종 · 조립 완료(고객 확인 중) 3종 · 황삭 완료 1종'\n\n"
+                f"입력:\n{raw}"
+            )
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=160,
+            )
+            result = (resp.choices[0].message.content or "").strip()
+            result = result.strip("\"'` ").split("\n")[0].strip()
+    except Exception as e:
+        print(f"[board] 비고 AI 요약 실패, 기본형으로 대체: {e}")
+        result = ""
+
+    # 종수가 안 맞으면 지어낸 것으로 보고 버린다
+    if result and not _note_total_ok(result, total):
+        print(f"[board] 비고 AI 요약 종수 불일치({total}종) — 버린다: {result}")
+        result = ""
+    if not result:
+        return _note_rollup_text(groups)
+
+    cache[key] = result
+    try:
+        _BOARD_NOTE_CACHE_PATH.write_text(
+            _json_hl.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return result
+
+
+def _board_row_note(models, spec_note, manual_note=None, summarize=None):
     """'비고' 칸.
 
     보드에서 직접 넣은 값 > boards.json 에 적힌 값 > 모델에 적어둔 메모 순.
@@ -22169,12 +22272,29 @@ def _board_row_note(models, spec_note, manual_note=None):
     얘기가 나와서 마지막 단계를 붙였다. '문제 · 리스크'(m['issues'])는 따로
     이슈 화면에서 쓰는 값이라 여기로 끌어오지 않는다.
 
-    행에 모델이 여러 개면 어느 모델 얘기인지 알 수 있게 모델명을 앞에 붙인다.
+    메모가 붙은 모델이 _NOTE_ROLLUP_MIN 개 이상인 묶음 행은 그대로 이으면
+    읽을 수가 없어서 상태별 종수로 접는다(summarize, 보통 _ai_board_note).
+    그보다 적으면 지금처럼 나열하고, 모델이 여럿이면 모델명을 앞에 붙인다.
     """
     if manual_note and str(manual_note).strip():
         return str(manual_note).strip()
     if spec_note and str(spec_note).strip():
         return str(spec_note).strip()
+
+    groups = _note_groups(models)
+    if not groups:
+        return ""
+    total = sum(c for _, c in groups)
+    if total >= _NOTE_ROLLUP_MIN:
+        if summarize:
+            try:
+                txt = summarize(groups)
+                if txt:
+                    return txt
+            except Exception as e:
+                print(f"[board] 비고 요약 실패, 기본형으로 대체: {e}")
+        return _note_rollup_text(groups)
+
     lines, seen = [], set()
     multi = len(models or []) > 1
     for m in (models or []):
@@ -22307,7 +22427,8 @@ def _spec_board(project_key, proj, spec, month):
                 "next_month_plan": next_plan,
                 "base_actual": _as_int(man.get("base_actual")) if _has(man, "base_actual") else None,
                 "base_week": str(man.get("base_week") or ""),
-                "note": _board_row_note(models, row.get("note"), man.get("note")),
+                "note": _board_row_note(models, row.get("note"), man.get("note"),
+                                        summarize=_ai_board_note),
                 "manual_row": bool(row.get("manual")),
                 "po_manual": _has(man, "po_qty"),
                 "actual_manual": _has(man, "actual_total"),
