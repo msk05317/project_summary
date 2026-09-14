@@ -18,14 +18,15 @@ PROJ = [
     {'id': 'auto_b', 'label': '나고객'},
     {'id': 'auto_c', 'label': '다고객'},   # 계약 없음
 ]
-def mk(name, price, cost, contract, group='양산'):
+def mk(name, quote, parts, contract, group='양산'):
+    # 판가는 다섯 항목 합계다. price_krw 는 엑셀 '판가' 열 — 참고 견적.
     return {'id': name, 'name': name, 'group': group,
-            'auto': {'price_krw': price, 'cost': cost, 'contract': contract}}
+            'auto': {'price_krw': quote, 'cost': parts, 'contract': contract}}
 C = lambda m,p,a,d,l: {'material':m,'process':p,'admin':a,'depr':d,'logi':l}
 MODELS = {'projects': {
     'auto_a': {'models': [
         mk('A1', 1000, C(400,300,100,100,50), {'2026': {'qty': 10, 'revenue': 1.0}, '2027': {'qty': 20, 'revenue': 2.0}}),
-        mk('A2', 1000, C(600,400,100,100,50), {'2026': {'qty': 5, 'revenue': 0.5}}),   # 원가 1250 > 판가
+        mk('A2', 1000, C(600,400,100,100,50), {'2026': {'qty': 5, 'revenue': 0.5}}),
     ]},
     'auto_b': {'models': [
         mk('B1', 2000, C(400,300,100,100,50), {'2027': {'qty': 7, 'revenue': 3.0}}),
@@ -50,7 +51,7 @@ assert t['products'] == 3, t
 assert t['qty'] == 10+20+5+7, t
 assert round(t['revenue'], 4) == 6.5, t
 assert t['year_revenue'] == 0.0 or True
-assert t['over_cost'] == 1 and t['over_cost_names'] == ['A2'], t
+assert 'over_cost' not in t, t          # 원가율·원가 초과 개념은 없앴다
 assert out['by_year']['2026'] == {'qty': 15, 'revenue': 1.5}, out['by_year']
 assert out['by_year']['2027'] == {'qty': 27, 'revenue': 5.0}, out['by_year']
 assert [r['label'] for r in out['projects']] == ['가고객', '나고객', '다고객'], out['projects']
@@ -60,4 +61,14 @@ assert 'by_year' not in out['projects'][0]
 # 올해(2026) 값이 제대로 뽑히는지
 y26 = g['get_automotive_division_summary'](year=2026)
 assert y26['totals']['year_qty'] == 15 and round(y26['totals']['year_revenue'],4) == 1.5, y26['totals']
-print('\nOK 8/8')
+
+# 판가 = 다섯 항목 합계, 견적은 엑셀 '판가' 열로 따로 간다
+pa = g['get_automotive_summary']('auto_a')['products']
+byname = {p['name']: p for p in pa}
+assert byname['A1']['price'] == 950 and byname['A1']['quote'] == 1000, byname['A1']
+assert byname['A2']['price'] == 1250 and byname['A2']['quote'] == 1000, byname['A2']
+for p in pa:
+    assert p['price'] == sum(p['parts'].values()), p
+    assert 'cost_ratio' not in p and 'cost_total' not in p, p
+
+print('\nOK 11/11')
