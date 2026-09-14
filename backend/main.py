@@ -20967,11 +20967,15 @@ def _process_step_done(s) -> bool:
 
 
 def _process_progress(proc: list) -> int:
+    """끝난 단계 수 ÷ 전체 단계 수.
+
+    예전에는 최종 승인이 완료면 중간과 무관하게 100% 로 쳤다.
+    그러면 같은 화면에서 '15/15 단계' 라고 하면서 다섯 단계는 대기로
+    보인다 — 어느 쪽이 맞는지 읽는 사람이 알 수 없다.
+    비어 있는 단계는 비어 있는 대로 센다.
+    """
     if not proc:
         return 0
-    # 최종 승인이 완료면 중간 단계 입력과 무관하게 100%
-    if _process_step_done(proc[-1]):
-        return 100
     done = sum(1 for s in proc if _process_step_done(s))
     return round(done / len(proc) * 100)
 
@@ -20985,8 +20989,6 @@ def _model_progress(m: dict) -> int:
         return round(min(100.0, sh / po * 100.0)) if po > 0 else 0
     proc = m.get('process') or []
     if proc:
-        if _process_step_done(proc[-1]) and str(proc[-1].get('status') or '') not in ('미승인', '미제출'):
-            return 100
         done = sum(1 for s in proc
                    if (str(s.get('actual') or '').strip() or str(s.get('status') or '') == '완료')
                    and str(s.get('status') or '') not in ('미승인', '미제출'))
@@ -22504,8 +22506,6 @@ def get_model_process(project_key: str, model_id: str):
             done = sum(1 for s in proc
                        if (str(s.get("actual") or "").strip() or str(s.get("status") or "") == "완료")
                        and str(s.get("status") or "") not in ("미승인", "미제출"))
-            if _process_step_done(proc[-1]):
-                done = len(proc)
             stage, expected = _process_current(proc)
             return {
                 "model_id": model_id,
@@ -22761,6 +22761,35 @@ async def admin_price_import_xlsx(project_key: str, file: UploadFile = File(...)
 
 
 
+# 일정표 칸에 들어오는 값은 세 가지다.
+#   날짜        → 그 날짜에 끝났다
+#   '완료' 글자 → 끝나긴 했는데 날짜를 안 적었다
+#   'NA' 따위   → 이 모델에는 없는 단계다 (파워박스는 LAIR 이 대개 없다)
+# 예전에는 셋을 구분하지 않고 '칸이 비지 않았으면 완료' 로 봐서,
+# NA 도 완료로 세고 '완료' 글자를 날짜 칸에 밀어 넣었다.
+_STEP_NA = {'na', 'n/a', '-', '--', 'tbd', '미정', '해당없음', '없음', 'x'}
+
+
+def _step_date(raw: str) -> str:
+    """날짜면 'YYYY-MM-DD', 아니면 빈칸. 날짜 칸에 글자를 넣지 않는다."""
+    import process_import as _pi
+    return _pi._as_date(raw) or ''
+
+
+def _step_actual(raw: str):
+    """실적 칸 → (실적일, 상태)."""
+    t = (raw or '').strip()
+    if not t:
+        return '', ''
+    d = _step_date(t)
+    if d:
+        return d, '완료'
+    if t.lower() in _STEP_NA:
+        return '', ''
+    # 날짜는 아닌데 뭔가 적혀 있다 → 끝난 것으로 보되 날짜는 비워 둔다
+    return '', '완료'
+
+
 @app.post("/admin/projects/{project_key}/import-xlsx")
 @app.post("/admin/projects/{project_key}/process/import-xlsx")
 async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
@@ -22834,9 +22863,8 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
             if not m: skipped.append(f"{skey}:{pn}"); continue
             steps, done = [], 0
             for i, (no, en, pc, ac) in enumerate(sheet_steps):
-                planned = _cs(ws.cell(r, pc).value) if pc >= 1 else ''
-                actual = _cs(ws.cell(r, ac).value) if ac >= 1 else ''
-                status = '완료' if actual else ''
+                planned = _step_date(_cs(ws.cell(r, pc).value) if pc >= 1 else '')
+                actual, status = _step_actual(_cs(ws.cell(r, ac).value) if ac >= 1 else '')
                 if status == '완료': done += 1
                 name = _STEP_KO.get(en.strip().lower(), en.strip())
                 steps.append({
