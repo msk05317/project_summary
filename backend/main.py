@@ -2380,6 +2380,94 @@ document.getElementById('f').onsubmit=function(ev){
 </script></body></html>"""
 
 
+# ── 모델 데이터 백업 ──────────────────────────────────────────────────
+#
+# _save_models 는 덮어쓰기 전에 models.json.auto_<시각> 을 남긴다 (최근 10개).
+# 무언가 사라졌을 때 어디로 돌아가야 하는지 보려면 그 안을 들여다볼 수
+# 있어야 한다. 되돌리는 것도 저장이라, 되돌리기 전의 상태도 백업으로 남는다.
+
+
+def _models_backups():
+    import glob
+    out = []
+    for path in sorted(glob.glob(f"{MODELS_FILE}.auto_*"), reverse=True):
+        try:
+            st = os.stat(path)
+            out.append({"name": os.path.basename(path), "bytes": st.st_size,
+                        "at": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")})
+        except Exception:
+            pass
+    return out
+
+
+def _models_shape(data: dict) -> dict:
+    """프로젝트별로 무엇이 몇 개 들어 있는지. 백업끼리 비교하려고 쓴다."""
+    out = {}
+    for key, proj in (data.get("projects") or {}).items():
+        ms = (proj or {}).get("models") or []
+        if not ms:
+            continue
+        weeks = {}
+        for m in ms:
+            for mon, wk in ((m.get("weekly_plan") or {}) if isinstance(m, dict) else {}).items():
+                weeks[str(mon)] = weeks.get(str(mon), 0) + len(wk or {})
+        out[key] = {
+            "models": len(ms),
+            "weeks": dict(sorted(weeks.items())),
+            "process": sum(1 for m in ms if isinstance(m, dict) and (m.get("process") or [])),
+            "po": sum(1 for m in ms if isinstance(m, dict) and m.get("po_qty")),
+        }
+    return out
+
+
+@app.get("/admin/models/backups")
+def admin_models_backups(name: str = "", _admin: int = Depends(get_admin_session)):
+    """백업 목록. name 을 주면 그 백업 안이 어떤 모양인지 같이 보여준다."""
+    out = {"ok": True, "current": _models_shape(_load_models()),
+           "backups": _models_backups()}
+    if name:
+        path = MODELS_FILE.parent / os.path.basename(name)
+        if not path.exists() or ".auto_" not in path.name:
+            raise HTTPException(status_code=404, detail="그런 백업이 없습니다")
+        with open(path, "r", encoding="utf-8") as f:
+            out["shape"] = _models_shape(json.load(f))
+        out["name"] = path.name
+    return out
+
+
+@app.post("/admin/models/restore")
+def admin_models_restore(payload: dict, _admin: int = Depends(get_admin_session)):
+    """백업으로 되돌린다. payload = {name, projects?: [키...]}
+
+    projects 를 주면 그 프로젝트만 백업 것으로 바꾼다. 통째로 되돌리면
+    그 사이에 제대로 들어간 것까지 같이 잃는다.
+    되돌리기 직전 상태도 백업으로 남으므로 다시 되돌릴 수 있다.
+    """
+    name = os.path.basename(str(payload.get("name") or ""))
+    if not name or ".auto_" not in name:
+        raise HTTPException(status_code=400, detail="백업 이름이 필요합니다")
+    path = MODELS_FILE.parent / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="그런 백업이 없습니다")
+    with open(path, "r", encoding="utf-8") as f:
+        old = json.load(f)
+
+    want = [str(k) for k in (payload.get("projects") or []) if str(k).strip()]
+    data = _load_models()
+    changed = []
+    for key, proj in (old.get("projects") or {}).items():
+        if want and key not in want:
+            continue
+        data.setdefault("projects", {})[key] = proj
+        changed.append(key)
+    if not changed:
+        raise HTTPException(status_code=400, detail="되돌릴 프로젝트가 없습니다")
+    _save_models(data)
+    print(f"[restore] {name} → {', '.join(changed)}")
+    return {"ok": True, "from": name, "projects": changed,
+            "shape": _models_shape(data)}
+
+
 @app.get("/admin/app", response_class=HTMLResponse)
 def admin_app_page(admin_auth: Optional[str] = Cookie(default=None)):
     """APK 올리는 화면. 배포 없이 새 버전을 내보낼 수 있다."""
@@ -13578,15 +13666,27 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             "note": str(m.get("note") or ""),
         }
         old = old_map.get(mid) or {}
-        # 이 화면에서 편집하지 않는 값은 기존 것을 그대로 승계 (덮어써서 날아가지 않게)
-        # auto = 자동차사업부 전용 묶음 (원가 8항목·외화 판가·연도별 계약물량).
-        # 이 화면에서 편집하지 않는 프로젝트에서는 통째로 승계된다.
+        # 이 화면에서 편집하지 않는 묶음은 서버에 있는 것을 그대로 둔다.
+        #
+        # 예전에는 보낸 값을 먼저 봤다. 목록 화면은 열 때 받아 둔 사본을
+        # 저장할 때 그대로 돌려보내므로, 그 사이에 다른 곳(주차 계획 입력,
+        # 엑셀 업로드, Process 입력)에서 들어간 내용이 옛날 값으로 덮여
+        # 되돌아갔다. 파워박스 9월 주차 계획이 그렇게 사라졌다.
+        #
+        #   weekly_plan/progress/summary : 주차별 계획·실적 (별도 화면·엑셀)
+        #   current_expected/stage       : 프로세스에서 계산해 넣는 값
+        #   auto                         : 자동차사업부 원가·계약 묶음
         for _keep in ("weekly_plan", "weekly_progress", "weekly_summary",
-                      "part_number", "current_expected", "current_stage", "auto"):
-            if m.get(_keep) is not None:
-                entry[_keep] = m.get(_keep)
-            elif old.get(_keep) is not None:
+                      "current_expected", "current_stage", "auto"):
+            if old.get(_keep) is not None:
                 entry[_keep] = old.get(_keep)
+            elif m.get(_keep) is not None:
+                entry[_keep] = m.get(_keep)
+        # 파트넘버는 이 화면에서 고칠 수 있다 — 보낸 값을 먼저 본다.
+        if m.get("part_number") is not None:
+            entry["part_number"] = m.get("part_number")
+        elif old.get("part_number") is not None:
+            entry["part_number"] = old.get("part_number")
         if not str(entry.get("note") or "").strip() and old.get("note"):
             entry["note"] = old.get("note")
         # 구분·판가 이력 (개발→양산 전환, 판가 변경). 과거 매출이 흔들리지 않게 보존한다.
