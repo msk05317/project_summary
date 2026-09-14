@@ -22066,18 +22066,42 @@ def _load_board_spec(project_key):
         return None
 
 
-def _board_row_models(proj, row):
+def _spec_claimed_models(spec) -> set:
+    """보드 안에서 이미 품번으로 지목된 모델들.
+
+    유형·구분으로 쓸어담는 행(Dep 챔버 15종, 양산19종 …)은 자기 조건에만
+    맞으면 다 가져가므로, 다른 행이 품번으로 콕 집어둔 모델까지 같이 가져가
+    두 행에 겹쳐 잡히고 PO·실적이 두 번 세어진다. 챔버에서 205(개발, 자기 행이
+    있음)의 dev_type 이 DEP챔버 라서 Dep 행에도 들어가 '15종'인데 16개가
+    잡히던 게 그 경우다.
+
+    그래서 품번으로 지목된 모델은 쓸어담기 행에서 자동으로 뺀다.
+    (boards.json 에 손으로 적어둔 exclude 는 그대로 둬도 결과가 같다.)
+    """
+    out = set()
+    for sec in (spec.get("sections") or []):
+        for row in (sec.get("rows") or []):
+            for x in (row.get("models") or []):
+                if str(x).strip():
+                    out.add(str(x).strip())
+    return out
+
+
+def _board_row_models(proj, row, claimed=None):
     """행이 가리키는 모델 목록.
 
     models    품번 지정
     dev_type  그 유형 전체
     exclude   유형으로 묶되 그중 뺄 품번 (009 직납 = 009 유형 − 자빌)
+    claimed   다른 행이 품번으로 지목한 모델 (쓸어담기 행에서 자동 제외)
     """
     ids = [str(x).strip() for x in (row.get("models") or []) if str(x).strip()]
     dt = str(row.get("dev_type") or "").strip().upper()
     grp = _norm_group(row.get("group")) if row.get("group") else None
     ex = {str(x).strip() for x in (row.get("exclude") or []) if str(x).strip()}
     ex_dt = {str(x).strip().upper() for x in (row.get("exclude_dev_type") or []) if str(x).strip()}
+    # 품번을 직접 적은 행은 자기가 적은 걸 가져가야 하므로 자동 제외를 안 쓴다
+    auto_ex = set() if ids else {str(x).strip() for x in (claimed or set()) if str(x).strip()}
     out = []
     for m in proj.get("models") or []:
         if not isinstance(m, dict):
@@ -22086,6 +22110,8 @@ def _board_row_models(proj, row):
         pn = str(m.get("part_number") or "").strip()
         mdt = str(m.get("dev_type") or "").strip().upper()
         if mid in ex or (pn and pn in ex):
+            continue
+        if mid in auto_ex or (pn and pn in auto_ex):
             continue
         if ex_dt and mdt in ex_dt:
             continue
@@ -22358,6 +22384,8 @@ def _spec_board(project_key, proj, spec, month):
     # 있으면 그게 이긴다 — 재고는 주마다 바뀌므로 설정 파일에 묶어 두면 안 된다.
     stock_store = (proj.get("board_stock") or {})
 
+    claimed = _spec_claimed_models(spec)
+
     sections, flat = [], []
     for sec in (spec.get("sections") or []):
         srows = []
@@ -22367,7 +22395,8 @@ def _spec_board(project_key, proj, spec, month):
             # 행마다 직접 입력이 있으면 그 값이 정본, 없으면 모델 합계.
             # 단일 모델 행은 모델 목록에서 넣는 게 낫고(진행률도 같이 잡힌다),
             # '4종'·'Dep 15종' 같은 묶음 행은 보드에서 바로 넣는 게 편하다.
-            models = [] if row.get("manual") else _board_row_models(proj, row)
+            models = ([] if row.get("manual")
+                      else _board_row_models(proj, row, claimed))
             po_m = sum(_as_int(m.get("po_qty")) for m in models)
             act_m = sum(_as_int(m.get("shipped_qty")) for m in models)
             po = _as_int(man["po_qty"]) if _has(man, "po_qty") else po_m
