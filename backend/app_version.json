@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.1.9",
-  "latest_version_code": 21,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.9/app-release.apk",
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.1.9/app-release.apk",
-  "release_notes": "백그라운드 자동 새로고침 추가 (WorkManager, 15분 단위)",
+  "latest_version": "2.3.0",
+  "latest_version_code": 23,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.3.0/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.3.0/app-release.apk",
+  "release_notes": "자동차사업부 화면이 새로 들어갔습니다.\n· 고객사별 계약 매출과 원가가 판가를 넘는 제품\n· 연도별 계약 매출 (막대를 누르면 그 해 값)\n· 제품 상세 — 대당 손익, 원가 구성, 연도별 계약",
   "force_update": false
 }

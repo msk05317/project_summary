@@ -37,14 +37,55 @@ class AppUpdater {
 
   final Dio _dio = Dio();
 
-  /// 서버 버전 조회. 실패 시 null.
+  /// 최신 버전 조회. 실패 시 null.
+  ///
+  /// 두 곳을 본다. 둘 다 같은 파일(backend/app_version.json)을 가리키지만
+  /// 갱신되는 시점이 다르다 — 서버는 배포해야 바뀌고, GitHub 은 push 하면
+  /// 바로 바뀐다. 그래서 둘 다 물어보고 버전이 높은 쪽을 쓴다.
+  ///
+  /// GitHub 한 곳만 보면 저장소가 비공개이거나 API 호출 한도(시간당 60회)에
+  /// 걸렸을 때 업데이트 안내가 통째로 사라진다. 서버는 앱이 이미 쓰는 곳이라
+  /// 그런 제약이 없다.
   Future<AppVersionInfo?> fetchLatest() async {
+    final results = await Future.wait([_fromServer(), _fromGithub()]);
+    AppVersionInfo? best;
+    for (final r in results) {
+      if (r == null) continue;
+      if (best == null || r.latestVersionCode > best.latestVersionCode) {
+        best = r;
+      }
+    }
+    return best;
+  }
+
+  Future<AppVersionInfo?> _fromServer() async {
     try {
-      // GitHub API 사용 (raw URL 캐시 문제 방지, 실시간 반영)
-      const apiUrl = 'https://api.github.com/repos/msk05317/project_summary/contents/backend/app_version.json';
-      final res = await _dio.get(apiUrl);
+      final res = await _dio.get(
+        '$kApiBaseUrl/app/version',
+        options: Options(receiveTimeout: const Duration(seconds: 8)),
+      );
       if (res.statusCode != 200) return null;
-      // GitHub API는 base64 인코딩된 content 반환
+      final d = res.data;
+      final m = d is String
+          ? jsonDecode(d) as Map<String, dynamic>
+          : Map<String, dynamic>.from(d as Map);
+      return AppVersionInfo.fromJson(m);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<AppVersionInfo?> _fromGithub() async {
+    try {
+      // raw URL 은 캐시가 오래 남아 실시간 반영이 안 된다. API 로 받는다.
+      const apiUrl =
+          'https://api.github.com/repos/msk05317/project_summary/contents/backend/app_version.json';
+      final res = await _dio.get(
+        apiUrl,
+        options: Options(receiveTimeout: const Duration(seconds: 8)),
+      );
+      if (res.statusCode != 200) return null;
+      // GitHub API 는 base64 로 감싼 content 를 준다
       final content = res.data['content'] as String?;
       if (content == null) return null;
       final decoded = utf8.decode(base64.decode(content.replaceAll('\n', '')));
