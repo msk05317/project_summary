@@ -22577,6 +22577,240 @@ def put_board_rows(project_key: str, payload: dict,
     return {"ok": True, "project_key": _key, "rows": len(store)}
 
 
+
+# ── 블룸 일 보드 ──────────────────────────────────────────────────────
+#
+# 반도체와 코드를 공유하지 않는다. 반도체는 '주차 x 모델' 한 겹인데
+# 블룸은 '날짜 x 품목 x 공정(NCT/조립/출하)' 세 겹이고 매일 실적이 들어온다.
+# 하나로 묶으면 양쪽 다 망가진다.
+#
+# 저장 위치: projects.<key>.daily_board
+#   {title, report_date, prior_label, sheet, dates:[...], notes:[...],
+#    items:[{item, code, wait_ship, wait_part,
+#            steps:[{step, group, wip, month_plan, month_actual,
+#                    prior_plan, prior_actual, note,
+#                    days:{'YYYY-MM-DD': {plan, actual}}}]}]}
+#
+# 같은 달 파일을 매일 올린다. 그래서 통째로 덮지 않고 날짜 단위로 합친다.
+# 새 파일에 없는 날짜·품목·공정은 지우지 않고 그대로 둔다 — 파일이 한 번
+# 잘못 와도 그 전에 쌓인 게 날아가면 안 된다.
+
+_BLOOM_DIFF_CAP = 60
+
+
+def _bloom_pick(new_v, old_v):
+    """새 값이 비어 있으면 옛 값을 지킨다. 0 은 유효한 값이다."""
+    return old_v if new_v is None or new_v == "" else new_v
+
+
+def _bloom_merge(old: dict, parsed: dict):
+    """(합쳐진 보드, 무엇이 바뀌는지)."""
+    import bloom_daily_import as _bd
+
+    old = old if isinstance(old, dict) else {}
+    diff = {"items_new": [], "steps_new": [], "items_kept": [],
+            "days_added": 0, "day_changes": [], "month_changes": []}
+
+    old_items = {i.get("item"): i for i in (old.get("items") or []) if isinstance(i, dict)}
+    new_items = {i.get("item"): i for i in (parsed.get("items") or []) if isinstance(i, dict)}
+    names = list(new_items) + [n for n in old_items if n not in new_items]
+
+    merged = []
+    for name in names:
+        nu, ol = new_items.get(name), old_items.get(name)
+        if nu is None:
+            merged.append(ol)
+            diff["items_kept"].append(name)
+            continue
+        if ol is None and old_items:
+            diff["items_new"].append(name)
+
+        entry = dict(ol or {})
+        entry["item"] = name
+        for f in ("code", "wait_ship", "wait_part"):
+            entry[f] = _bloom_pick(nu.get(f), (ol or {}).get(f))
+
+        old_steps = {s.get("step"): s for s in ((ol or {}).get("steps") or [])
+                     if isinstance(s, dict)}
+        new_steps = {s.get("step"): s for s in (nu.get("steps") or []) if isinstance(s, dict)}
+        steps = []
+        for sname in list(new_steps) + [s for s in old_steps if s not in new_steps]:
+            ns, os_ = new_steps.get(sname), old_steps.get(sname)
+            if ns is None:
+                steps.append(os_)
+                continue
+            if os_ is None and old_steps:
+                diff["steps_new"].append(f"{name} · {sname}")
+
+            st = dict(os_ or {})
+            st["step"] = sname
+            st["group"] = ns.get("group") or _bd.step_group(sname)
+            for f in ("wip", "prior_plan", "prior_actual"):
+                st[f] = _bloom_pick(ns.get(f), (os_ or {}).get(f))
+            for f in ("month_plan", "month_actual"):
+                was = (os_ or {}).get(f)
+                now = _bloom_pick(ns.get(f), was)
+                if os_ is not None and was is not None and now != was \
+                        and len(diff["month_changes"]) < _BLOOM_DIFF_CAP:
+                    diff["month_changes"].append(
+                        {"item": name, "step": sname, "field": f, "from": was, "to": now})
+                st[f] = now
+            _note = str(ns.get("note") or "").strip()
+            st["note"] = _note or str((os_ or {}).get("note") or "")
+
+            days = dict((os_ or {}).get("days") or {})
+            for d, v in (ns.get("days") or {}).items():
+                was = days.get(d)
+                if was is None:
+                    diff["days_added"] += 1
+                elif was != v and len(diff["day_changes"]) < _BLOOM_DIFF_CAP:
+                    diff["day_changes"].append(
+                        {"item": name, "step": sname, "date": d, "from": was, "to": v})
+                days[d] = v
+            st["days"] = days
+            steps.append(st)
+
+        entry["steps"] = [s for s in steps if isinstance(s, dict)]
+        merged.append(entry)
+
+    merged = [m for m in merged if isinstance(m, dict)]
+    board = {
+        "title": _bloom_pick(parsed.get("title"), old.get("title")) or "",
+        "sheet": _bloom_pick(parsed.get("sheet"), old.get("sheet")) or "",
+        "report_date": _bloom_pick(parsed.get("report_date"), old.get("report_date")) or "",
+        "prior_label": _bloom_pick(parsed.get("prior_label"), old.get("prior_label")) or "",
+        # 메모는 '오늘 자 알림'이라 누적하지 않고 새 파일 것으로 바꾼다
+        "notes": parsed.get("notes") or [],
+        "items": merged,
+        "dates": sorted({d for i in merged for s in (i.get("steps") or [])
+                         for d in ((s or {}).get("days") or {})}),
+    }
+    return board, diff
+
+
+def _bloom_summary(board: dict, date: str = ""):
+    """그 날 공정별 계획/실적 합계 + 직전에 실적이 있던 날.
+
+    실적 칸이 비어 있는 것과 0 은 다르다. 계획은 있는데 실적이 하나도
+    안 적혔으면 pending=True — 오전에 화면이 0% 로 보이면 안 된다.
+    """
+    dates = board.get("dates") or []
+    if not dates:
+        return {}
+    day = date or board.get("report_date") or dates[-1]
+    if day not in dates:
+        later = [d for d in dates if d >= day]
+        day = later[0] if later else dates[-1]
+
+    def at(d):
+        groups, has_actual, has_plan = {}, False, False
+        for it in (board.get("items") or []):
+            for st in (it.get("steps") or []):
+                cell = ((st or {}).get("days") or {}).get(d)
+                if not cell:
+                    continue
+                g = groups.setdefault(st.get("group") or st.get("step") or "",
+                                      {"plan": 0, "actual": 0, "has_actual": False})
+                p, a = cell.get("plan"), cell.get("actual")
+                if p is not None:
+                    g["plan"] += int(p)
+                    if int(p):
+                        has_plan = True
+                if a is not None:
+                    g["actual"] += int(a)
+                    g["has_actual"] = True
+                    has_actual = True
+        return {
+            "date": d,
+            "groups": groups,
+            "plan": sum(g["plan"] for g in groups.values()),
+            "actual": sum(g["actual"] for g in groups.values()),
+            "has_actual": has_actual,
+            "pending": has_plan and not has_actual,
+        }
+
+    today = at(day)
+    prev = None
+    for d in reversed([x for x in dates if x < day]):
+        cand = at(d)
+        if cand["has_actual"]:
+            prev = cand
+            break
+    return {"date": day, "today": today, "prev": prev,
+            "prev_date": (prev or {}).get("date", "")}
+
+
+@app.get("/projects/{project_key}/daily-board")
+def get_daily_board(project_key: str, date: str = ""):
+    """블룸 일 보드. Admin 도 앱도 이걸 읽는다."""
+    _key = _model_key_alias(project_key)
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    board = proj.get("daily_board")
+    if not isinstance(board, dict) or not board.get("items"):
+        return {"project_key": _key, "has_board": False, "items": [], "dates": []}
+    import datetime as _dt
+    out = dict(board)
+    out["project_key"] = _key
+    out["has_board"] = True
+    out["today"] = _dt.date.today().strftime("%Y-%m-%d")
+    out["summary"] = _bloom_summary(board, date)
+    return out
+
+
+def _bloom_parse_upload(raw: bytes):
+    import bloom_daily_import as _bd
+    try:
+        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+    parsed = _bd.parse_daily(wb)
+    if not parsed.get("items"):
+        raise HTTPException(
+            status_code=400,
+            detail="'대표님 일 보고 자료' 모양의 시트를 찾지 못했습니다. "
+                   "품목·공정 열과 날짜별 계획/실적 칸이 있는 파일인지 확인해 주세요.")
+    return parsed
+
+
+@app.post("/admin/projects/{project_key}/bloom-daily/preview")
+async def admin_bloom_daily_preview(project_key: str, file: UploadFile = File(...),
+                                    _admin: int = Depends(get_admin_session)):
+    """저장하지 않고 무엇이 바뀌는지만 보여준다."""
+    _key = _model_key_alias(project_key)
+    parsed = _bloom_parse_upload(await file.read())
+    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    board, diff = _bloom_merge(proj.get("daily_board") or {}, parsed)
+    return {"ok": True, "project_key": _key, "file_name": file.filename,
+            "sheet": parsed.get("sheet"), "title": parsed.get("title"),
+            "report_date": parsed.get("report_date"),
+            "items": len(board.get("items") or []),
+            "dates": board.get("dates") or [],
+            "notes": parsed.get("notes") or [],
+            "diff": diff}
+
+
+@app.post("/admin/projects/{project_key}/bloom-daily")
+async def admin_bloom_daily_apply(project_key: str, file: UploadFile = File(...),
+                                  _admin: int = Depends(get_admin_session)):
+    """합쳐서 저장한다."""
+    _key = _model_key_alias(project_key)
+    parsed = _bloom_parse_upload(await file.read())
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
+    board, diff = _bloom_merge(proj.get("daily_board") or {}, parsed)
+    board["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    board["file_name"] = file.filename or ""
+    proj["daily_board"] = board
+    _save_models(data)
+    print(f"[bloom] 일 보드 저장 {_key}: {file.filename} · "
+          f"품목 {len(board.get('items') or [])} · 날짜 {len(board.get('dates') or [])} · "
+          f"새 칸 {diff['days_added']} · 바뀐 칸 {len(diff['day_changes'])}")
+    return {"ok": True, "project_key": _key, "file_name": board["file_name"],
+            "report_date": board.get("report_date"),
+            "items": len(board.get("items") or []),
+            "dates": board.get("dates") or [],
+            "diff": diff}
+
 @app.get("/projects/{project_key}/weekly-board")
 def get_weekly_board(project_key: str, month: str = None):
     """엑셀로 올리던 '주차별 계획 원본' 표를 데이터에서 계산해 돌려준다.

@@ -139,3 +139,13 @@ assert etas[1][0] == '9/18' and etas[2][0] == '', etas
 ok += 1
 
 print(f'전부 통과 ({ok}/14)')
+
+# ── 실제 파일로 한 번 더 (있을 때만) ────────────────────────────────
+import glob, os
+_real = sorted(glob.glob(os.path.join(os.path.dirname(__file__), 'fixtures', '블룸*.xlsx')))
+if _real:
+    r = bd.parse_daily(openpyxl.load_workbook(_real[0], data_only=True))
+    assert len(r['items']) >= 5, f"실제 파일에서 품목을 {len(r['items'])}개만 읽었다"
+    assert len(r['dates']) >= 15, r['dates']
+    print(f"  실제 파일 {os.path.basename(_real[0])}: "
+          f"품목 {len(r['items'])} · 날짜 {len(r['dates'])} · 메모 {len(r['notes'])}")

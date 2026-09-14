@@ -63,6 +63,16 @@ def _as_date(v):
     return None
 
 
+def step_group(step):
+    """'NCT(박닌)' -> 'NCT', '조립(박장)' -> '조립', '출하' -> '출하'.
+
+    화면에는 시트에 적힌 그대로 쓰고, 합계를 낼 때만 이걸 쓴다.
+    공장(박닌/박장)이 달라도 같은 공정으로 묶여야 총계가 맞는다.
+    """
+    t = re.split(r"[(\uff08]", _s(step))[0].strip()
+    return t or _s(step)
+
+
 def _grid(ws):
     """병합 셀의 앵커 값을 범위 전체에 퍼뜨린 값 배열."""
     g = {}
@@ -229,6 +239,7 @@ def parse_daily(wb, sheet_name=None):
 
         items[name]["steps"].append({
             "step": step,
+            "group": step_group(step),
             "wip": _num(ws.cell(r, cols["wip"]).value) if cols.get("wip") else None,
             "month_plan": _num(ws.cell(r, cols["total_plan"]).value) if cols.get("total_plan") else None,
             "month_actual": _num(ws.cell(r, cols["total_actual"]).value) if cols.get("total_actual") else None,
