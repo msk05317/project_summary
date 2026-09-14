@@ -7541,7 +7541,9 @@ var sidebarSel = document.getElementById('v2-division-select');
       if (show) window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    window._mdlRenderPicker = function(projects, stats) {
+    // mode='auto' 면 자동차사업부 — 진행률(주차 실적/공정 단계) 개념이 없는
+    // 대신 원가율 = (판가 - 관리이윤) / 판가 를 보여준다.
+    window._mdlRenderPicker = function(projects, stats, mode) {
       var box = document.getElementById('mdl-picker');
       if (!box) return;
       if (!projects || !projects.length) {
@@ -7554,13 +7556,30 @@ var sidebarSel = document.getElementById('v2-division-select');
         '<div class="mdl-pick-grid">' +
           projects.map(function(p) {
             var st = (stats && stats[p.id]) || {};
-            var n = st.models_total || 0;
-            var pg = (st.progress === null || st.progress === undefined) ? null : st.progress;
+            var sub, wide, pct;
+            if (mode === 'auto') {
+              var np = st.products || 0;
+              var cr = (st.cost_ratio === null || st.cost_ratio === undefined)
+                ? null : st.cost_ratio * 100;
+              var parts = [];
+              if (st.mass) parts.push('양산 ' + st.mass);
+              if (st.dev) parts.push('개발 ' + st.dev);
+              sub = np ? ('제품 ' + np + '개' + (parts.length ? ' · ' + parts.join(' · ') : ''))
+                       : '등록된 제품 없음';
+              wide = cr === null ? 0 : Math.max(0, Math.min(100, cr));
+              pct = cr === null ? '원가율 -' : '원가율 ' + cr.toFixed(1) + '%';
+            } else {
+              var n = st.models_total || 0;
+              var pg = (st.progress === null || st.progress === undefined) ? null : st.progress;
+              sub = n ? ('모델 ' + n + '개') : '등록된 모델 없음';
+              wide = pg || 0;
+              pct = pg === null ? '진행률 -' : '진행률 ' + pg + '%';
+            }
             return '<button type="button" class="mdl-pick-card" data-pk="' + p.id + '">' +
               '<span class="nm">' + (p.label || p.id) + '</span>' +
-              '<span class="sub">' + (n ? ('모델 ' + n + '개') : '등록된 모델 없음') + '</span>' +
-              '<span class="bar"><i style="width:' + (pg || 0) + '%"></i></span>' +
-              '<span class="pct">' + (pg === null ? '진행률 -' : '진행률 ' + pg + '%') + '</span>' +
+              '<span class="sub">' + sub + '</span>' +
+              '<span class="bar"><i style="width:' + wide + '%"></i></span>' +
+              '<span class="pct">' + pct + '</span>' +
             '</button>';
           }).join('') +
         '</div>';
@@ -7988,11 +8007,22 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         }).join('');
         bindModelExcel();
         // 카드에 모델 수·진행률을 같이 보여준다 (요청 1번으로 전부 받아온다)
-        fetch('/projects-progress-summary?division_id=' + encodeURIComponent(currentDiv),
-              { credentials: 'same-origin' })
+        // 자동차는 진행률이 없어서 원가율을 대신 보여준다 — 값이 오는 곳이 다르다.
+        var _isAuto = currentDiv === 'automotive';
+        var _statUrl = _isAuto
+          ? '/divisions/automotive/summary'
+          : '/projects-progress-summary?division_id=' + encodeURIComponent(currentDiv);
+        fetch(_statUrl, { credentials: 'same-origin' })
           .then(function(r) { return r.json(); })
-          .then(function(pd) { window._mdlRenderPicker(projects, pd.projects || {}); })
-          .catch(function() { window._mdlRenderPicker(projects, {}); });
+          .then(function(pd) {
+            if (!_isAuto) { window._mdlRenderPicker(projects, pd.projects || {}); return; }
+            var map = {};
+            (pd.projects || []).forEach(function(x) {
+              if (x && x.key) map[x.key] = x;
+            });
+            window._mdlRenderPicker(projects, map, 'auto');
+          })
+          .catch(function() { window._mdlRenderPicker(projects, {}, _isAuto ? 'auto' : ''); });
         window._mdlShowPicker(!sel.value);
         loadModels(sel.value, tableBox);
         loadWeeklyPlan(sel.value);
