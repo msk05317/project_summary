@@ -21660,6 +21660,9 @@ def _model_alert(m: dict, disp_group: str = "", expected: str = "",
         pg = 0
     if pg >= 100:
         return "정상"
+    _proc = (m or {}).get("process")
+    if isinstance(_proc, list) and _proc and _process_step_done(_proc[-1]):
+        return "정상"          # 최종 승인이 끝났으면 늦고 말고가 없다
     g = disp_group or _display_group(m)
     if g != "개발":
         return "정상"
@@ -21691,6 +21694,9 @@ def _enrich_model(m: dict) -> dict:
         out["current_expected"] = expected
         out["done_steps"] = sum(1 for s in proc if str(s.get("actual") or "").strip())
         out["total_steps"] = len(proc)
+        # 최종 승인이 끝났으면 끝난 것이다. 진행률 숫자에만 기대면
+        # 양산으로 넘어간 뒤 PO 기준으로 다시 세어져 '완료'에서 빠진다.
+        out["finished"] = bool(proc) and _process_step_done(proc[-1])
         out["alert"] = _model_alert(m, _disp, expected, out["progress"])
     else:
         # 양산으로 넘어가도 최종 승인까지 간 공정 기록은 계속 볼 수 있어야 한다.
@@ -21704,6 +21710,8 @@ def _enrich_model(m: dict) -> dict:
                                     if str((st or {}).get("actual") or "").strip())
             out["total_steps"] = len(_proc)
             out["dev_type"] = m.get("dev_type") or ""
+            out["finished"] = _process_step_done(_proc[-1])
+    out.setdefault("finished", False)
     out.setdefault("alert", _model_alert(m, _disp))
     return out
 

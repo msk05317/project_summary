@@ -8,13 +8,13 @@ import ast, datetime, pathlib
 SRC = (pathlib.Path(__file__).resolve().parents[1] / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 WANT = {'_model_alert', '_display_group', '_norm_phases', '_phase_ord',
-        '_as_money', '_parse_any_date'}
+        '_as_money', '_parse_any_date', '_process_step_done'}
 srcs = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name in WANT}
 assert set(srcs) == WANT, f'못 찾은 함수: {WANT - set(srcs)}'
 g = {}
 for n in ('_phase_ord', '_as_money', '_norm_phases', '_display_group',
-          '_parse_any_date', '_model_alert'):
+          '_parse_any_date', '_process_step_done', '_model_alert'):
     exec(srcs[n], g)
 f = g['_model_alert']
 
@@ -66,7 +66,26 @@ assert f({'group': '개발'}, '개발', d(-1), 50) == '지연'
 assert f({'group': '개발'}, '개발', d(-1), 100) == '정상'
 ok += 1
 
+# 최종 승인이 끝났으면 날짜가 지났어도 지연이 아니다
+fin = {'group': '개발', 'progress': 40, 'current_expected': d(-20),
+       'process': [{'name': 'FA PO', 'status': '완료'},
+                   {'name': '최종 승인', 'status': '완료'}]}
+assert f(fin) == '정상', fin
+notfin = dict(fin, process=[{'name': 'FA PO', 'status': '완료'},
+                            {'name': '최종 승인', 'status': '대기'}])
+assert f(notfin) == '지연', notfin
+ok += 1
+
 # 실제 연결부
+assert 'out["finished"] = bool(proc) and _process_step_done(proc[-1])' in SRC, \
+    '최종 승인 완료 여부를 안 내려준다'
+assert 'out.setdefault("finished", False)' in SRC
+DART2 = (pathlib.Path(__file__).resolve().parents[2] / 'mobile' / 'lib' / 'screens'
+         / 'model_list_screen.dart').read_text(encoding='utf-8')
+assert "if (m['finished'] == true) return ModelBucket.done;" in DART2, \
+    '앱이 최종 승인 완료를 완료로 안 본다'
+ok += 1
+
 assert 'out["alert"] = _model_alert(m, _disp, expected, out["progress"])' in SRC
 assert 'out.setdefault("alert", _model_alert(m, _disp))' in SRC
 ok += 1
@@ -78,4 +97,4 @@ assert "_alertOf(m) == '지연'" in DART and "m['status'] == '지연'" not in DA
 assert "m['alert']" in DART, '앱이 서버 alert 를 안 읽는다'
 ok += 1
 
-print(f'전부 통과 ({ok}/11)')
+print(f'전부 통과 ({ok}/13)')

@@ -56,6 +56,9 @@ bool devHasProcessData(Map<String, dynamic> m) {
 enum ModelBucket { delayed, soon, running, done }
 
 ModelBucket _bucketOf(Map m) {
+  // 최종 승인이 끝났으면 끝난 것. 양산으로 넘어가면 진행률이 PO 기준으로
+  // 다시 세어져서 숫자만 보면 '완료'에서 빠진다.
+  if (m['finished'] == true) return ModelBucket.done;
   final pg = (m['progress'] as num?)?.toInt() ?? 0;
   if (pg >= 100) return ModelBucket.done;
   // 서버가 정한 값. 옛 서버면 손으로 적은 status 로 떨어진다.
