@@ -255,6 +255,19 @@
           ]
         }
       ]
+    },
+    "spacex": {
+      "columns": "week",
+      "show_status": false,
+      "show_note": false,
+      "next_month": true,
+      "sections": [
+        {
+          "name": "",
+          "rows_from": "models",
+          "rows": []
+        }
+      ]
     }
   }
 }

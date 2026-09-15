@@ -22422,6 +22422,35 @@ def _has(d, k):
     return v is not None and str(v).strip() != ""
 
 
+def _spec_section_rows(proj, sec):
+    """섹션의 행 목록.
+
+    rows_from: "models" 면 등록된 모델 하나가 행 하나가 된다. 큐리처럼
+    엑셀이 '모델명 x 주차' 한 장으로 오는 곳은 행을 설정에 미리 적어둘 수가
+    없다 — 모델이 늘면 보드도 같이 늘어야 한다.
+
+    보이는 순서는 모델 목록 순서 그대로. 담당자가 엑셀에 적은 순서다.
+    """
+    rows = list(sec.get("rows") or [])
+    if str(sec.get("rows_from") or "").strip() != "models":
+        return rows
+    seen = {str(x).strip() for r in rows for x in (r.get("models") or [])}
+    out = list(rows)
+    for m in (proj.get("models") or []):
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("id") or "").strip()
+        pn = str(m.get("part_number") or "").strip()
+        if not mid or mid in seen or (pn and pn in seen):
+            continue
+        seen.add(mid)
+        label = str(m.get("name") or mid).strip() or mid
+        # 품번이 따로 있으면 '이름 (품번)' — 엑셀에 적힌 그대로다
+        if pn and pn != label:
+            label = f"{label} ({pn})"
+        out.append({"key": f"m_{mid}", "label": label, "models": [mid]})
+    return out
+
 def _spec_board(project_key, proj, spec, month):
     """boards.json 스펙대로 그린 보드 (섹션 + 행)."""
     col_mode = spec.get("columns") or "month"
@@ -22443,7 +22472,7 @@ def _spec_board(project_key, proj, spec, month):
     sections, flat = [], []
     for sec in (spec.get("sections") or []):
         srows = []
-        for row in (sec.get("rows") or []):
+        for row in _spec_section_rows(proj, sec):
             key = str(row.get("key") or row.get("label") or "")
             man = manual_store.get(key) or {}
             # 행마다 직접 입력이 있으면 그 값이 정본, 없으면 모델 합계.
