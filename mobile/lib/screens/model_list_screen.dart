@@ -118,12 +118,17 @@ class ModelListScreen extends StatefulWidget {
   final String groupName;
   final List<Map<String, dynamic>> models;
 
+  /// 처음 켤 때 걸어둘 필터. 개요 화면에서 '지연 15' 를 누르면
+  /// 지연만 걸린 채로 열린다.
+  final ModelBucket? initialFilter;
+
   const ModelListScreen({
     super.key,
     required this.projectKey,
     required this.projectName,
     required this.groupName,
     required this.models,
+    this.initialFilter,
   });
 
   @override
@@ -134,6 +139,12 @@ class _ModelListScreenState extends State<ModelListScreen> {
   /// null = 전체. 완료까지 다 보여준다 — 끝난 게 목록에서 사라지면
   /// '이 모델 어디 갔냐'를 다시 물어야 한다. 급한 순으로 정렬해서 올린다.
   ModelBucket? _filter;
+
+  @override
+  void initState() {
+    super.initState();
+    _filter = widget.initialFilter;
+  }
 
   String get projectKey => widget.projectKey;
   String get projectName => widget.projectName;
@@ -424,9 +435,14 @@ class _ModelListScreenState extends State<ModelListScreen> {
                     return ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: list.length,
-                      itemBuilder: (context, i) => isDev
-                          ? _devCard(context, list[i])
-                          : _massCard(context, list[i]),
+                      itemBuilder: (context, i) {
+                        // 양산·개발이 섞여 들어올 수 있다 (개요의 '확인 필요' 목록).
+                        final m = list[i];
+                        final g = (m['display_group'] ?? m['group'] ?? '').toString();
+                        return g == '개발'
+                            ? _devCard(context, m)
+                            : _massCard(context, m);
+                      },
                     );
                   }),
                 ),

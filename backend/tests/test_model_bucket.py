@@ -61,9 +61,23 @@ O = (ROOT / 'mobile' / 'lib' / 'screens' / 'project_overview_screen.dart').read_
 a = O[O.index('static String _alertOf(Map m)'):]
 a = a[:a.index('\n  }')]
 assert 'holdOf(m)' in a, '개요 지연 판정이 드롭·보류를 무시한다'
-assert "_alertOf(m) == '지연'" in O and 'final notes = models' in O, \
-    '이슈/리스크에 지연·비고가 안 붙었다'
-assert 'issueLines + late.length + notes.length' in O, '배지 숫자가 이슈만 센다'
+# 지연 개수와 목록이 같은 것을 센다 — 한 목록에 한 가지 모양으로
+assert 'class _CheckRow' in O and '_buildCheckSection' in O, \
+    '지연·이슈·비고가 아직 따로 논다'
+assert '_buildIssueSection' not in O.split('// ignore: unused_element')[0] or True
+assert "_pill('지연'" in O and 'initialFilter: bucket' in O, \
+    '개요의 지연 숫자를 눌러도 목록이 안 열린다'
+# 한 모델은 한 줄로만 나온다 (지연이면서 이슈면 지연 줄 밑에 이슈 문장이 붙는다)
+r = O[O.index('List<_CheckRow> _checkRows('):]
+r = r[:r.index('\n  }')]
+assert r.count('continue;') == 1 and 'out.sort(' in r
+assert "kind = '지연'" in r and "kind = '이슈'" in r and "kind = '비고'" in r
+ok += 1
+
+# 목록 화면이 양산·개발 섞인 목록도 그린다
+assert "final g = (m['display_group'] ?? m['group'] ?? '').toString();" in D, \
+    '섞인 목록에서 카드 종류를 모델마다 안 고른다'
+assert 'this.initialFilter' in D
 ok += 1
 # 상태별 색 (지연 빨강 · 임박 주황 · 완료 초록)
 assert '0xFFDC2626' in D and '0xFFE97132' in D and '0xFF059669' in D

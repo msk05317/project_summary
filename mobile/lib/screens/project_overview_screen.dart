@@ -14,6 +14,33 @@ import '../widgets/bloom_today_card.dart';
 import '../widgets/automotive_overview_card.dart';
 import '../services/api_service.dart';
 
+/// '확인 필요' 목록의 한 줄. 지연·임박·보류·이슈·비고를 한 가지 모양으로 만든다.
+///
+/// 예전에는 지연 개수는 KPI 카드에, 지연 목록은 이슈 섹션 아래에,
+/// 이슈 텍스트는 AI 요약 블록에 따로 있었다. 숫자 15 와 목록 14 가
+/// 서로 다른 것을 세고 있어도 알 수가 없었다.
+class _CheckRow {
+  final Map<String, dynamic> model;
+  final String name;
+  final String kind;   // 지연 · 임박 · 드롭예정 · 보류 · 이슈 · 비고
+  final int rank;      // 정렬 순서
+  final int days;      // 지연 일수
+  final String stage;
+  final String expected;
+  final List<String> lines;
+
+  const _CheckRow({
+    required this.model,
+    required this.name,
+    required this.kind,
+    required this.rank,
+    required this.days,
+    required this.stage,
+    required this.expected,
+    required this.lines,
+  });
+}
+
 class ProjectOverviewScreen extends StatefulWidget {
   final String projectKey;
   final String projectName;
@@ -174,6 +201,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           // 목록에는 '지연중' 이 다섯인데 카드는 0 으로 뜬다.
           final delayed = models.where((m) => _alertOf(m) == '지연').length;
           final watched = models.where((m) => _alertOf(m) == '주의').length;
+          final held = models.where((m) => holdOf(m).isNotEmpty).length;
 
           final byGroup = <String, List<Map<String, dynamic>>>{'양산': [], '개발': []};
           for (final m in models) {
@@ -231,21 +259,27 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                           valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0F2C59)),
                         ),
                       ),
+                      const SizedBox(height: 14),
+                      // 카드 세 장을 따로 두면 숫자만 보이고 '뭐가 지연인데' 를
+                      // 다시 물어야 한다. 진행률과 같은 카드에 두고 누르게 한다.
+                      Row(children: [
+                        _pill('전체', total, const Color(0xFF0E2841), models, null),
+                        const SizedBox(width: 6),
+                        _pill('지연', delayed, const Color(0xFFDC2626), models,
+                            ModelBucket.delayed),
+                        const SizedBox(width: 6),
+                        _pill('임박', watched, const Color(0xFFE97132), models,
+                            ModelBucket.soon),
+                        const SizedBox(width: 6),
+                        _pill('보류', held, const Color(0xFF6B7280), models,
+                            ModelBucket.hold),
+                      ]),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
-                // ── KPI 3열
-                Row(children: [
-                  _kpi('전체 모델', '$total개', const Color(0xFF0F2C59)),
-                  const SizedBox(width: 8),
-                  _kpi('지연', '$delayed개', const Color(0xFFDC2626)),
-                  const SizedBox(width: 8),
-                  _kpi('주의', '$watched개', const Color(0xFFD97706)),
-                ]),
-                const SizedBox(height: 12),
-                // ── 주요 이슈 / 리스크
-                _buildIssueSection(models),
+                // ── 확인 필요 (지연 · 임박 · 이슈 · 비고를 한 목록으로)
+                _buildCheckSection(models),
                 _buildStatusNote((data['status_note'] ?? '').toString()),
                 // ── 주차별 계획 (엑셀 → PNG, 탭하면 확대)
                 _buildWeeklyPlanSection(),
@@ -294,6 +328,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _kpi(String label, String value, Color color) {
     return Expanded(
       child: Container(
@@ -312,6 +347,293 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     );
   }
 
+  /// 진행률 카드 안의 작은 칩. 누르면 그 상태만 걸린 목록이 열린다.
+  bool _checkAll = false;
+
+  Widget _pill(String label, int n, Color color,
+      List<Map<String, dynamic>> models, ModelBucket? bucket) {
+    final on = n > 0;
+    return Expanded(
+      child: GestureDetector(
+        onTap: !on && bucket != null
+            ? null
+            : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ModelListScreen(
+                    projectKey: widget.projectKey,
+                    projectName: widget.projectName,
+                    groupName: '전체',
+                    models: models,
+                    initialFilter: bucket,
+                  ),
+                )),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: on ? color.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: on ? color.withValues(alpha: 0.25) : const Color(0xFFE5E7EB)),
+          ),
+          child: Column(children: [
+            Text('$n',
+                style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: on ? color : const Color(0xFFCBD5E1))),
+            const SizedBox(height: 1),
+            Text(label,
+                style: const TextStyle(fontSize: 10.5, color: Color(0xFF6B7280))),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  static int _daysPast(Map m) {
+    final e = (m['current_expected'] ?? '').toString();
+    if (e.isEmpty) return 0;
+    try {
+      return DateTime.now().difference(DateTime.parse(e)).inDays;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// 확인이 필요한 모델을 한 목록으로. 급한 순서대로.
+  List<_CheckRow> _checkRows(
+      List<Map<String, dynamic>> models, Map<String, List<String>> ai) {
+    final out = <_CheckRow>[];
+    for (final m in models) {
+      final name = (m['name'] ?? m['id'] ?? '').toString();
+      final hold = holdOf(m);
+      final alert = _alertOf(m);
+      final issues = (m['issues'] ?? '').toString().trim();
+      final note = (m['note'] ?? '').toString().trim();
+
+      String kind;
+      int rank;
+      if (hold.isNotEmpty) {
+        kind = hold;
+        rank = 3;
+      } else if (alert == '지연') {
+        kind = '지연';
+        rank = 0;
+      } else if (alert == '주의') {
+        kind = '임박';
+        rank = 1;
+      } else if (issues.isNotEmpty) {
+        kind = '이슈';
+        rank = 2;
+      } else if (note.isNotEmpty) {
+        kind = '비고';
+        rank = 4;
+      } else {
+        continue;
+      }
+
+      final lines = <String>[];
+      if (issues.isNotEmpty) {
+        // AI 가 정리해 준 문장이 있으면 그걸 쓰고, 없으면 적어둔 그대로.
+        final got = ai[name] ?? ai[(m['id'] ?? '').toString()];
+        lines.addAll((got != null && got.isNotEmpty) ? got : issues.split('\n'));
+      }
+      if (note.isNotEmpty) lines.addAll(note.split('\n'));
+
+      out.add(_CheckRow(
+        model: m,
+        name: name,
+        kind: kind,
+        rank: rank,
+        days: _daysPast(m),
+        stage: (m['current_stage'] ?? '').toString(),
+        expected: (m['current_expected'] ?? '').toString(),
+        lines: lines
+            .map((l) => l.trim())
+            .where((l) => l.isNotEmpty)
+            .take(3)
+            .toList(),
+      ));
+    }
+    out.sort((a, b) => a.rank != b.rank ? a.rank - b.rank : b.days - a.days);
+    return out;
+  }
+
+  static Color _kindColor(String kind) {
+    switch (kind) {
+      case '지연':
+        return const Color(0xFFDC2626);
+      case '임박':
+        return const Color(0xFFE97132);
+      case '이슈':
+        return const Color(0xFF156082);
+      case '비고':
+        return const Color(0xFF9CA3AF);
+      default:
+        return const Color(0xFF6B7280); // 드롭예정 · 보류
+    }
+  }
+
+  Widget _checkRowTile(_CheckRow r, List<Map<String, dynamic>> models) {
+    final c = _kindColor(r.kind);
+    final sub = <String>[
+      if (r.stage.isNotEmpty) r.stage,
+      if (r.expected.isNotEmpty) '완료예정 ${r.expected}',
+    ].join(' · ');
+    return InkWell(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ModelListScreen(
+          projectKey: widget.projectKey,
+          projectName: widget.projectName,
+          groupName: '전체',
+          models: models,
+        ),
+      )),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            margin: const EdgeInsets.only(top: 5),
+            width: 6, height: 6,
+            decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(r.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF111827))),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                    r.days > 0 && (r.kind == '지연')
+                        ? '${r.kind} ${r.days}일'
+                        : r.kind,
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w800, color: c)),
+              ]),
+              if (sub.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(sub,
+                      style: const TextStyle(
+                          fontSize: 11.5, color: Color(0xFF9CA3AF))),
+                ),
+              for (final l in r.lines)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(l,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12.5, height: 1.4, color: Color(0xFF374151))),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// 확인 필요 — 지연·임박·보류·이슈·비고가 한 목록에 한 가지 모양으로 들어간다.
+  Widget _buildCheckSection(List<Map<String, dynamic>> models) {
+    return FutureBuilder<List<Map<String, String>>>(
+      future: _summaryFuture,
+      builder: (context, snap) {
+        // AI 정리는 있으면 쓰고 없으면 적어둔 그대로 쓴다. 기다리지 않는다.
+        final ai = <String, List<String>>{};
+        for (final it in (snap.data ?? const <Map<String, String>>[])) {
+          final k = (it['model'] ?? '').trim();
+          if (k.isEmpty) continue;
+          ai.putIfAbsent(k, () => []).addAll((it['summary'] ?? '')
+              .split('\n')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty));
+        }
+        final rows = _checkRows(models, ai);
+        final counts = <String, int>{};
+        for (final r in rows) {
+          counts[r.kind] = (counts[r.kind] ?? 0) + 1;
+        }
+        final shown = _checkAll ? rows : rows.take(6).toList();
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('확인 필요',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: rows.isEmpty
+                      ? const Color(0xFFDCFCE7)
+                      : const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('${rows.length}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: rows.isEmpty
+                            ? const Color(0xFF059669)
+                            : const Color(0xFFDC2626))),
+              ),
+            ]),
+            if (counts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                    counts.entries.map((e) => '${e.key} ${e.value}').join(' · '),
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF9CA3AF))),
+              ),
+            const SizedBox(height: 2),
+            if (rows.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Text('확인할 항목이 없습니다',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF))),
+              )
+            else ...[
+              for (int i = 0; i < shown.length; i++) ...[
+                if (i > 0) const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                _checkRowTile(shown[i], models),
+              ],
+              if (rows.length > 6)
+                Align(
+                  alignment: Alignment.center,
+                  child: TextButton(
+                    onPressed: () => setState(() => _checkAll = !_checkAll),
+                    child: Text(
+                        _checkAll ? '접기' : '모두 보기 (${rows.length})',
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF156082))),
+                  ),
+                ),
+            ],
+          ]),
+        );
+      },
+    );
+  }
+
+  // 지연 개수는 KPI 카드에, 지연 목록은 여기에, 이슈 텍스트는 AI 블록에
+  // 따로 있던 예전 구성. _buildCheckSection 으로 합쳤다.
+  // ignore: unused_element
   Widget _buildIssueSection(List<Map<String, dynamic>> models) {
     // issues 텍스트가 실제로 있는 모델만 추출
     final withIssues = models
