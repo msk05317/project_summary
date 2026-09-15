@@ -8,6 +8,9 @@ import 'model_cost_list_screen.dart';
 import '../models/weekly_revenue.dart';
 import '../widgets/weekly_revenue_card.dart';
 import '../widgets/weekly_board_card.dart';
+import '../models/bloom_daily.dart';
+import '../services/bloom_service.dart';
+import '../widgets/bloom_today_card.dart';
 import '../widgets/automotive_overview_card.dart';
 import '../services/api_service.dart';
 
@@ -28,9 +31,19 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   @override
   void initState() {
     super.initState();
+    if (_isBloomItem) _loadBloom();
     _modelsFuture = _fetchModels();
     _planFuture = _fetchWeeklyPlan();
     _summaryFuture = _fetchIssuesSummary();
+  }
+
+  /// 블룸은 품목 하나가 프로젝트 하나다. 모델이 아니라 일 보드를 본다.
+  bool get _isBloomItem => BloomService.isItemKey(widget.projectKey);
+  BloomDailyBoard _bloom = BloomDailyBoard.empty;
+
+  Future<void> _loadBloom() async {
+    final b = await BloomService.board(projectKey_: widget.projectKey, force: true);
+    if (mounted) setState(() => _bloom = b);
   }
 
   Future<Map<String, dynamic>> _fetchModels() async {
@@ -176,10 +189,15 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 _planFuture = _fetchWeeklyPlan();
                 _summaryFuture = _fetchIssuesSummary();
               });
+              if (_isBloomItem) await _loadBloom();
             },
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_isBloomItem && _bloom.hasBoard) ...[
+                  BloomTodayCard(board: _bloom),
+                  const SizedBox(height: 12),
+                ],
                 // ── 헤더 카드
                 Container(
                   padding: const EdgeInsets.all(16),

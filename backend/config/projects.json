@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-09-04",
+  "updated_at": "2026-09-15",
   "projects": [
     {
       "id": "chamber",
@@ -682,7 +682,7 @@
     {
       "id": "bloom_main",
       "division_id": "bloom",
-      "label": "블룸",
+      "label": "블룸 (전체)",
       "badge_label": "블룸",
       "aliases": [
         "Bloom",
@@ -693,8 +693,9 @@
         "블룸",
         "bloom"
       ],
-      "visible": true,
-      "order": 1
+      "visible": false,
+      "order": 1,
+      "note": "일 보고 자료 원본 저장소. 화면에는 품목별 프로젝트가 보인다."
     },
     {
       "id": "sdi",
@@ -745,6 +746,111 @@
       ],
       "visible": true,
       "order": 3
+    },
+    {
+      "id": "bloom_yfp",
+      "division_id": "bloom",
+      "label": "YFP",
+      "badge_label": "YFP",
+      "bloom_item": "YFP",
+      "aliases": [
+        "YFP"
+      ],
+      "keywords": [
+        "YFP"
+      ],
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "bloom_corva_kpe",
+      "division_id": "bloom",
+      "label": "Corva KPE",
+      "badge_label": "Corva KPE",
+      "bloom_item": "Corva KPE",
+      "aliases": [
+        "Corva KPE"
+      ],
+      "keywords": [
+        "Corva KPE"
+      ],
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "bloom_sl7",
+      "division_id": "bloom",
+      "label": "SL7",
+      "badge_label": "SL7",
+      "bloom_item": "SL7",
+      "aliases": [
+        "SL7"
+      ],
+      "keywords": [
+        "SL7"
+      ],
+      "visible": true,
+      "order": 3
+    },
+    {
+      "id": "bloom_tc",
+      "division_id": "bloom",
+      "label": "TC",
+      "badge_label": "TC",
+      "bloom_item": "TC",
+      "aliases": [
+        "TC"
+      ],
+      "keywords": [
+        "TC"
+      ],
+      "visible": true,
+      "order": 4
+    },
+    {
+      "id": "bloom_wdm",
+      "division_id": "bloom",
+      "label": "WDM",
+      "badge_label": "WDM",
+      "bloom_item": "WDM",
+      "aliases": [
+        "WDM"
+      ],
+      "keywords": [
+        "WDM"
+      ],
+      "visible": true,
+      "order": 5
+    },
+    {
+      "id": "bloom_bop",
+      "division_id": "bloom",
+      "label": "BOP 기구",
+      "badge_label": "BOP 기구",
+      "bloom_item": "BOP 기구",
+      "aliases": [
+        "BOP 기구"
+      ],
+      "keywords": [
+        "BOP 기구"
+      ],
+      "visible": true,
+      "order": 6
+    },
+    {
+      "id": "bloom_bop_assy",
+      "division_id": "bloom",
+      "label": "BOP Assy",
+      "badge_label": "BOP Assy",
+      "bloom_item": "BOP Assy",
+      "aliases": [
+        "BOP Assy"
+      ],
+      "keywords": [
+        "BOP Assy"
+      ],
+      "visible": true,
+      "order": 7
     }
   ]
 }

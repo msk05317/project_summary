@@ -22905,17 +22905,49 @@ def _bloom_summary(board: dict, date: str = ""):
             "prev_date": (prev or {}).get("date", "")}
 
 
+# 블룸은 품목 하나가 프로젝트 하나다 (YFP · Corva KPE · SL7 …).
+# 엑셀은 한 장으로 오므로 원본은 bloom_main 한 곳에 두고, 품목 프로젝트는
+# 거기서 자기 몫만 잘라 본다. 갈라 저장하면 다음 업로드 때 합치는 일이
+# 또 생기고, 한 번 어긋나면 되돌리기 어렵다.
+_BLOOM_STORE = "bloom_main"
+
+
+def _bloom_item_of(project_key: str) -> str:
+    """그 프로젝트가 맡은 품목 이름. 품목 프로젝트가 아니면 빈 문자열."""
+    try:
+        p = _cl.get_project(project_key) or {}
+    except Exception:
+        return ""
+    return str(p.get("bloom_item") or "").strip()
+
+
+def _bloom_slice(board: dict, item: str) -> dict:
+    """품목 하나만 남긴 보드. 날짜·요약도 그 품목 기준으로 다시 낸다."""
+    want = _norm_label(item)
+    items = [i for i in (board.get("items") or [])
+             if isinstance(i, dict) and _norm_label(i.get("item")) == want]
+    out = dict(board)
+    out["items"] = items
+    out["dates"] = sorted({d for i in items for st in (i.get("steps") or [])
+                           for d in ((st or {}).get("days") or {})})
+    return out
+
 @app.get("/projects/{project_key}/daily-board")
 def get_daily_board(project_key: str, date: str = ""):
     """블룸 일 보드. Admin 도 앱도 이걸 읽는다."""
     _key = _model_key_alias(project_key)
-    proj = (_load_models().get("projects") or {}).get(_key) or {}
+    _item = _bloom_item_of(_key)
+    _store = _BLOOM_STORE if _item else _key
+    proj = (_load_models().get("projects") or {}).get(_store) or {}
     board = proj.get("daily_board")
+    if isinstance(board, dict) and _item:
+        board = _bloom_slice(board, _item)
     if not isinstance(board, dict) or not board.get("items"):
         return {"project_key": _key, "has_board": False, "items": [], "dates": []}
     import datetime as _dt
     out = dict(board)
     out["project_key"] = _key
+    out["item"] = _item
     out["has_board"] = True
     out["today"] = _dt.date.today().strftime("%Y-%m-%d")
     out["summary"] = _bloom_summary(board, date)
@@ -22944,7 +22976,9 @@ def _bloom_parse_upload(raw: bytes):
 async def admin_bloom_daily_preview(project_key: str, file: UploadFile = File(...),
                                     _admin: int = Depends(get_admin_session)):
     """저장하지 않고 무엇이 바뀌는지만 보여준다."""
-    _key = _model_key_alias(project_key)
+    # 엑셀은 품목 전체가 한 장이다. 어느 품목 화면에서 올리든 원본은 한 곳에.
+    _key = _BLOOM_STORE if _bloom_item_of(_model_key_alias(project_key)) \
+        else _model_key_alias(project_key)
     parsed = _bloom_parse_upload(await file.read())
     proj = (_load_models().get("projects") or {}).get(_key) or {}
     board, diff = _bloom_merge(proj.get("daily_board") or {}, parsed)
@@ -22961,7 +22995,8 @@ async def admin_bloom_daily_preview(project_key: str, file: UploadFile = File(..
 async def admin_bloom_daily_apply(project_key: str, file: UploadFile = File(...),
                                   _admin: int = Depends(get_admin_session)):
     """합쳐서 저장한다."""
-    _key = _model_key_alias(project_key)
+    _key = _BLOOM_STORE if _bloom_item_of(_model_key_alias(project_key)) \
+        else _model_key_alias(project_key)
     parsed = _bloom_parse_upload(await file.read())
     data = _load_models()
     proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})

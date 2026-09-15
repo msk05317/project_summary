@@ -13,16 +13,18 @@ class BloomService {
   static const String divisionId = 'bloom';
   static const String projectKey = 'bloom_main';
 
-  static BloomDailyBoard? _cache;
-  static DateTime? _cacheAt;
+  // 품목 하나가 프로젝트 하나다. 캐시를 하나만 두면 YFP 를 열었다가
+  // SL7 로 들어가면 남의 값이 잠깐 보인다.
+  static final Map<String, BloomDailyBoard> _cache = {};
+  static final Map<String, DateTime> _cacheAt = {};
   static const Duration _cacheTtl = Duration(seconds: 60);
 
   static Future<BloomDailyBoard> board({
     String projectKey_ = projectKey,
     bool force = false,
   }) async {
-    final hit = _cache;
-    final at = _cacheAt;
+    final hit = _cache[projectKey_];
+    final at = _cacheAt[projectKey_];
     if (!force &&
         hit != null &&
         at != null &&
@@ -37,8 +39,8 @@ class BloomService {
       final j = jsonDecode(utf8.decode(r.bodyBytes));
       if (j is! Map) return BloomDailyBoard.empty;
       final out = BloomDailyBoard.fromJson(j);
-      _cache = out;
-      _cacheAt = DateTime.now();
+      _cache[projectKey_] = out;
+      _cacheAt[projectKey_] = DateTime.now();
       return out;
     } catch (_) {
       return BloomDailyBoard.empty;
@@ -46,7 +48,11 @@ class BloomService {
   }
 
   static void clear() {
-    _cache = null;
-    _cacheAt = null;
+    _cache.clear();
+    _cacheAt.clear();
   }
+
+  /// 블룸 품목 프로젝트인가. 품목 하나가 프로젝트 하나다.
+  static bool isItemKey(String key) =>
+      key.startsWith('bloom_') && key != projectKey;
 }

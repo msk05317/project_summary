@@ -112,6 +112,15 @@ assert '<script>' not in html
 ok += 1
 
 # 주차 보드로 새는지
-assert "window._bdIsDaily(pk)" in HTML and "DAILY_BOARD_PROJECTS = ['bloom_main']" in HTML
+assert "window._bdIsDaily(pk)" in HTML, '주차 보드로 새고 있다'
+# 블룸 품목 프로젝트가 전부 일 보드를 쓰는지 (설정과 대조)
+import json as _j, pathlib as _pl, re as _re
+_cfg = _j.loads((_pl.Path(__file__).resolve().parents[1] / 'config' / 'projects.json')
+                .read_text(encoding='utf-8'))['projects']
+_bloom = {p['id'] for p in _cfg if p.get('division_id') == 'bloom'}
+_m = _re.search(r'DAILY_BOARD_PROJECTS = \[(.*?)\]', HTML, _re.S)
+assert _m, 'DAILY_BOARD_PROJECTS 를 못 찾았다'
+_listed = {x.strip().strip("'\"") for x in _m.group(1).split(',') if x.strip()}
+assert _bloom <= _listed, f'일 보드로 안 잡히는 블룸 프로젝트: {sorted(_bloom - _listed)}'
 ok += 1
 print(f'전부 통과 ({ok}/13)')

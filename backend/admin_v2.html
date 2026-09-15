@@ -9419,7 +9419,10 @@ window._ovProjectKey = function() {
     if (label) el.textContent = label;
   };
 
-  window.DAILY_BOARD_PROJECTS = ['bloom_main'];
+  // 블룸은 품목 하나가 프로젝트 하나다. 어느 품목에서 올리든 원본은 한 곳에
+  // 저장되고, 각 품목은 자기 몫만 잘라 본다.
+  window.DAILY_BOARD_PROJECTS = ['bloom_main', 'bloom_yfp', 'bloom_corva_kpe',
+    'bloom_sl7', 'bloom_tc', 'bloom_wdm', 'bloom_bop', 'bloom_bop_assy'];
 
   window._bdIsDaily = function(pk) {
     return (window.DAILY_BOARD_PROJECTS || []).indexOf(pk) >= 0;
