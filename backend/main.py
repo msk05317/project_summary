@@ -21638,6 +21638,45 @@ def get_progress_trend(period: str = "week", points: int = 4, division_id: str =
     }
 
 
+def _model_alert(m: dict, disp_group: str = "", expected: str = "",
+                 progress=None) -> str:
+    """'지연' · '주의' · '정상'.
+
+    카드의 지연/주의 개수와 목록 줄의 '지연중 · 06 BV2' 가 서로 다른 값을
+    보고 있었다. 카드는 손으로 적는 status 만 보고, 줄은 완료예정일로 따졌다.
+    그래서 목록에는 지연이 다섯인데 카드는 0 이었다.
+
+    여기서 한 번만 정하고 양쪽이 이걸 쓴다.
+      - 손으로 '지연'/'주의' 를 적어뒀으면 그게 우선
+      - 개발: 완료예정일이 지났으면 지연, 7일 이내면 주의
+      - 진행률 100% 면 정상
+    """
+    manual = str((m or {}).get("status") or "").strip()
+    if manual in ("지연", "주의"):
+        return manual
+    try:
+        pg = int(progress if progress is not None else (m or {}).get("progress") or 0)
+    except Exception:
+        pg = 0
+    if pg >= 100:
+        return "정상"
+    g = disp_group or _display_group(m)
+    if g != "개발":
+        return "정상"
+    exp = str(expected or (m or {}).get("current_expected") or "").strip()
+    if not exp:
+        return "정상"
+    d = _parse_any_date(exp)
+    if not d:
+        return "정상"
+    import datetime as _dt
+    left = (d - _dt.date.today()).days
+    if left < 0:
+        return "지연"
+    if left <= 7:
+        return "주의"
+    return "정상"
+
 def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "note", "part_number", "weekly_plan", "weekly_progress", "weekly_summary")}
     _disp = _display_group(m)
@@ -21652,6 +21691,7 @@ def _enrich_model(m: dict) -> dict:
         out["current_expected"] = expected
         out["done_steps"] = sum(1 for s in proc if str(s.get("actual") or "").strip())
         out["total_steps"] = len(proc)
+        out["alert"] = _model_alert(m, _disp, expected, out["progress"])
     else:
         # 양산으로 넘어가도 최종 승인까지 간 공정 기록은 계속 볼 수 있어야 한다.
         # progress 는 덮지 않는다 — 그건 이제 PO 대비 출하다.
@@ -21664,6 +21704,7 @@ def _enrich_model(m: dict) -> dict:
                                     if str((st or {}).get("actual") or "").strip())
             out["total_steps"] = len(_proc)
             out["dev_type"] = m.get("dev_type") or ""
+    out.setdefault("alert", _model_alert(m, _disp))
     return out
 
 @app.get("/projects/{project_key}/models/detail")

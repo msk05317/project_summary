@@ -1,29 +1,22 @@
 import 'package:flutter/material.dart';
 import '../design/typography.dart';
+import '../utils/format.dart';
 
 class ModelCostDetailScreen extends StatelessWidget {
   final Map<String, dynamic> model;
   const ModelCostDetailScreen({super.key, required this.model});
 
-  String _fmt(num? v) {
-    final n = (v ?? 0).toInt();
-    final s = n.toString();
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      final pos = s.length - i;
-      buf.write(s[i]);
-      if (pos > 1 && pos % 3 == 1) buf.write(',');
-    }
-    return buf.toString();
-  }
+  /// 센트를 살린다. \$0.7 짜리 부품을 잘라 0 으로 만들면
+  /// 재료비율이 0.0% 로 뜬다.
+  String _fmt(num? v) => Fmt.unit(v ?? 0).replaceFirst('\$', '');
 
   @override
   Widget build(BuildContext context) {
     final name = model['name'] ?? model['id'] ?? '';
     final group = model['group'] ?? '양산';
     final status = model['status'] ?? '정상';
-    final price = (model['price'] as num?)?.toInt() ?? 0;
-    final mcost = (model['material_cost'] as num?)?.toInt() ?? 0;
+    final price = (model['price'] as num?)?.toDouble() ?? 0;
+    final mcost = (model['material_cost'] as num?)?.toDouble() ?? 0;
     final ratio = price > 0 ? (mcost / price * 100) : null;
 
     return Scaffold(

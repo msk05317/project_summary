@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../design/typography.dart';
+import '../utils/format.dart';
 import 'dev_process_screen.dart';
 
 // 개발 승인 프로세스 13단계 (표시용)
@@ -732,17 +733,10 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
     );
   }
 
-  int get _price => (model['price'] as num?)?.toInt() ?? 0;
+  /// 판가는 센트까지 있다 (\$0.7 짜리 부품). 자르면 매출이 통째로 틀어진다.
+  double get _price => (model['price'] as num?)?.toDouble() ?? 0;
 
-  String _usd(int v) {
-    final s = v.toString();
-    final b = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
-      b.write(s[i]);
-    }
-    return '\$$b';
-  }
+  String _usd(num v) => Fmt.unit(v);
 
   Widget _moneyCell(String label, String value, Color color) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,

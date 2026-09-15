@@ -17,6 +17,17 @@ class Fmt {
   /// 1520796 → '\$1,520,796'
   static String money(num? v) => v == null ? '-' : '\$${_int.format(v.round())}';
 
+  /// 단가. 센트를 버리면 안 되는 자리에 쓴다.
+  ///   4950 → '\$4,950',  0.7 → '\$0.70',  12.5 → '\$12.50'
+  /// 0.7 짜리 부품을 .toInt() 로 0 으로 만들어 재료비율이 0.0% 로 뜨던 적이 있다.
+  static String unit(num? v) {
+    if (v == null) return '-';
+    if (v == v.roundToDouble()) return '\$${_int.format(v.round())}';
+    return '\$${_cents.format(v)}';
+  }
+
+  static final NumberFormat _cents = NumberFormat('#,##0.00');
+
   /// 큰 금액 축약 — 한국식 만/억 단위.
   /// K·M 이 한눈에 안 들어온다는 피드백이 있어 만·억으로 바꿨다.
   ///   7120000 → '$712만',  164566 → '$16.5만',  74707 → '$74,707',  120000000 → '$1.2억'

@@ -157,8 +157,10 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           final int? avgProgress = scored.isEmpty
               ? null
               : (scored.reduce((a, b) => a + b) / scored.length).round();
-          final delayed = models.where((m) => m['status'] == '지연').length;
-          final watched = models.where((m) => m['status'] == '주의').length;
+          // 서버가 정한 값(alert)을 쓴다. 손으로 적은 status 만 보면
+          // 목록에는 '지연중' 이 다섯인데 카드는 0 으로 뜬다.
+          final delayed = models.where((m) => _alertOf(m) == '지연').length;
+          final watched = models.where((m) => _alertOf(m) == '주의').length;
 
           final byGroup = <String, List<Map<String, dynamic>>>{'양산': [], '개발': []};
           for (final m in models) {
@@ -527,10 +529,18 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     );
   }
 
+  /// 지연/주의 판정. 서버가 alert 로 내려준다.
+  /// 옛 서버에 붙었을 때를 위해 status 로 떨어진다.
+  static String _alertOf(Map m) {
+    final a = (m['alert'] ?? '').toString().trim();
+    if (a.isNotEmpty) return a;
+    return (m['status'] ?? '').toString().trim();
+  }
+
   Widget _groupCard(String group, List<Map<String, dynamic>> list) {
     final isMass = group == '양산';
-    final delayed = list.where((m) => m['status'] == '지연').length;
-    final watched = list.where((m) => m['status'] == '주의').length;
+    final delayed = list.where((m) => _alertOf(m) == '지연').length;
+    final watched = list.where((m) => _alertOf(m) == '주의').length;
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(MaterialPageRoute(

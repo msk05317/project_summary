@@ -100,8 +100,10 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final m = filtered[i];
-                          final price = (m['price'] as num?)?.toInt() ?? 0;
-                          final mcost = (m['material_cost'] as num?)?.toInt() ?? 0;
+                          // .toInt() 로 자르면 \$0.7 부품이 0 이 되고
+                          // 재료비율이 0.0% 로 뜬다. 센트를 살린다.
+                          final price = (m['price'] as num?)?.toDouble() ?? 0;
+                          final mcost = (m['material_cost'] as num?)?.toDouble() ?? 0;
                           final ratio = price > 0 ? (mcost / price * 100) : null;
                           final group = m['group'] ?? '양산';
                           return GestureDetector(
