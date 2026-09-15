@@ -11,7 +11,8 @@ SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 WANT = {'_model_hold', '_model_po_wait', '_model_alert', '_display_group',
         '_norm_phases', '_phase_ord', '_as_money', '_process_step_done',
-        '_parse_any_date', '_project_hold', '_project_hold_reason'}
+        '_parse_any_date', '_project_hold', '_project_hold_reason',
+        '_hold_from_note', '_stamp_project_hold'}
 g = {}
 for n in tree.body:
     if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') in (
@@ -101,5 +102,40 @@ if bk:
     for k in ('powerbox', 'frame', 'hrva_plate', 'chamber', 'enclosure'):
         assert phold(ps.get(k) or {}) == '', f'{k} 가 잘못 보류로 잡힌다'
     ok += 1
+
+# ── 문구가 사라져도 보류는 유지된다 ──
+# 주간보고를 다시 올리거나 현황을 고치다 문구가 날아가면, 보류가 조용히
+# 풀리면서 멈춰 세운 일정이 다시 지연으로 세어졌다.
+stamp = g['_stamp_project_hold']
+proj = {'status_note': CUPNOTE}
+assert stamp(proj, proj['status_note']) is True
+assert proj['hold'] == '보류' and proj['hold_source'] == 'status_note'
+assert 'LAIR 작성 홀딩' in proj['hold_reason']
+ok += 1
+
+proj['status_note'] = '양산 1종\n개발 28종'          # 문구가 사라졌다
+assert phold(proj) == '보류', '문구가 사라지자 보류가 풀렸다'
+assert 'LAIR' in preason(proj), '근거 문장도 같이 날아갔다'
+stamp(proj, proj['status_note'])                      # 다시 저장해도
+assert phold(proj) == '보류'
+ok += 1
+
+# 푸는 길은 둘: 현황에 '홀딩 해제' 라고 적거나, admin 에서 '진행' 으로
+proj['status_note'] = '홀딩 해제, 재개'
+assert stamp(proj, proj['status_note']) is True
+assert phold(proj) == '' and 'hold' not in proj
+ok += 1
+
+proj2 = {'status_note': CUPNOTE}
+stamp(proj2, proj2['status_note'])
+proj2['hold'] = '진행'
+assert phold(proj2) == '', 'admin 에서 진행으로 바꿔도 안 풀린다'
+ok += 1
+
+# admin 화면에 그 선택지가 있는지
+ADMIN = (ROOT / 'admin_v2.html').read_text(encoding='utf-8')
+assert 'mdl-proj-hold' in ADMIN and '보류(홀딩)' in ADMIN, 'admin 에 프로젝트 상태가 없다'
+assert "hold: (document.getElementById('mdl-proj-hold')" in ADMIN, '저장할 때 안 보낸다'
+ok += 1
 
 print(f'전부 통과 · {ok}개 항목')

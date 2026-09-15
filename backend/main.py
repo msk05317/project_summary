@@ -14150,7 +14150,8 @@ def save_project_types(project_key: str, payload: dict):
 def get_project_status_note(project_key: str):
     _key = _model_key_alias(project_key)
     proj = (_load_models().get("projects") or {}).get(_key) or {}
-    return {"project_key": _key, "status_note": proj.get("status_note") or ""}
+    return {"project_key": _key, "status_note": proj.get("status_note") or "",
+            "hold": _project_hold(proj), "hold_reason": _project_hold_reason(proj)}
 
 
 @app.put("/admin/projects/{project_key}/status-note")
@@ -14162,9 +14163,22 @@ def put_project_status_note(project_key: str, payload: dict,
     data = _load_models()
     proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
     proj["status_note"] = note
+    if "hold" in (payload or {}):
+        # admin 에서 직접 고른 값이 문구보다 우선한다
+        _h = str(payload.get("hold") or "").strip()
+        if _h in ("", "진행", "해제", "없음"):
+            for _f in ("hold", "hold_reason", "hold_source"):
+                proj.pop(_f, None)
+        else:
+            proj["hold"] = "드롭예정" if "드롭" in _h else "보류"
+            proj["hold_source"] = "manual"
+            proj["hold_reason"] = _hold_from_note(note)[1] or proj.get("hold_reason") or ""
+    else:
+        _stamp_project_hold(proj, note)
     _save_models(data)
-    print(f"[status-note] {_key}: {len(note)}자 저장")
-    return {"ok": True, "project_key": _key, "status_note": note}
+    print(f"[status-note] {_key}: {len(note)}자 저장 · 보류={proj.get('hold') or '-'}")
+    return {"ok": True, "project_key": _key, "status_note": note,
+            "hold": proj.get("hold") or "", "hold_reason": proj.get("hold_reason") or ""}
 
 
 # ─── 주차별 계획 (프로젝트당 1개) ───
@@ -22028,29 +22042,72 @@ def _project_hold(proj: dict) -> str:
     멈춰 세운 일정을 늦었다고 하면 숫자가 거짓말을 한다.
     """
     st = str((proj or {}).get("hold") or "").strip().replace(" ", "")
+    if st in ("진행", "해제", "없음"):
+        return ""                      # admin 에서 직접 풀었다
     if st in ("드롭예정", "드롭"):
         return "드롭예정"
     if st in ("보류", "홀딩", "홀드", "중단"):
         return "보류"
-    txt = str((proj or {}).get("status_note") or "").lower()
-    if not txt.strip():
-        return ""
-    if any(neg in txt for neg in _HOLD_NEGATIONS):
-        return ""
+    # 새겨둔 값이 없으면 현황 문구에서 읽는다 (읽자마자 _stamp 로 남긴다)
+    kind, _ = _hold_from_note((proj or {}).get("status_note"))
+    return kind
+
+
+def _hold_from_note(note: str):
+    """현황 문구에서 읽어낸 (종류, 근거 문장). 없으면 ('', '')."""
+    txt = str(note or "")
+    low = txt.lower()
+    if not low.strip():
+        return "", ""
+    if any(neg in low for neg in _HOLD_NEGATIONS):
+        return "", ""
     for kind, word in _HOLD_WORDS:
-        if word in txt:
-            return kind
-    return ""
+        if word in low:
+            for line in txt.splitlines():
+                if word in line.lower():
+                    return kind, line.strip().lstrip("*・- ").strip()
+            return kind, ""
+    return "", ""
+
+
+def _stamp_project_hold(proj: dict, note: str) -> bool:
+    """현황에 적힌 보류를 프로젝트 필드로 새겨 둔다.
+
+    문구는 주간보고를 다시 올리거나 현황을 고치다 사라질 수 있다.
+    그때 보류가 조용히 풀리면 멈춰 세운 일정이 다시 지연으로 세어진다.
+    한 번 읽어낸 보류는 필드로 남기고, 풀 때는 현황에 '홀딩 해제' 라고
+    적거나 admin 에서 상태를 '진행' 으로 바꾸면 된다.
+    """
+    kind, why = _hold_from_note(note)
+    changed = False
+    if kind:
+        if proj.get("hold") != kind:
+            proj["hold"] = kind
+            changed = True
+        if why and proj.get("hold_reason") != why:
+            proj["hold_reason"] = why
+            changed = True
+        if proj.get("hold_source") != "status_note":
+            proj["hold_source"] = "status_note"
+            changed = True
+        return changed
+    # 현황에 '홀딩 해제' 처럼 푸는 말이 적혔으면 문구로 걸었던 보류를 푼다
+    low = str(note or "").lower()
+    if (proj.get("hold_source") == "status_note"
+            and any(neg in low for neg in _HOLD_NEGATIONS)):
+        for f in ("hold", "hold_reason", "hold_source"):
+            if f in proj:
+                proj.pop(f, None)
+                changed = True
+    return changed
 
 
 def _project_hold_reason(proj: dict) -> str:
     """보류라고 판단한 근거 문장 한 줄. 화면에 그대로 보여준다."""
-    txt = str((proj or {}).get("status_note") or "")
-    for line in txt.splitlines():
-        low = line.lower()
-        if any(w in low for _k, w in _HOLD_WORDS):
-            return line.strip().lstrip("*・- ").strip()
-    return ""
+    saved = str((proj or {}).get("hold_reason") or "").strip()
+    if saved:
+        return saved
+    return _hold_from_note((proj or {}).get("status_note"))[1]
 
 
 def _model_po_wait(m: dict, disp_group: str = "") -> bool:
@@ -25158,6 +25215,28 @@ def _restore_curie_busbar() -> None:
         print(f"[curie] 버스바 되살리기 실패(무시하고 계속): {e}")
 
 
+def _stamp_holds_once() -> None:
+    """현황 문구에 적힌 보류를 프로젝트 필드로 한 번 새겨 둔다.
+
+    문구는 주간보고를 다시 올리거나 현황을 고치다 사라진다. 그때 보류가
+    조용히 풀리면 멈춰 세운 일정이 다시 지연으로 세어진다 (CUP 15종).
+    """
+    try:
+        data = _load_models()
+        hit = []
+        for pk, proj in (data.get("projects") or {}).items():
+            if not isinstance(proj, dict):
+                continue
+            if _stamp_project_hold(proj, proj.get("status_note")):
+                hit.append(f"{pk}={proj.get('hold')}")
+        if hit:
+            _save_models(data)
+            print(f"[hold] 현황 문구에서 보류를 새겼다: {', '.join(hit)}")
+    except Exception as e:
+        print(f"[hold] 보류 새기기 실패(무시하고 계속): {e}")
+
+
 _cleanup_auto_notes()
 _cleanup_plan_originals()
 _restore_curie_busbar()
+_stamp_holds_once()

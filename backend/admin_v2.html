@@ -7477,6 +7477,14 @@ var sidebarSel = document.getElementById('v2-division-select');
           '<div class="mdl-note-card" id="mdl-note-card">' +
             '<div class="mdl-note-row">' +
               '<div class="mdl-note-label">프로젝트 현황</div>' +
+              // 프로젝트째 멈춘 상태. 현황 문구가 사라져도 여기 남는다.
+              '<select id="mdl-proj-hold" title="프로젝트 전체 상태" ' +
+                'style="margin-left:auto;margin-right:8px;padding:5px 8px;border:1px solid #D1D5DB;' +
+                'border-radius:6px;font-size:12px;font-weight:700;background:#fff;">' +
+                '<option value="">진행</option>' +
+                '<option value="보류">보류(홀딩)</option>' +
+                '<option value="드롭예정">드롭예정</option>' +
+              '</select>' +
               '<button type="button" class="mdl-btn mdl-btn-note-save" id="mdl-note-save">저장</button>' +
             '</div>' +
             '<textarea id="mdl-status-note" rows="3" placeholder="프로젝트 현황을 입력하세요 (앱에 표시됩니다)"></textarea>' +
@@ -7735,6 +7743,8 @@ var sidebarSel = document.getElementById('v2-division-select');
         .then(function(d) {
           const ta = document.getElementById('mdl-status-note');
           if (ta) ta.value = d.status_note || '';
+          const hs = document.getElementById('mdl-proj-hold');
+          if (hs) hs.value = d.hold || '';
         })
         .catch(function() {});
     }
@@ -8045,12 +8055,19 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/status-note', {
           method: 'PUT', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: noteEl ? noteEl.value : '' })
+          body: JSON.stringify({
+            note: noteEl ? noteEl.value : '',
+            hold: (document.getElementById('mdl-proj-hold') || {}).value || ''
+          })
         })
           .then(function(r) { return r.json().then(function(d){ return { status: r.status, d: d }; }); })
           .then(function(res) {
             var d = res.d || {};
-            if (d.ok) { msg.textContent = '✅ 현황 저장 완료'; msg.style.color = '#059669'; }
+            if (d.ok) {
+              msg.textContent = '✅ 현황 저장 완료' +
+                (d.hold ? ' · 프로젝트 ' + d.hold + ' (지연으로 세지 않음)' : '');
+              msg.style.color = '#059669';
+            }
             else {
               msg.textContent = '❌ 저장 실패 (' + res.status + ') ' +
                 (typeof d.detail === 'string' ? d.detail : '');
