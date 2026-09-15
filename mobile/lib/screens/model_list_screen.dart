@@ -52,7 +52,27 @@ bool devHasProcessData(Map<String, dynamic> m) {
   return ((m['done_steps'] as num?)?.toInt() ?? 0) > 0;
 }
 
-class ModelListScreen extends StatelessWidget {
+/// 모델 한 건의 상태. 목록 필터와 카드 색이 같은 값을 쓴다.
+enum ModelBucket { delayed, soon, running, done }
+
+ModelBucket _bucketOf(Map m) {
+  final pg = (m['progress'] as num?)?.toInt() ?? 0;
+  if (pg >= 100) return ModelBucket.done;
+  // 서버가 정한 값. 옛 서버면 손으로 적은 status 로 떨어진다.
+  final a = ((m['alert'] ?? m['status']) ?? '').toString().trim();
+  if (a == '지연') return ModelBucket.delayed;
+  if (a == '주의') return ModelBucket.soon;
+  return ModelBucket.running;
+}
+
+const Map<ModelBucket, String> _bucketLabel = {
+  ModelBucket.delayed: '지연',
+  ModelBucket.soon: '임박',
+  ModelBucket.running: '진행 중',
+  ModelBucket.done: '완료',
+};
+
+class ModelListScreen extends StatefulWidget {
   final String projectKey;
   final String projectName;
   final String groupName;
@@ -65,6 +85,94 @@ class ModelListScreen extends StatelessWidget {
     required this.groupName,
     required this.models,
   });
+
+  @override
+  State<ModelListScreen> createState() => _ModelListScreenState();
+}
+
+class _ModelListScreenState extends State<ModelListScreen> {
+  /// null = 미완료 전부 (기본). 완료된 건 처음부터 안 보인다 —
+  /// 끝난 걸 계속 스크롤로 넘기게 할 이유가 없다.
+  ModelBucket? _filter;
+
+  String get projectKey => widget.projectKey;
+  String get projectName => widget.projectName;
+  String get groupName => widget.groupName;
+  List<Map<String, dynamic>> get models => widget.models;
+
+  /// 지연 → 임박 → 진행 중 → 완료 순. 급한 게 위로 온다.
+  static const List<ModelBucket> _order = [
+    ModelBucket.delayed, ModelBucket.soon, ModelBucket.running, ModelBucket.done,
+  ];
+
+  Map<ModelBucket, int> get _counts {
+    final c = {for (final b in _order) b: 0};
+    for (final m in models) {
+      c[_bucketOf(m)] = (c[_bucketOf(m)] ?? 0) + 1;
+    }
+    return c;
+  }
+
+  List<Map<String, dynamic>> get _visible {
+    final out = models.where((m) {
+      final b = _bucketOf(m);
+      if (_filter == null) return b != ModelBucket.done;
+      return b == _filter;
+    }).toList();
+    out.sort((a, b) =>
+        _order.indexOf(_bucketOf(a)).compareTo(_order.indexOf(_bucketOf(b))));
+    return out;
+  }
+
+  Widget _chips() {
+    final c = _counts;
+    final undone = models.length - (c[ModelBucket.done] ?? 0);
+    Widget chip(String label, int n, bool on, VoidCallback tap, Color tint) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: GestureDetector(
+          onTap: tap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: on ? tint : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(
+                  color: on ? tint : const Color(0xFFE5E7EB)),
+            ),
+            child: Text('$label $n',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Colors.white : const Color(0xFF4B5563),
+                )),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          chip('미완료', undone, _filter == null,
+              () => setState(() => _filter = null), const Color(0xFF0E2841)),
+          chip('지연', c[ModelBucket.delayed] ?? 0, _filter == ModelBucket.delayed,
+              () => setState(() => _filter = ModelBucket.delayed),
+              const Color(0xFFDC2626)),
+          chip('임박', c[ModelBucket.soon] ?? 0, _filter == ModelBucket.soon,
+              () => setState(() => _filter = ModelBucket.soon),
+              const Color(0xFFE97132)),
+          chip('완료', c[ModelBucket.done] ?? 0, _filter == ModelBucket.done,
+              () => setState(() => _filter = ModelBucket.done),
+              const Color(0xFF059669)),
+        ]),
+      ),
+    );
+  }
 
   // ── 보고서 존재 여부 확인
   // 현재 양산 카드는 보고서 확인 없이 상세로 바로 이동한다.
@@ -199,13 +307,30 @@ class ModelListScreen extends StatelessWidget {
                     ),
                   ),
                 if (isDev) const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                _chips(),
+                const Divider(height: 1, color: Color(0xFFE5E7EB)),
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: models.length,
-                    itemBuilder: (context, i) =>
-                        isDev ? _devCard(context, models[i]) : _massCard(context, models[i]),
-                  ),
+                  child: Builder(builder: (context) {
+                    final list = _visible;
+                    if (list.isEmpty) {
+                      return Center(
+                        child: Text(
+                          _filter == null
+                              ? '남은 모델이 없습니다'
+                              : '${_bucketLabel[_filter]} 상태인 모델이 없습니다',
+                          style: const TextStyle(
+                              fontSize: 13, color: Color(0xFF9CA3AF)),
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: list.length,
+                      itemBuilder: (context, i) => isDev
+                          ? _devCard(context, list[i])
+                          : _massCard(context, list[i]),
+                    );
+                  }),
                 ),
               ],
             ),

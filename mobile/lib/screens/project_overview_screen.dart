@@ -164,7 +164,8 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
 
           final byGroup = <String, List<Map<String, dynamic>>>{'양산': [], '개발': []};
           for (final m in models) {
-            final g = m['group'] == '개발' ? '개발' : '양산';
+            // 전환 주차가 지난 모델은 양산으로 본다 (서버가 준 display_group).
+            final g = (m['display_group'] ?? m['group']) == '개발' ? '개발' : '양산';
             byGroup[g]!.add(m);
           }
 
