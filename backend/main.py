@@ -2810,29 +2810,41 @@ APP_VERSION_FALLBACK = {
 
 
 def _read_app_version() -> dict:
-    """볼륨 → 이미지 → 기본값 순. 볼륨에 올린 게 있으면 그게 정본이다."""
+    """볼륨과 이미지 중 버전 코드가 더 높은 쪽.
+
+    예전에는 볼륨을 무조건 앞세웠다. 그런데 볼륨에는 한참 전에 admin 으로
+    올린 2.1.9 가 남아 있었고, release.sh 로 2.3.8 을 배포해도 서버는 계속
+    2.1.9 를 알려줬다. 그 주소는 비공개 저장소의 릴리스라 앱이 받지도
+    못해서 '업데이트 실패 404' 만 떴다.
+    """
+    best, best_code = None, -1
     for path in (APP_VERSION_FILE, APP_VERSION_SEED):
         try:
-            if path.exists():
-                with open(path, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                if isinstance(d, dict) and d:
-                    return d
+            if not path.exists():
+                continue
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            if not (isinstance(d, dict) and d):
+                continue
+            code = _as_int(d.get("latest_version_code"), 0)
+            if code > best_code:
+                best, best_code = d, code
         except Exception as e:
             print(f"[APP_VERSION] {path} 읽기 실패: {e}")
-    return dict(APP_VERSION_FALLBACK)
+    return dict(best) if best else dict(APP_VERSION_FALLBACK)
 
 
 @app.get("/app/version")
 def get_app_version():
     """앱 시작 시 호출. 최신 버전 정보 반환."""
-    data = _read_app_version()
+    data = dict(_read_app_version())
     # APK 가 서버에 올라와 있으면 받는 곳을 서버로 돌린다.
-    # (비공개 저장소의 릴리스 주소는 앱이 못 받는다)
-    if APP_APK_FILE.exists():
-        data = dict(data)
+    # (비공개 저장소의 릴리스 주소는 앱이 못 받는다 — 404 가 난다)
+    _ready = APP_APK_FILE.exists() or (BASE_DIR / "app_release.apk").exists()
+    if _ready:
         data["download_url"] = "/app/download"
         data["apk_url"] = "/app/download"
+    data["apk_ready"] = bool(_ready)
     return data
 
 

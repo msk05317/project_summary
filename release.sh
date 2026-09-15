@@ -11,17 +11,17 @@
 # 하는 일
 #   1) 버전 올리기 (인자를 주면 그 값으로)
 #   2) APK 빌드
-#   3) GitHub 릴리스에 APK 올리기
-#        gh 가 되면 자동, 안 되면 브라우저와 Finder 를 열어 주고 기다린다
+#   3) 우리 서버에 APK 올리기 (/admin/app/release)
 #   4) app_version.json 을 그 버전으로 맞추고 커밋 + push
 #
-# 4번이 올라가야 기존 사용자 앱에 업데이트 팝업이 뜬다.
-# 그래서 APK 가 올라간 걸 확인한 다음에만 push 한다 — 순서가 뒤집히면
-# 그 사이에 앱을 켠 사람이 없는 파일을 받으러 간다.
+# 3번을 GitHub 릴리스로 하던 때가 있었는데, 저장소를 비공개로 돌린 뒤로는
+# 앱이 그 주소에서 파일을 못 받는다 (404). 그래서 우리 서버로 올린다.
+# 서버에 APK 가 있으면 /app/version 이 받는 곳을 /app/download 로 돌려준다.
+#
+# 관리자 비밀번호는 ONEVIEW_ADMIN_PW 로 주거나, 물어보면 입력하면 된다.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-REPO=msk05317/project_summary
 step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
 die()  { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
@@ -73,41 +73,47 @@ APK=mobile/build/app/outputs/flutter-apk/app-release.apk
 [ -f "$APK" ] || die "APK 가 안 만들어졌습니다: $APK"
 echo "  $(du -h "$APK" | cut -f1)  $APK"
 
-# ── 3. 릴리스에 APK 올리기
-step "GitHub 릴리스에 APK 올리기"
-UPLOADED=0
-if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
-  if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-    echo "  $TAG 가 이미 있습니다. 파일만 덮어씁니다."
-    gh release upload "$TAG" "$APK" --repo "$REPO" --clobber && UPLOADED=1
-  else
-    gh release create "$TAG" "$APK" --repo "$REPO" --title "$TAG" --notes "$NOTES" && UPLOADED=1
-  fi
+# ── 3. 우리 서버에 APK 올리기  ← 이게 돼야 앱이 받는다
+step "서버에 APK 올리기"
+API="${ONEVIEW_API:-https://project-summary-mkoo.fly.dev}"
+PW="${ONEVIEW_ADMIN_PW:-}"
+if [ -z "$PW" ]; then
+  printf '  관리자 비밀번호: '
+  read -rs PW
+  echo
 fi
+[ -n "$PW" ] || die "비밀번호가 없으면 APK 를 못 올립니다."
 
-if [ "$UPLOADED" = 0 ]; then
-  # gh 가 안 되는 경우(회사망에서 TLS 를 가로채면 인증서 검증이 막힌다).
-  # 브라우저는 그 인증서를 믿으므로 손으로 올리면 된다.
-  URL=$(python3 - "$TAG" "$NOTES" <<'PY'
-import sys, urllib.parse
-tag, notes = sys.argv[1], sys.argv[2]
-q = urllib.parse.urlencode({'tag': tag, 'title': tag, 'body': notes})
-print(f'https://github.com/msk05317/project_summary/releases/new?{q}')
-PY
-)
-  cat <<EOF
-  gh 로는 못 올립니다. 브라우저로 올려 주세요.
+COOKIE=$(mktemp)
+trap 'rm -f "$COOKIE"' EXIT
+curl -sS -c "$COOKIE" -o /dev/null -w '%{http_code}' \
+     -F "password=$PW" "$API/admin/login" | grep -q '^200$' \
+  || die "관리자 로그인 실패 (비밀번호 확인)"
 
-    1) 방금 연 Finder 창의 app-release.apk 를
-    2) 방금 연 GitHub 페이지 아래 'Attach binaries' 칸에 끌어다 놓고
-    3) 'Publish release' 를 누르세요. (태그·제목·내용은 채워져 있습니다)
-EOF
-  open -R "$APK" 2>/dev/null || true
-  open "$URL" 2>/dev/null || echo "  $URL"
-  printf '\n  다 올리셨으면 Enter, 그만두려면 Ctrl+C: '
-  read -r _
-  echo "  확인했습니다."
-fi
+RESP=$(curl -sS -b "$COOKIE" \
+  -F "file=@$APK" \
+  -F "latest_version=$VER" \
+  -F "latest_version_code=$CODE" \
+  -F "release_notes=$NOTES" \
+  "$API/admin/app/release")
+echo "$RESP" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('  서버 응답을 읽을 수 없습니다'); raise SystemExit(1)
+if not d.get('ok'):
+    print('  실패:', d.get('detail') or d); raise SystemExit(1)
+v = d.get('version') or {}
+print(f\"  {v.get('latest_version')}+{v.get('latest_version_code')} · APK {d.get('apk_bytes',0)/1048576:.1f} MB 올렸습니다\")
+" || die "APK 업로드 실패"
+
+# 실제로 받아지는지 확인한다. 여기서 막히면 앱도 못 받는다.
+DL=$(curl -sS -o /dev/null -w '%{http_code}' -r 0-1024 "$API/app/download" || echo 000)
+case "$DL" in
+  200|206) echo "  받기 확인 OK ($API/app/download)" ;;
+  *) die "APK 를 서버에서 못 받습니다 (HTTP $DL). 앱도 못 받습니다." ;;
+esac
 
 # ── 4. 버전 파일 맞추고 push  ← 이게 올라가야 팝업이 뜬다
 step "app_version.json 갱신 + push"
@@ -116,9 +122,9 @@ import json, sys, pathlib
 ver, code = sys.argv[1], int(sys.argv[2])
 p = pathlib.Path('backend/app_version.json')
 d = json.loads(p.read_text(encoding='utf-8'))
-url = f'https://github.com/msk05317/project_summary/releases/download/v{ver}/app-release.apk'
+# 받는 곳은 우리 서버. 비공개 저장소의 릴리스 주소는 앱이 못 받는다.
 d.update({'latest_version': ver, 'latest_version_code': code,
-          'download_url': url, 'apk_url': url})
+          'download_url': '/app/download', 'apk_url': '/app/download'})
 p.write_text(json.dumps(d, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 print(f'  {ver}+{code}')
 PY
@@ -127,4 +133,4 @@ git diff --cached --quiet || git commit -m "release $TAG"
 git push
 
 printf '\n\033[32m✓ %s 배포 완료. 앱을 켜면 업데이트 팝업이 뜹니다.\033[0m\n' "$TAG"
-printf '  확인: https://raw.githubusercontent.com/%s/main/backend/app_version.json\n' "$REPO"
+printf '  확인: %s/app/version\n' "$API"

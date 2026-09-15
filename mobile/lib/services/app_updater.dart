@@ -14,13 +14,22 @@ class AppVersionInfo {
   final String releaseNotes;
   final bool forceUpdate;
 
+  /// 서버에 받을 APK 가 실제로 올라와 있는지.
+  /// 저장소가 비공개라 GitHub 릴리스 주소로는 앱이 못 받는다 (404).
+  final bool apkReady;
+
   AppVersionInfo({
     required this.latestVersion,
     required this.latestVersionCode,
     required this.downloadUrl,
     required this.releaseNotes,
     required this.forceUpdate,
+    this.apkReady = false,
   });
+
+  /// 실제로 받을 수 있는 주소인가
+  bool get downloadable =>
+      apkReady || (downloadUrl.isNotEmpty && !downloadUrl.contains('github.com'));
 
   factory AppVersionInfo.fromJson(Map<String, dynamic> j) => AppVersionInfo(
         latestVersion: (j['latest_version'] as String?) ?? '1.0.0',
@@ -28,6 +37,7 @@ class AppVersionInfo {
         downloadUrl: (j['download_url'] as String?) ?? (j['apk_url'] as String?) ?? '',
         releaseNotes: (j['release_notes'] as String?) ?? '',
         forceUpdate: (j['force_update'] as bool?) ?? false,
+        apkReady: j['apk_ready'] == true,
       );
 }
 
@@ -107,6 +117,12 @@ class AppUpdater {
     final latest = await fetchLatest();
     debugPrint('[AppUpdater] latest=${latest?.latestVersion}, latestCode=${latest?.latestVersionCode}');
     if (latest == null) return;
+    // 받을 수 없는 주소면 팝업을 띄우지 않는다. 눌러도 404 만 나고,
+    // 사용자는 Dio 예외 문구를 읽게 된다 (실제로 그렇게 떴다).
+    if (!latest.downloadable) {
+      debugPrint('[AppUpdater] APK 를 받을 수 없어 팝업을 건너뜀: ${latest.downloadUrl}');
+      return;
+    }
     final currentCode = await currentVersionCode();
     final currentInfo = await PackageInfo.fromPlatform();
     final currentVersion = currentInfo.version;
@@ -229,9 +245,16 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('업데이트 실패: $e')),
-      );
+      // Dio 예외를 그대로 보여주면 영문 스택이 화면을 덮는다.
+      var msg = '업데이트 파일을 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      final t = e.toString();
+      if (t.contains('404')) {
+        msg = '업데이트 파일이 서버에 없습니다. 관리자에게 알려 주세요.';
+      } else if (t.contains('SocketException') || t.contains('timeout') ||
+          t.contains('Connection')) {
+        msg = '연결이 불안정합니다. 네트워크를 확인하고 다시 시도해 주세요.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       setState(() => _downloading = false);
     }
   }
