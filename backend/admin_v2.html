@@ -900,6 +900,7 @@ window._attachAutoListBehavior = function(el){
       el.classList.add('active');
       const pg = el.getAttribute('data-page');
       document.getElementById('v2-crumb-page').textContent = PAGE_LABEL[pg] || pg;
+      if (window._v2SyncCrumbBiz) window._v2SyncCrumbBiz();
       renderPage(pg);
     });
   });
@@ -7373,9 +7374,11 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
   }
 
 document.addEventListener('DOMContentLoaded', function() {
+    if (window._v2SyncCrumbBiz) window._v2SyncCrumbBiz();
 var sidebarSel = document.getElementById('v2-division-select');
     if (sidebarSel) {
       sidebarSel.addEventListener('change', function() {
+        if (window._v2SyncCrumbBiz) window._v2SyncCrumbBiz();
         // 사업부 변경 시 모델 관리 페이지 다시 렌더링
         if (typeof renderModelsPage === 'function') {
           renderModelsPage();
@@ -7903,6 +7906,12 @@ var sidebarSel = document.getElementById('v2-division-select');
     if (importBtn && importMenu) {
       importBtn.addEventListener('click', function(e) {
         e.stopPropagation();
+        // 열 때마다 지금 프로젝트에 맞춘다. 툴바가 다시 그려져도 안 어긋난다.
+        try {
+          if (window._bdSyncMenu) {
+            window._bdSyncMenu(window._ovProjectKey && window._ovProjectKey());
+          }
+        } catch (_e) { console.warn('[bloom] 메뉴 동기화 실패', _e); }
         var willOpen = importMenu.hidden;
         importMenu.hidden = !willOpen;
         importBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
@@ -9369,6 +9378,18 @@ window._ovProjectKey = function() {
   // 반도체 주차 보드와 코드를 섞지 않는다. 반도체는 '주차 x 모델' 한 겹인데
   // 블룸은 '날짜 x 품목 x 공정(NCT/조립/출하)' 세 겹이다.
   // 엑셀에 적힌 공정·품목 이름을 그대로 보여준다.
+
+  // 왼쪽 위 breadcrumb 의 사업부 이름. 사이드바에서 사업부를 바꿔도
+  // '반도체사업부' 로 박혀 있었다 — 마크업 기본값 그대로였다.
+  window._v2SyncCrumbBiz = function() {
+    var el = document.getElementById('v2-crumb-biz');
+    var sel = document.getElementById('v2-division-select');
+    if (!el || !sel) return;
+    var opt = sel.options[sel.selectedIndex];
+    var label = (opt && opt.text ? opt.text : '').trim();
+    if (label) el.textContent = label;
+  };
+
   window.DAILY_BOARD_PROJECTS = ['bloom_main'];
 
   window._bdIsDaily = function(pk) {
