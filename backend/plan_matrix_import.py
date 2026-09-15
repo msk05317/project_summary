@@ -106,9 +106,10 @@ def _year_for_month(mon, today=None):
 def find_layout(ws, grid):
     """(하위머리글행, 라벨열, 주차쌍, 월쌍, 정보열, 사이트열) 반환."""
     sub_row = None
-    # 시트 위쪽에 요약 블록이 먼저 오는 경우가 있다(CURIE 는 '계획/실적' 줄이 13행).
-    # 12행까지만 보다가 표를 통째로 못 찾았다.
-    for r in range(1, min(ws.max_row, 24) + 1):
+    # 시트 전체에서 찾는다. 위에 다른 표가 얼마나 오든 상관없다 —
+    # 하바플레이트는 모델 목록 네 덩어리가 먼저 와서 '계획/실적' 줄이 87행이다.
+    # 한 줄에 '계획'이 두 번 넘게 나오는 건 이 표 말고는 없다.
+    for r in range(1, ws.max_row + 1):
         plans = sum(1 for c in range(1, ws.max_column + 1) if _s(grid.get((r, c))) == "계획")
         if plans >= 2:
             sub_row = r
@@ -173,10 +174,26 @@ def find_layout(ws, grid):
             info["rem"] = c
 
     # 계획/실적 쌍 → 주차 or 월
-    week_pairs, month_pairs, total_pairs = [], [], []
+    week_pairs, month_pairs, total_pairs, actual_only = [], [], [], []
     c = (site_col or label_col) + 1
     while c <= ws.max_column:
         if _s(grid.get((sub_row, c))) != "계획":
+            # 짝 없이 '실적'만 있는 월 열 (하바플레이트 12월~8월).
+            # 지나간 달은 계획을 안 적고 실적만 남긴다.
+            if _s(grid.get((sub_row, c))) == "실적":
+                mon_only = None
+                for r in range(sub_row - 1, 0, -1):
+                    t = _s(grid.get((r, c)))
+                    if not t:
+                        continue
+                    if WEEK_RE.match(t):
+                        break          # 주차 열이면 짝이 있어야 한다
+                    mm = MONTH_RE.match(t)
+                    if mm:
+                        mon_only = int(mm.group(1))
+                    break
+                if mon_only:
+                    actual_only.append((mon_only, c))
             c += 1
             continue
         act_c = c + 1 if _s(grid.get((sub_row, c + 1))) == "실적" else None
@@ -217,7 +234,7 @@ def find_layout(ws, grid):
         if entry[0] not in week_months:
             month_pairs.append(entry)
 
-    return sub_row, label_col, week_pairs, month_pairs, info, site_col
+    return sub_row, label_col, week_pairs, month_pairs, info, site_col, actual_only
 
 
 def parse_plan_matrix(wb, sheet_name=None, today=None):
@@ -237,9 +254,25 @@ def parse_plan_matrix(wb, sheet_name=None, today=None):
     if ws is None or not layout or not layout[2]:
         return {"sheet": None, "rows": [], "total": None, "months": []}
 
-    sub_row, label_col, week_pairs, month_pairs, info, site_col = layout
+    sub_row, label_col, week_pairs, month_pairs, info, site_col, actual_only = layout
+
+    # 월 실적 열은 왼쪽에서 오른쪽으로 12월 → 1월 → … → 9월 처럼 이어진다.
+    # 한 해를 넘어가므로 열마다 따로 보면 12월이 올해 12월로 잡힌다.
+    # 오른쪽 끝(이번 달)부터 거꾸로 걸어오면서 달이 커지는 지점에서 한 해 뺀다.
+    actual_years = []
+    _ao = sorted(actual_only, key=lambda e: e[1])
+    if _ao:
+        _y = _year_for_month(_ao[-1][0], today)
+        _prev = None
+        for mon, ac in reversed(_ao):
+            if _prev is not None and mon > _prev:
+                _y -= 1
+            actual_years.append((mon, ac, _y))
+            _prev = mon
+        actual_years.reverse()
 
     rows, total = [], None
+    seen_total = False
     months_seen = set()
     for r in range(sub_row + 1, ws.max_row + 1):
         base, stock = _clean_label(grid.get((r, label_col)))
@@ -263,6 +296,13 @@ def parse_plan_matrix(wb, sheet_name=None, today=None):
             months_seen.add(key)
 
         months = {}
+        for mon, ac, y in actual_years:
+            key = f"{y}-{mon:02d}"
+            raw_a = ws.cell(r, ac).value
+            if _s(raw_a) in ("", "-"):
+                continue
+            months[key] = {"plan": 0, "actual": _num(raw_a)}
+            months_seen.add(key)
         for mon, pc, ac in month_pairs:
             y = _year_for_month(mon, today)
             key = f"{y}-{mon:02d}"
@@ -287,7 +327,13 @@ def parse_plan_matrix(wb, sheet_name=None, today=None):
         }
         if base.lower() in TOTAL_LABELS:
             total = entry
-            break
+            seen_total = True
+            continue
+        # 합계 아래에도 줄이 있다 — 하바플레이트는 '개발 (41종 진행중 …)'
+        # 그룹 총계가 합계 다음 줄이다. 대신 빈 줄은 안 담는다.
+        if seen_total and not (entry["weeks"] or entry["months"]
+                               or entry["po_qty"] or entry["shipped_qty"]):
+            continue
         rows.append(entry)
 
     return {

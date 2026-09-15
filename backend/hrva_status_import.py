@@ -44,6 +44,18 @@ def _num(v):
         return None
 
 
+def _money(v):
+    """판가. 소수점을 살린다 — 3150.4 를 3150 으로 자르면 매출이 어긋난다."""
+    t = str(v if v is not None else "").replace(",", "").replace("$", "").strip()
+    if t in ("", "-", "N/A", "n/a", "없음"):
+        return None
+    try:
+        f = round(float(t), 2)
+    except Exception:
+        return None
+    return int(f) if f == int(f) else f
+
+
 def _key(t):
     return re.sub(r"\s+", "", str(t or "")).lower()
 
@@ -172,7 +184,7 @@ def parse_models(ws):
             rows.append({
                 "id": mid,
                 "group": group,
-                "price": _num(_s(ws, r, cm.get("price"))),
+                "price": _money(_s(ws, r, cm.get("price"))),
                 "po_qty": po or 0,
                 "shipped_qty": sh or 0,
                 "dev_type": _s(ws, r, cm.get("devkind")).upper(),
