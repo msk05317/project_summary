@@ -70,4 +70,16 @@ assert sx['columns'] == 'week' and sx['sections'][0]['rows_from'] == 'models', s
 assert sx.get('next_month') is True, '10월 열이 있어야 한다 (W40~W44 가 거기 있다)'
 ok += 1
 
-print(f'전부 통과 ({ok}/8)')
+# 버스바는 모델 목록에는 다 남기고 보드에서만 한 줄로 묶는다
+bus = [r for r in sx['sections'][0]['rows'] if r['key'] == 'busbar']
+assert len(bus) == 1, sx['sections'][0]['rows']
+assert len(bus[0]['models']) == 11, bus[0]['models']
+assert bus[0]['label'] == '버스바/시트메탈류(11종)', bus[0]
+# 묶인 11개가 rows_from 으로 또 생기면 안 된다
+P2 = {'models': [{'id': i, 'name': '버스바'} for i in bus[0]['models']] +
+                [{'id': '66C', 'name': '리프트 캐리지', 'part_number': '66C'}]}
+r2 = rows_of(P2, sx['sections'][0])
+assert [r['key'] for r in r2] == ['busbar', 'm_66C'], [r['label'] for r in r2]
+ok += 1
+
+print(f'전부 통과 ({ok}/9)')

@@ -4406,10 +4406,6 @@ def _as_int(v, default=0):
 # 큐리는 모델명과 품번을 따로 관리하므로 갈라서 넣는다.
 _PN_IN_LABEL = __import__("re").compile(r"^(.*?)\s*[(（]\s*([^()（）]{2,20})\s*[)）]\s*$")
 
-# 묶음 행(11종·19종 …)을 모델 하나로 만들 프로젝트.
-# 파워박스는 '양산19종' 밑에 개별 모델이 따로 있어서 묶음 행을 모델로 만들면
-# 이중 계산이 된다. 큐리는 버스바 11종을 한 줄로만 관리한다.
-_PLAN_AGG_AS_MODEL = {"spacex"}
 
 
 def _split_pn(label):
@@ -4425,6 +4421,27 @@ def _split_pn(label):
     return name, pn
 
 
+def _board_group_rows(project_key: str) -> dict:
+    """보드에서 여러 모델을 한 줄로 묶어둔 행. {정규화한 행 이름: [모델 id]}
+
+    엑셀의 묶음 행('버스바/시트메탈류(11종)')을 어디에 넣을지 찾을 때 쓴다.
+    """
+    out = {}
+    try:
+        spec = _load_board_spec(project_key) or {}
+    except Exception:
+        return out
+    for sec in (spec.get("sections") or []):
+        for row in (sec.get("rows") or []):
+            ids = [str(x).strip() for x in (row.get("models") or []) if str(x).strip()]
+            if len(ids) < 2:
+                continue
+            for name in (row.get("label"), row.get("key")):
+                n = _norm_label(name)
+                if n:
+                    out.setdefault(n, ids)
+    return out
+
 def _apply_plan_matrix(data, project_key, parsed):
     """'구분 x 주차' 엑셀을 모델별 주차 계획 + 프로젝트 주차 합계에 반영.
     같은 월/주차가 이미 있으면 이번 업로드 값으로 덮어쓴다(최신 우선)."""
@@ -4438,7 +4455,11 @@ def _apply_plan_matrix(data, project_key, parsed):
             if n:
                 idx.setdefault(n, m)
 
-    agg_ok = project_key in _PLAN_AGG_AS_MODEL
+    # 묶음 행('버스바/시트메탈류(11종)')은 모델로 만들지 않는다. 모델 목록에는
+    # 품번별로 다 남기고, 보드에서만 한 줄로 묶어 보는 게 담당자가 쓰는 방식이다.
+    # 그 행의 주차 계획은 묶인 모델 중 첫 번째에 얹는다 — 보드가 행 안을
+    # 더하므로 줄 합계는 맞는다. PO·출하는 이미 모델별로 있으니 건드리지 않는다.
+    agg_rows = _board_group_rows(project_key)
     matched, unmatched, created = [], [], []
     for row in (parsed.get("rows") or []):
         label = row.get("label")
@@ -4456,12 +4477,24 @@ def _apply_plan_matrix(data, project_key, parsed):
                 if n.startswith(key) or key.startswith(n):
                     target = m
                     break
+        if target is None and row.get("is_aggregate"):
+            # 보드에 같은 이름의 묶음 행이 있으면 거기 묶인 첫 모델에 얹는다
+            ids = agg_rows.get(_norm_label(label)) or []
+            for _id in ids:
+                cand = idx.get(_norm_label(_id))
+                if cand is not None:
+                    target = cand
+                    break
+            if target is not None:
+                _wp = target.setdefault("weekly_plan", {})
+                for _mon, _weeks in (row.get("weeks") or {}).items():
+                    _wp.setdefault(_mon, {}).update(_weeks)
+                matched.append(row.get("label"))
+                continue
         if target is None:
             has_week = any((row.get("weeks") or {}).values())
-            # 집계 행(양산19종·개발22종 등)은 그 밑에 개별 모델이 따로 있어서
-            # 모델로 만들면 이중 계산이 된다. 한 줄로만 관리하는 프로젝트
-            # (큐리 버스바 11종)는 예외로 둔다.
-            if (row.get("is_aggregate") and not agg_ok) or not has_week:
+            # 묶음 행은 그 밑에 개별 모델이 따로 있어서 모델로 만들면 이중 계산이다
+            if row.get("is_aggregate") or not has_week:
                 unmatched.append(row)
                 continue
             target = {
@@ -24251,78 +24284,69 @@ def _cleanup_auto_notes() -> None:
         print(f"[cleanup] 비고 정리 실패(무시하고 계속): {e}")
 
 
-# ── 큐리 버스바 합치기 (1회) ──────────────────────────────────────
+# ── 큐리 버스바 되살리기 (1회) ────────────────────────────────────
 #
-# 담당자가 버스바/시트메탈류를 품번별로 11개(560D~570D) 넣어뒀는데,
-# 실제로는 엑셀에서 '버스바/시트메탈류(11종)' 한 줄로 관리한다.
-# 11개를 한 모델로 합친다. PO·출하·주차 계획을 모두 더해 옮기고 원본은 지운다.
+# 내가 잘못 만든 마이그레이션이 버스바 품번 11개(560D~570D)를 한 모델로
+# 합치면서 지워버렸다. 담당자는 모델 목록에는 품번별로 다 두고 보드에서만
+# 한 줄로 묶어 본다. _save_models 가 덮어쓰기 직전에 남긴 자동 백업에서
+# 큐리 모델 목록만 되돌린다.
 #
-# 한 번만 돈다. 나중에 5xxD 품번을 새로 넣어도 다시 합치면 안 된다.
+# 한 번만 돈다. 이미 품번이 있으면 아무것도 하지 않는다.
 
 _CURIE_KEY = "spacex"
-_CURIE_BUSBAR = "버스바/시트메탈류(11종)"
-_CURIE_BUSBAR_RE = __import__("re").compile(r"^5[5-7]\dD$", __import__("re").I)
-_MIGRATION_KEY = "curie_busbar_merged"
+_CURIE_PN_RE = __import__("re").compile(r"^5[5-7]\dD$", __import__("re").I)
+_CURIE_RESTORE_KEY = "curie_busbar_restored"
 
 
-def _merge_curie_busbar() -> None:
+def _restore_curie_busbar() -> None:
+    import glob
+    import json as _json
     try:
         data = _load_models()
-        if (data.get("migrations") or {}).get(_MIGRATION_KEY):
+        if (data.get("migrations") or {}).get(_CURIE_RESTORE_KEY):
             return
         proj = (data.get("projects") or {}).get(_CURIE_KEY)
         if not isinstance(proj, dict):
             return
-        models = proj.get("models") or []
-        parts = [m for m in models
-                 if isinstance(m, dict) and _CURIE_BUSBAR_RE.match(str(m.get("id") or ""))]
-        if not parts:
-            data.setdefault("migrations", {})[_MIGRATION_KEY] = True
+
+        def _pns(models):
+            return {str((m or {}).get("id") or "") for m in (models or [])
+                    if isinstance(m, dict) and _CURIE_PN_RE.match(str(m.get("id") or ""))}
+
+        if _pns(proj.get("models")):
+            data.setdefault("migrations", {})[_CURIE_RESTORE_KEY] = True
             _save_models(data)
             return
 
-        po = sum(_as_int(m.get("po_qty")) for m in parts)
-        sh = sum(_as_int(m.get("shipped_qty")) for m in parts)
-        plan: dict = {}
-        for m in parts:
-            for mon, weeks in (m.get("weekly_plan") or {}).items():
-                b = plan.setdefault(str(mon), {})
-                for w, c in (weeks or {}).items():
-                    cur = b.setdefault(str(w), {"plan": 0, "actual": 0})
-                    cur["plan"] += _as_int((c or {}).get("plan"))
-                    cur["actual"] += _as_int((c or {}).get("actual"))
-
-        target = None
-        for m in models:
-            if isinstance(m, dict) and str(m.get("id") or "").strip() == _CURIE_BUSBAR:
-                target = m
+        best = None
+        for path in sorted(glob.glob(f"{MODELS_FILE}.auto_*"), reverse=True):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    old = _json.load(f)
+            except Exception:
+                continue
+            ms = ((old.get("projects") or {}).get(_CURIE_KEY) or {}).get("models") or []
+            if len(_pns(ms)) >= 10:
+                best = (path, ms)
                 break
-        if target is None:
-            target = {"id": _CURIE_BUSBAR, "name": _CURIE_BUSBAR,
-                      "part_number": _CURIE_BUSBAR, "group": "양산",
-                      "dev_type": "", "price": 0, "material_cost": 0,
-                      "status": "정상", "progress": 0}
-            models.append(target)
+        if not best:
+            print("[curie] 되살릴 백업을 못 찾았다 — 품번은 직접 넣어야 한다")
+            return
 
-        # 엑셀에서 이미 받은 값이 있으면 그게 정본. 없을 때만 합계를 채운다.
-        if not _as_int(target.get("po_qty")):
-            target["po_qty"] = po
-        if not _as_int(target.get("shipped_qty")):
-            target["shipped_qty"] = sh
-        if plan and not (target.get("weekly_plan") or {}):
-            target["weekly_plan"] = plan
-
-        ids = {str(m.get("id")) for m in parts}
-        proj["models"] = [m for m in models
-                          if not (isinstance(m, dict) and str(m.get("id")) in ids)]
-        data.setdefault("migrations", {})[_MIGRATION_KEY] = True
+        path, ms = best
+        proj["models"] = ms
+        # 합치면서 만든 묶음 모델은 뺀다. 보드 행이 11개를 묶어 보여준다.
+        proj["models"] = [m for m in proj["models"]
+                          if not (isinstance(m, dict)
+                                  and str(m.get("id") or "").strip() == "버스바/시트메탈류(11종)")]
+        data.setdefault("migrations", {})[_CURIE_RESTORE_KEY] = True
         _save_models(data)
-        print(f"[curie] 버스바 {len(parts)}개를 '{_CURIE_BUSBAR}' 하나로 합쳤다 "
-              f"(PO {po} · 출하 {sh}): {', '.join(sorted(ids))}")
+        print(f"[curie] 버스바 품번 {len(_pns(ms))}개를 되살렸다 "
+              f"(모델 {len(proj['models'])}개, 출처 {os.path.basename(path)})")
     except Exception as e:
-        print(f"[curie] 버스바 합치기 실패(무시하고 계속): {e}")
+        print(f"[curie] 버스바 되살리기 실패(무시하고 계속): {e}")
 
 
 _cleanup_auto_notes()
 _cleanup_plan_originals()
-_merge_curie_busbar()
+_restore_curie_busbar()
