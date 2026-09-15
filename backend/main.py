@@ -24251,5 +24251,78 @@ def _cleanup_auto_notes() -> None:
         print(f"[cleanup] 비고 정리 실패(무시하고 계속): {e}")
 
 
+# ── 큐리 버스바 합치기 (1회) ──────────────────────────────────────
+#
+# 담당자가 버스바/시트메탈류를 품번별로 11개(560D~570D) 넣어뒀는데,
+# 실제로는 엑셀에서 '버스바/시트메탈류(11종)' 한 줄로 관리한다.
+# 11개를 한 모델로 합친다. PO·출하·주차 계획을 모두 더해 옮기고 원본은 지운다.
+#
+# 한 번만 돈다. 나중에 5xxD 품번을 새로 넣어도 다시 합치면 안 된다.
+
+_CURIE_KEY = "spacex"
+_CURIE_BUSBAR = "버스바/시트메탈류(11종)"
+_CURIE_BUSBAR_RE = __import__("re").compile(r"^5[5-7]\dD$", __import__("re").I)
+_MIGRATION_KEY = "curie_busbar_merged"
+
+
+def _merge_curie_busbar() -> None:
+    try:
+        data = _load_models()
+        if (data.get("migrations") or {}).get(_MIGRATION_KEY):
+            return
+        proj = (data.get("projects") or {}).get(_CURIE_KEY)
+        if not isinstance(proj, dict):
+            return
+        models = proj.get("models") or []
+        parts = [m for m in models
+                 if isinstance(m, dict) and _CURIE_BUSBAR_RE.match(str(m.get("id") or ""))]
+        if not parts:
+            data.setdefault("migrations", {})[_MIGRATION_KEY] = True
+            _save_models(data)
+            return
+
+        po = sum(_as_int(m.get("po_qty")) for m in parts)
+        sh = sum(_as_int(m.get("shipped_qty")) for m in parts)
+        plan: dict = {}
+        for m in parts:
+            for mon, weeks in (m.get("weekly_plan") or {}).items():
+                b = plan.setdefault(str(mon), {})
+                for w, c in (weeks or {}).items():
+                    cur = b.setdefault(str(w), {"plan": 0, "actual": 0})
+                    cur["plan"] += _as_int((c or {}).get("plan"))
+                    cur["actual"] += _as_int((c or {}).get("actual"))
+
+        target = None
+        for m in models:
+            if isinstance(m, dict) and str(m.get("id") or "").strip() == _CURIE_BUSBAR:
+                target = m
+                break
+        if target is None:
+            target = {"id": _CURIE_BUSBAR, "name": _CURIE_BUSBAR,
+                      "part_number": _CURIE_BUSBAR, "group": "양산",
+                      "dev_type": "", "price": 0, "material_cost": 0,
+                      "status": "정상", "progress": 0}
+            models.append(target)
+
+        # 엑셀에서 이미 받은 값이 있으면 그게 정본. 없을 때만 합계를 채운다.
+        if not _as_int(target.get("po_qty")):
+            target["po_qty"] = po
+        if not _as_int(target.get("shipped_qty")):
+            target["shipped_qty"] = sh
+        if plan and not (target.get("weekly_plan") or {}):
+            target["weekly_plan"] = plan
+
+        ids = {str(m.get("id")) for m in parts}
+        proj["models"] = [m for m in models
+                          if not (isinstance(m, dict) and str(m.get("id")) in ids)]
+        data.setdefault("migrations", {})[_MIGRATION_KEY] = True
+        _save_models(data)
+        print(f"[curie] 버스바 {len(parts)}개를 '{_CURIE_BUSBAR}' 하나로 합쳤다 "
+              f"(PO {po} · 출하 {sh}): {', '.join(sorted(ids))}")
+    except Exception as e:
+        print(f"[curie] 버스바 합치기 실패(무시하고 계속): {e}")
+
+
 _cleanup_auto_notes()
 _cleanup_plan_originals()
+_merge_curie_busbar()
