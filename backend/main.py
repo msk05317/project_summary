@@ -4402,6 +4402,29 @@ def _as_int(v, default=0):
         return default
 
 
+# 엑셀의 '키스톤 (556B)' 처럼 이름 뒤 괄호에 품번이 붙은 표기.
+# 큐리는 모델명과 품번을 따로 관리하므로 갈라서 넣는다.
+_PN_IN_LABEL = __import__("re").compile(r"^(.*?)\s*[(（]\s*([^()（）]{2,20})\s*[)）]\s*$")
+
+# 묶음 행(11종·19종 …)을 모델 하나로 만들 프로젝트.
+# 파워박스는 '양산19종' 밑에 개별 모델이 따로 있어서 묶음 행을 모델로 만들면
+# 이중 계산이 된다. 큐리는 버스바 11종을 한 줄로만 관리한다.
+_PLAN_AGG_AS_MODEL = {"spacex"}
+
+
+def _split_pn(label):
+    """'키스톤 (556B)' -> ('키스톤', '556B'). 괄호가 없으면 (원문, '')."""
+    t = str(label or "").strip()
+    m = _PN_IN_LABEL.match(t)
+    if not m:
+        return t, ""
+    name, pn = m.group(1).strip(), m.group(2).strip()
+    # '버스바/시트메탈류(11종)' 처럼 품번이 아니라 개수인 것은 가르지 않는다
+    if not name or __import__("re").match(r"^\d+\s*종$", pn):
+        return t, ""
+    return name, pn
+
+
 def _apply_plan_matrix(data, project_key, parsed):
     """'구분 x 주차' 엑셀을 모델별 주차 계획 + 프로젝트 주차 합계에 반영.
     같은 월/주차가 이미 있으면 이번 업로드 값으로 덮어쓴다(최신 우선)."""
@@ -4415,25 +4438,36 @@ def _apply_plan_matrix(data, project_key, parsed):
             if n:
                 idx.setdefault(n, m)
 
+    agg_ok = project_key in _PLAN_AGG_AS_MODEL
     matched, unmatched, created = [], [], []
     for row in (parsed.get("rows") or []):
-        key = _norm_label(row.get("label"))
-        target = idx.get(key)
-        if target is None and len(key) >= 4:
+        label = row.get("label")
+        name, pn = _split_pn(label)
+        key = _norm_label(label)
+        # '키스톤 (556B)' 는 이름으로도 품번으로도 찾아본다.
+        # 담당자가 품번만 모델명으로 넣어둔 경우가 있다 (큐리 556B).
+        target = idx.get(key) or (idx.get(_norm_label(pn)) if pn else None) \
+                 or (idx.get(_norm_label(name)) if name else None)
+        # 앞뒤가 겹치면 같은 모델로 본다. 단 묶음 행에는 쓰지 않는다 —
+        # '버스바/시트메탈류(11종)' 이 기존 '버스바' 한 개에 붙어버려서
+        # 1,740 이 그 모델로 들어가고 나머지 10개가 따로 남았다.
+        if target is None and len(key) >= 4 and not row.get("is_aggregate"):
             for n, m in idx.items():
                 if n.startswith(key) or key.startswith(n):
                     target = m
                     break
         if target is None:
             has_week = any((row.get("weeks") or {}).values())
-            # 집계 행(양산19종·개발22종 등)이 아니고 실제 주차 데이터가 있으면
-            # 엑셀에 보이는 그대로 새 양산 모델로 등록한다.
-            if row.get("is_aggregate") or not has_week:
+            # 집계 행(양산19종·개발22종 등)은 그 밑에 개별 모델이 따로 있어서
+            # 모델로 만들면 이중 계산이 된다. 한 줄로만 관리하는 프로젝트
+            # (큐리 버스바 11종)는 예외로 둔다.
+            if (row.get("is_aggregate") and not agg_ok) or not has_week:
                 unmatched.append(row)
                 continue
             target = {
-                "id": row.get("label"),
-                "name": row.get("label"),
+                "id": pn or label,
+                "name": name or label,
+                "part_number": pn or label,
                 "group": "양산",
                 "dev_type": "",
                 "price": 0,
