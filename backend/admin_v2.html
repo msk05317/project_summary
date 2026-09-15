@@ -6668,8 +6668,8 @@ window.renderAdminV2ByDivision = function(){
       (window._mdlHasPN(_getCurrentProjectKey())
         ? '<th>파트넘버</th>' : '') +
       (_projIsEss
-        ? '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">출하 완료</th><th class="mdl-th-num">남은 수량</th><th>납기</th><th>이슈사항</th><th>비고</th><th style="width:56px">관리</th>'
-        : '<th>모델명</th><th>구분</th><th>유형</th>' +
+        ? '<th>모델명</th><th>구분</th><th>상태</th><th>유형</th><th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">출하 완료</th><th class="mdl-th-num">남은 수량</th><th>납기</th><th>이슈사항</th><th>비고</th><th style="width:56px">관리</th>'
+        : '<th>모델명</th><th>구분</th><th>상태</th><th>유형</th>' +
           '<th class="mdl-th-num">판가($)</th><th class="mdl-th-num">재료비($)</th><th class="mdl-th-num">재료비율</th>' +
           '<th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">실적 수량</th>' +
           '<th>이슈사항</th><th>비고</th><th>관리</th>') +
@@ -6678,7 +6678,7 @@ window.renderAdminV2ByDivision = function(){
     ['양산', '개발'].forEach(function(g) {
       const list = byGroup[g];
       if (!list.length) return;
-      html += '<tr class="mdl-group-row"><td colspan="16">' +
+      html += '<tr class="mdl-group-row"><td colspan="18">' +
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
         '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
       list.forEach(function(m) {
@@ -6705,6 +6705,23 @@ window.renderAdminV2ByDivision = function(){
             return '<td><select data-field="group">' +
               '<option value="양산"' + (gnow === '양산' ? ' selected' : '') + '>양산</option>' +
               '<option value="개발"' + (gnow === '개발' ? ' selected' : '') + '>개발</option>' +
+            '</select></td>';
+          })() +
+          // 상태. 드롭·보류를 여기서 고르면 지연으로 안 센다.
+          // (예전에는 hidden 이라 화면에서 손댈 방법이 아예 없었다.)
+          (function(){
+            var cur = String(m.status || '정상').trim();
+            var opts = ['정상', '주의', '지연', '드롭예정', '보류'];
+            if (cur && opts.indexOf(cur) < 0) opts.push(cur);   // 옛 값('진행') 보존
+            var tint = (cur === '지연') ? '#DC2626'
+                     : (cur === '주의') ? '#E97132'
+                     : (cur === '드롭예정' || cur === '보류') ? '#6B7280' : '#111827';
+            return '<td><select data-field="status" style="width:92px;padding:4px 6px;' +
+              'border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:700;' +
+              'background:#fff;color:' + tint + ';">' +
+              opts.map(function(o){
+                return '<option value="' + o + '"' + (cur === o ? ' selected' : '') + '>' + o + '</option>';
+              }).join('') +
             '</select></td>';
           })() +
           '<td><select data-field="dev_type" style="width:90px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;background:#fff;">' +
@@ -6737,12 +6754,11 @@ window.renderAdminV2ByDivision = function(){
   '<td><textarea data-field="note" class="mdl-memo" placeholder="그 외 특이사항 · 메모">' + (m.note || '') + '</textarea></td>'
 ) +
           (!_projIsEss ? '<td class="mdl-td-actions">' +
-            '<input data-field="status" type="hidden" value="' + (m.status || '정상') + '">' +
             '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +
             (isDev ? '<button type="button" class="mdl-btn mdl-btn-process mdl-row-process">Process 입력</button>' : '') +
             '<button type="button" class="ov-btn ov-btn-icon mdl-row-phase" title="구분·판가 이력">🕘</button>' +
             '<button type="button" class="ov-btn ov-btn-icon mdl-row-del" title="삭제">🗑</button>' +
-          '</td>' : '<td class="mdl-td-actions"><input data-field="status" type="hidden" value="' + (m.status || '정상') + '"><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '"><button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>') + '</tr>';
+          '</td>' : '<td class="mdl-td-actions"><input data-field="progress" type="hidden" value="' + (m.progress || 0) + '"><button type="button" class="mdl-btn mdl-btn-del mdl-row-del">삭제</button></td>') + '</tr>';
       });
     });
 

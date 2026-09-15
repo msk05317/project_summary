@@ -1,8 +1,9 @@
-# 앱 목록 필터: 지연 · 임박 · 진행 중 · 완료
+# 앱 목록 필터: 전체 · 지연 · 임박 · 진행중 · 완료 (+ 보류)
 #   python3 backend/tests/test_model_bucket.py
 #
-# 완료된 모델이 목록 맨 위에 계속 쌓여 있었다. 기본은 미완료만 보여주고,
-# 지연·임박은 눌러서 따로 볼 수 있어야 한다.
+# 처음엔 완료를 숨겼는데, 끝난 모델이 목록에서 사라지면 '그거 어디 갔냐'를
+# 다시 물어야 했다. 기본은 전체로 두고 급한 순으로 올린다.
+# 드롭·보류는 예정일이 지나도 지연이 아니다 (파워박스 VCTR-XPRSMS).
 import pathlib, re
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -22,21 +23,47 @@ ok += 1
 assert "m['alert'] ?? m['status']" in b, b
 ok += 1
 
-# 기본은 완료 제외
+# 기본은 전체 (완료 포함)
 v = D[D.index('List<Map<String, dynamic>> get _visible'):]
 v = v[:v.index('\n  }')]
-assert 'b != ModelBucket.done' in v, '기본 목록에서 완료를 안 뺀다'
+assert 'if (_filter == null) return true;' in v, '기본 목록이 아직 전체가 아니다'
+assert 'ModelBucket.done' not in v, '기본 목록에서 완료를 여전히 뺀다'
 ok += 1
 # 급한 것부터
 assert '_order.indexOf' in v, '정렬을 안 한다'
 order = D[D.index('static const List<ModelBucket> _order'):]
 order = order[:order.index('];')]
-assert order.index('delayed') < order.index('soon') < order.index('running') < order.index('done'), order
+assert (order.index('delayed') < order.index('soon') < order.index('running')
+        < order.index('done') < order.index('hold')), order
 ok += 1
 
-# 칩 네 개
-for label in ('미완료', '지연', '임박', '완료'):
+# 칩: 전체 · 지연 · 임박 · 진행중 · 완료 · 보류
+for label in ('전체', '지연', '임박', '진행중', '완료', '보류'):
     assert f"chip('{label}'" in D, f'{label} 칩이 없다'
+assert "chip('미완료'" not in D, '미완료 칩이 아직 남아 있다'
+ok += 1
+
+# ── 드롭·보류: 지연으로 세지 않는다 ──
+assert 'String holdOf(Map m)' in D and 'bool poWaitOf(Map m)' in D
+assert b.index('ModelBucket.hold') < b.index('ModelBucket.done'), \
+    '드롭·보류보다 완료를 먼저 본다'
+assert "m['hold']" in D, '서버가 주는 hold 를 안 본다'
+assert "'드롭 안'" in D, '드롭 안 함 같은 부정문을 안 거른다'
+assert "m['po_wait']" in D and "'PO 대기'" in D, 'PO 대기 표시가 없다'
+ok += 1
+
+# 비고가 카드에 나온다
+assert "_noteLine" in D and "m['note']" in D, '비고를 카드에 안 보여준다'
+ok += 1
+
+# 개요 화면: 드롭·보류는 지연/주의 숫자에서 빠지고, 이슈/리스크에 지연·비고가 붙는다
+O = (ROOT / 'mobile' / 'lib' / 'screens' / 'project_overview_screen.dart').read_text(encoding='utf-8')
+a = O[O.index('static String _alertOf(Map m)'):]
+a = a[:a.index('\n  }')]
+assert 'holdOf(m)' in a, '개요 지연 판정이 드롭·보류를 무시한다'
+assert "_alertOf(m) == '지연'" in O and 'final notes = models' in O, \
+    '이슈/리스크에 지연·비고가 안 붙었다'
+assert 'issueLines + late.length + notes.length' in O, '배지 숫자가 이슈만 센다'
 ok += 1
 # 상태별 색 (지연 빨강 · 임박 주황 · 완료 초록)
 assert '0xFFDC2626' in D and '0xFFE97132' in D and '0xFF059669' in D

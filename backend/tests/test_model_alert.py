@@ -8,13 +8,17 @@ import ast, datetime, pathlib
 SRC = (pathlib.Path(__file__).resolve().parents[1] / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 WANT = {'_model_alert', '_display_group', '_norm_phases', '_phase_ord',
-        '_as_money', '_parse_any_date', '_process_step_done'}
+        '_as_money', '_parse_any_date', '_process_step_done', '_model_hold'}
 srcs = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name in WANT}
 assert set(srcs) == WANT, f'못 찾은 함수: {WANT - set(srcs)}'
 g = {}
+for n in ('_HOLD_WORDS', '_HOLD_NEGATIONS'):
+    for x in tree.body:
+        if isinstance(x, ast.Assign) and getattr(x.targets[0], 'id', '') == n:
+            exec(ast.get_source_segment(SRC, x), g)
 for n in ('_phase_ord', '_as_money', '_norm_phases', '_display_group',
-          '_parse_any_date', '_process_step_done', '_model_alert'):
+          '_parse_any_date', '_process_step_done', '_model_hold', '_model_alert'):
     exec(srcs[n], g)
 f = g['_model_alert']
 

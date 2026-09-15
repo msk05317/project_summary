@@ -318,7 +318,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
         .where((m) => (m['issues'] ?? '').toString().trim().isNotEmpty)
         .toList();
     // 이슈 라인 총 개수 (모델별 여러 줄 가능)
-    final totalLines = withIssues.fold<int>(
+    final issueLines = withIssues.fold<int>(
         0,
         (s, m) =>
             s +
@@ -327,6 +327,17 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 .split('\n')
                 .where((l) => l.trim().isNotEmpty)
                 .length);
+
+    // 이슈 칸이 비어 있어도 위험한 것들. 적어둔 게 어디에도 안 뜨면
+    // '연결이 하나도 안 된다'는 말이 나온다.
+    final late = models
+        .where((m) => _alertOf(m) == '지연' &&
+            (m['issues'] ?? '').toString().trim().isEmpty)
+        .toList();
+    final notes = models
+        .where((m) => (m['note'] ?? '').toString().trim().isNotEmpty)
+        .toList();
+    final totalLines = issueLines + late.length + notes.length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -384,6 +395,10 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 groups.putIfAbsent(mk, () => []).addAll(ls);
               }
               if (groups.isEmpty) {
+                // 아래에 지연·비고가 붙는데 여기서 '없습니다'라고 하면 앞뒤가 안 맞는다
+                if (late.isNotEmpty || notes.isNotEmpty) {
+                  return const SizedBox.shrink();
+                }
                 return const Text('이슈가 없습니다',
                     style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)));
               }
@@ -430,9 +445,62 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 ],
               );
             },
-          )
+          ),
+          // ── 이슈 칸은 비었지만 일정이 지난 모델
+          if (late.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            const Text('일정 지연',
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6B7280))),
+            const SizedBox(height: 4),
+            for (final m in late.take(8))
+              _riskLine(
+                  const Color(0xFFDC2626),
+                  '${m['name'] ?? m['id'] ?? ''} · '
+                  '${(m['current_expected'] ?? '').toString().isEmpty
+                      ? '완료예정일 지남'
+                      : '완료예정 ${m['current_expected']} 경과'}'),
+            if (late.length > 8)
+              _riskLine(const Color(0xFFDC2626), '그 외 ${late.length - 8}종'),
+          ],
+          // ── 비고에 적어둔 내용 (드롭 예정 같은 것)
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('비고',
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6B7280))),
+            const SizedBox(height: 4),
+            for (final m in notes.take(8))
+              _riskLine(
+                  holdOf(m).isNotEmpty
+                      ? const Color(0xFF6B7280)
+                      : const Color(0xFF156082),
+                  '${m['name'] ?? m['id'] ?? ''} · '
+                  '${(m['note'] ?? '').toString().trim().replaceAll('\n', ' · ')}'),
+            if (notes.length > 8)
+              _riskLine(const Color(0xFF156082), '그 외 ${notes.length - 8}종'),
+          ],
         ],
       ),
+    );
+  }
+
+  /// 이슈/리스크 한 줄
+  static Widget _riskLine(Color dot, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Icon(Icons.circle, size: 5, color: dot),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(
+                  fontSize: 13, height: 1.45, color: Color(0xFF374151))),
+        ),
+      ]),
     );
   }
 
@@ -551,6 +619,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   /// 지연/주의 판정. 서버가 alert 로 내려준다.
   /// 옛 서버에 붙었을 때를 위해 status 로 떨어진다.
   static String _alertOf(Map m) {
+    // 드롭·보류는 일정이 멈춘 것이다. 예정일이 지났다고 지연으로 세면
+    // 카드에는 '지연 1' 인데 실제로는 드롭이라 숫자가 거짓말을 한다.
+    if (holdOf(m).isNotEmpty) return '정상';
     final a = (m['alert'] ?? '').toString().trim();
     if (a.isNotEmpty) return a;
     return (m['status'] ?? '').toString().trim();

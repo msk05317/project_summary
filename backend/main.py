@@ -685,11 +685,20 @@ def _issue_answer(project_key: str) -> str:
         return ""
     label = PROJECT_LABELS.get(project_key, project_key)
 
-    rows, late = [], []
+    rows, late, held = [], [], []
     for m in models:
         txt = " / ".join(x.strip().rstrip(" ,") for x in
                          str(m.get("issues") or "").splitlines() if x.strip())
         name = m.get("id") or m.get("name") or ""
+        try:
+            h = _model_hold(m)
+        except Exception:
+            h = ""
+        if h:
+            # 드롭·보류는 지연이 아니다. 따로 세서 따로 말한다.
+            _memo = str(m.get("note") or "").strip().replace("\n", " · ")
+            held.append(f"· [{h}] {name}" + (f": {_memo}" if _memo else ""))
+            continue
         if txt:
             rows.append(f"· {name}: {txt}")
         try:
@@ -698,15 +707,18 @@ def _issue_answer(project_key: str) -> str:
         except Exception:
             pass
 
-    if not rows and not late:
+    if not rows and not late and not held:
         return f"{label}에 등록된 이슈나 지연 모델이 없습니다."
 
     head = f"{label} 이슈 {len(rows)}건"
     if late:
         head += f" · 지연 {len(late)}종"
+    if held:
+        head += f" · 보류 {len(held)}종"
     lines = [head + "."]
     lines.extend(rows[:6])
     lines.extend(late[:4])
+    lines.extend(held[:4])
     if len(rows) > 6:
         lines.append(f"(그 외 {len(rows) - 6}건)")
     return "\n".join(lines)
@@ -2983,7 +2995,7 @@ def _normalize_model(raw: dict, existing_ids: set) -> dict | None:
         progress = 0
     progress = max(0, min(100, progress))
     status = str(raw.get("status") or "정상").strip()
-    if status not in ("정상", "주의", "지연"):
+    if status not in MODEL_STATUSES:
         status = "정상"
     # 판가/재료비 (선택)
     price = 0
@@ -13924,7 +13936,7 @@ def admin_update_model(project_key: str, model_id: str, payload: dict, _admin: i
         target["progress"] = max(0, min(100, p))
     if "status" in payload:
         s = str(payload["status"]).strip()
-        if s in ("정상", "주의", "지연"):
+        if s in MODEL_STATUSES:
             target["status"] = s
     if "price" in payload:
         try:
@@ -21967,6 +21979,54 @@ def get_progress_trend(period: str = "week", points: int = 4, division_id: str =
     }
 
 
+# 모델 상태. '드롭예정'·'보류' 는 시계가 멈춘 상태라 지연으로 세지 않는다.
+MODEL_STATUSES = ("정상", "주의", "지연", "드롭예정", "보류")
+
+# 비고·이슈에 이렇게 적어두면 상태를 안 골라도 알아본다.
+_HOLD_WORDS = (("드롭예정", "드롭"), ("드롭예정", "drop"), ("보류", "보류"),
+               ("보류", "홀드"), ("보류", "hold"), ("보류", "중단"))
+_HOLD_NEGATIONS = ("드롭 안", "드롭안", "드롭 취소", "보류 해제", "보류해제",
+                   "보류 취소", "드롭 아님", "드롭아님", "중단 없", "홀드 해제")
+
+
+def _model_hold(m: dict) -> str:
+    """'드롭예정' · '보류' · ''.
+
+    파워박스 VCTR-XPRSMS 는 비고에 '드롭 예정' 이라고 적혀 있었는데
+    앱이 비고를 안 읽어서, 자재 입고 예정일만 지나 보이고 그냥 지연으로
+    잡혔다. 적어둔 말이 화면까지 이어지게 한다.
+    """
+    st = str((m or {}).get("status") or "").strip().replace(" ", "")
+    if st in ("드롭예정", "드롭"):
+        return "드롭예정"
+    if st in ("보류", "홀드", "중단"):
+        return "보류"
+    txt = " ".join(str((m or {}).get(f) or "") for f in ("note", "issues")).lower()
+    if not txt.strip():
+        return ""
+    if any(neg in txt for neg in _HOLD_NEGATIONS):
+        return ""
+    for kind, word in _HOLD_WORDS:
+        if word in txt:
+            return kind
+    return ""
+
+
+def _model_po_wait(m: dict, disp_group: str = "") -> bool:
+    """양산으로 넘어왔는데 PO 가 아직 안 들어온 모델.
+
+    최종 승인까지 끝내고 PO 접수를 기다리는 자리다. 진행률로 보면
+    0% 라 늦은 것처럼 보이지만 우리가 늦은 게 아니다.
+    """
+    g = disp_group or _display_group(m)
+    if g != "양산":
+        return False
+    try:
+        return int((m or {}).get("po_qty") or 0) <= 0
+    except (TypeError, ValueError):
+        return True
+
+
 def _model_alert(m: dict, disp_group: str = "", expected: str = "",
                  progress=None) -> str:
     """'지연' · '주의' · '정상'.
@@ -21983,6 +22043,10 @@ def _model_alert(m: dict, disp_group: str = "", expected: str = "",
     manual = str((m or {}).get("status") or "").strip()
     if manual in ("지연", "주의"):
         return manual
+    # 드롭·보류는 일정이 멈춘 것이다. 예정일이 지났다고 지연으로 세면
+    # 화면에는 '일정 지연' 인데 실제로는 드롭이라 말이 안 맞는다.
+    if _model_hold(m):
+        return "정상"
     try:
         pg = int(progress if progress is not None else (m or {}).get("progress") or 0)
     except Exception:
@@ -22042,6 +22106,8 @@ def _enrich_model(m: dict) -> dict:
             out["finished"] = _process_step_done(_proc[-1])
     out.setdefault("finished", False)
     out.setdefault("alert", _model_alert(m, _disp))
+    out["hold"] = _model_hold(m)
+    out["po_wait"] = _model_po_wait(m, _disp)
     return out
 
 @app.get("/projects/{project_key}/models/detail")

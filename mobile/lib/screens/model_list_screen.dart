@@ -52,10 +52,46 @@ bool devHasProcessData(Map<String, dynamic> m) {
   return ((m['done_steps'] as num?)?.toInt() ?? 0) > 0;
 }
 
+/// 드롭·보류처럼 일정이 멈춘 모델. '' 이면 아니다.
+///
+/// 파워박스 VCTR-XPRSMS 는 비고에 '드롭 예정' 이라고 적혀 있었는데
+/// 앱이 비고를 안 읽어서 자재 입고 예정일만 지나 보이고 그냥 지연으로 잡혔다.
+/// 서버가 hold 를 내려주고, 옛 서버에 붙었을 땐 여기서 비고를 직접 읽는다.
+String holdOf(Map m) {
+  final h = (m['hold'] ?? '').toString().trim();
+  if (h.isNotEmpty) return h;
+  final st = (m['status'] ?? '').toString().replaceAll(' ', '');
+  if (st == '드롭예정' || st == '드롭') return '드롭예정';
+  if (st == '보류' || st == '홀드' || st == '중단') return '보류';
+  final txt = '${m['note'] ?? ''} ${m['issues'] ?? ''}'.toLowerCase();
+  if (txt.trim().isEmpty) return '';
+  for (final neg in const [
+    '드롭 안', '드롭안', '드롭 취소', '드롭 아님', '드롭아님',
+    '보류 해제', '보류해제', '보류 취소', '홀드 해제',
+  ]) {
+    if (txt.contains(neg)) return '';
+  }
+  if (txt.contains('드롭') || txt.contains('drop')) return '드롭예정';
+  if (txt.contains('보류') || txt.contains('홀드') ||
+      txt.contains('hold') || txt.contains('중단')) return '보류';
+  return '';
+}
+
+/// 양산으로 넘어왔는데 PO 가 아직 안 들어온 모델.
+/// 진행률로는 0% 라 늦은 것처럼 보이지만 우리가 늦은 게 아니다.
+bool poWaitOf(Map m) {
+  if (m['po_wait'] == true) return true;
+  final g = (m['display_group'] ?? m['group'] ?? '').toString();
+  if (g != '양산') return false;
+  return ((m['po_qty'] as num?)?.toInt() ?? 0) <= 0;
+}
+
 /// 모델 한 건의 상태. 목록 필터와 카드 색이 같은 값을 쓴다.
-enum ModelBucket { delayed, soon, running, done }
+enum ModelBucket { delayed, soon, running, done, hold }
 
 ModelBucket _bucketOf(Map m) {
+  // 드롭·보류가 먼저다. 시계가 멈춘 건 늦은 게 아니다.
+  if (holdOf(m).isNotEmpty) return ModelBucket.hold;
   // 최종 승인이 끝났으면 끝난 것. 양산으로 넘어가면 진행률이 PO 기준으로
   // 다시 세어져서 숫자만 보면 '완료'에서 빠진다.
   if (m['finished'] == true) return ModelBucket.done;
@@ -73,6 +109,7 @@ const Map<ModelBucket, String> _bucketLabel = {
   ModelBucket.soon: '임박',
   ModelBucket.running: '진행 중',
   ModelBucket.done: '완료',
+  ModelBucket.hold: '보류',
 };
 
 class ModelListScreen extends StatefulWidget {
@@ -94,8 +131,8 @@ class ModelListScreen extends StatefulWidget {
 }
 
 class _ModelListScreenState extends State<ModelListScreen> {
-  /// null = 미완료 전부 (기본). 완료된 건 처음부터 안 보인다 —
-  /// 끝난 걸 계속 스크롤로 넘기게 할 이유가 없다.
+  /// null = 전체. 완료까지 다 보여준다 — 끝난 게 목록에서 사라지면
+  /// '이 모델 어디 갔냐'를 다시 물어야 한다. 급한 순으로 정렬해서 올린다.
   ModelBucket? _filter;
 
   String get projectKey => widget.projectKey;
@@ -103,9 +140,10 @@ class _ModelListScreenState extends State<ModelListScreen> {
   String get groupName => widget.groupName;
   List<Map<String, dynamic>> get models => widget.models;
 
-  /// 지연 → 임박 → 진행 중 → 완료 순. 급한 게 위로 온다.
+  /// 지연 → 임박 → 진행 중 → 완료 → 보류 순. 급한 게 위로 온다.
   static const List<ModelBucket> _order = [
-    ModelBucket.delayed, ModelBucket.soon, ModelBucket.running, ModelBucket.done,
+    ModelBucket.delayed, ModelBucket.soon, ModelBucket.running,
+    ModelBucket.done, ModelBucket.hold,
   ];
 
   Map<ModelBucket, int> get _counts {
@@ -118,9 +156,8 @@ class _ModelListScreenState extends State<ModelListScreen> {
 
   List<Map<String, dynamic>> get _visible {
     final out = models.where((m) {
-      final b = _bucketOf(m);
-      if (_filter == null) return b != ModelBucket.done;
-      return b == _filter;
+      if (_filter == null) return true;
+      return _bucketOf(m) == _filter;
     }).toList();
     out.sort((a, b) =>
         _order.indexOf(_bucketOf(a)).compareTo(_order.indexOf(_bucketOf(b))));
@@ -129,7 +166,6 @@ class _ModelListScreenState extends State<ModelListScreen> {
 
   Widget _chips() {
     final c = _counts;
-    final undone = models.length - (c[ModelBucket.done] ?? 0);
     Widget chip(String label, int n, bool on, VoidCallback tap, Color tint) {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
@@ -161,7 +197,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(children: [
-          chip('미완료', undone, _filter == null,
+          chip('전체', models.length, _filter == null,
               () => setState(() => _filter = null), const Color(0xFF0E2841)),
           chip('지연', c[ModelBucket.delayed] ?? 0, _filter == ModelBucket.delayed,
               () => setState(() => _filter = ModelBucket.delayed),
@@ -169,9 +205,17 @@ class _ModelListScreenState extends State<ModelListScreen> {
           chip('임박', c[ModelBucket.soon] ?? 0, _filter == ModelBucket.soon,
               () => setState(() => _filter = ModelBucket.soon),
               const Color(0xFFE97132)),
+          chip('진행중', c[ModelBucket.running] ?? 0, _filter == ModelBucket.running,
+              () => setState(() => _filter = ModelBucket.running),
+              const Color(0xFF156082)),
           chip('완료', c[ModelBucket.done] ?? 0, _filter == ModelBucket.done,
               () => setState(() => _filter = ModelBucket.done),
               const Color(0xFF059669)),
+          // 보류는 있을 때만 — 없는 칩이 자리를 차지할 이유가 없다
+          if ((c[ModelBucket.hold] ?? 0) > 0)
+            chip('보류', c[ModelBucket.hold] ?? 0, _filter == ModelBucket.hold,
+                () => setState(() => _filter = ModelBucket.hold),
+                const Color(0xFF6B7280)),
         ]),
       ),
     );
@@ -199,7 +243,8 @@ class _ModelListScreenState extends State<ModelListScreen> {
   Color _devStatusColor(Map<String, dynamic> m) {
     final expected = (m['current_expected'] ?? '').toString();
     final progress = (m['progress'] as num?)?.toInt() ?? 0;
-    
+
+    if (holdOf(m).isNotEmpty) return const Color(0xFF9CA3AF); // 드롭·보류 → 회색
     if (progress >= 100) return const Color(0xFF059669); // 완료
     
     if (expected.isEmpty) return const Color(0xFF9CA3AF); // 예상일 없음 → 회색
@@ -221,7 +266,11 @@ class _ModelListScreenState extends State<ModelListScreen> {
     final expected = (m['current_expected'] ?? '').toString();
     final progress = (m['progress'] as num?)?.toInt() ?? 0;
     final stage = (m['current_stage'] ?? '').toString();
-    
+
+    // 드롭·보류는 예정일이 지나도 지연이 아니다. 일정이 멈춘 것뿐이다.
+    final hold = holdOf(m);
+    if (hold.isNotEmpty) return '$hold · $stage';
+
     if (progress >= 100) return '완료';
     if (progress == 0) return '대기중';
     
@@ -244,6 +293,52 @@ class _ModelListScreenState extends State<ModelListScreen> {
     if (s == '지연') return const Color(0xFFDC2626);
     if (s == '주의') return const Color(0xFFD97706);
     return const Color(0xFF059669);
+  }
+
+  /// 카드 위의 작은 표시 (PO 대기 · 드롭예정 · 보류)
+  static Widget _tag(String text, Color bg, Color fg) {
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Text(text,
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg)),
+    );
+  }
+
+  /// 적어둔 비고. 어딘가에 적었으면 화면에도 나와야 한다.
+  static Widget _noteLine(Map m) {
+    final note = (m['note'] ?? '').toString().trim();
+    if (note.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 1),
+          child: Icon(Icons.sticky_note_2_outlined, size: 12, color: Color(0xFF9CA3AF)),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(note.replaceAll('\n', ' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, height: 1.35, color: Color(0xFF6B7280))),
+        ),
+      ]),
+    );
+  }
+
+  /// 모델 하나에 붙는 표시들
+  static List<Widget> _tagsFor(Map m) {
+    final out = <Widget>[];
+    final h = holdOf(m);
+    if (h.isNotEmpty) {
+      out.add(_tag(h, const Color(0xFFF3F4F6), const Color(0xFF4B5563)));
+    }
+    if (poWaitOf(m)) {
+      out.add(_tag('PO 대기', const Color(0xFFFEF3C7), const Color(0xFF92400E)));
+    }
+    return out;
   }
 
   @override
@@ -391,16 +486,26 @@ class _ModelListScreenState extends State<ModelListScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m['name']?.toString() ?? '', style: AppText.bodyStrong.copyWith(fontSize: 15)),
+              Row(children: [
+                Flexible(
+                  child: Text(m['name']?.toString() ?? '',
+                      style: AppText.bodyStrong.copyWith(fontSize: 15),
+                      overflow: TextOverflow.ellipsis),
+                ),
+                ..._tagsFor(m),
+              ]),
               const SizedBox(height: 4),
               Row(children: [
                 Icon(Icons.circle, size: 8, color: _statusColor(status)),
                 const SizedBox(width: 4),
-                Text(hasPlanData ? '출하계획대비' : '계획 미등록',
+                Text(hasPlanData
+                        ? '출하계획대비'
+                        : (poWaitOf(m) ? 'PO 접수 대기' : '계획 미등록'),
                     style: TextStyle(
                         fontSize: 12,
                         color: hasPlanData ? _statusColor(status) : const Color(0xFF9CA3AF))),
               ]),
+              _noteLine(m),
             ]),
           ),
           Text(progress == null ? '-' : '$progress%',
@@ -475,6 +580,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
                         color: isRpm ? const Color(0xFF0284C7) : const Color(0xFF7C3AED),
                       )),
                 ),
+                ..._tagsFor(m),
               ]),
               const SizedBox(height: 4),
               Text(
@@ -484,6 +590,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
               if (expected.isNotEmpty)
                 Text('완료예정 · $expected',
                     style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              _noteLine(m),
             ]),
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
