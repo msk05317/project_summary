@@ -199,6 +199,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
               : (scored.reduce((a, b) => a + b) / scored.length).round();
           // 서버가 정한 값(alert)을 쓴다. 손으로 적은 status 만 보면
           // 목록에는 '지연중' 이 다섯인데 카드는 0 으로 뜬다.
+          // 프로젝트가 통째로 멈춰 있으면 그것부터 말한다.
+          final projHold = (data['hold'] ?? '').toString();
+          final holdWhy = (data['hold_reason'] ?? '').toString();
           final delayed = models.where((m) => _alertOf(m) == '지연').length;
           final watched = models.where((m) => _alertOf(m) == '주의').length;
           final held = models.where((m) => holdOf(m).isNotEmpty).length;
@@ -278,6 +281,10 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (projHold.isNotEmpty) ...[
+                  _holdBanner(projHold, holdWhy, models.length),
+                  const SizedBox(height: 12),
+                ],
                 // ── 확인 필요 (지연 · 임박 · 이슈 · 비고를 한 목록으로)
                 _buildCheckSection(models),
                 _buildStatusNote((data['status_note'] ?? '').toString()),
@@ -348,6 +355,43 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   }
 
   /// 진행률 카드 안의 작은 칩. 누르면 그 상태만 걸린 목록이 열린다.
+  /// 프로젝트 전체가 멈춰 있을 때. 적어둔 이유를 그대로 보여준다.
+  Widget _holdBanner(String kind, String why, int n) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.pause_circle_outline, size: 18, color: Color(0xFF6B7280)),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('프로젝트 전체 $kind · 모델 $n종',
+                style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF374151))),
+            if (why.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(why,
+                    style: const TextStyle(
+                        fontSize: 12.5, height: 1.4, color: Color(0xFF6B7280))),
+              ),
+            const Padding(
+              padding: EdgeInsets.only(top: 3),
+              child: Text('멈춰 있는 일정이라 지연으로 세지 않습니다',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xFF9CA3AF))),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   bool _checkAll = false;
 
   Widget _pill(String label, int n, Color color,
@@ -409,6 +453,11 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       final alert = _alertOf(m);
       final issues = (m['issues'] ?? '').toString().trim();
       final note = (m['note'] ?? '').toString().trim();
+
+      // 프로젝트 전체 보류인데 이 모델만의 사유가 따로 없으면 배너가 대신한다.
+      // 똑같은 '보류' 29줄을 늘어놓을 이유가 없다.
+      final scope = (m['hold_scope'] ?? '').toString();
+      if (scope == 'project' && issues.isEmpty && note.isEmpty) continue;
 
       String kind;
       int rank;

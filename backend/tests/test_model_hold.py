@@ -11,7 +11,7 @@ SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 WANT = {'_model_hold', '_model_po_wait', '_model_alert', '_display_group',
         '_norm_phases', '_phase_ord', '_as_money', '_process_step_done',
-        '_parse_any_date'}
+        '_parse_any_date', '_project_hold', '_project_hold_reason'}
 g = {}
 for n in tree.body:
     if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') in (
@@ -22,6 +22,7 @@ for n in tree.body:
 missing = WANT - set(g)
 assert not missing, f'못 찾은 함수: {missing}'
 hold, po_wait, alert = g['_model_hold'], g['_model_po_wait'], g['_model_alert']
+phold, preason = g['_project_hold'], g['_project_hold_reason']
 ok = 0
 
 # ── 비고에 적은 말을 알아본다 ──
@@ -80,5 +81,25 @@ if bk:
         m = ms[0]
         assert hold(m) == '드롭예정', f"VCTR-XPRSMS 가 드롭예정으로 안 잡힌다: {m.get('note')!r}"
         ok += 1
+
+# ── 프로젝트 전체 보류 ──
+# CUP 은 현황에 '컵 이슈 해결될 때까지 ... 홀딩' 이라고 적혀 있는데도
+# 모델 15종이 전부 지연으로 세어졌다. 멈춰 세운 일정은 늦은 게 아니다.
+CUPNOTE = '양산 1종\n개발 28종\n\n*컵 이슈 해결될 때까지 개발 컵 또한 LAIR 작성 홀딩'
+assert phold({'status_note': CUPNOTE}) == '보류'
+assert 'LAIR 작성 홀딩' in preason({'status_note': CUPNOTE})
+assert phold({'status_note': '양산 3종\n개발 5종'}) == ''
+assert phold({'status_note': '홀딩 해제, 재개'}) == ''
+assert phold({'hold': '드롭예정'}) == '드롭예정'
+assert phold({}) == ''
+ok += 1
+
+# 실제 데이터: CUP 만 걸리고 다른 프로젝트는 안 걸린다
+if bk:
+    ps = data['projects']
+    assert phold(ps['cup']) == '보류', 'CUP 홀딩이 안 잡힌다'
+    for k in ('powerbox', 'frame', 'hrva_plate', 'chamber', 'enclosure'):
+        assert phold(ps.get(k) or {}) == '', f'{k} 가 잘못 보류로 잡힌다'
+    ok += 1
 
 print(f'전부 통과 · {ok}개 항목')

@@ -684,6 +684,13 @@ def _issue_answer(project_key: str) -> str:
     if not models:
         return ""
     label = PROJECT_LABELS.get(project_key, project_key)
+    # 프로젝트가 통째로 멈춰 있으면 그것부터 말한다.
+    _phold = _project_hold(proj)
+    if _phold:
+        _why = _project_hold_reason(proj)
+        return (f"{label}는 현재 {_phold} 상태입니다"
+                + (f" ({_why})." if _why else ".")
+                + f" 모델 {len(models)}종 일정은 멈춰 있습니다.")
 
     rows, late, held = [], [], []
     for m in models:
@@ -21984,9 +21991,10 @@ MODEL_STATUSES = ("정상", "주의", "지연", "드롭예정", "보류")
 
 # 비고·이슈에 이렇게 적어두면 상태를 안 골라도 알아본다.
 _HOLD_WORDS = (("드롭예정", "드롭"), ("드롭예정", "drop"), ("보류", "보류"),
-               ("보류", "홀드"), ("보류", "hold"), ("보류", "중단"))
+               ("보류", "홀딩"), ("보류", "홀드"), ("보류", "hold"), ("보류", "중단"))
 _HOLD_NEGATIONS = ("드롭 안", "드롭안", "드롭 취소", "보류 해제", "보류해제",
-                   "보류 취소", "드롭 아님", "드롭아님", "중단 없", "홀드 해제")
+                   "보류 취소", "드롭 아님", "드롭아님", "중단 없", "홀드 해제",
+                   "홀딩 해제", "홀딩해제", "홀딩 없")
 
 
 def _model_hold(m: dict) -> str:
@@ -22009,6 +22017,39 @@ def _model_hold(m: dict) -> str:
     for kind, word in _HOLD_WORDS:
         if word in txt:
             return kind
+    return ""
+
+
+def _project_hold(proj: dict) -> str:
+    """프로젝트 전체가 멈춰 있으면 '보류' · '드롭예정', 아니면 ''.
+
+    CUP 은 현황에 '*컵 이슈 해결될 때까지 개발 컵 또한 LAIR 작성 홀딩'
+    이라고 적혀 있는데도 모델 15종이 전부 '지연' 으로 세어졌다.
+    멈춰 세운 일정을 늦었다고 하면 숫자가 거짓말을 한다.
+    """
+    st = str((proj or {}).get("hold") or "").strip().replace(" ", "")
+    if st in ("드롭예정", "드롭"):
+        return "드롭예정"
+    if st in ("보류", "홀딩", "홀드", "중단"):
+        return "보류"
+    txt = str((proj or {}).get("status_note") or "").lower()
+    if not txt.strip():
+        return ""
+    if any(neg in txt for neg in _HOLD_NEGATIONS):
+        return ""
+    for kind, word in _HOLD_WORDS:
+        if word in txt:
+            return kind
+    return ""
+
+
+def _project_hold_reason(proj: dict) -> str:
+    """보류라고 판단한 근거 문장 한 줄. 화면에 그대로 보여준다."""
+    txt = str((proj or {}).get("status_note") or "")
+    for line in txt.splitlines():
+        low = line.lower()
+        if any(w in low for _k, w in _HOLD_WORDS):
+            return line.strip().lstrip("*・- ").strip()
     return ""
 
 
@@ -22073,7 +22114,7 @@ def _model_alert(m: dict, disp_group: str = "", expected: str = "",
         return "주의"
     return "정상"
 
-def _enrich_model(m: dict) -> dict:
+def _enrich_model(m: dict, proj_hold: str = "") -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "note", "part_number", "weekly_plan", "weekly_progress", "weekly_summary")}
     _disp = _display_group(m)
     out["display_group"] = _disp
@@ -22106,8 +22147,15 @@ def _enrich_model(m: dict) -> dict:
             out["finished"] = _process_step_done(_proc[-1])
     out.setdefault("finished", False)
     out.setdefault("alert", _model_alert(m, _disp))
-    out["hold"] = _model_hold(m)
+    _own_hold = _model_hold(m)
+    out["hold"] = _own_hold or (proj_hold or "")
+    # 프로젝트가 통째로 멈춘 것과, 이 모델만 드롭인 것은 다르다.
+    # 화면에서 '보류 29줄' 을 늘어놓는 대신 안내 한 줄로 바꿀 수 있게 구분해 준다.
+    out["hold_scope"] = "model" if _own_hold else ("project" if proj_hold else "")
     out["po_wait"] = _model_po_wait(m, _disp)
+    # 프로젝트가 통째로 멈춰 있으면 그 안의 모델도 늦은 게 아니다.
+    if proj_hold and out.get("alert") in ("지연", "주의"):
+        out["alert"] = "정상"
     return out
 
 @app.get("/home/alerts")
@@ -22143,11 +22191,12 @@ def get_home_alerts(limit: int = 12):
             continue
         seen_projects.add(pk)
         label = PROJECT_LABELS.get(pk, pk)
+        _phold = _project_hold(proj)
         for m in models:
             if not isinstance(m, dict):
                 continue
             try:
-                e = _enrich_model(m)
+                e = _enrich_model(m, _phold)
             except Exception:
                 continue
             counts["total"] += 1
@@ -22268,6 +22317,7 @@ def get_project_models_detail(project_key: str):
     _key = _model_key_alias(project_key)
     data = _load_models()
     proj = data.get("projects", {}).get(_key, {})
+    _phold = _project_hold(proj)
     changed = False
     enriched = []
     for m in proj.get("models", []):
@@ -22275,7 +22325,7 @@ def get_project_models_detail(project_key: str):
             continue
         if m.get("group") == "개발" and (not isinstance(m.get("process"), list) or len(m.get("process")) not in (12, 13, 14, 15)):
             changed = True
-        enriched.append(_inject_weekly_summary(_enrich_model(m)))
+        enriched.append(_inject_weekly_summary(_enrich_model(m, _phold)))
     if changed:
         _save_models(data)
     enriched.sort(key=lambda x: 0 if x.get("group") == "양산" else 1)
@@ -22284,6 +22334,8 @@ def get_project_models_detail(project_key: str):
         "has_models": len(enriched) > 0,
         "total": len(enriched),
         "status_note": proj.get("status_note") or "",
+        "hold": _phold,
+        "hold_reason": _project_hold_reason(proj) if _phold else "",
         "models": enriched,
     }
 

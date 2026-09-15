@@ -70,7 +70,7 @@ assert "_pill('지연'" in O and 'initialFilter: bucket' in O, \
 # 한 모델은 한 줄로만 나온다 (지연이면서 이슈면 지연 줄 밑에 이슈 문장이 붙는다)
 r = O[O.index('List<_CheckRow> _checkRows('):]
 r = r[:r.index('\n  }')]
-assert r.count('continue;') == 1 and 'out.sort(' in r
+assert 'out.sort(' in r
 assert "kind = '지연'" in r and "kind = '이슈'" in r and "kind = '비고'" in r
 ok += 1
 

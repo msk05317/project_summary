@@ -137,7 +137,9 @@ assert "m.get('issues')[:80]" not in SRC, '이슈 컨텍스트가 아직 80자�
 assert '_issue_answer(last_project)' in SRC, '이슈 즉답이 /chat 에 연결되지 않았다'
 
 iss = load(['_issue_answer', '_model_alert', '_display_group', '_norm_phases',
-            '_phase_ord', '_as_money', '_process_step_done'])
+            '_phase_ord', '_as_money', '_process_step_done', '_model_hold',
+            '_project_hold', '_project_hold_reason', '_CHAT_KW_EXTRA',
+            '_HOLD_WORDS', '_HOLD_NEGATIONS'])
 LONG = ('PS 대체파트 미입고 2종 (W40), OEM 지연 1종 (W38),\n'
         '33대 제조 완료, FQC 불량, 고객 SR 승인 지연, 선적 스페이스 부족 이슈 미출하 (W38)')
 iss['_load_models'] = lambda: {'projects': {'powerbox': {'models': [

@@ -107,6 +107,9 @@ if bk:
         f"실제 데이터에 지연·임박이 있는데 홈은 0 이라고 한다: {rc}"
     assert real['alerts_total'] == rc['delayed'] + rc['soon'], real['alerts_total']
     assert real['by_project'], '프로젝트 묶음이 비었다'
+    # CUP 은 프로젝트째 홀딩이라 지연 목록에 없어야 한다
+    assert all(r['key'] != 'cup' for r in real['by_project']), \
+        'CUP 이 홀딩인데 지연 프로젝트로 올라와 있다'
     assert len(real['holds']) == rc['hold'] or len(real['holds']) == 12
     ok += 1
 
@@ -151,6 +154,12 @@ ok += 1
 R = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
 assert '_coverage()' in R and '주차 계획 미등록' in R, \
     '매출이 어느 사업부 기준인지 안 밝힌다'
+ok += 1
+
+# 프로젝트 전체 보류면 개요에 배너 한 줄, 같은 보류 29줄을 늘어놓지 않는다
+O2 = (LIB / 'screens' / 'project_overview_screen.dart').read_text(encoding='utf-8')
+assert '_holdBanner(' in O2 and "data['hold_reason']" in O2, '보류 배너가 없다'
+assert "scope == 'project'" in O2, '프로젝트 보류 모델을 그대로 다 늘어놓는다'
 ok += 1
 
 print(f'전부 통과 · {ok}개 항목')
