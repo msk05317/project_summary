@@ -81,6 +81,13 @@ assert r['alerts'][0]['kind'] == '지연', r['alerts']
 assert r['alerts'][0]['days'] and r['alerts'][0]['days'] >= 29
 ok += 1
 
+# 보류·PO 대기도 목록으로 나온다 (홈 타일을 누르면 볼 수 있어야 한다)
+assert [x['id'] for x in r['holds']] == ['DROP-1'], r['holds']
+assert r['holds'][0]['kind'] == '드롭예정'
+assert [x['id'] for x in r['po_waits']] == ['MASS-1'], r['po_waits']
+assert r['po_waits'][0]['kind'] == 'PO 대기'
+ok += 1
+
 # 프로젝트 단위 묶음
 rows = r['by_project']
 assert len(rows) == 1 and rows[0]['key'] == 'powerbox'
@@ -100,6 +107,20 @@ if bk:
         f"실제 데이터에 지연·임박이 있는데 홈은 0 이라고 한다: {rc}"
     assert real['alerts_total'] == rc['delayed'] + rc['soon'], real['alerts_total']
     assert real['by_project'], '프로젝트 묶음이 비었다'
+    assert len(real['holds']) == rc['hold'] or len(real['holds']) == 12
+    ok += 1
+
+    # 블룸: 모델이 없어도 일 보고 보드가 있으면 '진행 데이터 없음' 이 아니다
+    g['_model_key_alias'] = lambda k: k
+    CFGM = {p['id']: p for p in CFG}
+    g['_cl'] = type('C', (), {
+        'get_projects': staticmethod(
+            lambda visible_only=True: [p for p in CFG if p.get('visible', True)]
+            if visible_only else CFG),
+        'get_project': staticmethod(lambda k: CFGM.get(k))})()
+    b = fn(12)['bloom']
+    assert b and (b['plan'] > 0 or b['prev_plan'] > 0), f'블룸 요약이 비었다: {b}'
+    assert b['items'] > 0
     ok += 1
 
 # ── 앱이 이 값을 실제로 쓰는지 ──
@@ -112,6 +133,24 @@ assert 'HomeAlertsService.fetch()' in H
 # 못 받아왔을 때 0 을 그리면 '지연 없음' 과 구분이 안 된다
 assert '!a.loaded' in H and '현황을 불러오지 못했습니다' in H
 assert 'AlertListScreen' in H, '모두 보기가 새 목록으로 안 간다'
+# 숫자만 보여주면 '그래서 어떤 게 지연인데' 를 다시 물어야 한다
+assert "_kpi(context, '지연'" in H and "AlertListScreen(initialFilter:" in H, \
+    '전체 현황 타일을 누를 수 없다'
+# 블룸은 모델이 없어도 진행 중이다
+assert "divisionId == 'bloom'" in H and '_bloom' in H, '블룸이 여전히 진행 데이터 없음이다'
+ok += 1
+
+# 목록 화면이 네 가지를 다 받는다
+A = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
+for label in ('지연', '임박', '보류', 'PO 대기'):
+    assert f"_chip('{label}'" in A, f'{label} 칩이 없다'
+assert 'initialFilter' in A
+ok += 1
+
+# 매출 카드가 무엇이 포함된 숫자인지 밝힌다
+R = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
+assert '_coverage()' in R and '주차 계획 미등록' in R, \
+    '매출이 어느 사업부 기준인지 안 밝힌다'
 ok += 1
 
 print(f'전부 통과 · {ok}개 항목')

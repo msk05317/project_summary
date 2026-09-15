@@ -72,6 +72,42 @@ class AlertModel {
       );
 }
 
+/// 블룸 오늘 상황. 모델이 없는 사업부라 일 보고 보드로 본다.
+class BloomBrief {
+  final String date;
+  final int plan;
+  final int actual;
+  final bool pending;
+  final String prevDate;
+  final int prevPlan;
+  final int prevActual;
+  final int items;
+
+  const BloomBrief({
+    required this.date,
+    required this.plan,
+    required this.actual,
+    required this.pending,
+    required this.prevDate,
+    required this.prevPlan,
+    required this.prevActual,
+    required this.items,
+  });
+
+  factory BloomBrief.fromJson(Map j) => BloomBrief(
+        date: (j['date'] ?? '').toString(),
+        plan: (j['plan'] as num?)?.toInt() ?? 0,
+        actual: (j['actual'] as num?)?.toInt() ?? 0,
+        pending: j['pending'] == true,
+        prevDate: (j['prev_date'] ?? '').toString(),
+        prevPlan: (j['prev_plan'] as num?)?.toInt() ?? 0,
+        prevActual: (j['prev_actual'] as num?)?.toInt() ?? 0,
+        items: (j['items'] as num?)?.toInt() ?? 0,
+      );
+
+  bool get hasData => plan > 0 || actual > 0 || prevPlan > 0;
+}
+
 class HomeAlerts {
   final String date;
   final int total;
@@ -86,6 +122,9 @@ class HomeAlerts {
   final int alertsTotal;
   final List<AlertProject> byProject;
   final List<AlertModel> alerts;
+  final List<AlertModel> holds;
+  final List<AlertModel> poWaits;
+  final BloomBrief? bloom;
   final bool loaded;
 
   const HomeAlerts({
@@ -102,13 +141,17 @@ class HomeAlerts {
     required this.alertsTotal,
     required this.byProject,
     required this.alerts,
+    required this.holds,
+    required this.poWaits,
+    required this.bloom,
     this.loaded = true,
   });
 
   static const HomeAlerts empty = HomeAlerts(
     date: '', total: 0, delayed: 0, soon: 0, hold: 0, poWait: 0, done: 0,
     running: 0, projects: 0, projectsWithAlert: 0, alertsTotal: 0,
-    byProject: [], alerts: [], loaded: false,
+    byProject: [], alerts: [], holds: [], poWaits: [], bloom: null,
+    loaded: false,
   );
 
   factory HomeAlerts.fromJson(Map j) {
@@ -134,6 +177,15 @@ class HomeAlerts {
           .whereType<Map>()
           .map(AlertModel.fromJson)
           .toList(),
+      holds: ((j['holds'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(AlertModel.fromJson)
+          .toList(),
+      poWaits: ((j['po_waits'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(AlertModel.fromJson)
+          .toList(),
+      bloom: (j['bloom'] is Map) ? BloomBrief.fromJson(j['bloom'] as Map) : null,
     );
   }
 }
@@ -141,7 +193,7 @@ class HomeAlerts {
 class HomeAlertsService {
   /// 실패하면 예외 대신 empty 를 돌려준다 — 홈이 통째로 깨지면 안 된다.
   /// 대신 loaded=false 라서 화면이 '지연 없음' 과 구분해서 말할 수 있다.
-  static Future<HomeAlerts> fetch({int limit = 12}) async {
+  static Future<HomeAlerts> fetch({int limit = 60}) async {
     try {
       final uri = Uri.parse('$kApiBaseUrl/home/alerts?limit=$limit');
       final res = await http.get(uri).timeout(const Duration(seconds: 12));

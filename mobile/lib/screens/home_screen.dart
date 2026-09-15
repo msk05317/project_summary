@@ -231,6 +231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _progressFuture = ProgressService.fetch();
     _overviewFuture = OverviewService.fetch();
     _alertsFuture = HomeAlertsService.fetch();
+    _rememberBloom();
     _loadFavDivisions();
     _loadAuto();
   }
@@ -257,6 +258,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _auto = s);
   }
 
+  /// 사업부 그리드가 블룸을 '진행 데이터 없음' 으로 그리지 않도록
+  /// alerts 응답이 오면 블룸 요약만 따로 들고 있는다.
+  Future<void> _rememberBloom() async {
+    final a = await _alertsFuture;
+    if (!mounted) return;
+    setState(() => _bloom = a.bloom);
+  }
+
   /// "오늘 15:47 기준"
   String _formatHomeCaption(DateTime now) {
     final hh = now.hour.toString().padLeft(2, '0');
@@ -266,6 +275,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// 진행률이 없는 사업부에 무엇이 있는지 한 마디로 적는다.
   String? _divisionNote(String divisionId) {
+    if (divisionId == 'bloom') {
+      final b = _bloom;
+      if (b == null || !b.hasData) return null;
+      final md = b.date.length >= 10
+          ? '${int.parse(b.date.substring(5, 7))}/${int.parse(b.date.substring(8, 10))}'
+          : b.date;
+      if (b.pending) return '$md 계획 ${b.plan}대 · 실적 대기';
+      final rate = b.plan > 0 ? ' (${(b.actual * 100 / b.plan).round()}%)' : '';
+      return '$md 실적 ${b.actual}/${b.plan}대$rate';
+    }
     if (divisionId != AutomotiveService.divisionId) return null;
     if (_auto.revenue <= 0) return null;
     return '계약 ${AutoFmt.eok(_auto.revenue)}';
@@ -279,6 +298,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _progressFuture = ProgressService.fetch();
         _overviewFuture = OverviewService.fetch();
         _alertsFuture = HomeAlertsService.fetch();
+        _rememberBloom();
         _loadAuto(force: true);
     });
     _loadFavDivisions(); // 사업부 즐겨찾기 Set 로딩
@@ -355,8 +375,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // - GREEN(완료)만 있는 경우는 일단 "대기"로 둡니다(시안의 회색 톤과 일치).
   // - 데이터 소스는 /dashboard 응답 (DashboardCard 리스트).
   //   각 카드의 division_id 가 일치하는 카드 중 status 가 RED/YELLOW 면 활성.
+  /// 블룸은 모델이 없고 일 보고 보드로 움직인다. /home/alerts 가 같이 준다.
+  BloomBrief? _bloom;
+
   DivisionStatus _divisionStatus(String divisionId, List<DashboardCard> cards) {
     final s = computeDivisionStatus(divisionId, cards);
+    // 블룸은 주차 보고도 모델도 없다. 오늘 계획이 잡혀 있으면 진행 중이다.
+    if (s == DivisionStatus.empty &&
+        divisionId == 'bloom' &&
+        (_bloom?.hasData ?? false)) {
+      return DivisionStatus.active;
+    }
     // 자동차는 주차 보고가 아니라 계약으로 움직인다. 계약이 올라와 있으면
     // '진행 데이터 없음'이 아니다 — 상태 필터에도 걸려야 한다.
     if (s == DivisionStatus.empty &&
@@ -1788,16 +1817,37 @@ class _RiskSummaryCard extends StatelessWidget {
     required this.caption,
   });
 
-  static Widget _kpi(String label, int value, Color color) {
+  /// 숫자만 보여주면 '그래서 어떤 게 지연인데' 를 다시 물어야 한다.
+  /// 0 이 아니면 눌러서 그 목록으로 바로 들어간다.
+  static Widget _kpi(BuildContext context, String label, int value,
+      Color color, String filter) {
+    final on = value > 0;
     return Expanded(
-      child: Column(children: [
-        Text('$value',
-            style: TextStyle(
-                fontSize: 24, fontWeight: FontWeight.w800, color: color)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-      ]),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: on
+            ? () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => AlertListScreen(initialFilter: filter),
+                ))
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(children: [
+            Text('$value',
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: on ? color : const Color(0xFFCBD5E1))),
+            const SizedBox(height: 2),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(label,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+              if (on)
+                const Icon(Icons.chevron_right, size: 13, color: Color(0xFFCBD5E1)),
+            ]),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -1846,10 +1896,10 @@ class _RiskSummaryCard extends StatelessWidget {
               )
             else ...[
               Row(children: [
-                _kpi('지연', a.delayed, const Color(0xFFDC2626)),
-                _kpi('임박', a.soon, const Color(0xFFE97132)),
-                _kpi('보류', a.hold, const Color(0xFF6B7280)),
-                _kpi('PO 대기', a.poWait, const Color(0xFFB45309)),
+                _kpi(context, '지연', a.delayed, const Color(0xFFDC2626), '지연'),
+                _kpi(context, '임박', a.soon, const Color(0xFFE97132), '임박'),
+                _kpi(context, '보류', a.hold, const Color(0xFF6B7280), '보류'),
+                _kpi(context, 'PO 대기', a.poWait, const Color(0xFFB45309), 'PO 대기'),
               ]),
               const SizedBox(height: 14),
               FutureBuilder<List<Division>>(

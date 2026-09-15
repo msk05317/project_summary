@@ -26,6 +26,37 @@ class ExecRevenueCard extends StatelessWidget {
     this.onTap,
   });
 
+  /// 이 숫자에 무엇이 들어 있는지 한 줄로 밝힌다.
+  /// '전체 사업부 매출' 로 읽히면 안 된다 — 주차 계획이 올라온 프로젝트만이다.
+  String _coverage() {
+    const names = {
+      'semiconductor': '반도체',
+      'automotive': '자동차',
+      'ess': 'ESS',
+      'bloom': '블룸',
+      'network': '네트워크',
+      'pcb': 'PCB',
+    };
+    final inn = <String>{};
+    final out = <String>{};
+    var n = 0;
+    for (final p in summary.items) {
+      final d = names[p.divisionId] ?? (p.divisionId ?? '');
+      if (d.isEmpty) continue;
+      if (p.planRevenue > 0 || p.revenue > 0) {
+        inn.add(d);
+        n++;
+      } else if (p.modelsTotal > 0) {
+        out.add(d);
+      }
+    }
+    if (inn.isEmpty) return '';
+    var t = '${inn.join(' · ')} $n개 프로젝트';
+    final miss = out.difference(inn);
+    if (miss.isNotEmpty) t += ' · ${miss.join('·')}는 주차 계획 미등록';
+    return t;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const _ExecSkeleton();
@@ -91,6 +122,12 @@ class ExecRevenueCard extends StatelessWidget {
                     size: 18, color: AppColors.textMute),
             ],
           ),
+          if (_coverage().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(_coverage(),
+                  style: AppText.caption.copyWith(color: AppColors.textMute)),
+            ),
           const SizedBox(height: 10),
 
           // 실적 금액 (크게) + 계획 대비

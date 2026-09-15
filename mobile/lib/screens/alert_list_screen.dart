@@ -10,7 +10,10 @@ import '../services/home_alerts_service.dart';
 import 'project_overview_screen.dart';
 
 class AlertListScreen extends StatefulWidget {
-  const AlertListScreen({super.key});
+  /// '' = 지연+임박 전체 · '지연' · '임박' · '보류' · 'PO 대기'
+  final String initialFilter;
+
+  const AlertListScreen({super.key, this.initialFilter = ''});
 
   @override
   State<AlertListScreen> createState() => _AlertListScreenState();
@@ -18,12 +21,29 @@ class AlertListScreen extends StatefulWidget {
 
 class _AlertListScreenState extends State<AlertListScreen> {
   late Future<HomeAlerts> _future;
-  String _filter = ''; // '' = 전체 · '지연' · '임박'
+  late String _filter;
 
   @override
   void initState() {
     super.initState();
+    _filter = widget.initialFilter;
     _future = HomeAlertsService.fetch(limit: 60);
+  }
+
+  /// 칩 하나가 보여줄 목록. 보류·PO 대기는 지연 목록과 별개다.
+  List<AlertModel> _listFor(HomeAlerts a) {
+    switch (_filter) {
+      case '지연':
+        return a.alerts.where((m) => m.kind == '지연').toList();
+      case '임박':
+        return a.alerts.where((m) => m.kind == '임박').toList();
+      case '보류':
+        return a.holds;
+      case 'PO 대기':
+        return a.poWaits;
+      default:
+        return a.alerts;
+    }
   }
 
   Future<void> _refresh() async {
@@ -54,9 +74,34 @@ class _AlertListScreenState extends State<AlertListScreen> {
     );
   }
 
+  static Color _tintOf(String kind) {
+    switch (kind) {
+      case '지연':
+        return const Color(0xFFDC2626);
+      case '임박':
+        return const Color(0xFFE97132);
+      case 'PO 대기':
+        return const Color(0xFFB45309);
+      default:
+        return const Color(0xFF6B7280); // 보류 · 드롭예정
+    }
+  }
+
+  static Color _softOf(String kind) {
+    switch (kind) {
+      case '지연':
+        return const Color(0xFFFEE2E2);
+      case '임박':
+        return const Color(0xFFFFEDD5);
+      case 'PO 대기':
+        return const Color(0xFFFEF3C7);
+      default:
+        return const Color(0xFFF3F4F6);
+    }
+  }
+
   Widget _card(AlertModel m) {
-    final late = m.kind == '지연';
-    final tint = late ? const Color(0xFFDC2626) : const Color(0xFFE97132);
+    final tint = _tintOf(m.kind);
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => ProjectOverviewScreen(
@@ -90,7 +135,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
                   decoration: BoxDecoration(
-                    color: late ? const Color(0xFFFEE2E2) : const Color(0xFFFFEDD5),
+                    color: _softOf(m.kind),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(m.kind,
@@ -135,7 +180,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text('지연 · 마감임박',
+        title: Text(_filter.isEmpty ? '지연 · 마감임박' : _filter,
             style: AppText.bodyStrong.copyWith(fontSize: 17)),
         iconTheme: const IconThemeData(color: Color(0xFF111827)),
       ),
@@ -151,9 +196,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
                 child: Text('현황을 불러오지 못했습니다',
                     style: TextStyle(color: Color(0xFFDC2626))));
           }
-          final list = a.alerts
-              .where((m) => _filter.isEmpty || m.kind == _filter)
-              .toList();
+          final list = _listFor(a);
           return Column(children: [
             Container(
               width: double.infinity,
@@ -170,6 +213,12 @@ class _AlertListScreenState extends State<AlertListScreen> {
                   _chip('임박', a.soon, _filter == '임박',
                       () => setState(() => _filter = '임박'),
                       const Color(0xFFE97132)),
+                  _chip('보류', a.hold, _filter == '보류',
+                      () => setState(() => _filter = '보류'),
+                      const Color(0xFF6B7280)),
+                  _chip('PO 대기', a.poWait, _filter == 'PO 대기',
+                      () => setState(() => _filter = 'PO 대기'),
+                      const Color(0xFFB45309)),
                 ]),
               ),
             ),

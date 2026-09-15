@@ -22130,6 +22130,8 @@ def get_home_alerts(limit: int = 12):
     counts = {"total": 0, "delayed": 0, "soon": 0, "hold": 0,
               "po_wait": 0, "done": 0, "running": 0}
     alerts = []
+    holds = []
+    po_waits = []
     seen_projects = set()
     hit_projects = set()
 
@@ -22149,11 +22151,25 @@ def get_home_alerts(limit: int = 12):
             except Exception:
                 continue
             counts["total"] += 1
+            def _row(kind, extra=""):
+                return {
+                    "project_key": pk, "project": label,
+                    "model": e.get("name") or e.get("id") or "",
+                    "id": e.get("id") or "", "kind": kind,
+                    "expected": str(e.get("current_expected") or ""),
+                    "days": None,
+                    "stage": extra or str(e.get("current_stage") or ""),
+                    "note": str(e.get("note") or "").strip().replace("\n", " · "),
+                }
+
             hold = str(e.get("hold") or "")
             if hold:
                 counts["hold"] += 1
+                holds.append(_row(hold))
             if e.get("po_wait"):
                 counts["po_wait"] += 1
+                po_waits.append(_row("PO 대기", "PO 미접수 · 최종승인 완료"
+                                     if e.get("finished") else "PO 미접수"))
             done = bool(e.get("finished")) or int(e.get("progress") or 0) >= 100
             if done:
                 counts["done"] += 1
@@ -22206,6 +22222,32 @@ def get_home_alerts(limit: int = 12):
         n = max(1, min(60, int(limit)))
     except (TypeError, ValueError):
         n = 12
+    # 블룸은 모델이 없고 일 보고 보드로 움직인다. 진행이 있는데도
+    # 홈에서 '진행 데이터 없음' 으로 보이던 이유가 이거다.
+    bloom = None
+    try:
+        board, _ = _bloom_board_for(_BLOOM_STORE)
+        if board and (board.get("dates") or []):
+            _dates = board.get("dates") or []
+            _day = today.strftime("%Y-%m-%d")
+            if _day not in _dates:
+                _day = _dates[-1]
+            _sm = _bloom_summary(board, _day) or {}
+            _cur = _sm.get("today") or {}
+            _prev = _sm.get("prev") or {}
+            bloom = {
+                "date": _day,
+                "plan": int(_cur.get("plan") or 0),
+                "actual": int(_cur.get("actual") or 0),
+                "pending": bool(_cur.get("pending")),
+                "prev_date": str(_prev.get("date") or ""),
+                "prev_plan": int(_prev.get("plan") or 0),
+                "prev_actual": int(_prev.get("actual") or 0),
+                "items": len(board.get("items") or []),
+            }
+    except Exception as _e_b2:
+        print(f"[home] 블룸 요약 실패(무시): {_e_b2}")
+
     return {
         "date": today.strftime("%Y-%m-%d"),
         "counts": counts,
@@ -22214,6 +22256,9 @@ def get_home_alerts(limit: int = 12):
         "by_project": rows,
         "alerts": alerts[:n],
         "alerts_total": len(alerts),
+        "holds": holds[:n],
+        "po_waits": po_waits[:n],
+        "bloom": bloom,
     }
 
 
