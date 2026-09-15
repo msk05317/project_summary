@@ -9,7 +9,10 @@ models.json 원본이 아니라 '지금 화면에 보이는 값'의 사본이다
 import datetime, json, os, shutil, ssl, subprocess, sys, urllib.error, urllib.request
 
 BASE = os.getenv("ONEVIEW_URL", "https://project-summary-mkoo.fly.dev")
-PER_PROJECT = ("models", "models/detail", "weekly-board", "board-rows", "weekly-plan")
+# daily-board 는 블룸 일 보고 자료다. 여기 빠져 있어서 제일 새 데이터가
+# 백업에 안 들어가고 있었다.
+PER_PROJECT = ("models", "models/detail", "weekly-board", "board-rows",
+               "weekly-plan", "daily-board")
 
 # macOS 에 딸려오는 python 은 인증서 묶음이 없어서 https 를 그냥 못 연다
 # (CERTIFICATE_VERIFY_FAILED). certifi 가 있으면 그걸 쓰고, 없으면 시스템
@@ -71,9 +74,13 @@ def main(outdir):
         "progress_summary": get("/projects-progress-summary"),
         "projects": {},
     }
+    # 모델이 없는 프로젝트까지 여섯 번씩 두드리면 300번이 넘어 오래 걸린다.
+    # 빈 프로젝트는 가벼운 것만 받아둔다.
+    _has = {p.get("key") for p in (index.get("projects") or []) if p.get("has_models")}
     for k in keys:
+        _paths = PER_PROJECT if k in _has else ("models", "daily-board")
         out["projects"][k] = {p.replace("/", "_").replace("-", "_"): get(f"/projects/{k}/{p}")
-                              for p in PER_PROJECT}
+                              for p in _paths}
 
     errs = [f"{k}/{s}" for k in keys for s, v in out["projects"][k].items()
             if isinstance(v, dict) and v.get("_error")]
