@@ -2,12 +2,10 @@
 //
 // 실패해도 화면이 안 깨지게 예외 대신 empty 를 돌려준다.
 // 계산은 전부 서버에 둔다 — Admin 과 앱이 같은 숫자를 봐야 한다.
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/bloom_daily.dart';
+import 'offline_store.dart';
 
 class BloomService {
   static const String divisionId = 'bloom';
@@ -32,11 +30,12 @@ class BloomService {
       return hit;
     }
     try {
-      final uri = Uri.parse(
-          '$kApiBaseUrl/projects/${Uri.encodeComponent(projectKey_)}/daily-board');
-      final r = await http.get(uri).timeout(const Duration(seconds: 12));
-      if (r.statusCode != 200) return BloomDailyBoard.empty;
-      final j = jsonDecode(utf8.decode(r.bodyBytes));
+      // 못 받아오면 마지막으로 받아둔 보드를 쓴다.
+      final got = await OfflineStore.fetch(
+          '$kApiBaseUrl/projects/${Uri.encodeComponent(projectKey_)}/daily-board',
+          'daily_board_$projectKey_',
+          timeout: const Duration(seconds: 12));
+      final j = got.data;
       if (j is! Map) return BloomDailyBoard.empty;
       final out = BloomDailyBoard.fromJson(j);
       _cache[projectKey_] = out;

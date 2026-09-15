@@ -27,6 +27,7 @@ import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/overview_service.dart';
 import '../services/home_alerts_service.dart';
+import '../services/offline_store.dart';
 import '../services/automotive_service.dart';
 import '../models/automotive.dart';
 import 'division_projects_screen.dart';
@@ -718,6 +719,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _searchOpen = !_searchOpen;
                           if (!_searchOpen) _query = '';
                         });
+                      },
+                    ),
+
+                    // 연결이 안 되면 마지막으로 받아둔 내용을 보여준다.
+                    // 다만 언제 것인지는 반드시 같이 말해야 한다.
+                    ValueListenableBuilder<DateTime?>(
+                      valueListenable: OfflineStatus.savedAt,
+                      builder: (context, at, _) {
+                        if (at == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.x4, AppSpacing.x2, AppSpacing.x4, 0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFFDE68A)),
+                            ),
+                            child: Row(children: [
+                              const Icon(Icons.cloud_off_outlined,
+                                  size: 15, color: Color(0xFF92400E)),
+                              const SizedBox(width: 7),
+                              Expanded(
+                                child: Text(
+                                    '오프라인 · ${OfflineStore.describe(at)} 저장된 내용',
+                                    style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF92400E))),
+                              ),
+                              GestureDetector(
+                                onTap: _refresh,
+                                child: const Text('다시 시도',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFFB45309))),
+                              ),
+                            ]),
+                          ),
+                        );
                       },
                     ),
 

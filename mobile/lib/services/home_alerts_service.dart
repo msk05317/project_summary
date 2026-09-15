@@ -4,11 +4,9 @@
 // 없는 사업부는 집계에서 통째로 빠져서 '12개 중 정상 2' 처럼 나왔고,
 // 프로젝트 안에는 지연이 널려 있는데 홈은 '지연 0' 이었다.
 // 여기서는 프로젝트 안에서 보는 값과 똑같은 모델 alert 를 그대로 받는다.
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import 'offline_store.dart';
 
 /// 지연·임박이 걸린 프로젝트 한 줄
 class AlertProject {
@@ -126,6 +124,9 @@ class HomeAlerts {
   final List<AlertModel> poWaits;
   final BloomBrief? bloom;
   final bool loaded;
+  /// 저장해 둔 걸 보여주는 중인지, 그게 언제 것인지
+  final bool fromCache;
+  final DateTime? savedAt;
 
   const HomeAlerts({
     required this.date,
@@ -145,7 +146,19 @@ class HomeAlerts {
     required this.poWaits,
     required this.bloom,
     this.loaded = true,
+    this.fromCache = false,
+    this.savedAt,
   });
+
+  HomeAlerts copyWith({bool? fromCache, DateTime? savedAt}) => HomeAlerts(
+        date: date, total: total, delayed: delayed, soon: soon, hold: hold,
+        poWait: poWait, done: done, running: running, projects: projects,
+        projectsWithAlert: projectsWithAlert, alertsTotal: alertsTotal,
+        byProject: byProject, alerts: alerts, holds: holds, poWaits: poWaits,
+        bloom: bloom, loaded: loaded,
+        fromCache: fromCache ?? this.fromCache,
+        savedAt: savedAt ?? this.savedAt,
+      );
 
   static const HomeAlerts empty = HomeAlerts(
     date: '', total: 0, delayed: 0, soon: 0, hold: 0, poWait: 0, done: 0,
@@ -195,12 +208,13 @@ class HomeAlertsService {
   /// 대신 loaded=false 라서 화면이 '지연 없음' 과 구분해서 말할 수 있다.
   static Future<HomeAlerts> fetch({int limit = 60}) async {
     try {
-      final uri = Uri.parse('$kApiBaseUrl/home/alerts?limit=$limit');
-      final res = await http.get(uri).timeout(const Duration(seconds: 12));
-      if (res.statusCode != 200) return HomeAlerts.empty;
-      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      final got = await OfflineStore.fetch(
+          '$kApiBaseUrl/home/alerts?limit=$limit', 'home_alerts',
+          timeout: const Duration(seconds: 12));
+      final decoded = got.data;
       if (decoded is! Map) return HomeAlerts.empty;
-      return HomeAlerts.fromJson(decoded);
+      return HomeAlerts.fromJson(decoded)
+          .copyWith(fromCache: got.fromCache, savedAt: got.savedAt);
     } catch (_) {
       return HomeAlerts.empty;
     }

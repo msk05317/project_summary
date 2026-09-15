@@ -4,10 +4,8 @@
 // 홈 화면은 이 서비스가 돌려준 List<DashboardCard> 로부터
 // DashboardSummary.fromCards(...) 를 통해 KPI 를 계산합니다.
 
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-
 import '../models/dashboard.dart';
+import 'offline_store.dart';
 
 class DashboardService {
   // API_BASE_URL 은 빌드 시 --dart-define 으로 주입됩니다.
@@ -22,15 +20,9 @@ class DashboardService {
   // 홈 KPI 용도로는 cards 만 사용합니다.
   // - 비정상 응답(200 외) / 잘못된 JSON: Exception 으로 상위에 전달
   static Future<List<DashboardCard>> fetchCards() async {
-    final uri = Uri.parse('$_baseUrl/dashboard');
-    final res = await http.get(uri);
-
-    if (res.statusCode != 200) {
-      throw Exception('DashboardService: HTTP ${res.statusCode}');
-    }
-
-    final decoded = jsonDecode(utf8.decode(res.bodyBytes));
-    if (decoded is! Map<String, dynamic>) {
+    final got = await OfflineStore.fetch('$_baseUrl/dashboard', 'dashboard');
+    final decoded = got.data;
+    if (decoded is! Map) {
       throw Exception('DashboardService: unexpected JSON shape');
     }
 

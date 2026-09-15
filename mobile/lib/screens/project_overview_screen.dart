@@ -13,6 +13,7 @@ import '../services/bloom_service.dart';
 import '../widgets/bloom_today_card.dart';
 import '../widgets/automotive_overview_card.dart';
 import '../services/api_service.dart';
+import '../services/offline_store.dart';
 
 /// '확인 필요' 목록의 한 줄. 지연·임박·보류·이슈·비고를 한 가지 모양으로 만든다.
 ///
@@ -73,21 +74,30 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     if (mounted) setState(() => _bloom = b);
   }
 
+  /// 저장해 둔 게 언제 것인지 (오프라인 표시용)
+  DateTime? _savedAt;
+  bool _fromCache = false;
+
   Future<Map<String, dynamic>> _fetchModels() async {
-    final res = await http
-        .get(Uri.parse('$kApiBaseUrl/projects/${widget.projectKey}/models/detail'))
-        .timeout(const Duration(seconds: 8));
-    if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
-    return jsonDecode(utf8.decode(res.bodyBytes));
+    // 못 받아오면 마지막으로 받아둔 걸 쓴다. 신호 없는 곳에서도 열리게.
+    final got = await OfflineStore.fetch(
+        '$kApiBaseUrl/projects/${widget.projectKey}/models/detail',
+        'models_${widget.projectKey}');
+    _fromCache = got.fromCache;
+    _savedAt = got.savedAt;
+    final d = got.data;
+    if (d is! Map) throw Exception('unexpected JSON');
+    return Map<String, dynamic>.from(d);
   }
 
   Future<Map<String, dynamic>> _fetchWeeklyPlan() async {
     try {
-      final res = await http
-          .get(Uri.parse('$kApiBaseUrl/projects/${widget.projectKey}/weekly-plan'))
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode != 200) return {'has_plan': false};
-      return jsonDecode(utf8.decode(res.bodyBytes));
+      final got = await OfflineStore.fetch(
+          '$kApiBaseUrl/projects/${widget.projectKey}/weekly-plan',
+          'weekly_plan_${widget.projectKey}');
+      final d = got.data;
+      if (d is! Map) return {'has_plan': false};
+      return Map<String, dynamic>.from(d);
     } catch (_) {
       return {'has_plan': false};
     }
@@ -225,6 +235,30 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // 연결이 안 됐을 때. 언제 것인지 밝히고 보여준다.
+                if (_fromCache)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFDE68A)),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.cloud_off_outlined,
+                            size: 14, color: Color(0xFF92400E)),
+                        const SizedBox(width: 6),
+                        Text('오프라인 · ${OfflineStore.describe(_savedAt)} 저장된 내용',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF92400E))),
+                      ]),
+                    ),
+                  ),
                 if (_isBloomItem && _bloom.hasBoard) ...[
                   BloomTodayCard(board: _bloom),
                   const SizedBox(height: 12),

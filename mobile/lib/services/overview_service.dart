@@ -5,11 +5,9 @@
 //  - 출하 수량 계획·실적
 //  - 프로젝트별 진행률
 // 실패해도 화면이 깨지지 않도록 예외 대신 empty 를 돌려준다.
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import 'offline_store.dart';
 
 class OverviewProject {
   final String key;
@@ -132,9 +130,10 @@ class OverviewService {
       if (month != null && month.isNotEmpty) q['month'] = month;
       if (divisionId != null && divisionId.isNotEmpty) q['division_id'] = divisionId;
       final uri = Uri.parse('$kApiBaseUrl/overview').replace(queryParameters: q.isEmpty ? null : q);
-      final res = await http.get(uri).timeout(const Duration(seconds: 10));
-      if (res.statusCode != 200) return OverviewSummary.empty;
-      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      final got = await OfflineStore.fetch(uri.toString(),
+          'overview_${month ?? 'now'}_${divisionId ?? 'all'}',
+          timeout: const Duration(seconds: 10));
+      final decoded = got.data;
       if (decoded is! Map) return OverviewSummary.empty;
       return OverviewSummary.fromJson(decoded);
     } catch (_) {

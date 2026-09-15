@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import 'offline_store.dart';
 
 class ProjectProgress {
   final String projectKey;
@@ -99,11 +100,9 @@ class ProgressService {
   /// 실패해도 화면은 떠야 하므로 예외 대신 empty 를 돌려준다.
   static Future<ProgressSummary> fetch() async {
     try {
-      final res = await http
-          .get(Uri.parse('$kApiBaseUrl/projects-progress-summary'))
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode != 200) return ProgressSummary.empty;
-      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      final got = await OfflineStore.fetch(
+          '$kApiBaseUrl/projects-progress-summary', 'progress');
+      final decoded = got.data;
       if (decoded is! Map) return ProgressSummary.empty;
       return ProgressSummary.fromJson(decoded);
     } catch (_) {

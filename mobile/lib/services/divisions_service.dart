@@ -3,10 +3,8 @@
 //
 // 화면(UI)에서 직접 http 를 호출하지 않게 하기 위한 얇은 래퍼입니다.
 
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-
 import '../models/division.dart';
+import 'offline_store.dart';
 
 class DivisionsService {
   // API_BASE_URL 은 빌드 시 --dart-define 으로 주입됩니다.
@@ -21,15 +19,10 @@ class DivisionsService {
   // - 비정상 응답(200 외)/잘못된 JSON: Exception 으로 상위에 전달
   // 결과는 order 기준으로 오름차순 정렬됩니다.
   static Future<List<Division>> fetchAll() async {
-    final uri = Uri.parse('$_baseUrl/divisions');
-    final res = await http.get(uri);
-
-    if (res.statusCode != 200) {
-      throw Exception('DivisionsService: HTTP ${res.statusCode}');
-    }
-
-    final decoded = jsonDecode(utf8.decode(res.bodyBytes));
-    if (decoded is! Map<String, dynamic>) {
+    // 못 받아오면 마지막으로 받아둔 걸 쓴다 (OfflineStore).
+    final got = await OfflineStore.fetch('$_baseUrl/divisions', 'divisions');
+    final decoded = got.data;
+    if (decoded is! Map) {
       throw Exception('DivisionsService: unexpected JSON shape');
     }
 
