@@ -9,8 +9,8 @@ import pathlib, re, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-# 이미 있던 것. 닿지 않는 코드(옛 RAG)라 지금 손대지 않는다.
-KNOWN = {("main.py", "top_k")}
+# 예외는 비워 둔다. 옛 RAG 죽은 코드(top_k)는 2026-09-15 에 걷어냈다.
+KNOWN = set()
 
 try:
     import pyflakes  # noqa: F401

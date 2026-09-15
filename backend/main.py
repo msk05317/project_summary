@@ -487,12 +487,264 @@ def _strip_useless_caveats(answer: str) -> str:
         r"[^.\n]*데이터가?\s*없는[^.\n]*(주의|참고)[^.\n]*[.!]?",
         r"[^.\n]*주의가?\s*필요합니다[.!]?",
         r"[^.\n]*참고\s*(?:하시|바랍)[^.\n]*[.!]?",
+        # 경영진용: 도입 어구와 맺음말만 덜어낸다 (본문은 건드리지 않는다)
+        r"^\s*(?:말씀하신|문의하신|질문하신)\s+",
+        r"^\s*(?:확인해\s*보니|조회해\s*보니|살펴보니)\s*,?\s*",
+        r"[^.\n]*(?:도움이\s*되셨|추가\s*문의|더\s*궁금한|필요하시면\s*말씀)[^.\n]*[.!]?",
+        r"[^.\n]*더\s*자세한\s*(?:내용|정보)[^.\n]*[.!]?",
+        r"\n\s*(?:정리하면|요약하면)[^\n]*$",
     ]
     out = answer
     for p in pats:
         out = _re.sub(p, "", out)
-    out = _re.sub(r"\n{3,}", "\n\n", out)
-    return out.strip()
+    out = _re.sub(r"\n{3,}", "\n\n", out).strip()
+    # 정규식이 문장을 통째로 먹은 경우엔 원문을 살린다 (빈 답변이 최악이다)
+    return out or answer.strip()
+
+
+_CHAT_PROJ_KW_CACHE = {"stamp": None, "map": None}
+
+# 하바플레이트 음성 오인식/오타 (config 에 넣기 애매한 것만 남긴다)
+_CHAT_KW_EXTRA = {
+    "하바플레잍": "hrva_plate", "하바 플레잍": "hrva_plate",
+    "하버": "hrva_plate", "하바플": "hrva_plate", "하바프": "hrva_plate",
+    "하바플래이트": "hrva_plate", "하바 플래이트": "hrva_plate",
+    "harbor": "hrva_plate", "harva": "hrva_plate",
+}
+
+
+_RAG_STATE = {"checked": 0.0, "building": False}
+
+
+def _rag_build_chunks() -> list:
+    """벡터 인덱스에 넣을 텍스트 조각. 숫자가 아니라 '말'을 담는다.
+
+    숫자(매출·수량·주차 계획)는 규칙 엔진이 권위 데이터로 답한다.
+    벡터 검색은 규칙으로 못 잡는 비고·이슈·자재 메모를 찾는 용도다.
+    """
+    chunks = []
+
+    # 1) 주간 보고 카드
+    try:
+        for division_id, div in (_load_notes().get("notes") or {}).items():
+            report_date = div.get("report_date", "")
+            for card in (div.get("cards") or []):
+                title = card.get("title", "")
+                raw = (card.get("raw_text") or "").strip()
+                if not raw:
+                    parts = []
+                    for sec in (card.get("sections") or []):
+                        for it in (sec.get("items") or []):
+                            t = (it.get("text") or "").strip()
+                            if t:
+                                parts.append(f"- {t}")
+                    raw = f"<{title}>\n" + "\n".join(parts)
+                if len(raw.strip()) < 20:
+                    continue
+                chunks.append({"kind": "note", "division_id": division_id,
+                               "project_key": title, "project_label": title,
+                               "report_date": report_date, "text": raw})
+    except Exception as e:
+        print(f"[rag] notes 청킹 실패: {e}")
+
+    # 2) 모델 비고 / 이슈 (프로젝트 단위로 묶는다)
+    try:
+        for pk, proj in (_load_models().get("projects") or {}).items():
+            label = PROJECT_LABELS.get(pk, pk)
+            rows = []
+            for m in (proj.get("models") or []):
+                bits = []
+                for f in ("note", "issues", "status", "due_text"):
+                    v = str(m.get(f) or "").strip()
+                    if v:
+                        bits.append(v)
+                if bits:
+                    name = m.get("name") or m.get("id") or ""
+                    rows.append(f"- {name} ({m.get('id','')}): " + " / ".join(bits))
+            if not rows:
+                continue
+            for i in range(0, len(rows), 25):
+                chunks.append({
+                    "kind": "model_note", "division_id": proj.get("division_id", ""),
+                    "project_key": pk, "project_label": label, "report_date": "",
+                    "text": f"<{label} 모델 비고>\n" + "\n".join(rows[i:i + 25]),
+                })
+    except Exception as e:
+        print(f"[rag] 모델 비고 청킹 실패: {e}")
+
+    # 3) 블룸 일 보고 자재 메모
+    try:
+        board = ((_load_models().get("projects") or {})
+                 .get(_BLOOM_STORE) or {}).get("daily_board") or {}
+        notes = [str(n.get("text") or "").strip()
+                 for n in (board.get("notes") or []) if isinstance(n, dict)]
+        notes = [n for n in notes if n]
+        if notes:
+            chunks.append({"kind": "bloom_note", "division_id": "bloom",
+                           "project_key": "bloom_main", "project_label": "블룸",
+                           "report_date": board.get("report_date", ""),
+                           "text": "<블룸 자재/특이사항>\n" + "\n".join(f"- {n}" for n in notes)})
+    except Exception as e:
+        print(f"[rag] 블룸 메모 청킹 실패: {e}")
+
+    return chunks
+
+
+def _rag_rebuild() -> dict:
+    """인덱스를 지금 데이터로 다시 만든다. 서버에서만 돈다(임베딩 키 필요)."""
+    import numpy as _np
+    import faiss as _faiss
+    chunks = _rag_build_chunks()
+    if not chunks:
+        return {"ok": False, "reason": "no_chunks", "count": 0}
+    if client is None:
+        return {"ok": False, "reason": "no_openai_key", "count": len(chunks)}
+    vecs = []
+    for i in range(0, len(chunks), 32):
+        batch = [c["text"][:6000] for c in chunks[i:i + 32]]
+        resp = client.embeddings.create(model=_vs.EMBED_MODEL, input=batch)
+        vecs.append(_np.array([d.embedding for d in resp.data], dtype=_np.float32))
+    matrix = _np.vstack(vecs)
+    _faiss.normalize_L2(matrix)
+    index = _faiss.IndexFlatIP(matrix.shape[1])
+    index.add(matrix)
+    _vs.RAG_DIR.mkdir(parents=True, exist_ok=True)
+    _faiss.write_index(index, str(_vs.INDEX_PATH))
+    _vs.META_PATH.write_text(json.dumps(chunks, ensure_ascii=False, indent=1),
+                             encoding="utf-8")
+    # 프로세스에 올라와 있던 옛 인덱스를 버린다
+    _vs._index = None
+    _vs._meta = None
+    print(f"[rag] 인덱스 재빌드 완료: {len(chunks)} chunks")
+    return {"ok": True, "count": len(chunks)}
+
+
+def _rag_maybe_refresh():
+    """인덱스가 없거나 하루 넘게 묵었으면 백그라운드에서 다시 만든다."""
+    import time as _t
+    import threading as _th
+    now = _t.time()
+    if _RAG_STATE["building"] or now - _RAG_STATE["checked"] < 3600:
+        return
+    _RAG_STATE["checked"] = now
+    try:
+        age = now - _vs.INDEX_PATH.stat().st_mtime if _vs.INDEX_PATH.exists() else 1e9
+    except Exception:
+        age = 1e9
+    if age < 86400:
+        return
+
+    def _run():
+        _RAG_STATE["building"] = True
+        try:
+            _rag_rebuild()
+        except Exception as e:
+            print(f"[rag] 재빌드 실패: {e}")
+        finally:
+            _RAG_STATE["building"] = False
+
+    _th.Thread(target=_run, daemon=True).start()
+
+
+def _rag_context(query: str, top_k: int = 3, min_score: float = 0.30) -> str:
+    """질문과 가까운 메모를 찾아 LLM 에 넘길 배경 텍스트로 만든다.
+    인덱스가 없거나 닮은 게 없으면 빈 문자열 — 그러면 예전과 똑같이 동작한다."""
+    if not query:
+        return ""
+    try:
+        if not _vs.is_ready():
+            return ""
+        hits = _vs.search(query, top_k=top_k)
+    except Exception as e:
+        print(f"[rag] 검색 실패(무시): {e}")
+        return ""
+    parts = []
+    for h in hits or []:
+        if float(h.get("score") or 0) < min_score:
+            continue
+        txt = str(h.get("text") or "").strip()
+        if not txt:
+            continue
+        head = h.get("project_label") or h.get("project_key") or ""
+        when = h.get("report_date") or ""
+        parts.append(f"[{head}{' / ' + when if when else ''}]\n{txt[:1200]}")
+    return "\n\n".join(parts[:top_k])
+
+
+def _chat_project_keywords() -> dict:
+    """질문에서 프로젝트를 찾을 때 쓰는 '키워드 → project_key' 사전.
+
+    config/projects.json 의 label / badge_label / aliases / keywords 를 전부 끌어온다.
+    (예전에는 project_templates.PRODUCT_TO_PROJECT 8개 + 하바 하드코딩만 봐서
+     블룸·큐리처럼 나중에 추가된 프로젝트를 아예 인식하지 못했다.)
+    """
+    import config_loader as _clx
+    try:
+        _projs = _clx.get_projects(visible_only=False)
+    except Exception:
+        _projs = []
+    stamp = len(_projs)
+    if _CHAT_PROJ_KW_CACHE["map"] is not None and _CHAT_PROJ_KW_CACHE["stamp"] == stamp:
+        return _CHAT_PROJ_KW_CACHE["map"]
+
+    kw = {}
+
+    def _put(term, pk):
+        t = (term or "").strip().lower()
+        if len(t) >= 2 and pk:
+            kw.setdefault(t, pk)
+
+    for _p in _projs:
+        _pk = _p.get("id")
+        _put(_p.get("label"), _pk)
+        _put(_p.get("badge_label"), _pk)
+        for _t in (_p.get("aliases") or []):
+            _put(_t, _pk)
+        for _t in (_p.get("keywords") or []):
+            _put(_t, _pk)
+    try:
+        from project_templates import PRODUCT_TO_PROJECT as _P2P
+        for _kws, _pk in _P2P:
+            for _t in _kws:
+                _put(_t, _pk)
+    except Exception:
+        pass
+    for _t, _pk in _CHAT_KW_EXTRA.items():
+        _put(_t, _pk)
+
+    _CHAT_PROJ_KW_CACHE["stamp"] = stamp
+    _CHAT_PROJ_KW_CACHE["map"] = kw
+    return kw
+
+
+def _chat_resolve_project(text: str):
+    """질문 문장에서 프로젝트 키를 찾는다. 가장 긴 키워드가 이긴다."""
+    import re as _re
+    if not text:
+        return None
+    low = text.lower()
+    best, best_len = None, 0
+    for term, pk in _chat_project_keywords().items():
+        if len(term) <= best_len:
+            continue
+        # 3글자 이하 영문 약어(TC, SL7, BOP...)는 단어 경계로만 매칭한다.
+        if len(term) <= 3 and term.isascii():
+            if not _re.search(r"(?<![a-z0-9])" + _re.escape(term) + r"(?![a-z0-9])", low):
+                continue
+        elif term not in low:
+            continue
+        best, best_len = pk, len(term)
+    if best:
+        return best
+    # 모델 품번이 섞인 질문만 분류기에 넘긴다. 분류기는 부분 문자열로 재서
+    # 'batch' 안의 'TC' 같은 것도 잡아버리기 때문에 일반 문장엔 쓰지 않는다.
+    if _re.search(r"\d{3}-\d|\d{4,}", text):
+        try:
+            import config_loader as _clx
+            return _clx.classify_project(text)
+        except Exception:
+            return None
+    return None
 
 
 def _answer_number_mismatch(answer: str, allowed_amounts: set, allowed_qty: set):
@@ -17957,7 +18209,15 @@ function resetWpModelPlan(idx) {
 </html>
 """
 
-def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with_revenue=False):
+def _kmonth(month: str) -> str:
+    """'2026-09' → '9월'. 경영진 답변에는 ISO 표기 대신 이걸 쓴다."""
+    try:
+        return f"{int(str(month).split('-')[1])}월"
+    except Exception:
+        return str(month or "")
+
+
+def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with_revenue=False, with_weeks=False):
     """주차 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     if not week:
         return None
@@ -17999,9 +18259,15 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with
     rev = prev = 0
     used_labels = []
     model_rows = []
+    _month_rev = 0          # 그 달 누적 실적 매출
+    _week_rev = {}          # 주차별 실적 매출 (직전 주 찾기용)
     _data = _load_models()
     for k in keys:
         wr = get_weekly_revenue(k, month) or {}
+        _comb = wr.get('combined') or {}
+        _month_rev += int(((_comb.get('total') or {}).get('revenue')) or 0)
+        for _w, _wv in (_comb.get('weeks') or {}).items():
+            _week_rev[_w] = _week_rev.get(_w, 0) + int((_wv or {}).get('revenue') or 0)
         if week not in (wr.get('weeks') or []):
             continue
         grp = wr.get('groups') or {}
@@ -18043,20 +18309,30 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with
         label = ' + '.join(used_labels)
 
     lines = []
+    # 실적 0 만 말하면 매출이 없는 것처럼 보인다. 직전 주와 월 누적을 같이 준다.
+    _ctx = []
+    _prior = sorted([w for w, v in _week_rev.items() if v > 0 and str(w) < str(week)])
+    if _prior:
+        _ctx.append(f"직전 {_prior[-1]} 실적 ${_week_rev[_prior[-1]]:,}")
+    if _month_rev:
+        _ctx.append(f"{_kmonth(month)} 누적 ${_month_rev:,}")
+
     if mode == 'rev':
         if rev > 0:
-            lines.append(f"{week}({month}) {label} 매출은 실적 기준 ${rev:,}입니다. "
-                         f"계획 기준 예상 매출은 ${prev:,}입니다.")
+            lines.append(f"{week} {label} 매출 실적 ${rev:,} / 계획 ${prev:,}.")
         else:
-            lines.append(f"{week}({month}) {label}은 아직 실적이 없고, "
-                         f"계획 기준 예상 매출은 ${prev:,}입니다.")
-        lines.append(f"수량은 양산 {yp}→{ya}대 / 개발 {dp}→{da}대입니다. (계획 → 실적)")
+            lines.append(f"{week} {label} 매출은 아직 실적 없음 (계획 ${prev:,}).")
+            if _ctx:
+                lines.append(" · ".join(_ctx) + ".")
+        lines.append(f"수량 계획 {yp + dp}대 → 실적 {ya + da}대.")
     else:
-        lines.append(f"{week}({month}) {label} 출하 실적은 총 {ya + da}대입니다. "
-                     f"(양산 {ya}대 / 개발 {da}대, 계획 {yp + dp}대)")
+        lines.append(f"{week} {label} 출하 실적 {ya + da}대 / 계획 {yp + dp}대 "
+                     f"(양산 {ya}, 개발 {da}).")
         # 대수를 물었으면 대수만 답한다. 매출은 같이 물었을 때만 붙인다.
         if with_revenue:
-            lines.append(f"매출로는 실적 ${rev:,} / 계획 기준 예상 ${prev:,}입니다.")
+            lines.append(f"매출 실적 ${rev:,} / 계획 ${prev:,}.")
+        elif ya + da == 0 and _ctx:
+            lines.append(" · ".join(_ctx) + ".")
         ms = sorted(model_rows, key=lambda x: -x['actual']) if with_models else []
         if ms:
             lines.append('')
@@ -18069,7 +18345,7 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with
     return '\n'.join(lines)
 
 
-def _month_shipment_answer(project_key, month, mode='qty', with_models=False, with_revenue=False):
+def _month_shipment_answer(project_key, month, mode='qty', with_models=False, with_revenue=False, with_weeks=False):
     """월 단위 출하 수량/매출 확정 답변(LLM 우회). 데이터가 없으면 None."""
     keys = []
     if project_key and project_key != 'all':
@@ -18151,38 +18427,37 @@ def _month_shipment_answer(project_key, month, mode='qty', with_models=False, wi
     weeks_sorted = sorted(week_rows, key=lambda w: int(str(w).lstrip('Ww') or 0))
     lines = []
 
+    _mlabel = _kmonth(month)
     if mode == 'rev':
         total_rev = g_yang['revenue'] + g_dev['revenue']
         total_plan_rev = g_yang['plan_revenue'] + g_dev['plan_revenue']
+        _rate = round(total_rev * 100 / total_plan_rev) if total_plan_rev else 0
         if total_rev > 0:
-            lines.append(f"{month} {label} 매출은 실적 기준 ${total_rev:,}입니다. "
-                         f"(양산 ${g_yang['revenue']:,} / 개발 ${g_dev['revenue']:,})")
-            lines.append(f"계획 기준 예상 매출은 ${total_plan_rev:,}이고, "
-                         f"달성률은 {round(total_rev * 100 / total_plan_rev) if total_plan_rev else 0}%입니다.")
+            lines.append(f"{_mlabel} {label} 매출 실적 ${total_rev:,} / "
+                         f"계획 ${total_plan_rev:,} (달성률 {_rate}%).")
         else:
-            _lc = ord(label[-1])
-            _j = '은' if (0xAC00 <= _lc <= 0xD7A3 and (_lc - 0xAC00) % 28) else '는'
-            lines.append(f"{month} {label}{_j} 아직 실적이 없고, "
-                         f"계획 기준 예상 매출은 ${total_plan_rev:,}입니다. "
-                         f"(양산 ${g_yang['plan_revenue']:,} / 개발 ${g_dev['plan_revenue']:,})")
-        lines.append('')
-        lines.append('주차별 (실적 / 계획 기준 예상)')
-        for w in weeks_sorted:
-            lines.append(f"- {w}: ${week_rows[w]['rev']:,} / ${week_rows[w]['prev']:,}")
+            lines.append(f"{_mlabel} {label} 매출은 아직 실적 없음 "
+                         f"(계획 ${total_plan_rev:,}).")
+        if with_weeks:
+            lines.append('')
+            lines.append('주차별 (실적 / 계획)')
+            for w in weeks_sorted:
+                lines.append(f"- {w}: ${week_rows[w]['rev']:,} / ${week_rows[w]['prev']:,}")
     else:
         total_a = g_yang['actual'] + g_dev['actual']
         total_p = g_yang['plan'] + g_dev['plan']
         total_rev = g_yang['revenue'] + g_dev['revenue']
         total_plan_rev = g_yang['plan_revenue'] + g_dev['plan_revenue']
-        lines.append(f"{month} {label} 출하 실적은 총 {total_a}대입니다. "
-                     f"(양산 {g_yang['actual']}대 / 개발 {g_dev['actual']}대, 계획 {total_p}대)")
+        lines.append(f"{_mlabel} {label} 출하 실적 {total_a}대 / 계획 {total_p}대 "
+                     f"(양산 {g_yang['actual']}, 개발 {g_dev['actual']}).")
         if with_revenue:
-            lines.append(f"매출로는 실적 ${total_rev:,} / 계획 기준 예상 ${total_plan_rev:,}입니다.")
-        lines.append('')
-        lines.append('주차별 (계획 → 실적)')
-        for w in weeks_sorted:
-            r = week_rows[w]
-            lines.append(f"- {w}: 양산 {r['yp']}→{r['ya']}대 / 개발 {r['dp']}→{r['da']}대")
+            lines.append(f"매출 실적 ${total_rev:,} / 계획 ${total_plan_rev:,}.")
+        if with_weeks:
+            lines.append('')
+            lines.append('주차별 (계획 → 실적)')
+            for w in weeks_sorted:
+                r = week_rows[w]
+                lines.append(f"- {w}: 양산 {r['yp']}→{r['ya']}대 / 개발 {r['dp']}→{r['da']}대")
         ms = (sorted([m for m in model_rows if int(m.get('actual') or 0) > 0],
                      key=lambda x: -int(x.get('actual') or 0)) if with_models else [])
         if ms:
@@ -18225,27 +18500,7 @@ async def chat(payload: dict):
     # 메시지에 프로젝트 이름이 들어 있으면 그 프로젝트로 확정한다.
     # (예전에는 하바플레이트 별칭만 하드코딩돼 있어서 '파워박스 8월 매출' 같은 질문이
     #  프로젝트 미지정 = 반도체사업부 전체 답변으로 떨어졌다.)
-    from project_templates import PRODUCT_TO_PROJECT as _P2P
-    proj_keywords = {}
-    for _kws, _pk_ in _P2P:
-        for _kw_ in _kws:
-            proj_keywords[_kw_.lower()] = _pk_
-    for _k_, _lbl_ in PROJECT_LABELS.items():
-        proj_keywords.setdefault(_k_.lower(), _k_)
-        proj_keywords.setdefault(_lbl_.lower(), _k_)
-    proj_keywords.update({
-        "하바플레잍": "hrva_plate", "하바 플레잍": "hrva_plate",
-        "하버": "hrva_plate", "하바플": "hrva_plate", "하바프": "hrva_plate",
-        "하바플래이트": "hrva_plate", "하바 플래이트": "hrva_plate",
-        "harbor": "hrva_plate", "harva": "hrva_plate",
-    })
-
-    msg_lower_pre = message.lower()
-    _proj_in_msg = None
-    for kw in sorted(proj_keywords, key=len, reverse=True):
-        if kw in msg_lower_pre:
-            _proj_in_msg = proj_keywords[kw]
-            break
+    _proj_in_msg = _chat_resolve_project(_user_text)
     # 사업부/전사 단위를 명시했으면 프로젝트 컨텍스트를 푼다
     if any(k in _user_text for k in ('사업부 전체', '전체 사업부', '반도체사업부',
                                      '전사', '전체 프로젝트', '모든 프로젝트')):
@@ -18261,6 +18516,23 @@ async def chat(payload: dict):
 
     sess["last_project"] = last_project
     sess["last_week"] = last_week
+
+    # ── 블룸은 모델이 아니라 '대표님 일 보고' 보드를 본다 ──
+    if last_project and str(last_project).startswith('bloom'):
+        try:
+            _ans_b = _bloom_chat_answer(last_project, _user_text)
+        except Exception as _e_b:
+            _ans_b = None
+            print(f"[chat] 블룸 즉답 실패(무시): {_e_b}")
+        if _ans_b:
+            sess['last_question_scope'] = True
+            try:
+                _lbl_b = (_cl.get_project(last_project) or {}).get('label') or last_project
+            except Exception:
+                _lbl_b = last_project
+            return {'answer': _ans_b,
+                    'sources': [{'key': last_project, 'label': _lbl_b}],
+                    'corrected_query': None}
 
     # ── 월 범위 기억 + 월 단위 수량/매출 즉답 (후속 질문 '각각 몇 대씩' 대응) ──
     _today_m = _dt_mod.now().date()
@@ -18305,6 +18577,7 @@ async def chat(payload: dict):
     _rev_kw = any(k in _user_text for k in ['매출', '금액', '얼마'])
     _mode_m = 'rev' if (_rev_kw and not _qty_kw) else 'qty'
     # 모델을 직접 물어봤을 때만 모델별 내역을 붙인다
+    _want_weeks = any(k in _user_text for k in ['주차별', '주별', '주차 별', '주간 추이', '추이', '주차마다'])
     _want_models = any(k in _user_text for k in
                        ['모델', '품번', '파트', 'part', '기종', '어떤 거', '어떤걸', '무슨 모델'])
 
@@ -18313,7 +18586,8 @@ async def chat(payload: dict):
         if sess.get('last_scope') == 'week' and sess.get('last_week'):
             _wk_prev = sess.get('last_week')
             try:
-                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m, _want_models, _rev_kw)
+                _ans_w = _week_shipment_answer(last_project, _wk_prev, _mode_m,
+                                              _want_models, _rev_kw, _want_weeks)
             except Exception as _e_ws:
                 _ans_w = None
                 print(f"[chat] 주차 즉답 실패(무시): {_e_ws}")
@@ -18329,7 +18603,8 @@ async def chat(payload: dict):
 
     if _scope_month and not _has_week_in_msg and (_qty_kw or _rev_kw):
         try:
-            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m, _want_models, _rev_kw)
+            _ans_m = _month_shipment_answer(last_project, _scope_month, _mode_m,
+                                           _want_models, _rev_kw, _want_weeks)
         except Exception as _e_ms:
             _ans_m = None
             print(f"[chat] 월 즉답 실패(무시): {_e_ms}")
@@ -18405,7 +18680,25 @@ async def chat(payload: dict):
             return {"answer": "무슨 말씀이신지 잘 모르겠어요. 예: '하바플레이트 35주차 매출'처럼 구체적으로 물어봐 주세요.", "sources": [], "corrected_query": None}
         _prev_had_scope = bool(sess.get('last_question_scope'))
         if not _has_time_scope and not _prev_had_scope:
-            return {"answer": "어떤 기준의 총액이 궁금하신가요? (예: 이번 주 매출, 이번 달 누적, 여태까지 총 매출)", "sources": [], "corrected_query": None}
+            # 되묻지 않는다. 경영진이 쓰는 챗봇이라 한 번에 답이 나와야 한다.
+            # 기준을 안 밝히면 '이번 달 누적'으로 답하고, 무엇 기준인지 문장에 적는다.
+            _def_month = f"{_today_m.year}-{_today_m.month:02d}"
+            try:
+                _ans_d = _month_shipment_answer(last_project, _def_month, _mode_m,
+                                                _want_models, _rev_kw, _want_weeks)
+            except Exception as _e_d:
+                _ans_d = None
+                print(f"[chat] 기본(이번 달) 즉답 실패(무시): {_e_d}")
+            if _ans_d:
+                sess['last_month'] = _def_month
+                sess['last_scope'] = 'month'
+                sess['last_question_scope'] = True
+                print(f"[chat] 기준 미지정 → 이번 달 {_def_month} 기본 답변")
+                _src_d = ([{'key': last_project,
+                            'label': PROJECT_LABELS.get(last_project, last_project)}]
+                          if last_project and last_project != 'all' else [])
+                return {'answer': _ans_d, 'sources': _src_d, 'corrected_query': None}
+            _scope_month = _def_month
         sess['last_question_scope'] = True
         # 누적 질문이면 주차 태그 없이 진행, 아니면 이전 세션 주차 유지/오늘 기준
         _is_cum_q = any(k in message for k in ['여태', '지금까지', '누적', '올해', '전체 기간'])
@@ -18699,14 +18992,16 @@ async def chat(payload: dict):
             "- 계획(plan)과 실적(actual)을 반드시 구분한다. 수량 질문에는 실적만 답한다.\n"
             "- [데이터]에 없으면 '해당 데이터는 아직 등록되지 않았습니다'라고 분명히 말한다. "
             "모르는 것을 지어내지 않는다.\n"
-            "\n[답변 방식]\n"
-            "- 결론을 첫 문장에 쓴다. 그다음 필요한 만큼만 근거를 덧붙인다. 보통 2~4문장이면 충분하다.\n"
-            "- 어떤 기준의 숫자인지 밝힌다. 주차·계획/실적·기간 같은 전제가 있으면 문장 안에 자연스럽게 넣는다.\n"
-            "  예: 'W35 실적 기준 하바플레이트 양산 매출은 $296,850입니다.'\n"
-            "- 수치가 3개를 넘으면 줄바꿈으로 항목을 나눠 읽기 쉽게 쓴다.\n"
-            "- 질문에 답이 되는 내용만 쓴다. 묻지 않은 배경 설명이나 모델 종수 나열은 넣지 않는다.\n"
-            "- 사용자가 놓칠 수 있는 중요한 단서(실적 미발생, 데이터 일부 누락 등)가 있으면 한 문장으로 덧붙인다.\n"
-            "- 질문이 모호하면 임의로 넘겨짚지 말고 무엇이 필요한지 되묻는다.\n"
+            "\n[답변 방식] — 읽는 사람은 경영진이다. 짧게.\n"
+            "- 최대 2문장. 첫 문장에 답(숫자)을 쓰고 끝낸다. 세 문장을 넘기지 않는다.\n"
+            "- 어떤 기준인지는 문장 안에 짧게 박는다. 예: 'W35 하바플레이트 양산 매출 $296,850 (실적 기준).'\n"
+            "- 질문을 되풀이하지 않는다. '말씀하신', '문의하신', '확인해 보니' 같은 도입부 금지.\n"
+            "- '~입니다만', '참고로', '추가로', '도움이 되셨길' 같은 군더더기 금지.\n"
+            "- 항목이 3개를 넘으면 줄바꿈으로 나열하되 항목당 한 줄, 최대 5줄.\n"
+            "- 묻지 않은 배경 설명·모델 종수 나열·요약 반복은 넣지 않는다.\n"
+            "- 경고나 단서는 꼭 필요할 때만, 반 문장으로.\n"
+            "- 기준이 모호해도 되묻지 말고 가장 그럴듯한 기준(이번 달 누적)으로 답한 뒤 "
+            "그 기준을 문장에 밝힌다.\n"
             "\n[표기]\n"
             "- 수량 단위는 '대'를 쓴다 ('종' 금지). 금액은 $1,234 형식.\n"
             "- '(근거: ...)' 같은 인용 표시는 붙이지 않는다."
@@ -19026,6 +19321,20 @@ async def chat(payload: dict):
             )
 
         
+        # ── 벡터 검색: 규칙으로 못 잡는 비고·이슈·자재 메모를 배경으로 붙인다 ──
+        try:
+            _rag_maybe_refresh()
+            _rag_txt = _rag_context(_user_text)
+        except Exception as _e_rag:
+            _rag_txt = ""
+            print(f"[chat] RAG 보조 실패(무시): {_e_rag}")
+        if _rag_txt:
+            context = context + "\n\n[참고 메모]\n" + _rag_txt
+            system_prompt += ("\n[참고 메모] 는 배경 설명일 뿐이다. 숫자는 반드시 [데이터]의 "
+                              "권위 값을 쓰고, 참고 메모의 숫자는 인용하지 않는다. "
+                              "질문이 '왜/무슨 이슈/특이사항' 류일 때만 참고 메모를 근거로 쓴다.")
+            print(f"[chat] RAG 컨텍스트 {len(_rag_txt)}자 주입")
+
         user_prompt = f"[데이터]\n{context}\n\n[질문]\n{corrected}"
         
         if client:
@@ -19036,7 +19345,7 @@ async def chat(payload: dict):
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.15,
-                max_tokens=700,
+                max_tokens=320,
             )
             answer = resp.choices[0].message.content or ""
             # 근거 표시 강제 제거
@@ -19066,76 +19375,34 @@ async def chat(payload: dict):
 
 
 
-    if not _vs.is_ready():
-        return {
-            "answer": "챗봇 인덱스가 준비되지 않았어요. 관리자에게 문의해주세요.",
-            "sources": [],
-            "error": "index_not_ready",
-        }
-
+@app.get("/admin/rag/status")
+def rag_status():
+    """벡터 인덱스 상태 (몇 조각이 언제 만들어졌는지)."""
+    import datetime as _dtr
+    out = {"ready": False, "count": 0, "built_at": "", "kinds": {}}
     try:
-        hits = _vs.search(message, top_k=top_k)
+        out["ready"] = _vs.is_ready()
+        if _vs.META_PATH.exists():
+            meta = json.loads(_vs.META_PATH.read_text(encoding="utf-8"))
+            out["count"] = len(meta)
+            for m in meta:
+                k = m.get("kind") or "note"
+                out["kinds"][k] = out["kinds"].get(k, 0) + 1
+        if _vs.INDEX_PATH.exists():
+            out["built_at"] = _dtr.datetime.fromtimestamp(
+                _vs.INDEX_PATH.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     except Exception as e:
-        return {"answer": "", "sources": [], "error": f"search_failed: {e}"}
+        out["error"] = str(e)
+    return out
 
-    if not hits:
-        return {
-            "answer": "관련된 프로젝트 정보를 찾지 못했어요.",
-            "sources": [],
-        }
 
-    context_parts = []
-    for i, h in enumerate(hits):
-        context_parts.append(
-            f"[문서 {i+1}] 사업부: {h.get('division_id')} / "
-            f"프로젝트: {h.get('project_label')} / "
-            f"보고일: {h.get('report_date')}\n"
-            f"{h.get('text','')}"
-        )
-    context = "\n\n".join(context_parts)
-
-    system_prompt = (
-        "너는 반도체 사업부의 프로젝트 보고 어시스턴트다. "
-        "주어진 [문서] 내용만을 근거로 사용자의 질문에 한국어로 간결하게 답한다. "
-        "규칙: 1) 문서에 없는 내용은 추측하지 말 것 2) 숫자·일정·모델명은 원문 그대로 유지 "
-        "3) 3~5문장 이내 4) 마지막에 '(근거: 프로젝트명)' 형태로 인용 표시 "
-        "5) 여러 문서를 종합해야 하면 각 문서별 사실만 언급."
-    )
-    user_prompt = f"[문서]\n{context}\n\n[질문]\n{message}"
-
+@app.post("/admin/rag/rebuild")
+def rag_rebuild():
+    """지금 데이터로 벡터 인덱스를 다시 만든다."""
     try:
-        if client is None:
-            return {"answer": "OpenAI 키가 설정되지 않았어요.", "sources": hits}
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.2,
-            max_tokens=500,
-        )
-        answer = (resp.choices[0].message.content or "").strip()
-        # 근거 표시 강제 제거
-        import re as _re_clean2
-        answer = _re_clean2.sub(r'\(근거:\s*[^)]+\)', '', answer).strip()
+        return _rag_rebuild()
     except Exception as e:
-        return {"answer": "", "sources": hits, "error": f"llm_failed: {e}"}
-
-    return {
-        "answer": answer,
-        "sources": [
-            {
-                "division_id": h.get("division_id"),
-                "project_label": h.get("project_label"),
-                "project_key": h.get("project_key"),
-                "report_date": h.get("report_date"),
-                "score": round(h.get("score", 0.0), 3),
-            }
-            for h in hits
-        ],
-    }
-
+        return {"ok": False, "reason": f"failed: {e}"}
 
 
 # =========================================================
@@ -22931,6 +23198,134 @@ def _bloom_slice(board: dict, item: str) -> dict:
     out["dates"] = sorted({d for i in items for st in (i.get("steps") or [])
                            for d in ((st or {}).get("days") or {})})
     return out
+
+def _bloom_board_for(project_key: str):
+    """블룸 프로젝트 하나가 볼 보드 (품목 프로젝트면 자기 몫만)."""
+    _key = _model_key_alias(project_key)
+    _item = _bloom_item_of(_key)
+    _store = _BLOOM_STORE if _item else _key
+    proj = (_load_models().get("projects") or {}).get(_store) or {}
+    board = proj.get("daily_board")
+    if not isinstance(board, dict) or not board.get("items"):
+        return None, _item
+    if _item:
+        board = _bloom_slice(board, _item)
+    return board, _item
+
+
+def _bloom_item_totals(board: dict, day: str):
+    """그 날 품목별 계획/실적 합계."""
+    out = []
+    for it in (board.get("items") or []):
+        plan = act = 0
+        has_actual = False
+        for st in (it.get("steps") or []):
+            cell = ((st or {}).get("days") or {}).get(day)
+            if not cell:
+                continue
+            if cell.get("plan") is not None:
+                plan += int(cell["plan"])
+            if cell.get("actual") is not None:
+                act += int(cell["actual"])
+                has_actual = True
+        if plan or act:
+            out.append({"item": it.get("item") or "", "plan": plan,
+                        "actual": act, "has_actual": has_actual})
+    return out
+
+
+def _bloom_chat_answer(project_key: str, text: str) -> str:
+    """블룸 질문 즉답. 모델이 없는 프로젝트라 일 보고 보드를 직접 읽는다.
+
+    챗봇은 경영진이 쓴다. 숫자 한 줄 + 막힌 곳 한 줄이면 충분하다.
+    """
+    board, item = _bloom_board_for(project_key)
+    if not board:
+        return ""
+    dates = board.get("dates") or []
+    if not dates:
+        return ""
+    import datetime as _dtb
+    today = _dtb.date.today().strftime("%Y-%m-%d")
+    day = today if today in dates else dates[-1]
+    if any(k in (text or "") for k in ("어제", "전일", "지난날")):
+        earlier = [d for d in dates if d < day]
+        if earlier:
+            day = earlier[-1]
+
+    summ = _bloom_summary(board, day) or {}
+    cur = summ.get("today") or {}
+    label = item or "블룸 전체"
+
+    def _md(d):
+        try:
+            return f"{int(d[5:7])}/{int(d[8:10])}"
+        except Exception:
+            return d
+
+    lines = []
+    plan, act = int(cur.get("plan") or 0), int(cur.get("actual") or 0)
+    if cur.get("pending"):
+        prev = summ.get("prev") or {}
+        head = f"{_md(day)} {label} 실적은 아직 입력 전입니다 (계획 {plan}대)."
+        pr = int((prev or {}).get("plan") or 0)
+        pa = int((prev or {}).get("actual") or 0)
+        if prev and (pr or pa):
+            rate = f" ({round(pa / pr * 100)}%)" if pr else ""
+            head += f" 직전 {_md(prev.get('date',''))} 실적 {pa}/{pr}대{rate}."
+        lines.append(head)
+    else:
+        rate = f" ({round(act / plan * 100)}%)" if plan else ""
+        lines.append(f"{_md(day)} {label} 실적 {act}/{plan}대{rate}.")
+
+    # 전체 보드면 품목별 한 줄, 품목 보드면 공정별 한 줄
+    if not item:
+        rows = _bloom_item_totals(board, day)
+        rows = [r for r in rows if r["plan"] or r["actual"]]
+        rows.sort(key=lambda r: -(r["plan"] or 0))
+        if rows:
+            lines.append(" / ".join(
+                (f"{r['item']} {r['plan']}" if cur.get("pending")
+                 else f"{r['item']} {r['actual']}/{r['plan']}") for r in rows[:7]))
+    else:
+        groups = (cur.get("groups") or {})
+        parts = []
+        for g, v in groups.items():
+            gp, ga = int(v.get("plan") or 0), int(v.get("actual") or 0)
+            if not (gp or ga):
+                continue
+            parts.append(f"{g} {gp}" if cur.get("pending") else f"{g} {ga}/{gp}")
+        if parts:
+            lines.append(" / ".join(parts[:6]))
+
+    # 계획 대비 실적이 모자란 곳 (막혀 있는 곳)
+    behind = []
+    if not cur.get("pending"):
+        if not item:
+            for r in _bloom_item_totals(board, day):
+                if r["plan"] and r["actual"] < r["plan"]:
+                    behind.append(f"{r['item']} {r['plan'] - r['actual']}대")
+        else:
+            for g, v in (cur.get("groups") or {}).items():
+                gp, ga = int(v.get("plan") or 0), int(v.get("actual") or 0)
+                if gp and ga < gp:
+                    behind.append(f"{g} {gp - ga}대")
+    if behind:
+        lines.append("미달: " + ", ".join(behind[:5]))
+
+    notes = [str(n.get("text") or "").strip()
+             for n in (board.get("notes") or []) if isinstance(n, dict)]
+    notes = [n for n in notes if n]
+    if item:
+        # 메모는 'KPE- ...' 처럼 품목 이름으로 시작한다. 내 품목 것만 남긴다.
+        toks = [t.lower() for t in str(item).split() if len(t) >= 2]
+        notes = [n for n in notes if any(t in n.lower() for t in toks)]
+    notes = notes[:2]
+    if notes:
+        lines.append("특이사항: " + " / ".join(notes))
+
+    return "\n".join(lines)
+
 
 @app.get("/projects/{project_key}/daily-board")
 def get_daily_board(project_key: str, date: str = ""):
