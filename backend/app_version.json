@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.6",
-  "latest_version_code": 29,
-  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.3.6/app-release.apk",
-  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.3.6/app-release.apk",
+  "latest_version": "2.3.7",
+  "latest_version_code": 30,
+  "download_url": "https://github.com/msk05317/project_summary/releases/download/v2.3.7/app-release.apk",
+  "apk_url": "https://github.com/msk05317/project_summary/releases/download/v2.3.7/app-release.apk",
   "release_notes": "블룸사업부 일 보고 화면이 새로 들어갔습니다.\n· 오늘 공정별 계획 대비 실적 (NCT · 조립 · 출하)\n· 조립완료 구매품 입고대기 · 자재 ETA\n그 외\n· 판가·재료비를 센트까지 ($0.70 짜리 부품 재료비율이 0.0% 로 뜨던 문제)\n· 지연 · 주의 개수가 목록과 다르게 세던 문제",
   "force_update": false
 }
