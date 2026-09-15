@@ -22110,6 +22110,113 @@ def _enrich_model(m: dict) -> dict:
     out["po_wait"] = _model_po_wait(m, _disp)
     return out
 
+@app.get("/home/alerts")
+def get_home_alerts(limit: int = 12):
+    """홈 화면 한 눈 요약 — 모델 기준.
+
+    예전 홈은 /dashboard 의 주간보고 카드(RED/YELLOW)로 사업부 상태를 셌다.
+    주간보고가 없는 사업부는 아예 집계에서 빠져서 '12개 중 정상 2' 처럼
+    나왔고, 프로젝트 안에는 지연이 널려 있는데 홈은 '지연 0' 이었다.
+    여기서는 프로젝트 안에서 보는 값과 똑같은 모델 alert 를 그대로 센다.
+    """
+    import datetime as _dth
+    data = _load_models()
+    try:
+        visible = {p.get("id") for p in _cl.get_projects(visible_only=True)}
+    except Exception:
+        visible = set()
+
+    today = _dth.date.today()
+    counts = {"total": 0, "delayed": 0, "soon": 0, "hold": 0,
+              "po_wait": 0, "done": 0, "running": 0}
+    alerts = []
+    seen_projects = set()
+    hit_projects = set()
+
+    for pk, proj in (data.get("projects") or {}).items():
+        if visible and pk not in visible:
+            continue
+        models = proj.get("models") or []
+        if not models:
+            continue
+        seen_projects.add(pk)
+        label = PROJECT_LABELS.get(pk, pk)
+        for m in models:
+            if not isinstance(m, dict):
+                continue
+            try:
+                e = _enrich_model(m)
+            except Exception:
+                continue
+            counts["total"] += 1
+            hold = str(e.get("hold") or "")
+            if hold:
+                counts["hold"] += 1
+            if e.get("po_wait"):
+                counts["po_wait"] += 1
+            done = bool(e.get("finished")) or int(e.get("progress") or 0) >= 100
+            if done:
+                counts["done"] += 1
+            # 드롭·보류는 늦은 게 아니다. 완료된 것도 마찬가지.
+            kind = "" if (hold or done) else str(e.get("alert") or "")
+            if kind == "지연":
+                counts["delayed"] += 1
+            elif kind == "주의":
+                counts["soon"] += 1
+            if kind in ("지연", "주의"):
+                exp = str(e.get("current_expected") or "")
+                d = _parse_any_date(exp)
+                alerts.append({
+                    "project_key": pk,
+                    "project": label,
+                    "model": e.get("name") or e.get("id") or "",
+                    "id": e.get("id") or "",
+                    "kind": "지연" if kind == "지연" else "임박",
+                    "expected": exp,
+                    "days": (today - d).days if d else None,
+                    "stage": str(e.get("current_stage") or ""),
+                    "note": str(e.get("note") or "").strip().replace("\n", " · "),
+                })
+                hit_projects.add(pk)
+
+    counts["running"] = max(0, counts["total"] - counts["done"] - counts["delayed"]
+                            - counts["soon"] - counts["hold"])
+
+    # 프로젝트 단위 묶음. 홈에서 모델 55줄을 세로로 늘어놓으면 아무도 안 읽는다.
+    by_project = {}
+    for a in alerts:
+        row = by_project.setdefault(a["project_key"], {
+            "key": a["project_key"], "label": a["project"],
+            "delayed": 0, "soon": 0, "worst_days": 0, "worst_model": "",
+        })
+        if a["kind"] == "지연":
+            row["delayed"] += 1
+        else:
+            row["soon"] += 1
+        d = a["days"] if a["days"] is not None else 0
+        if d > row["worst_days"]:
+            row["worst_days"] = d
+            row["worst_model"] = a["model"]
+    rows = sorted(by_project.values(),
+                  key=lambda r: (-r["delayed"], -r["worst_days"], -r["soon"]))
+    # 지연 먼저, 그 안에서는 오래 밀린 것부터
+    alerts.sort(key=lambda a: (0 if a["kind"] == "지연" else 1,
+                               -(a["days"] if a["days"] is not None else -9999)))
+    try:
+        n = max(1, min(60, int(limit)))
+    except (TypeError, ValueError):
+        n = 12
+    return {
+        "date": today.strftime("%Y-%m-%d"),
+        "counts": counts,
+        "projects": len(seen_projects),
+        "projects_with_alert": len(hit_projects),
+        "by_project": rows,
+        "alerts": alerts[:n],
+        "alerts_total": len(alerts),
+    }
+
+
 @app.get("/projects/{project_key}/models/detail")
 def get_project_models_detail(project_key: str):
     """앱용 확장 모델 목록: dev_type, 자동 진행률, 현황(현재 단계), 완료예정일, status_note 포함"""

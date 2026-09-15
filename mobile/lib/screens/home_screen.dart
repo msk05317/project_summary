@@ -26,10 +26,12 @@ import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/overview_service.dart';
+import '../services/home_alerts_service.dart';
 import '../services/automotive_service.dart';
 import '../models/automotive.dart';
 import 'division_projects_screen.dart';
 import 'immediate_check_screen.dart';
+import 'alert_list_screen.dart';
 import 'calendar_screen.dart';
 import 'division_select_screen.dart' show DivisionSelectScreen;
 import 'project_overview_screen.dart';
@@ -80,6 +82,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 경영 요약(이번 달 매출/출하) — 홈 최상단 카드용
   late Future<OverviewSummary> _overviewFuture;
+
+  /// 홈 한 눈 요약. 프로젝트 안에서 보는 값과 같은 모델 alert 를 받는다.
+  late Future<HomeAlerts> _alertsFuture;
 
   // 헤더 돋보기로 여는 검색 패널
   bool _searchOpen = false;
@@ -225,6 +230,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _dashboardFuture = DashboardService.fetchCards();
     _progressFuture = ProgressService.fetch();
     _overviewFuture = OverviewService.fetch();
+    _alertsFuture = HomeAlertsService.fetch();
     _loadFavDivisions();
     _loadAuto();
   }
@@ -251,6 +257,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _auto = s);
   }
 
+  /// "오늘 15:47 기준"
+  String _formatHomeCaption(DateTime now) {
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    return '오늘 $hh:$mm 기준';
+  }
+
   /// 진행률이 없는 사업부에 무엇이 있는지 한 마디로 적는다.
   String? _divisionNote(String divisionId) {
     if (divisionId != AutomotiveService.divisionId) return null;
@@ -265,11 +278,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _dashboardFuture = DashboardService.fetchCards();
         _progressFuture = ProgressService.fetch();
         _overviewFuture = OverviewService.fetch();
+        _alertsFuture = HomeAlertsService.fetch();
         _loadAuto(force: true);
     });
     _loadFavDivisions(); // 사업부 즐겨찾기 Set 로딩
-    await Future.wait(
-        [_divisionsFuture, _dashboardFuture, _progressFuture, _overviewFuture]);
+    await Future.wait([
+      _divisionsFuture, _dashboardFuture, _progressFuture,
+      _overviewFuture, _alertsFuture,
+    ]);
   }
 
   // 오늘 날짜를 한국식 표기로 변환합니다.
@@ -484,6 +500,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 즉시 확인 후보 카드 추출.
   // - now 는 D-day 계산 기준 시간 (테스트 편의를 위해 파라미터로 주입).
+  // 홈 상단이 모델 기준(_RiskListCard)으로 바뀌면서 안 쓰게 됐다.
+  // '모두 보기' 화면이 아직 /dashboard 를 쓰고 있어 변환 로직은 남겨 둔다.
+  // ignore: unused_element
   List<ImmediateCheckItem> _buildImmediateItems(
     List<DashboardCard> cards, {
     DateTime? now,
@@ -612,6 +631,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // 사업부 카드 클릭 시 사업부 내 프로젝트 목록 화면으로 진입.
+  // 사업부 카드에서 여는 예전 '즉시 확인' 화면. 홈 상단은 AlertListScreen 을 쓴다.
+  // ignore: unused_element
   void _openImmediateCheck({String? divisionLabel}) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -702,10 +723,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: _SummarySection(
-                        future: _dashboardFuture,
+                      child: _RiskSummaryCard(
+                        alertsFuture: _alertsFuture,
                         divisionsFuture: _divisionsFuture,
                         progressFuture: _progressFuture,
+                        caption: _formatHomeCaption(DateTime.now()),
                       ),
                     ),
 
@@ -744,11 +766,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: _ImmediateCheckSection(
-                        future: _dashboardFuture,
-                        buildItems: _buildImmediateItems,
-                        onTapItem: (item) => _openProject(item.projectKey),
-                        onTapShowAll: () => _openImmediateCheck(),
+                      child: _RiskListCard(
+                        alertsFuture: _alertsFuture,
+                        onTapProject: _openProject,
+                        // 모두 보기도 같은 /home/alerts 를 본다.
+                        // 예전 '즉시 확인' 화면은 주간보고 카드라 홈과 숫자가 달랐다.
+                        onTapShowAll: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const AlertListScreen()),
+                        ),
                       ),
                     ),
 
@@ -843,6 +868,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
 // 전체 현황 요약 섹션.
 // /dashboard 응답을 받아 DashboardSummary 로 집계 후 SummaryCard 에 전달합니다.
+// ignore: unused_element
 class _SummarySection extends StatelessWidget {
   final Future<List<DashboardCard>> future;
   final Future<List<Division>> divisionsFuture;
@@ -1382,6 +1408,7 @@ class _RankedCard {
 // - _dashboardFuture 결과를 받아 ImmediateCheckCard 로 변환해 그립니다.
 // - 후보 항목이 0개이면 카드 자체를 그리지 않습니다 (시안: 빨간 카드가 화면에 떠 있어선 안 됨).
 // - 변환 로직은 HomeScreen 의 _buildImmediateItems 를 그대로 위임받습니다.
+// ignore: unused_element
 class _ImmediateCheckSection extends StatelessWidget {
   // SummaryCard 가 쓰던 동일한 Future. 재사용해 추가 네트워크 호출 없음.
   final Future<List<DashboardCard>> future;
@@ -1736,4 +1763,316 @@ class _ProjHit {
   final Division division;
   final DivisionProjectRef project;
   const _ProjHit(this.division, this.project);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 홈 상단 두 카드 — 모델 기준.
+//
+// 예전에는 /dashboard 의 주간보고 카드(RED/YELLOW)로 사업부 상태를 셌다.
+// 주간보고가 없는 사업부는 집계에서 통째로 빠져서 '12개 중 정상 2' 가 되고,
+// 프로젝트 안에는 지연이 널려 있는데 홈은 '지연 0' 이었다. 홈과 안쪽이
+// 서로 다른 것을 세고 있었던 것. 이제 둘 다 같은 모델 alert 를 본다.
+// ─────────────────────────────────────────────────────────────
+
+/// 전체 현황 — 지연 · 임박 · 보류 · PO 대기
+class _RiskSummaryCard extends StatelessWidget {
+  final Future<HomeAlerts> alertsFuture;
+  final Future<List<Division>> divisionsFuture;
+  final Future<ProgressSummary> progressFuture;
+  final String caption;
+
+  const _RiskSummaryCard({
+    required this.alertsFuture,
+    required this.divisionsFuture,
+    required this.progressFuture,
+    required this.caption,
+  });
+
+  static Widget _kpi(String label, int value, Color color) {
+    return Expanded(
+      child: Column(children: [
+        Text('$value',
+            style: TextStyle(
+                fontSize: 24, fontWeight: FontWeight.w800, color: color)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<HomeAlerts>(
+      future: alertsFuture,
+      builder: (context, snap) {
+        final loading = snap.connectionState == ConnectionState.waiting;
+        final a = snap.data ?? HomeAlerts.empty;
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('전체 현황',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              const Spacer(),
+              Text(caption,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+            ]),
+            const SizedBox(height: 14),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Center(
+                    child: SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))),
+              )
+            // 못 받아왔을 때 0 을 그리면 '지연 없음' 과 똑같이 보인다.
+            // 경영 판단이 걸린 숫자라 모르는 건 모른다고 말해야 한다.
+            else if (!a.loaded)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Row(children: [
+                  Icon(Icons.error_outline, size: 16, color: Color(0xFFDC2626)),
+                  SizedBox(width: 6),
+                  Text('현황을 불러오지 못했습니다',
+                      style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
+                ]),
+              )
+            else ...[
+              Row(children: [
+                _kpi('지연', a.delayed, const Color(0xFFDC2626)),
+                _kpi('임박', a.soon, const Color(0xFFE97132)),
+                _kpi('보류', a.hold, const Color(0xFF6B7280)),
+                _kpi('PO 대기', a.poWait, const Color(0xFFB45309)),
+              ]),
+              const SizedBox(height: 14),
+              FutureBuilder<List<Division>>(
+                future: divisionsFuture,
+                builder: (context, dSnap) {
+                  final divisions = dSnap.data ?? const <Division>[];
+                  final keys = <String>{
+                    for (final d in divisions)
+                      for (final p in d.projects)
+                        if (p.id.isNotEmpty) p.id
+                  };
+                  return FutureBuilder<ProgressSummary>(
+                    future: progressFuture,
+                    builder: (context, pSnap) {
+                      final prog = pSnap.data ?? ProgressSummary.empty;
+                      final pct = keys.isEmpty
+                          ? prog.progress
+                          : (prog.weightedFor(keys) ?? prog.progress);
+                      return Column(children: [
+                        Row(children: [
+                          Text(
+                              '모델 ${a.total}종 · 진행 중 ${a.running} · 완료 ${a.done}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF6B7280))),
+                          const Spacer(),
+                          Text(
+                              '사업부 ${divisions.length} · 프로젝트 ${a.projects}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF6B7280))),
+                        ]),
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          const Text('전체 진행률',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF374151))),
+                          const Spacer(),
+                          Text(pct == null ? '-' : '$pct%',
+                              style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0E2841))),
+                        ]),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(99),
+                          child: LinearProgressIndicator(
+                            value: (pct ?? 0) / 100,
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF156082)),
+                          ),
+                        ),
+                      ]);
+                    },
+                  );
+                },
+              ),
+            ],
+          ]),
+        );
+      },
+    );
+  }
+}
+
+/// 지금 봐야 할 것 — 지연·임박이 걸린 프로젝트를 급한 순으로
+class _RiskListCard extends StatelessWidget {
+  final Future<HomeAlerts> alertsFuture;
+  final void Function(String projectKey) onTapProject;
+  final VoidCallback? onTapShowAll;
+
+  const _RiskListCard({
+    required this.alertsFuture,
+    required this.onTapProject,
+    this.onTapShowAll,
+  });
+
+  Widget _shell(List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+  }
+
+  Widget _row(AlertProject p) {
+    final bits = <String>[];
+    if (p.delayed > 0) bits.add('지연 ${p.delayed}');
+    if (p.soon > 0) bits.add('임박 ${p.soon}');
+    return InkWell(
+      onTap: () => onTapProject(p.key),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(children: [
+          Container(
+            width: 6, height: 6,
+            decoration: BoxDecoration(
+              color: p.delayed > 0
+                  ? const Color(0xFFDC2626)
+                  : const Color(0xFFE97132),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p.label,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700,
+                      color: Color(0xFF111827))),
+              if (p.worstModel.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(p.worstModel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF9CA3AF))),
+                ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(bits.join(' · '),
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: p.delayed > 0
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFFE97132))),
+            if (p.worstDays > 0)
+              Text('최장 ${p.worstDays}일',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+          ]),
+          const Icon(Icons.chevron_right, size: 18, color: Color(0xFFCBD5E1)),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<HomeAlerts>(
+      future: alertsFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return _shell(const [
+            Row(children: [
+              Icon(Icons.hourglass_empty, size: 16, color: Color(0xFF9CA3AF)),
+              SizedBox(width: 6),
+              Text('지연·마감임박 확인 중...',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+            ]),
+          ]);
+        }
+        final a = snap.data ?? HomeAlerts.empty;
+        if (!a.loaded) {
+          return _shell(const [
+            Row(children: [
+              Icon(Icons.error_outline, size: 16, color: Color(0xFFDC2626)),
+              SizedBox(width: 6),
+              Text('지연 현황을 불러오지 못했습니다',
+                  style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
+            ]),
+          ]);
+        }
+        if (a.byProject.isEmpty) {
+          return _shell(const [
+            Row(children: [
+              Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF059669)),
+              SizedBox(width: 6),
+              Text('지연·마감임박 항목이 없습니다',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF059669))),
+            ]),
+          ]);
+        }
+        final rows = a.byProject.take(5).toList();
+        return _shell([
+          Row(children: [
+            const Icon(Icons.warning_amber_rounded, size: 17, color: Color(0xFFDC2626)),
+            const SizedBox(width: 6),
+            const Text('지금 봐야 할 것',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('${a.alertsTotal}',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800,
+                      color: Color(0xFFDC2626))),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          for (int i = 0; i < rows.length; i++) ...[
+            if (i > 0) const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            _row(rows[i]),
+          ],
+          if (a.byProject.length > rows.length || onTapShowAll != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onTapShowAll,
+                child: Text('모두 보기 (${a.alertsTotal})',
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF156082))),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
 }
