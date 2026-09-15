@@ -21259,7 +21259,9 @@ def _model_progress_value(m: dict):
     """
     if not isinstance(m, dict):
         return None
-    if m.get("group") == "개발":
+    # 저장된 group 이 아니라 '지금 어느 단계인가'로 센다. 전환 주차가 지났는데
+    # 아무도 모델을 열어 저장하지 않으면 계속 개발로 집계됐다.
+    if _display_group(m) == "개발":
         proc = m.get("process") if isinstance(m.get("process"), list) else []
         has_input = any(
             str((s or {}).get(k) or "").strip()
@@ -21460,7 +21462,7 @@ def _model_progress_asof(m: dict, cutoff):
     """cutoff(date) 시점 기준 모델 진행률. 데이터 없으면 None."""
     if not isinstance(m, dict):
         return None
-    if m.get("group") == "개발":
+    if _display_group(m, cutoff) == "개발":
         proc = m.get("process") if isinstance(m.get("process"), list) else []
         has_input = any(
             str((s or {}).get(k) or "").strip()
@@ -21571,8 +21573,9 @@ def get_progress_trend(period: str = "week", points: int = 4, division_id: str =
 
 def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "note", "part_number", "weekly_plan", "weekly_progress", "weekly_summary")}
-    out["display_group"] = _display_group(m)
-    if m.get("group") == "개발":
+    _disp = _display_group(m)
+    out["display_group"] = _disp
+    if _disp == "개발":
         proc = _ensure_process(m)
         out["process"] = proc
         out["dev_type"] = m.get("dev_type") or ""
@@ -21582,6 +21585,18 @@ def _enrich_model(m: dict) -> dict:
         out["current_expected"] = expected
         out["done_steps"] = sum(1 for s in proc if str(s.get("actual") or "").strip())
         out["total_steps"] = len(proc)
+    else:
+        # 양산으로 넘어가도 최종 승인까지 간 공정 기록은 계속 볼 수 있어야 한다.
+        # progress 는 덮지 않는다 — 그건 이제 PO 대비 출하다.
+        _proc = m.get("process")
+        if isinstance(_proc, list) and any(
+                str((st or {}).get(k) or "").strip()
+                for st in _proc for k in ("expected", "actual", "status")):
+            out["process"] = _proc
+            out["done_steps"] = sum(1 for st in _proc
+                                    if str((st or {}).get("actual") or "").strip())
+            out["total_steps"] = len(_proc)
+            out["dev_type"] = m.get("dev_type") or ""
     return out
 
 @app.get("/projects/{project_key}/models/detail")
@@ -22124,7 +22139,7 @@ def _board_row_models(proj, row, claimed=None):
             if mid in ids or pn in ids:
                 out.append(m)
             continue
-        if grp and _norm_group(m.get("group")) != grp:
+        if grp and _norm_group(_display_group(m)) != grp:
             continue
         if dt and mdt != dt:
             continue
@@ -23917,20 +23932,23 @@ def _phase_at(m: dict, month: str, week):
     return hit["group"], (hit["price"] or price)
 
 
-def _display_group(m: dict) -> str:
+def _display_group(m: dict, ref=None) -> str:
     """오늘 기준으로 '보이는' 구분.
 
     '개발→양산 W37' 이력이 있는데 이번 주가 W38 이면 구분 칸에 양산으로
     보여야 한다. 저장된 group 은 개발 그대로 둔다 — 진행률은 계속 공정
     단계로 세고, 지난 주차 매출도 그때 구분/판가로 남아야 한다.
     바뀌는 건 '지금 어느 단계인가' 하나뿐이다.
+
+    ref 를 주면 그 날짜 기준. 과거 추이를 그릴 때는 '그때' 무엇이었는지를
+    써야 한다 — 오늘 기준으로 세면 지난달 그래프가 통째로 바뀐다.
     """
     base = "개발" if (m or {}).get("group") == "개발" else "양산"
     ph = _norm_phases((m or {}).get("phases"))
     if not ph:
         return base
     import datetime as _dt
-    iso = _dt.date.today().isocalendar()
+    iso = (ref or _dt.date.today()).isocalendar()
     cur = int(iso[0]) * 100 + int(iso[1])
     hit = None
     for e in ph:

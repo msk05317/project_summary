@@ -6028,6 +6028,23 @@ window.renderAdminV2ByDivision = function(){
     }).filter(Boolean).sort(function(a, b) { return _phaseOrd(a.from) - _phaseOrd(b.from); });
   }
 
+
+  // 오늘 기준으로 '보이는' 구분. phases 에 '개발→양산 W37' 이 있고 이번 주가
+  // W38 이면 양산이다. 서버의 _display_group 과 같은 규칙을 쓴다 — 두 곳이
+  // 어긋나면 Admin 과 앱이 다른 말을 한다.
+  window._mdlGroupNow = function(m) {
+    var base = ((m || {}).group === '개발') ? '개발' : '양산';
+    var ph = _phaseNorm(m && m.phases);
+    if (!ph.length) return base;
+    var cur = _phaseOrd(_curWeekTag());
+    var hit = null;
+    for (var i = 0; i < ph.length; i++) {
+      if (_phaseOrd(ph[i].from) <= cur) hit = ph[i];
+      else break;
+    }
+    return (hit || ph[0]).group;
+  };
+
   // 구분이 바뀌는 첫 지점을 배지로 보여준다. 예: 개발→양산 W36
   function _phaseBadge(m) {
     var ph = _phaseNorm(m && m.phases);
@@ -6601,7 +6618,7 @@ window.renderAdminV2ByDivision = function(){
     window._mdlSel = window._mdlSel || {};
     var _q = (window._mdlQuery || '').trim().toLowerCase();
     var _visible = (window._modelsData || []).filter(function(m) {
-      var g = (m.group === '개발') ? '개발' : '양산';
+      var g = window._mdlGroupNow(m);
       if (window._mdlGroup !== 'all' && g !== window._mdlGroup) return false;
       if (!_q) return true;
       return String(m.name || m.id || '').toLowerCase().indexOf(_q) >= 0;
@@ -6609,8 +6626,7 @@ window.renderAdminV2ByDivision = function(){
 
     const byGroup = { '양산': [], '개발': [] };
     _visible.forEach(function(m) {
-      const g = (m.group === '개발') ? '개발' : '양산';
-      byGroup[g].push(m);
+      byGroup[window._mdlGroupNow(m)].push(m);
     });
 
     // ── 판가 점검 ────────────────────────────────────────────────
@@ -6674,10 +6690,15 @@ window.renderAdminV2ByDivision = function(){
               String(m.name || '').replace(/"/g, '&quot;') + '">' +
             _phaseBadge(m) +
           '</td>' +
-          '<td><select data-field="group">' +
-            '<option value="양산"' + (m.group === '양산' ? ' selected' : '') + '>양산</option>' +
-            '<option value="개발"' + (isDev ? ' selected' : '') + '>개발</option>' +
-          '</select></td>' +
+          // 전환 주차가 지났으면 양산으로 골라둔다. 저장하면 그대로 저장돼
+          // 취합이 맞는다. 집계는 저장 전에도 이 값을 본다(_display_group).
+          (function(){
+            var gnow = window._mdlGroupNow(m);
+            return '<td><select data-field="group">' +
+              '<option value="양산"' + (gnow === '양산' ? ' selected' : '') + '>양산</option>' +
+              '<option value="개발"' + (gnow === '개발' ? ' selected' : '') + '>개발</option>' +
+            '</select></td>';
+          })() +
           '<td><select data-field="dev_type" style="width:90px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;background:#fff;">' +
             '<option value=""></option>' +
             (function(){

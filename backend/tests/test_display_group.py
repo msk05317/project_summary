@@ -70,11 +70,26 @@ assert f({'group': '개발', 'phases': 'x'}) == '개발'
 assert f({'group': '개발', 'phases': [{'from': '없음', 'group': '양산'}]}) == '개발'
 ok += 1
 
+# 기준일을 주면 그 날짜 기준 (과거 추이용)
+import datetime as _d
+mon = _d.date.today() - _d.timedelta(weeks=4)
+m4 = {'group': '개발', 'phases': [
+    {'from': '%04d-W01' % Y, 'group': '개발', 'price': 1},
+    {'from': wk(-1), 'group': '양산', 'price': 2}]}
+assert f(m4) == '양산', '오늘 기준이 틀렸다'
+assert f(m4, mon) == '개발', '4주 전인데 양산으로 센다 — 지난 추이가 통째로 바뀐다'
+ok += 1
+
 # 실제 연결부
 assert 'm["display_group"] = g' in SRC, '앱 목록이 display_group 을 안 붙인다'
-assert 'out["display_group"] = _display_group(m)' in SRC, '상세가 display_group 을 안 붙인다'
+assert 'if _display_group(m) == "개발":' in SRC, '진행률이 아직 저장된 group 을 본다'
+assert 'if _display_group(m, cutoff) == "개발":' in SRC, \
+    '과거 시점 진행률이 오늘 기준으로 센다'
+assert '_norm_group(_display_group(m)) != grp' in SRC, '보드 행이 아직 저장된 group 으로 묶인다'
+assert 'out["process"] = _proc' in SRC, '양산으로 넘어가면 공정 기록이 사라진다'
+assert 'out["display_group"] = _disp' in SRC, '상세가 display_group 을 안 붙인다'
 assert 'g = _display_group(m) if isinstance(m, dict) else "기타"' in SRC, \
     '앱 목록 탭이 아직 저장된 group 으로 나뉜다'
 ok += 1
 
-print(f'전부 통과 ({ok}/9)')
+print(f'전부 통과 ({ok}/10)')
