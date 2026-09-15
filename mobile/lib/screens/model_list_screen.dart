@@ -780,7 +780,7 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '목록 > $projectName > ${model['group'] ?? ''} > ${model['name'] ?? ''}',
+                '목록 > $projectName > ${model['display_group'] ?? model['group'] ?? ''} > ${model['name'] ?? ''}',
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),

@@ -160,3 +160,6 @@ backend/board_note_cache.json
 
 # 운영 데이터 백업 (내 컴퓨터에만 둔다)
 backups/
+
+models_prod_backup.json
+Claude outputs/

@@ -5498,7 +5498,11 @@ def get_project_models(project_key: str):
     models = _get_project_models(project_key)
     groups: dict = {}
     for m in models:
-        g = (m.get("group") or "기타").strip() or "기타"
+        # 전환 주차가 지났으면 양산으로 보여준다 (저장된 group 은 그대로).
+        # 탭이 표시와 어긋나면 '양산인데 개발 탭에 있는' 모델이 생긴다.
+        g = _display_group(m) if isinstance(m, dict) else "기타"
+        if isinstance(m, dict):
+            m["display_group"] = g
         groups.setdefault(g, {"count": 0, "models": []})
         groups[g]["count"] += 1
         groups[g]["models"].append(m)
@@ -21567,6 +21571,7 @@ def get_progress_trend(period: str = "week", points: int = 4, division_id: str =
 
 def _enrich_model(m: dict) -> dict:
     out = {k: m.get(k) for k in ("id", "name", "group", "status", "progress", "price", "material_cost", "dev_type", "po_qty", "shipped_qty", "due_text", "issues", "note", "part_number", "weekly_plan", "weekly_progress", "weekly_summary")}
+    out["display_group"] = _display_group(m)
     if m.get("group") == "개발":
         proc = _ensure_process(m)
         out["process"] = proc
@@ -23910,6 +23915,31 @@ def _phase_at(m: dict, month: str, week):
     if hit is None:
         hit = ph[0]
     return hit["group"], (hit["price"] or price)
+
+
+def _display_group(m: dict) -> str:
+    """오늘 기준으로 '보이는' 구분.
+
+    '개발→양산 W37' 이력이 있는데 이번 주가 W38 이면 구분 칸에 양산으로
+    보여야 한다. 저장된 group 은 개발 그대로 둔다 — 진행률은 계속 공정
+    단계로 세고, 지난 주차 매출도 그때 구분/판가로 남아야 한다.
+    바뀌는 건 '지금 어느 단계인가' 하나뿐이다.
+    """
+    base = "개발" if (m or {}).get("group") == "개발" else "양산"
+    ph = _norm_phases((m or {}).get("phases"))
+    if not ph:
+        return base
+    import datetime as _dt
+    iso = _dt.date.today().isocalendar()
+    cur = int(iso[0]) * 100 + int(iso[1])
+    hit = None
+    for e in ph:
+        if _phase_ord(e["from"]) <= cur:
+            hit = e
+        else:
+            break
+    # 첫 구간보다 앞이면 아직 이력이 시작되기 전 — 첫 구간을 쓴다
+    return (hit or ph[0])["group"]
 
 
 def _dev_weeks_from_models(dev_model_weeks, dev_group):
