@@ -6032,6 +6032,14 @@ window.renderAdminV2ByDivision = function(){
   // 오늘 기준으로 '보이는' 구분. phases 에 '개발→양산 W37' 이 있고 이번 주가
   // W38 이면 양산이다. 서버의 _display_group 과 같은 규칙을 쓴다 — 두 곳이
   // 어긋나면 Admin 과 앱이 다른 말을 한다.
+
+  // 파트넘버를 따로 관리하는 프로젝트. 모델명과 품번이 다른 곳들이다.
+  // (세 군데에 같은 목록이 박혀 있어서 큐리를 넣을 때 하나를 빼먹기 쉬웠다)
+  window.PN_PROJECTS = ['powerbox', 'major_module', 'frame', 'spacex'];
+  window._mdlHasPN = function(pk) {
+    return (window.PN_PROJECTS || []).indexOf(pk || '') !== -1;
+  };
+
   window._mdlGroupNow = function(m) {
     var base = ((m || {}).group === '개발') ? '개발' : '양산';
     var ph = _phaseNorm(m && m.phases);
@@ -6657,7 +6665,7 @@ window.renderAdminV2ByDivision = function(){
     let html = '<table class="mdl-table"><thead><tr>' +
       '<th class="mdl-th-chk"><input type="checkbox" class="mdl-check" id="mdl-check-all" title="전체 선택"></th>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
-      ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
+      (window._mdlHasPN(_getCurrentProjectKey())
         ? '<th>파트넘버</th>' : '') +
       (_projIsEss
         ? '<th>모델명</th><th>구분</th><th>유형</th><th class="mdl-th-num">PO 수량</th><th class="mdl-th-num">출하 완료</th><th class="mdl-th-num">남은 수량</th><th>납기</th><th>이슈사항</th><th>비고</th><th style="width:56px">관리</th>'
@@ -6683,7 +6691,7 @@ window.renderAdminV2ByDivision = function(){
         const devType = (m.dev_type || '').toUpperCase();
         html += '<tr data-model-id="' + m.id + '"' + (window._mdlSel[m.id] ? ' class="is-sel"' : '') + '>' +
           '<td class="mdl-td-chk"><input type="checkbox" class="mdl-check mdl-row-chk"' + (window._mdlSel[m.id] ? ' checked' : '') + '></td>' +
-          ((['powerbox','major_module','frame'].indexOf(_getCurrentProjectKey())!==-1)
+          (window._mdlHasPN(_getCurrentProjectKey())
           ? '<td class="mdl-col-pn"><input data-field="part_number" value="' + (m.part_number || m.id) + '" style="width:110px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:11px;font-family:monospace;font-weight:600;" /></td>' : '') +
           '<td class="mdl-td-name">' +
             '<input data-field="name" class="mdl-input mdl-input-name" placeholder="모델명" value="' +
@@ -8047,7 +8055,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
       }
       var partNum = '';
       var _pk = window._currentProjectKey || '';
-      if (_pk === 'powerbox' || _pk === 'major_module' || _pk === 'frame') {
+      if (window._mdlHasPN(_pk)) {
         partNum = (prompt('파트넘버 (예: 853-XXXXX-XXX)') || '').trim();
       }
       window._modelsData.push({ id: trimmed, name: trimmed, part_number: partNum || trimmed, group: '양산', status: '정상', progress: 0, price: 0, material_cost: 0 });

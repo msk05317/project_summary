@@ -557,7 +557,7 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
     // 반도체사업부 프로젝트 키 목록
     const semi = ['chamber', 'enclosure', 'cup', 'hrva_plate', 'casting_enclosure',
                   'plating_cell', 'tolon', 'eos_chamber', 'faraday_4t',
-                  'powerbox', 'major_module', 'frame'];
+                  'powerbox', 'major_module', 'frame', 'spacex'];
     if (semi.contains(p)) return true;
     // project_key가 없으면 weekly_plan 데이터 유무로 판단 (반도체 양산만 주차계획 사용)
     return model['weekly_plan'] is Map && (model['weekly_plan'] as Map).isNotEmpty;
