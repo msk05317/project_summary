@@ -22812,9 +22812,12 @@ def get_daily_board(project_key: str, date: str = ""):
 
 
 def _bloom_parse_upload(raw: bytes):
+    # openpyxl / BytesIO 는 main.py 최상단에 없다. 쓰는 함수마다 직접 가져온다.
+    import io as _io
+    import openpyxl as _xl
     import bloom_daily_import as _bd
     try:
-        wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+        wb = _xl.load_workbook(_io.BytesIO(raw), data_only=True)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
     parsed = _bd.parse_daily(wb)
