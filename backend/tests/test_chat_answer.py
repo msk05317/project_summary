@@ -131,4 +131,29 @@ ok += 1
 assert b['_kmonth']('2026-09') == '9월'
 ok += 1
 
+# ── 7) 이슈 답변이 중간에서 끊기지 않는다 ──
+#   80자에서 자른 컨텍스트를 받은 LLM 이 '선적 스페이스 부' 에서 문장을 멈췄다.
+assert "m.get('issues')[:80]" not in SRC, '이슈 컨텍스트가 아직 80자에서 잘린다'
+assert '_issue_answer(last_project)' in SRC, '이슈 즉답이 /chat 에 연결되지 않았다'
+
+iss = load(['_issue_answer', '_model_alert', '_display_group', '_norm_phases',
+            '_phase_ord', '_as_money', '_process_step_done'])
+LONG = ('PS 대체파트 미입고 2종 (W40), OEM 지연 1종 (W38),\n'
+        '33대 제조 완료, FQC 불량, 고객 SR 승인 지연, 선적 스페이스 부족 이슈 미출하 (W38)')
+iss['_load_models'] = lambda: {'projects': {'powerbox': {'models': [
+    {'id': '925-800083-394', 'name': 'PS', 'issues': LONG, 'group': '양산'},
+    {'id': '000-1', 'name': '정상품', 'group': '양산'}]}}}
+iss['_model_key_alias'] = lambda k: k
+iss['PROJECT_LABELS'] = {'powerbox': '파워박스'}
+a = iss['_issue_answer']('powerbox')
+assert '선적 스페이스 부족 이슈 미출하 (W38)' in a, f'이슈가 잘렸다: {a}'
+assert a.count('·') == 1, f'이슈 없는 모델까지 나왔다: {a}'
+assert '(W38), /' not in a, f'줄 끝 쉼표가 남았다: {a}'
+ok += 1
+
+iss['_load_models'] = lambda: {'projects': {'frame': {'models': [{'id': 'x', 'group': '양산'}]}}}
+iss['PROJECT_LABELS'] = {'frame': '프레임'}
+assert '없습니다' in iss['_issue_answer']('frame')
+ok += 1
+
 print(f'전부 통과 · {ok}개 항목')

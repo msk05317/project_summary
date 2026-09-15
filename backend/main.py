@@ -671,6 +671,47 @@ def _rag_context(query: str, top_k: int = 3, min_score: float = 0.30) -> str:
     return "\n\n".join(parts[:top_k])
 
 
+def _issue_answer(project_key: str) -> str:
+    """이슈·지연 질문 즉답. 적어둔 이슈 문장을 자르지 않고 그대로 낸다.
+
+    LLM 을 거치면 문장이 중간에서 멈춘다(컨텍스트가 80자에서 잘려 있었다).
+    이슈는 짧게 요약할 성질이 아니라 적힌 그대로가 답이다.
+    """
+    if not project_key or project_key == 'all':
+        return ""
+    proj = (_load_models().get("projects") or {}).get(_model_key_alias(project_key)) or {}
+    models = proj.get("models") or []
+    if not models:
+        return ""
+    label = PROJECT_LABELS.get(project_key, project_key)
+
+    rows, late = [], []
+    for m in models:
+        txt = " / ".join(x.strip().rstrip(" ,") for x in
+                         str(m.get("issues") or "").splitlines() if x.strip())
+        name = m.get("id") or m.get("name") or ""
+        if txt:
+            rows.append(f"· {name}: {txt}")
+        try:
+            if _model_alert(m) == "지연" and not txt:
+                late.append(f"· {name}: 완료예정 {m.get('current_expected') or m.get('due_text') or '미정'} 경과")
+        except Exception:
+            pass
+
+    if not rows and not late:
+        return f"{label}에 등록된 이슈나 지연 모델이 없습니다."
+
+    head = f"{label} 이슈 {len(rows)}건"
+    if late:
+        head += f" · 지연 {len(late)}종"
+    lines = [head + "."]
+    lines.extend(rows[:6])
+    lines.extend(late[:4])
+    if len(rows) > 6:
+        lines.append(f"(그 외 {len(rows) - 6}건)")
+    return "\n".join(lines)
+
+
 def _chat_project_keywords() -> dict:
     """질문에서 프로젝트를 찾을 때 쓰는 '키워드 → project_key' 사전.
 
@@ -18534,6 +18575,23 @@ async def chat(payload: dict):
                     'sources': [{'key': last_project, 'label': _lbl_b}],
                     'corrected_query': None}
 
+    # ── 이슈·지연 질문은 적힌 그대로 답한다 (LLM 이 중간에 끊는 걸 막는다) ──
+    if (last_project and last_project != 'all'
+            and not str(last_project).startswith('bloom')
+            and any(k in _user_text for k in ('이슈', '지연', '문제', '리스크', '막힌', '지체', '밀린'))
+            and not any(k in _user_text for k in ('매출', '금액', '얼마'))):
+        try:
+            _ans_i = _issue_answer(last_project)
+        except Exception as _e_i:
+            _ans_i = ""
+            print(f"[chat] 이슈 즉답 실패(무시): {_e_i}")
+        if _ans_i:
+            print(f"[chat] 이슈 즉답 → {last_project}")
+            return {'answer': _ans_i,
+                    'sources': [{'key': last_project,
+                                 'label': PROJECT_LABELS.get(last_project, last_project)}],
+                    'corrected_query': None}
+
     # ── 월 범위 기억 + 월 단위 수량/매출 즉답 (후속 질문 '각각 몇 대씩' 대응) ──
     _today_m = _dt_mod.now().date()
     _scope_month = None
@@ -18947,9 +19005,13 @@ async def chat(payload: dict):
             
             issue_models = [m for m in models if m.get("issues", "").strip()]
             if issue_models:
-                ctx += f"이슈 있는 모델 ({len(issue_models)}개):"
-                for m in issue_models[:5]:
-                    ctx += f"  - {m.get('name')}: {m.get('issues')[:80]}"
+                # 80자에서 자르면 '선적 스페이스 부' 처럼 말이 끊긴 채 넘어가고
+                # LLM 이 그 자리에서 문장을 멈춰버린다. 넉넉히 준다.
+                ctx += f"\n이슈 있는 모델 ({len(issue_models)}개):"
+                for m in issue_models[:12]:
+                    _it = " / ".join(x.strip().rstrip(" ,") for x in
+                                     str(m.get("issues") or "").splitlines() if x.strip())
+                    ctx += f"\n  - {m.get('id') or m.get('name')}: {_it[:300]}"
             
             if is_process and dev:
                 ctx += "개발 모델 진행률:"
