@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # OneView 앱 릴리스 — 빌드부터 배포까지.
 #
-#   ./release.sh                  → pubspec 버전 그대로
-#   ./release.sh 2.3.1 24         → 버전·코드를 지정
+#   ./release.sh                  → 끝자리 버전을 올린다 (2.3.0 → 2.3.1)
+#   ./release.sh 2.4.0 30         → 버전·코드를 지정
+#   ./release.sh --same           → 지금 버전 그대로 (APK 만 다시 올릴 때)
+#
+# 기본이 '올린다' 인 이유: 버전이 그대로면 앱에 업데이트 팝업이 안 뜬다.
+# 올려놓고 왜 안 뜨지 하고 한참 찾은 적이 있다.
 #
 # 하는 일
-#   1) 버전 확인 (인자를 주면 pubspec 을 그 값으로 고친다)
+#   1) 버전 올리기 (인자를 주면 그 값으로)
 #   2) APK 빌드
 #   3) GitHub 릴리스에 APK 올리기
 #        gh 가 되면 자동, 안 되면 브라우저와 Finder 를 열어 주고 기다린다
@@ -25,18 +29,37 @@ command -v flutter >/dev/null || die "flutter 가 없습니다."
 
 # ── 1. 버전
 PUBSPEC=mobile/pubspec.yaml
-if [ $# -ge 2 ]; then
+LINE=$(grep '^version:' "$PUBSPEC" | head -1 | sed 's/version: *//')
+CUR_VER="${LINE%%+*}"; CUR_CODE="${LINE##*+}"
+[ -n "$CUR_VER" ] && [ -n "$CUR_CODE" ] || die "pubspec 에서 버전을 못 읽었습니다."
+
+if [ "${1:-}" = "--same" ]; then
+  VER="$CUR_VER"; CODE="$CUR_CODE"
+  echo "버전을 그대로 둡니다 ($VER+$CODE). 기존 사용자에게는 팝업이 안 뜹니다."
+elif [ $# -ge 2 ]; then
   VER="$1"; CODE="$2"
-  perl -pi -e "s/^version: .*/version: $VER+$CODE/" "$PUBSPEC"
-  echo "pubspec 버전을 $VER+$CODE 로 바꿨습니다."
 else
-  LINE=$(grep '^version:' "$PUBSPEC" | head -1 | sed 's/version: *//')
-  VER="${LINE%%+*}"; CODE="${LINE##*+}"
+  # 끝자리 +1
+  VER="${CUR_VER%.*}.$(( ${CUR_VER##*.} + 1 ))"
+  CODE=$(( CUR_CODE + 1 ))
+  echo "버전을 올립니다: $CUR_VER+$CUR_CODE → $VER+$CODE"
 fi
-[ -n "$VER" ] && [ -n "$CODE" ] || die "pubspec 에서 버전을 못 읽었습니다."
+
+if [ "$VER+$CODE" != "$CUR_VER+$CUR_CODE" ]; then
+  perl -pi -e "s/^version: .*/version: $VER+$CODE/" "$PUBSPEC"
+fi
+
+# 이미 배포된 버전과 같으면 팝업이 안 뜬다. 미리 잡는다.
+PREV=$(python3 -c "import json;d=json.load(open('backend/app_version.json'));print(d['latest_version']+'+'+str(d['latest_version_code']))")
+if [ "$VER+$CODE" = "$PREV" ] && [ "${1:-}" != "--same" ]; then
+  die "$VER+$CODE 는 이미 배포된 버전입니다. 버전을 올리거나 --same 을 주세요."
+fi
+
 TAG="v$VER"
 NOTES=$(python3 -c "import json;print(json.load(open('backend/app_version.json'))['release_notes'])")
 step "릴리스 $TAG (코드 $CODE)"
+printf '  릴리스 노트: %s\n' "$(printf '%s' "$NOTES" | head -1)"
+printf '  (바꾸려면 backend/app_version.json 의 release_notes 를 고치고 다시 실행)\n'
 
 # ── 2. 빌드
 step "APK 빌드"
