@@ -79,7 +79,9 @@ def test_powerbox_partition():
     import re
     src = (BASE / "main.py").read_text(encoding="utf-8")
     ns = {}
-    for fn in ("_as_int", "_norm_group", "_board_row_models"):
+    # _board_row_models 는 _display_group 을 부른다
+    for fn in ("_as_int", "_phase_ord", "_as_money", "_norm_phases",
+               "_display_group", "_norm_group", "_board_row_models"):
         m = re.search(r"^def %s\(.*?(?=^(?:def |@app|class ))" % fn, src, re.S | re.M)
         exec(m.group(0), ns)
 

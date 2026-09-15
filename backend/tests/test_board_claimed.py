@@ -5,12 +5,15 @@ import ast, json, pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
-WANT = {'_board_row_models', '_spec_claimed_models', '_norm_group'}
+# _board_row_models 는 _display_group 을 부른다 (전환 주차가 지나면 양산으로 묶는다)
+WANT = {'_board_row_models', '_spec_claimed_models', '_norm_group',
+        '_display_group', '_norm_phases', '_phase_ord', '_as_money'}
 srcs = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name in WANT}
 assert set(srcs) == WANT, f'못 찾은 함수: {WANT - set(srcs)}'
 g = {}
-for n in ('_norm_group', '_spec_claimed_models', '_board_row_models'):
+for n in ('_phase_ord', '_as_money', '_norm_phases', '_display_group',
+          '_norm_group', '_spec_claimed_models', '_board_row_models'):
     exec(srcs[n], g)
 rows_of, claimed_of = g['_board_row_models'], g['_spec_claimed_models']
 
