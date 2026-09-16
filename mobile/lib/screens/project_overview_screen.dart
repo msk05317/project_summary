@@ -9,6 +9,8 @@ import '../models/weekly_revenue.dart';
 import '../widgets/weekly_revenue_card.dart';
 import '../widgets/weekly_board_card.dart';
 import '../utils/issue_text.dart';
+import '../utils/status_words.dart';
+import '../design/colors.dart';
 import '../models/bloom_daily.dart';
 import '../services/bloom_service.dart';
 import '../widgets/bloom_today_card.dart';
@@ -241,7 +243,16 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           final holdWhy = (data['hold_reason'] ?? '').toString();
           final delayed = models.where((m) => _alertOf(m) == '지연').length;
           final watched = models.where((m) => _alertOf(m) == '주의').length;
-          final held = models.where((m) => holdOf(m).isNotEmpty).length;
+          // 정상 = 멈추지도, 끝나지도, 밀리지도 않았고 적어 둔 문제도 없는 것.
+          // 문제만 세 칸 늘어놓으면 나머지가 다 제대로 가고 있다는 게 안 보인다.
+          final normal = models.where((m) {
+            if (holdOf(m).isNotEmpty) return false;
+            if (m['finished'] == true) return false;
+            if (((m['progress'] as num?)?.toInt() ?? 0) >= 100) return false;
+            final al = _alertOf(m);
+            if (al == '지연' || al == '주의') return false;
+            return (m['issues'] ?? '').toString().trim().isEmpty;
+          }).length;
 
           final byGroup = <String, List<Map<String, dynamic>>>{'양산': [], '개발': []};
           for (final m in models) {
@@ -329,14 +340,16 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                       Row(children: [
                         _pill('전체', total, const Color(0xFF0E2841), models, null),
                         const SizedBox(width: 6),
-                        _pill('지연', delayed, const Color(0xFFDC2626), models,
+                        _pill(StatusWords.delayed, delayed,
+                            const Color(0xFFDC2626), models,
                             ModelBucket.delayed),
                         const SizedBox(width: 6),
-                        _pill('마감 임박', watched, const Color(0xFFE97132), models,
-                            ModelBucket.soon),
+                        _pill(StatusWords.soon, watched,
+                            const Color(0xFFE97132), models, ModelBucket.soon),
                         const SizedBox(width: 6),
-                        _pill('보류', held, const Color(0xFF6B7280), models,
-                            ModelBucket.hold),
+                        _pill(StatusWords.normal, normal,
+                            AppColors.summaryNormal, models,
+                            ModelBucket.running),
                       ]),
                     ],
                   ),
@@ -534,15 +547,13 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
         kind = hold;
         rank = 2;
       } else if (alert == '지연') {
-        kind = '지연';
+        kind = StatusWords.delayed;
         rank = 0;
       } else if (issues.isNotEmpty) {
-        kind = '이슈';
+        kind = StatusWords.issue;
         rank = 1;
       } else if (alert == '주의') {
-        // '임박' 혼자 쓰면 광고 문구처럼 읽힌다. 우리말로는 앞에 '마감' 이
-        // 붙어야 자연스럽다.
-        kind = '마감 임박';
+        kind = StatusWords.soon;
         rank = 3;
       } else if (note.isNotEmpty) {
         kind = '비고';
@@ -584,11 +595,11 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
 
   static Color _kindColor(String kind) {
     switch (kind) {
-      case '지연':
+      case StatusWords.delayed:
         return const Color(0xFFDC2626);
-      case '마감 임박':
+      case StatusWords.soon:
         return const Color(0xFFE97132);
-      case '이슈':
+      case StatusWords.issue:
         return const Color(0xFFDC2626);
       case '비고':
         return const Color(0xFF9CA3AF);
@@ -635,7 +646,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                    r.days > 0 && (r.kind == '지연')
+                    r.days > 0 && (r.kind == StatusWords.delayed)
                         ? '${r.kind} ${r.days}일'
                         : r.kind,
                     style: TextStyle(

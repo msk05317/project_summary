@@ -45,10 +45,6 @@ else
   echo "버전을 올립니다: $CUR_VER+$CUR_CODE → $VER+$CODE"
 fi
 
-if [ "$VER+$CODE" != "$CUR_VER+$CUR_CODE" ]; then
-  perl -pi -e "s/^version: .*/version: $VER+$CODE/" "$PUBSPEC"
-fi
-
 # 이미 배포된 버전과 같으면 팝업이 안 뜬다. 미리 잡는다.
 PREV=$(python3 -c "import json;d=json.load(open('backend/app_version.json'));print(d['latest_version']+'+'+str(d['latest_version_code']))")
 if [ "$VER+$CODE" = "$PREV" ] && [ "${1:-}" != "--same" ]; then
@@ -73,6 +69,13 @@ if [ -z "$NOTES" ]; then
 
        · 화면에서 보이는 변화
        · 고친 것"
+fi
+
+# pubspec 은 여기서 고친다 — 노트 확인보다 먼저 올려 두면, 노트가 없어서
+# 멈춘 실행이 버전만 올려놓고 죽는다. 실제로 2.3.12·2.3.13 이 그렇게 떴다
+# (pubspec 은 2.3.13, 배포된 건 2.3.11).
+if [ "$VER+$CODE" != "$CUR_VER+$CUR_CODE" ]; then
+  perl -pi -e "s/^version: .*/version: $VER+$CODE/" "$PUBSPEC"
 fi
 
 step "릴리스 $TAG (코드 $CODE)"

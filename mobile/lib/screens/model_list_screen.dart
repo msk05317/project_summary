@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import '../design/colors.dart';
 import '../design/typography.dart';
 import '../utils/format.dart';
 import '../utils/issue_text.dart';
+import '../utils/status_words.dart';
 import 'dev_process_screen.dart';
 
 // 개발 승인 프로세스 13단계 (표시용)
@@ -90,7 +92,10 @@ bool poWaitOf(Map m) {
 }
 
 /// 모델 한 건의 상태. 목록 필터와 카드 색이 같은 값을 쓴다.
-enum ModelBucket { delayed, soon, running, done, hold }
+/// running 은 '정상' 이다 — 문제가 하나도 없는 것. 적어 둔 문제(issues)가
+/// 있으면 정상이 아니라 issue 다. 홈의 '특이사항' 과 같은 기준이라야
+/// 프로젝트를 눌러 들어왔을 때 숫자가 어긋나지 않는다.
+enum ModelBucket { delayed, soon, issue, running, done, hold }
 
 ModelBucket _bucketOf(Map m) {
   // 드롭·보류가 먼저다. 시계가 멈춘 건 늦은 게 아니다.
@@ -104,15 +109,17 @@ ModelBucket _bucketOf(Map m) {
   final a = ((m['alert'] ?? m['status']) ?? '').toString().trim();
   if (a == '지연') return ModelBucket.delayed;
   if (a == '주의') return ModelBucket.soon;
+  if ((m['issues'] ?? '').toString().trim().isNotEmpty) return ModelBucket.issue;
   return ModelBucket.running;
 }
 
 const Map<ModelBucket, String> _bucketLabel = {
-  ModelBucket.delayed: '지연',
-  ModelBucket.soon: '마감 임박',
-  ModelBucket.running: '진행 중',
+  ModelBucket.delayed: StatusWords.delayed,
+  ModelBucket.soon: StatusWords.soon,
+  ModelBucket.issue: StatusWords.issue,
+  ModelBucket.running: StatusWords.normal,
   ModelBucket.done: '완료',
-  ModelBucket.hold: '보류',
+  ModelBucket.hold: StatusWords.hold,
 };
 
 class ModelListScreen extends StatefulWidget {
@@ -154,10 +161,11 @@ class _ModelListScreenState extends State<ModelListScreen> {
   String get groupName => widget.groupName;
   List<Map<String, dynamic>> get models => widget.models;
 
-  /// 지연 → 임박 → 진행 중 → 완료 → 보류 순. 급한 게 위로 온다.
+  /// 일정 지연 → 특이사항 → 집중관리 → 정상 → 완료 → 보류 순.
+  /// 급한 게 위로 온다.
   static const List<ModelBucket> _order = [
-    ModelBucket.delayed, ModelBucket.soon, ModelBucket.running,
-    ModelBucket.done, ModelBucket.hold,
+    ModelBucket.delayed, ModelBucket.issue, ModelBucket.soon,
+    ModelBucket.running, ModelBucket.done, ModelBucket.hold,
   ];
 
   Map<ModelBucket, int> get _counts {
@@ -213,21 +221,31 @@ class _ModelListScreenState extends State<ModelListScreen> {
         child: Row(children: [
           chip('전체', models.length, _filter == null,
               () => setState(() => _filter = null), const Color(0xFF0E2841)),
-          chip('지연', c[ModelBucket.delayed] ?? 0, _filter == ModelBucket.delayed,
+          chip(StatusWords.delayed, c[ModelBucket.delayed] ?? 0,
+              _filter == ModelBucket.delayed,
               () => setState(() => _filter = ModelBucket.delayed),
               const Color(0xFFDC2626)),
-          chip('마감 임박', c[ModelBucket.soon] ?? 0, _filter == ModelBucket.soon,
+          // 특이사항은 있을 때만 — 없는 칩이 자리를 차지할 이유가 없다
+          if ((c[ModelBucket.issue] ?? 0) > 0)
+            chip(StatusWords.issue, c[ModelBucket.issue] ?? 0,
+                _filter == ModelBucket.issue,
+                () => setState(() => _filter = ModelBucket.issue),
+                const Color(0xFFEA580C)),
+          chip(StatusWords.soon, c[ModelBucket.soon] ?? 0,
+              _filter == ModelBucket.soon,
               () => setState(() => _filter = ModelBucket.soon),
               const Color(0xFFE97132)),
-          chip('진행중', c[ModelBucket.running] ?? 0, _filter == ModelBucket.running,
+          chip(StatusWords.normal, c[ModelBucket.running] ?? 0,
+              _filter == ModelBucket.running,
               () => setState(() => _filter = ModelBucket.running),
-              const Color(0xFF156082)),
+              AppColors.summaryNormal),
           chip('완료', c[ModelBucket.done] ?? 0, _filter == ModelBucket.done,
               () => setState(() => _filter = ModelBucket.done),
               const Color(0xFF059669)),
           // 보류는 있을 때만 — 없는 칩이 자리를 차지할 이유가 없다
           if ((c[ModelBucket.hold] ?? 0) > 0)
-            chip('보류', c[ModelBucket.hold] ?? 0, _filter == ModelBucket.hold,
+            chip(StatusWords.hold, c[ModelBucket.hold] ?? 0,
+                _filter == ModelBucket.hold,
                 () => setState(() => _filter = ModelBucket.hold),
                 const Color(0xFF6B7280)),
         ]),

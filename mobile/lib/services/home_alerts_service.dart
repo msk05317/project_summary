@@ -134,17 +134,20 @@ class HomeAlerts {
   final int poWait;
   final int done;
   final int running;
+  /// 문제 없이 가고 있는 모델 수. 화면에 문제만 늘어놓으면 이게 안 보인다.
+  final int normal;
   final int projects;
   final int projectsWithAlert;
   final int alertsTotal;
   final List<AlertProject> byProject;
 
-  /// 타일별 내역. '지연'·'이슈'·'임박'·'보류' → 그 종류가 걸린 프로젝트들.
+  /// 타일별 내역. '지연'·'이슈'·'임박'·'보류'·'정상' → 그 종류의 프로젝트들.
   /// 홈의 전체 현황 타일을 누르면 바로 아래 펼쳐지는 목록이다.
   final Map<String, List<AlertProject>> byKind;
   final List<AlertModel> alerts;
   final List<AlertModel> holds;
   final List<AlertModel> poWaits;
+  final List<AlertModel> normals;
   final BloomBrief? bloom;
   final bool loaded;
   /// 저장해 둔 걸 보여주는 중인지, 그게 언제 것인지
@@ -169,6 +172,8 @@ class HomeAlerts {
     required this.holds,
     required this.poWaits,
     required this.bloom,
+    this.normal = 0,
+    this.normals = const [],
     this.issue = 0,
     this.loaded = true,
     this.fromCache = false,
@@ -189,6 +194,7 @@ class HomeAlerts {
         projectsWithAlert: projectsWithAlert, alertsTotal: alertsTotal,
         byProject: byProject, byKind: byKind,
         alerts: alerts, holds: holds, poWaits: poWaits,
+        normal: normal, normals: normals,
         bloom: bloom, loaded: loaded,
         fromCache: fromCache ?? this.fromCache,
         savedAt: savedAt ?? this.savedAt,
@@ -198,8 +204,8 @@ class HomeAlerts {
     date: '', total: 0, delayed: 0, soon: 0, hold: 0, poWait: 0, done: 0,
     running: 0, projects: 0, projectsWithAlert: 0, alertsTotal: 0,
     byProject: [], byKind: {},
-    alerts: [], holds: [], poWaits: [], bloom: null,
-    issue: 0, loaded: false,
+    alerts: [], holds: [], poWaits: [], normals: [], bloom: null,
+    normal: 0, issue: 0, loaded: false,
   );
 
   factory HomeAlerts.fromJson(Map j) {
@@ -215,6 +221,7 @@ class HomeAlerts {
       poWait: n('po_wait'),
       done: n('done'),
       running: n('running'),
+      normal: n('normal'),
       projects: (j['projects'] as num?)?.toInt() ?? 0,
       projectsWithAlert: (j['projects_with_alert'] as num?)?.toInt() ?? 0,
       alertsTotal: (j['alerts_total'] as num?)?.toInt() ?? 0,
@@ -238,6 +245,10 @@ class HomeAlerts {
           .map(AlertModel.fromJson)
           .toList(),
       poWaits: ((j['po_waits'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(AlertModel.fromJson)
+          .toList(),
+      normals: ((j['normals'] as List?) ?? const [])
           .whereType<Map>()
           .map(AlertModel.fromJson)
           .toList(),

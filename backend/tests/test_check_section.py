@@ -23,16 +23,17 @@ def rank_of(kind):
     m = re.search(r"kind = %s;\s*\n\s*rank = (\d+);" % kind, S)
     assert m, f'{kind} 의 rank 를 못 찾았다'
     return int(m.group(1))
-assert rank_of("'지연'") == 0
-assert rank_of("'이슈'") == 1
+# 보이는 말은 utils/status_words.dart 한 곳에서만 정한다
+assert rank_of("StatusWords.delayed") == 0
+assert rank_of("StatusWords.issue") == 1
 assert rank_of("hold") == 2, '보류가 문제 쪽에 없다'
-assert rank_of("'마감 임박'") == 3, '마감 임박이 아직 문제로 잡힌다'
+assert rank_of("StatusWords.soon") == 3, '집중관리가 아직 문제로 잡힌다'
 assert rank_of("'비고'") == 4
 ok += 1
 
 # ── 이슈는 빨강. 파란색이면 '참고' 처럼 보인다 ──
-m = re.search(r"case '이슈':\s*\n\s*return const Color\(0xFF(\w+)\);", S)
-assert m and m.group(1) == 'DC2626', f'이슈 색이 {m and m.group(1)}'
+m = re.search(r"case StatusWords.issue:\s*\n\s*return const Color\(0xFF(\w+)\);", S)
+assert m and m.group(1) == 'DC2626', f'특이사항 색이 {m and m.group(1)}'
 ok += 1
 
 # ── '참고'(임박·비고) 블록은 없앴다 ──
@@ -44,8 +45,12 @@ assert '_buildSideSection' not in S and '_sideGroupTile' not in S, \
     '참고 블록이 아직 남아 있다'
 assert '_sideOpen' not in S
 # 그래도 임박으로 가는 길은 있어야 한다
-assert "_pill('마감 임박'" in S and 'ModelBucket.soon' in S, \
-    '임박을 볼 방법이 아예 없어졌다'
+assert '_pill(StatusWords.soon' in S and 'ModelBucket.soon' in S, \
+    '집중관리를 볼 방법이 아예 없어졌다'
+# 맨 오른쪽은 정상 — 문제 칸만 늘어놓으면 나머지가 다 잘 가고 있다는 게
+# 화면 어디에도 안 나온다. 보류 칸은 뺐다.
+assert '_pill(StatusWords.normal' in S, '정상 칸이 없다'
+assert "_pill('보류'" not in S, '보류 칸이 그대로 있다'
 ok += 1
 
 # ── 프로젝트째 보류면 같은 '보류' 를 29줄 늘어놓지 않는다 ──

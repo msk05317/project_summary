@@ -1,4 +1,4 @@
-# 앱 목록 필터: 전체 · 지연 · 임박 · 진행중 · 완료 (+ 보류)
+# 앱 목록 필터: 전체 · 일정 지연 · 특이사항 · 집중관리 · 정상 · 완료 (+ 보류)
 #   python3 backend/tests/test_model_bucket.py
 #
 # 처음엔 완료를 숨겼는데, 끝난 모델이 목록에서 사라지면 '그거 어디 갔냐'를
@@ -33,14 +33,17 @@ ok += 1
 assert '_order.indexOf' in v, '정렬을 안 한다'
 order = D[D.index('static const List<ModelBucket> _order'):]
 order = order[:order.index('];')]
-assert (order.index('delayed') < order.index('soon') < order.index('running')
-        < order.index('done') < order.index('hold')), order
+assert (order.index('delayed') < order.index('issue') < order.index('soon')
+        < order.index('running') < order.index('done')
+        < order.index('hold')), order
 ok += 1
 
-# 칩: 전체 · 지연 · 임박 · 진행중 · 완료 · 보류
-# '임박' 혼자 쓰면 광고 문구처럼 읽힌다 — 화면에는 '마감 임박'
-for label in ('전체', '지연', '마감 임박', '진행중', '완료', '보류'):
-    assert f"chip('{label}'" in D, f'{label} 칩이 없다'
+# 칩: 전체 · 일정 지연 · 특이사항 · 집중관리 · 정상 · 완료 · 보류
+# 보이는 말은 utils/status_words.dart 한 곳에서만 정한다
+assert "chip('전체'" in D and "chip('완료'" in D
+for _c in ('StatusWords.delayed', 'StatusWords.issue', 'StatusWords.soon',
+           'StatusWords.normal', 'StatusWords.hold'):
+    assert f'chip({_c}' in D, f'{_c} 칩이 없다'
 assert "chip('미완료'" not in D, '미완료 칩이 아직 남아 있다'
 ok += 1
 
@@ -51,6 +54,14 @@ assert b.index('ModelBucket.hold') < b.index('ModelBucket.done'), \
 assert "m['hold']" in D, '서버가 주는 hold 를 안 본다'
 assert "'드롭 안'" in D, '드롭 안 함 같은 부정문을 안 거른다'
 assert "m['po_wait']" in D and "'PO 대기'" in D, 'PO 대기 표시가 없다'
+ok += 1
+
+# 정상 = 문제가 하나도 없는 것. 적어 둔 문제가 있으면 정상이 아니라 특이사항.
+# 홈의 '특이사항' 과 같은 기준이라야 프로젝트를 눌러 들어와도 숫자가 맞는다.
+assert 'ModelBucket.issue' in b and "m['issues']" in b, \
+    '적어 둔 문제가 있어도 정상으로 센다'
+assert b.index('ModelBucket.delayed') < b.index('ModelBucket.issue'), \
+    '지연보다 특이사항을 먼저 본다'
 ok += 1
 
 # 비고가 카드에 나온다
@@ -66,13 +77,14 @@ assert 'holdOf(m)' in a, '개요 지연 판정이 드롭·보류를 무시한다
 assert 'class _CheckRow' in O and '_buildCheckSection' in O, \
     '지연·이슈·비고가 아직 따로 논다'
 assert '_buildIssueSection' not in O.split('// ignore: unused_element')[0] or True
-assert "_pill('지연'" in O and 'initialFilter: bucket' in O, \
+assert '_pill(StatusWords.delayed' in O and 'initialFilter: bucket' in O, \
     '개요의 지연 숫자를 눌러도 목록이 안 열린다'
 # 한 모델은 한 줄로만 나온다 (지연이면서 이슈면 지연 줄 밑에 이슈 문장이 붙는다)
 r = O[O.index('List<_CheckRow> _checkRows('):]
 r = r[:r.index('\n  }')]
 assert 'out.sort(' in r
-assert "kind = '지연'" in r and "kind = '이슈'" in r and "kind = '비고'" in r
+assert ('kind = StatusWords.delayed' in r and 'kind = StatusWords.issue' in r
+        and "kind = '비고'" in r)
 ok += 1
 
 # 목록 화면이 양산·개발 섞인 목록도 그린다
@@ -99,4 +111,4 @@ assert "(m['display_group'] ?? m['group']) == '개발'" in P, \
     '양산/개발 나누기가 아직 저장된 group 만 본다'
 ok += 1
 
-print(f'전부 통과 ({ok}/10)')
+print(f'전부 통과 · {ok}개 항목')

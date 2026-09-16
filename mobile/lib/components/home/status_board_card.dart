@@ -12,8 +12,12 @@ import 'package:flutter/material.dart';
 
 import '../../design/design.dart';
 import '../../services/home_alerts_service.dart';
+import '../../utils/status_words.dart';
 
-enum _Kind { delayed, issue, soon, hold }
+// 맨 오른쪽은 '정상' 이다. 문제만 네 칸 늘어놓으면 260종 중 250종이
+// 제대로 가고 있다는 사실이 화면 어디에도 안 나온다. '보류' 는 뺐다 —
+// 멈춰 세운 것은 오늘 볼 일이 아니라서 밑줄 한 줄로 충분하다.
+enum _Kind { delayed, issue, soon, normal }
 
 class StatusBoardCard extends StatefulWidget {
   final HomeAlerts alerts;
@@ -46,24 +50,29 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     _Kind.delayed: '지연',
     _Kind.issue: '이슈',
     _Kind.soon: '임박',
-    _Kind.hold: '보류',
+    _Kind.normal: '정상',
   };
 
-  /// 화면에 보이는 말. '임박' 혼자 쓰면 광고 문구처럼 읽힌다 —
-  /// 우리말로는 앞에 '마감' 이 붙어야 자연스럽다.
+  /// 화면에 보이는 말 (utils/status_words.dart).
   static const _label = {
-    _Kind.delayed: '지연',
-    _Kind.issue: '이슈',
-    _Kind.soon: '마감 임박',
-    _Kind.hold: '보류',
+    _Kind.delayed: StatusWords.delayed,
+    _Kind.issue: StatusWords.issue,
+    _Kind.soon: StatusWords.soon,
+    _Kind.normal: StatusWords.normal,
   };
 
-  // 지연 → 이슈 → 임박 → 보류 순으로 색이 옅어진다. 급한 순서가 곧 색 순서다.
+  /// 목록 머리처럼 자리가 있는 곳에서는 긴 말을 쓴다.
+  static const _long = {
+    _Kind.soon: StatusWords.soonFull,
+  };
+
+  // 일정 지연 → 특이사항 → 집중관리 순으로 색이 옅어지고, 정상은 초록이다.
+  // 급한 순서가 곧 색 순서다.
   static const _color = {
     _Kind.delayed: Color(0xFFDC2626),
     _Kind.issue: Color(0xFFEA580C),
     _Kind.soon: Color(0xFFD97706),
-    _Kind.hold: Color(0xFF64748B),
+    _Kind.normal: AppColors.summaryNormal,
   };
 
   int _countOf(_Kind k) {
@@ -75,8 +84,8 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
         return a.issue;
       case _Kind.soon:
         return a.soon;
-      case _Kind.hold:
-        return a.hold;
+      case _Kind.normal:
+        return a.normal;
     }
   }
 
@@ -135,16 +144,21 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
       ]),
 
       const SizedBox(height: 14),
-      Text('${_label[_sel]} ${_countOf(_sel)}건 · ${rows.length}곳',
+      Text('${_long[_sel] ?? _label[_sel]} ${_countOf(_sel)}건 · ${rows.length}곳',
           style: const TextStyle(
               fontSize: 12, fontWeight: FontWeight.w700,
               color: AppColors.textMute)),
 
       if (rows.isEmpty)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('해당하는 항목이 없습니다',
-              style: TextStyle(fontSize: 13, color: AppColors.textHint)),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+              _sel == _Kind.delayed
+                  ? '일정 밀린 모델이 없습니다'
+                  : (_sel == _Kind.issue
+                      ? '적어 둔 특이사항이 없습니다'
+                      : '해당하는 항목이 없습니다'),
+              style: const TextStyle(fontSize: 13, color: AppColors.textHint)),
         )
       else
         for (int i = 0; i < rows.length && i < 5; i++) _row(rows[i]),
@@ -165,8 +179,10 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
         ),
 
       const Divider(height: 19, color: AppColors.borderSoft),
+      // '진행 중' 은 정상 타일과 같은 것을 다르게 센 숫자라 빼 버렸다.
+      // 어디서도 안 나오는 숫자가 또 생긴다. 보류는 타일에서 뺐으니 여기 남긴다.
       Text(
-          '모델 ${a.total}종 · 진행 중 ${a.running} · 완료 ${a.done} · PO 대기 ${a.poWait}',
+          '모델 ${a.total}종 · 완료 ${a.done} · 보류 ${a.hold} · PO 대기 ${a.poWait}',
           style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
     ]));
   }

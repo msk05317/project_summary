@@ -7,11 +7,13 @@ import 'package:flutter/material.dart';
 
 import '../design/typography.dart';
 import '../services/home_alerts_service.dart';
+import '../utils/status_words.dart';
 import 'project_overview_screen.dart';
 
 class AlertListScreen extends StatefulWidget {
   /// '문제' = 지연+이슈 (홈에서 들어오는 기본) · '' = 전부
-  /// · '지연' · '이슈' · '임박' · '보류' · 'PO 대기'
+  /// · '지연' · '이슈' · '임박' · '정상' · 'PO 대기'
+  /// (화면에 보이는 말은 utils/status_words.dart 에서 정한다)
   final String initialFilter;
 
   const AlertListScreen({super.key, this.initialFilter = ''});
@@ -44,6 +46,8 @@ class _AlertListScreenState extends State<AlertListScreen> {
         return a.alerts.where((m) => m.kind == '임박').toList();
       case '보류':
         return a.holds;
+      case '정상':
+        return a.normals;
       case 'PO 대기':
         return a.poWaits;
       default:
@@ -86,6 +90,8 @@ class _AlertListScreenState extends State<AlertListScreen> {
         return const Color(0xFFDC2626);
       case '임박':
         return const Color(0xFFE97132);
+      case '정상':
+        return const Color(0xFF196B24);
       case 'PO 대기':
         return const Color(0xFFB45309);
       default:
@@ -100,6 +106,8 @@ class _AlertListScreenState extends State<AlertListScreen> {
         return const Color(0xFFFEE2E2);
       case '임박':
         return const Color(0xFFFFEDD5);
+      case '정상':
+        return const Color(0xFFD1FAE5);
       case 'PO 대기':
         return const Color(0xFFFEF3C7);
       default:
@@ -145,7 +153,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
                     color: _softOf(m.kind),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(m.kind,
+                  child: Text(StatusWords.of(m.kind),
                       style: TextStyle(
                           fontSize: 10, fontWeight: FontWeight.w800, color: tint)),
                 ),
@@ -196,9 +204,8 @@ class _AlertListScreenState extends State<AlertListScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(_filter.isEmpty
-                ? '전체 현황'
-                : (_filter == '임박' ? '마감 임박' : _filter),
+        title: Text(
+            _filter.isEmpty ? '전체 현황' : StatusWords.of(_filter),
             style: AppText.bodyStrong.copyWith(fontSize: 17)),
         iconTheme: const IconThemeData(color: Color(0xFF111827)),
       ),
@@ -226,19 +233,19 @@ class _AlertListScreenState extends State<AlertListScreen> {
                   _chip('문제', a.blocked, _filter == '문제',
                       () => setState(() => _filter = '문제'),
                       const Color(0xFFDC2626)),
-                  _chip('지연', a.delayed, _filter == '지연',
+                  // 칩 글자는 사람이 읽는 말, 걸러내는 값은 서버가 쓰는 말
+                  _chip(StatusWords.delayed, a.delayed, _filter == '지연',
                       () => setState(() => _filter = '지연'),
                       const Color(0xFFDC2626)),
-                  _chip('이슈', a.issue, _filter == '이슈',
+                  _chip(StatusWords.issue, a.issue, _filter == '이슈',
                       () => setState(() => _filter = '이슈'),
                       const Color(0xFFDC2626)),
-                  // 칩 글자는 '마감 임박', 걸러내는 값은 서버가 쓰는 '임박'
-                  _chip('마감 임박', a.soon, _filter == '임박',
+                  _chip(StatusWords.soon, a.soon, _filter == '임박',
                       () => setState(() => _filter = '임박'),
                       const Color(0xFFE97132)),
-                  _chip('보류', a.hold, _filter == '보류',
-                      () => setState(() => _filter = '보류'),
-                      const Color(0xFF6B7280)),
+                  _chip(StatusWords.normal, a.normal, _filter == '정상',
+                      () => setState(() => _filter = '정상'),
+                      const Color(0xFF196B24)),
                   _chip('PO 대기', a.poWait, _filter == 'PO 대기',
                       () => setState(() => _filter = 'PO 대기'),
                       const Color(0xFFB45309)),

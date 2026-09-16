@@ -68,6 +68,11 @@ assert c['delayed'] == 1, f"지연이 1이어야 한다: {c}"
 assert c['soon'] == 1, f"임박이 1이어야 한다: {c}"
 assert c['hold'] == 1, f"드롭 예정이 보류로 안 잡힌다: {c}"
 assert c['po_wait'] == 1, f"양산 PO 0 이 PO 대기가 아니다: {c}"
+# 정상 — 문제가 하나도 없는 것. 지연·임박·보류·완료를 뺀 나머지다.
+assert c['normal'] == 2, f"양산 두 건이 정상이어야 한다: {c}"
+assert [x['id'] for x in r['normals']] == ['MASS-1', 'MASS-2'], r['normals']
+assert r['normals'][0]['kind'] == '정상'
+assert [x['key'] for x in r['by_kind']['정상']] == ['powerbox'], r['by_kind']['정상']
 ok += 1
 
 # 드롭은 지연 목록에 안 들어간다
@@ -121,6 +126,11 @@ if bk:
     assert all(r['key'] != 'cup' for r in real['by_project']), \
         'CUP 이 홀딩인데 지연 프로젝트로 올라와 있다'
     assert len(real['holds']) == rc['hold'] or len(real['holds']) == 12
+    # 문제만 보여주면 제대로 가는 게 훨씬 많다는 걸 알 수가 없다
+    assert rc['normal'] > rc['delayed'] + rc['issue'], \
+        f"실제 데이터에서 정상이 문제보다 적다: {rc}"
+    assert rc['normal'] + rc['done'] + rc['hold'] <= rc['total'], rc
+    assert real['by_kind']['정상'], '정상 타일을 눌러도 목록이 없다'
     ok += 1
 
     # 블룸: 모델이 없어도 일 보고 보드가 있으면 '진행 데이터 없음' 이 아니다
@@ -150,14 +160,25 @@ B = (LIB / 'components' / 'home' / 'status_board_card.dart').read_text(encoding=
 assert '!widget.alerts.loaded' in B and '현황을 불러오지 못했습니다' in B
 assert 'byKind[_key[k]]' in B, '타일과 목록이 이어져 있지 않다'
 assert '_sel = k' in B, '타일을 눌러도 목록이 안 바뀐다'
-for _k in ('지연', '이슈', '임박', '보류'):
+# 타일은 네 가지. '보류' 는 뺐다 — 멈춰 세운 것은 오늘 볼 일이 아니다.
+# 맨 오른쪽은 '정상' — 문제만 늘어놓으면 제대로 가는 게 안 보인다.
+for _k in ('지연', '이슈', '임박', '정상'):
+    assert f"_Kind.{'delayed' if _k == '지연' else ''}" or True
     assert f"'{_k}'" in B, f'{_k} 타일이 없다'
+assert '_Kind.normal' in B and '_Kind.hold' not in B, \
+    '보류 타일이 그대로 있거나 정상 타일이 없다'
 # 서버가 쓰는 값(_key)과 화면에 보이는 말(_label)은 다르다.
 # '임박' 혼자 쓰면 광고 문구처럼 읽혀서 '마감 임박' 으로 보여준다.
 # 보이는 말로 byKind 를 찾으면 목록이 통째로 빈다.
 assert 'static const _key' in B and 'byKind[_key[k]]' in B, \
     '보이는 말로 목록을 찾는다 — 서버 값과 어긋난다'
-assert "_Kind.soon: '마감 임박'" in B, '임박을 그대로 쓴다'
+# 보이는 말은 한 곳에서만 정한다 (utils/status_words.dart).
+# 화면마다 '임박' · '마감 임박' · '주의' 로 갈리면 같은 것인지 알 수가 없다.
+assert 'StatusWords.soon' in B and "_Kind.soon: '마감 임박'" not in B, \
+    '보이는 말을 카드 안에서 또 정한다'
+W = (LIB / 'utils' / 'status_words.dart').read_text(encoding='utf-8')
+for _w in ('일정 지연', '집중관리', '특이사항', '정상'):
+    assert _w in W, f'{_w} 가 status_words 에 없다'
 assert "onTapAll!(_key[_sel]!)" in B, '모두 보기가 보이는 말로 넘어간다'
 assert 'AlertListScreen(initialFilter: filter)' in H, '모두 보기가 그 종류로 안 간다'
 # 블룸은 모델이 없어도 진행 중이다
@@ -167,8 +188,12 @@ ok += 1
 # 목록 화면이 네 가지를 다 받는다
 A = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
 # 칩 글자는 '마감 임박', 걸러내는 값은 서버가 쓰는 '임박'
-for label in ('문제', '지연', '이슈', '마감 임박', '보류', 'PO 대기'):
-    assert f"_chip('{label}'" in A, f'{label} 칩이 없다'
+assert "_chip('문제'" in A and "_chip('PO 대기'" in A
+for _c in ('StatusWords.delayed', 'StatusWords.issue', 'StatusWords.soon',
+           'StatusWords.normal'):
+    assert f'_chip({_c}' in A, f'{_c} 칩이 없다'
+assert "_chip('보류'" not in A, '보류 칩이 그대로 있다'
+assert "case '정상':" in A and 'a.normals' in A, '정상 목록이 안 열린다'
 assert 'initialFilter' in A
 ok += 1
 

@@ -22427,10 +22427,11 @@ def get_home_alerts(limit: int = 12):
 
     today = _dth.date.today()
     counts = {"total": 0, "delayed": 0, "issue": 0, "soon": 0, "hold": 0,
-              "po_wait": 0, "done": 0, "running": 0}
+              "po_wait": 0, "done": 0, "running": 0, "normal": 0}
     alerts = []
     holds = []
     po_waits = []
+    normals = []
     seen_projects = set()
     hit_projects = set()
 
@@ -22516,6 +22517,15 @@ def get_home_alerts(limit: int = 12):
                 })
                 hit_projects.add(pk)
 
+            # 정상 — 문제 없이 가고 있는 것.
+            #
+            # 화면에 지연·이슈·임박만 늘어놓으면 제대로 가는 게 훨씬
+            # 많다는 사실이 어디에도 안 나온다. 260종 중 문제는 열 몇 건이다.
+            if (not hold and not done and not _iss
+                    and kind not in ("지연", "주의")):
+                counts["normal"] += 1
+                normals.append(_row("정상"))
+
     # 주차 미달도 이슈다. "계획 대비 실적이 안 나오면 이슈가 있는 거 아닐까?"
     # 단, 끝난 주차만 보고, 사유가 '참고' 로 적혀 있으면 세지 않는다
     # (엔클로저는 매출을 맞추려고 일부러 덜 출하하기도 한다).
@@ -22582,7 +22592,7 @@ def get_home_alerts(limit: int = 12):
     # 타일별 내역. 홈의 '전체 현황' 타일을 누르면 그 종류가 어느 프로젝트에
     # 몇 건씩 있는지가 바로 아래 펼쳐진다. 전에는 타일(합계)과 목록(내역)이
     # 카드 두 장으로 떨어져 있어서 서로 무슨 관계인지가 안 보였다.
-    _by_kind = {k: {} for k in ("지연", "이슈", "임박", "보류")}
+    _by_kind = {k: {} for k in ("지연", "이슈", "임박", "보류", "정상")}
     for a in alerts:
         b = _by_kind.get(a["kind"])
         if b is None:
@@ -22592,6 +22602,11 @@ def get_home_alerts(limit: int = 12):
         r["count"] += 1
     for h in holds:
         r = _by_kind["보류"].setdefault(
+            h["project_key"],
+            {"key": h["project_key"], "label": h["project"], "count": 0})
+        r["count"] += 1
+    for h in normals:
+        r = _by_kind["정상"].setdefault(
             h["project_key"],
             {"key": h["project_key"], "label": h["project"], "count": 0})
         r["count"] += 1
@@ -22644,6 +22659,7 @@ def get_home_alerts(limit: int = 12):
         "alerts_total": len(alerts),
         "holds": holds[:n],
         "po_waits": po_waits[:n],
+        "normals": normals[:n],
         "bloom": bloom,
     }
 
