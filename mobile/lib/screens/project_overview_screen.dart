@@ -454,7 +454,6 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   }
 
   bool _checkAll = false;
-  bool _sideOpen = false;
 
   Widget _pill(String label, int n, Color color,
       List<Map<String, dynamic>> models, ModelBucket? bucket) {
@@ -680,18 +679,22 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
               .map((e) => e.trim())
               .where((e) => e.isNotEmpty));
         }
-        final all = _checkRows(models, ai);
-        // 확인 필요 = 문제만. 임박·비고는 아래 '참고' 로 접어 둔다.
-        final rows = all.where((r) => r.isProblem).toList(growable: false);
-        final side = all.where((r) => !r.isProblem).toList(growable: false);
+        // 확인 필요 = 문제(지연·이슈·보류)만.
+        //
+        // 임박·비고는 '참고' 로 접어서 밑에 뒀었는데, 접혀 있는 걸 펴 보는
+        // 사람이 없었다. 둘 다 다른 데서 볼 수 있다 — 임박은 위 진행률 칸의
+        // '마감 임박' 을 누르면 모델 목록이 그 필터로 열리고, 비고는 모델
+        // 줄과 상세에 그대로 있다.
+        final rows = _checkRows(models, ai)
+            .where((r) => r.isProblem)
+            .toList(growable: false);
         final counts = <String, int>{};
         for (final r in rows) {
           counts[r.kind] = (counts[r.kind] ?? 0) + 1;
         }
         final shown = _checkAll ? rows : rows.take(6).toList();
 
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
+        return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           decoration: BoxDecoration(
@@ -755,137 +758,8 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 ),
             ],
           ]),
-          ),
-          _buildSideSection(side, models),
-        ]);
+        );
       },
-    );
-  }
-
-  /// 참고 — 임박·비고. 접어 둔다.
-  ///
-  /// 챔버는 이슈 칸이 비어 있고 할 말을 전부 비고에 적는다. 하바는 비고를
-  /// 상태 표시로 쓴다. 그래서 비고를 '확인 필요' 에 섞으면 23줄이 쏟아지고
-  /// 정작 지연 3건이 묻힌다. 여기로 내리고, 같은 말은 한 줄로 묶는다.
-  Widget _buildSideSection(
-      List<_CheckRow> side, List<Map<String, dynamic>> models) {
-    if (side.isEmpty) return const SizedBox.shrink();
-    final counts = <String, int>{};
-    for (final r in side) {
-      counts[r.kind] = (counts[r.kind] ?? 0) + 1;
-    }
-
-    // 같은 비고는 한 줄로. '가공 완료' 가 다섯 번 뜨면 다섯 번 읽게 된다.
-    final groups = <String, List<_CheckRow>>{};
-    for (final r in side) {
-      groups.putIfAbsent(r.lines.join('\n'), () => []).add(r);
-    }
-    final keys = groups.keys.toList()
-      ..sort((a, b) => groups[b]!.length.compareTo(groups[a]!.length));
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFAFBFC),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          onTap: () => setState(() => _sideOpen = !_sideOpen),
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-            child: Row(children: [
-              const Text('참고',
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF6B7280))),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                    counts.entries.map((e) => '${e.key} ${e.value}').join(' · '),
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF9CA3AF))),
-              ),
-              Icon(_sideOpen ? Icons.expand_less : Icons.expand_more,
-                  size: 20, color: const Color(0xFFCBD5E1)),
-            ]),
-          ),
-        ),
-        if (_sideOpen)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (int i = 0; i < keys.length; i++) ...[
-                    if (i > 0)
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                    _sideGroupTile(groups[keys[i]]!, models),
-                  ],
-                ]),
-          ),
-      ]),
-    );
-  }
-
-  /// 같은 말을 쓰는 모델을 한 줄로 묶어서 보여준다.
-  Widget _sideGroupTile(
-      List<_CheckRow> rows, List<Map<String, dynamic>> models) {
-    final head = rows.first;
-    final names = rows.map((r) => r.name).toList();
-    final kinds = rows.map((r) => r.kind).toSet().toList()..sort();
-    return InkWell(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ModelListScreen(
-          projectKey: widget.projectKey,
-          projectName: widget.projectName,
-          groupName: '전체',
-          models: models,
-          initialFilter:
-              kinds.length == 1 && kinds.first == '마감 임박'
-                  ? ModelBucket.soon
-                  : null,
-        ),
-      )),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(kinds.join('·'),
-                style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: _kindColor(kinds.first))),
-            const SizedBox(width: 6),
-            if (rows.length > 1)
-              Text('${rows.length}건',
-                  style: const TextStyle(
-                      fontSize: 11.5, color: Color(0xFF9CA3AF))),
-          ]),
-          if (head.lines.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(head.lines.join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 12.5, height: 1.4, color: Color(0xFF4B5563))),
-            ),
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-                names.length <= 3
-                    ? names.join(', ')
-                    : '${names.take(3).join(', ')} 외 ${names.length - 3}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-          ),
-        ]),
-      ),
     );
   }
 

@@ -13,8 +13,7 @@ ok = 0
 
 # ── 문제(0~2)와 참고(3~4)가 갈라져 있다 ──
 assert 'bool get isProblem => rank <= 2;' in S, '문제/참고 구분이 없다'
-assert 'all.where((r) => r.isProblem)' in S, '확인 필요가 문제만 세지 않는다'
-assert 'all.where((r) => !r.isProblem)' in S, '참고 목록이 없다'
+assert '.where((r) => r.isProblem)' in S, '확인 필요가 문제만 세지 않는다'
 ok += 1
 
 # ── 순서: 지연 → 이슈 → 보류 → 임박 → 비고 ──
@@ -36,14 +35,17 @@ m = re.search(r"case '이슈':\s*\n\s*return const Color\(0xFF(\w+)\);", S)
 assert m and m.group(1) == 'DC2626', f'이슈 색이 {m and m.group(1)}'
 ok += 1
 
-# ── 같은 비고는 한 줄로 묶는다 ──
-assert 'groups.putIfAbsent(r.lines.join' in S, '같은 비고를 안 묶는다'
-assert '_sideGroupTile' in S and '외 ${names.length - 3}' in S, '묶어서 안 보여준다'
-ok += 1
-
-# ── 참고는 접혀 있다 ──
-assert 'bool _sideOpen = false;' in S, '참고가 펼쳐진 채로 시작한다'
-assert '_sideOpen ? Icons.expand_less : Icons.expand_more' in S
+# ── '참고'(임박·비고) 블록은 없앴다 ──
+#
+# 접어서 밑에 뒀었는데 펴 보는 사람이 없었다. 둘 다 다른 데서 볼 수
+# 있다 — 임박은 위 진행률 칸의 '마감 임박' 을 누르면 모델 목록이 그
+# 필터로 열리고, 비고는 모델 줄과 상세에 그대로 있다.
+assert '_buildSideSection' not in S and '_sideGroupTile' not in S, \
+    '참고 블록이 아직 남아 있다'
+assert '_sideOpen' not in S
+# 그래도 임박으로 가는 길은 있어야 한다
+assert "_pill('마감 임박'" in S and 'ModelBucket.soon' in S, \
+    '임박을 볼 방법이 아예 없어졌다'
 ok += 1
 
 # ── 프로젝트째 보류면 같은 '보류' 를 29줄 늘어놓지 않는다 ──
