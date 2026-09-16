@@ -8,6 +8,7 @@ import 'model_cost_list_screen.dart';
 import '../models/weekly_revenue.dart';
 import '../widgets/weekly_revenue_card.dart';
 import '../widgets/weekly_board_card.dart';
+import '../utils/issue_text.dart';
 import '../models/bloom_daily.dart';
 import '../services/bloom_service.dart';
 import '../widgets/bloom_today_card.dart';
@@ -128,15 +129,36 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     }
   }
 
+  /// 화면 맨 위에 쓸 이름. 안 넘어왔으면 키라도 보여준다 — 빈 줄보다 낫다.
+  String get _title {
+    final n = widget.projectName.trim();
+    return n.isNotEmpty ? n : widget.projectKey;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F8),
+      // 이름이 안 넘어오는 경로가 있어서, 맨 위가 뒤로가기 화살표만 있는
+      // 빈 줄이 된 적이 있다. 무슨 프로젝트인지 화면에서 알 수가 없었다.
+      // 모델 상세와 같은 남색 머리로 맞춘다 — 같은 깊이의 화면이다.
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0F2C59),
+        foregroundColor: Colors.white,
         elevation: 0,
-        title: Text(widget.projectName, style: AppText.bodyStrong.copyWith(fontSize: 17)),
-        iconTheme: const IconThemeData(color: Color(0xFF111827)),
+        title: Text(_title,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('목록 > $_title',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            ),
+          ),
+        ),
       ),
       // 자동차사업부는 주차·진행률로 움직이지 않는다. 모델 목록 대신
       // 계약 화면(요약 → 연도별 매출 → 제품)만 그린다.
@@ -529,10 +551,14 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       final lines = <String>[];
       if (issues.isNotEmpty) {
         // AI 가 정리해 준 문장이 있으면 그걸 쓰고, 없으면 적어둔 그대로.
+        // 엑셀 한 칸에 쉼표로 이어 적은 것을 줄바꿈으로만 끊으면
+        // 여섯 건이 한 줄로 흘러서 뒤가 잘린다.
         final got = ai[name] ?? ai[(m['id'] ?? '').toString()];
-        lines.addAll((got != null && got.isNotEmpty) ? got : issues.split('\n'));
+        lines.addAll((got != null && got.isNotEmpty)
+            ? got
+            : IssueText.lines(issues));
       }
-      if (note.isNotEmpty) lines.addAll(note.split('\n'));
+      if (note.isNotEmpty) lines.addAll(IssueText.lines(note));
 
       out.add(_CheckRow(
         model: m,

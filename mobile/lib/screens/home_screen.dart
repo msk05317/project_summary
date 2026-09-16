@@ -645,10 +645,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // 프로젝트 카드 클릭 시 보고 상세 화면으로 진입.
-  void _openProject(String projectKey) {
+  /// 이름을 같이 넘긴다. 빈 문자열로 넘겼더니 프로젝트 화면 맨 위가
+  /// 뒤로가기 화살표만 있는 빈 줄이 돼서, 어느 프로젝트인지 알 수 없었다.
+  void _openProject(String projectKey, [String projectName = '']) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ProjectOverviewScreen(projectKey: projectKey, projectName: ''),
+        builder: (_) => ProjectOverviewScreen(
+            projectKey: projectKey, projectName: projectName),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../design/typography.dart';
 import '../utils/format.dart';
+import '../utils/issue_text.dart';
 import 'dev_process_screen.dart';
 
 // 개발 승인 프로세스 13단계 (표시용)
@@ -799,11 +800,9 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
 
   String get _note => (model['note'] ?? '').toString().trim();
 
-  List<String> get _issueLines => (model['issues'] ?? '')
-      .toString()
-      .split('\n')
-      .where((s) => s.trim().isNotEmpty)
-      .toList();
+  // 담당자는 이슈를 엑셀 한 칸에 쉼표로 이어 적는다. 줄바꿈으로만 끊으면
+  // 여섯 건이 한 문단으로 흘러서 몇 건인지도 안 보였다.
+  List<IssueLine> get _issueItems => IssueText.split(model['issues']?.toString());
 
   // ── 주차별 계획/실적 표 (반도체사업부 양산 모델만) ──
   bool get _isSemiconductor {
@@ -1072,7 +1071,12 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
           Row(children: [
             const Text('이슈사항',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            if (_issueLines.isNotEmpty) ...[
+            if (_issueItems.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text('${_issueItems.length}건',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B7280))),
               const SizedBox(width: 8),
               _badge('이슈', filled: true, color: const Color(0xFFFFA000)),
               if (delay > 0) ...[
@@ -1085,24 +1089,61 @@ class _ModelDetailScreenState extends State<ModelDetailScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
-            decoration: _issueLines.isEmpty
+            decoration: _issueItems.isEmpty
                 ? _cardDeco()
                 : BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: red.withValues(alpha: 0.4), width: 1.5),
                   ),
-            child: _issueLines.isEmpty
+            child: _issueItems.isEmpty
                 ? const Text('등록된 이슈가 없습니다',
                     style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)))
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final line in _issueLines)
+                      for (final it in _issueItems)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(line,
-                              style: const TextStyle(fontSize: 13, height: 1.5)),
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 6, right: 8),
+                                  child: SizedBox(
+                                    width: 4, height: 4,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: Color(0xFFD32F2F),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(it.text,
+                                      style: const TextStyle(
+                                          fontSize: 13, height: 1.5)),
+                                ),
+                                // 주차는 본문에서 떼어 뒤로 보낸다.
+                                // 문장 중간에 (W38) 이 끼면 읽는 흐름이 끊긴다.
+                                if (it.week.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(it.week,
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF64748B))),
+                                  ),
+                                ],
+                              ]),
                         ),
                     ],
                   ),

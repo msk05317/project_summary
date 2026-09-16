@@ -19,8 +19,9 @@ class StatusBoardCard extends StatefulWidget {
   final HomeAlerts alerts;
   final bool loading;
 
-  /// 목록의 한 줄을 누르면 그 프로젝트로
-  final void Function(String projectKey)? onTapProject;
+  /// 목록의 한 줄을 누르면 그 프로젝트로 (키와 이름을 같이 넘긴다 —
+  /// 이름 없이 열면 프로젝트 화면 맨 위가 빈 줄이 된다)
+  final void Function(String projectKey, String projectName)? onTapProject;
 
   /// 타일을 길게 누르거나 '모두 보기' 를 누르면 전체 목록으로
   final void Function(String filter)? onTapAll;
@@ -200,7 +201,7 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     return InkWell(
       onTap: widget.onTapProject == null
           ? null
-          : () => widget.onTapProject!(p.key),
+          : () => widget.onTapProject!(p.key, p.label),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(children: [
