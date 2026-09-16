@@ -105,7 +105,17 @@ if bk:
     assert rc['total'] > 100, rc
     assert rc['delayed'] + rc['soon'] > 0, \
         f"실제 데이터에 지연·임박이 있는데 홈은 0 이라고 한다: {rc}"
-    assert real['alerts_total'] == rc['delayed'] + rc['soon'], real['alerts_total']
+    # alerts 에는 이슈도 들어간다 (지연 + 이슈 + 임박)
+    assert real['alerts_total'] == rc['delayed'] + rc['issue'] + rc['soon'], \
+        (real['alerts_total'], rc)
+    # 지연과 이슈는 겹치지 않는다 — 지연은 개발품 공정, 이슈는 적어 둔 문제
+    _kinds = [a['kind'] for a in real['alerts']]
+    assert _kinds.count('이슈') <= rc['issue']
+    _ids = {}
+    for a in real['alerts']:
+        _ids.setdefault((a['project_key'], a['id']), set()).add(a['kind'])
+    assert not [k for k, v in _ids.items() if {'지연', '이슈'} <= v], \
+        '같은 모델이 지연이면서 이슈로 두 번 셌다'
     assert real['by_project'], '프로젝트 묶음이 비었다'
     # CUP 은 프로젝트째 홀딩이라 지연 목록에 없어야 한다
     assert all(r['key'] != 'cup' for r in real['by_project']), \
@@ -131,21 +141,22 @@ LIB = ROOT.parent / 'mobile' / 'lib'
 SVC = (LIB / 'services' / 'home_alerts_service.dart').read_text(encoding='utf-8')
 assert '/home/alerts' in SVC and 'class HomeAlerts' in SVC
 H = (LIB / 'screens' / 'home_screen.dart').read_text(encoding='utf-8')
-assert '_RiskSummaryCard' in H and '_RiskListCard' in H, '홈이 새 카드를 안 쓴다'
+assert 'MonthOverviewCard' in H and '_RiskListCard' in H, '홈이 새 카드를 안 쓴다'
 assert 'HomeAlertsService.fetch()' in H
 # 못 받아왔을 때 0 을 그리면 '지연 없음' 과 구분이 안 된다
 assert '!a.loaded' in H and '현황을 불러오지 못했습니다' in H
 assert 'AlertListScreen' in H, '모두 보기가 새 목록으로 안 간다'
-# 숫자만 보여주면 '그래서 어떤 게 지연인데' 를 다시 물어야 한다
-assert "_kpi(context, '지연'" in H and "AlertListScreen(initialFilter:" in H, \
-    '전체 현황 타일을 누를 수 없다'
+# 숫자만 보여주면 '그래서 어떤 게 막혔는데' 를 다시 물어야 한다
+assert "AlertListScreen(\n" in H or "AlertListScreen(initialFilter:" in H, \
+    '막힌 것을 눌러도 목록이 안 열린다'
+assert "initialFilter: '문제'" in H, "막힌 것이 지연+이슈 목록으로 안 간다"
 # 블룸은 모델이 없어도 진행 중이다
 assert "divisionId == 'bloom'" in H and '_bloom' in H, '블룸이 여전히 진행 데이터 없음이다'
 ok += 1
 
 # 목록 화면이 네 가지를 다 받는다
 A = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
-for label in ('지연', '임박', '보류', 'PO 대기'):
+for label in ('문제', '지연', '이슈', '임박', '보류', 'PO 대기'):
     assert f"_chip('{label}'" in A, f'{label} 칩이 없다'
 assert 'initialFilter' in A
 ok += 1

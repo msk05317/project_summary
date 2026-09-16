@@ -8,11 +8,12 @@
 import '../config/app_config.dart';
 import 'offline_store.dart';
 
-/// 지연·임박이 걸린 프로젝트 한 줄
+/// 문제(지연·이슈)나 임박이 걸린 프로젝트 한 줄
 class AlertProject {
   final String key;
   final String label;
   final int delayed;
+  final int issue;
   final int soon;
   final int worstDays;
   final String worstModel;
@@ -24,28 +25,35 @@ class AlertProject {
     required this.soon,
     required this.worstDays,
     required this.worstModel,
+    this.issue = 0,
   });
+
+  /// 경영진이 보는 것은 '문제 있냐 없냐' 다. 지연과 이슈가 그 둘이다.
+  int get blocked => delayed + issue;
 
   factory AlertProject.fromJson(Map j) => AlertProject(
         key: (j['key'] ?? '').toString(),
         label: (j['label'] ?? '').toString(),
         delayed: (j['delayed'] as num?)?.toInt() ?? 0,
+        issue: (j['issue'] as num?)?.toInt() ?? 0,
         soon: (j['soon'] as num?)?.toInt() ?? 0,
         worstDays: (j['worst_days'] as num?)?.toInt() ?? 0,
         worstModel: (j['worst_model'] ?? '').toString(),
       );
 }
 
-/// 모델 한 건 (지연·임박)
+/// 모델 한 건 (지연 · 이슈 · 임박)
 class AlertModel {
   final String projectKey;
   final String project;
   final String model;
-  final String kind; // 지연 · 임박
+  final String kind; // 지연 · 이슈 · 임박
   final String expected;
   final int? days;
   final String stage;
   final String note;
+  /// 사람이 적어 둔 문제. kind 가 '이슈' 일 때 채워진다.
+  final String issue;
 
   const AlertModel({
     required this.projectKey,
@@ -56,7 +64,11 @@ class AlertModel {
     required this.days,
     required this.stage,
     required this.note,
+    this.issue = '',
   });
+
+  /// 화면에 한 줄로 보여줄 말. 이슈면 적어 둔 내용이 먼저다.
+  String get line => issue.isNotEmpty ? issue : (stage.isNotEmpty ? stage : note);
 
   factory AlertModel.fromJson(Map j) => AlertModel(
         projectKey: (j['project_key'] ?? '').toString(),
@@ -67,6 +79,7 @@ class AlertModel {
         days: (j['days'] as num?)?.toInt(),
         stage: (j['stage'] ?? '').toString(),
         note: (j['note'] ?? '').toString(),
+        issue: (j['issue'] ?? '').toString(),
       );
 }
 
@@ -110,6 +123,7 @@ class HomeAlerts {
   final String date;
   final int total;
   final int delayed;
+  final int issue;
   final int soon;
   final int hold;
   final int poWait;
@@ -145,13 +159,22 @@ class HomeAlerts {
     required this.holds,
     required this.poWaits,
     required this.bloom,
+    this.issue = 0,
     this.loaded = true,
     this.fromCache = false,
     this.savedAt,
   });
 
+  /// 지금 막혀 있는 것 — 지연 + 이슈. 임박은 아직 문제가 아니다.
+  int get blocked => delayed + issue;
+
+  /// 지연·이슈만 (임박 제외)
+  List<AlertModel> get blockers =>
+      alerts.where((a) => a.kind == '지연' || a.kind == '이슈').toList();
+
   HomeAlerts copyWith({bool? fromCache, DateTime? savedAt}) => HomeAlerts(
-        date: date, total: total, delayed: delayed, soon: soon, hold: hold,
+        date: date, total: total, delayed: delayed, issue: issue,
+        soon: soon, hold: hold,
         poWait: poWait, done: done, running: running, projects: projects,
         projectsWithAlert: projectsWithAlert, alertsTotal: alertsTotal,
         byProject: byProject, alerts: alerts, holds: holds, poWaits: poWaits,
@@ -164,7 +187,7 @@ class HomeAlerts {
     date: '', total: 0, delayed: 0, soon: 0, hold: 0, poWait: 0, done: 0,
     running: 0, projects: 0, projectsWithAlert: 0, alertsTotal: 0,
     byProject: [], alerts: [], holds: [], poWaits: [], bloom: null,
-    loaded: false,
+    issue: 0, loaded: false,
   );
 
   factory HomeAlerts.fromJson(Map j) {
@@ -174,6 +197,7 @@ class HomeAlerts {
       date: (j['date'] ?? '').toString(),
       total: n('total'),
       delayed: n('delayed'),
+      issue: n('issue'),
       soon: n('soon'),
       hold: n('hold'),
       poWait: n('po_wait'),

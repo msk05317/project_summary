@@ -21822,12 +21822,43 @@ def get_overview(month: str = None, division_id: str = None):
     return get_admin_overview(month=month, division_id=division_id)
 
 
+def _split_weeks_closed_open(wr: dict, month: str, today) -> tuple:
+    """주차를 '끝난 주' 와 '남은 주' 로 가른다.
+
+    월 달성률만 보면 9월 초에는 늘 20~30% 다. 아직 안 온 주차의 계획이
+    분모에 들어가 있어서다. 끝난 주만 놓고 보면 계획을 지켰는지가 보이고,
+    남은 주를 따로 보면 앞으로 얼마가 남았는지가 보인다.
+
+    끝난 주 = 그 ISO 주의 일요일이 오늘보다 앞선 주.
+    """
+    closed = {"closed_weeks": 0, "closed_qty_plan": 0, "closed_qty_actual": 0,
+              "closed_revenue": 0, "closed_plan_revenue": 0}
+    opened = {"open_weeks": 0, "open_qty_plan": 0, "open_plan_revenue": 0}
+    weeks = (wr.get("combined") or {}).get("weeks") or {}
+    for w, cell in weeks.items():
+        cell = cell or {}
+        end = _week_end_date(month, w)
+        done = bool(end and end < today)
+        if done:
+            closed["closed_weeks"] += 1
+            closed["closed_qty_plan"] += int(cell.get("plan") or 0)
+            closed["closed_qty_actual"] += int(cell.get("actual") or 0)
+            closed["closed_revenue"] += round(float(cell.get("revenue") or 0))
+            closed["closed_plan_revenue"] += round(float(cell.get("plan_revenue") or 0))
+        else:
+            opened["open_weeks"] += 1
+            opened["open_qty_plan"] += int(cell.get("plan") or 0)
+            opened["open_plan_revenue"] += round(float(cell.get("plan_revenue") or 0))
+    return closed, opened
+
+
 @app.get("/admin/overview")
 def get_admin_overview(month: str = None, division_id: str = None):
     """Admin 홈 대시보드용 요약: 프로젝트별 진행률 + 해당 월 수량/매출."""
     import datetime as _dt
     data = _load_models()
-    month = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    today = _dt.date.today()
+    month = (month or "").strip() or today.strftime("%Y-%m")
 
     rows = []
     for pk, proj in (data.get("projects") or {}).items():
@@ -21855,6 +21886,11 @@ def get_admin_overview(month: str = None, division_id: str = None):
                 row["revenue"] += round(float(t.get("revenue") or 0))
                 row["plan_revenue"] += int(t.get("plan_revenue") or 0)
             row["has_weekly"] = bool(row["qty_plan"] or row["qty_actual"])
+            # 월 달성률 35% 를 그대로 보여주면 '큰일났다' 로 읽힌다. 아직
+            # 3주가 남았는데 그 3주 계획까지 분모에 들어가 있어서다.
+            # 끝난 주(일요일이 지난 주)와 남은 주를 갈라 둔다.
+            _cl, _op = _split_weeks_closed_open(wr, month, today)
+            row.update(_cl); row.update(_op)
         except Exception as _e:
             print(f"[overview] {pk} 주차 매출 계산 실패: {_e}")
         rows.append(row)
@@ -21881,6 +21917,15 @@ def get_admin_overview(month: str = None, division_id: str = None):
             "qty_actual": sum(r["qty_actual"] for r in rows),
             "revenue": sum(r["revenue"] for r in rows),
             "plan_revenue": sum(r["plan_revenue"] for r in rows),
+            # 끝난 주 / 남은 주
+            "closed_weeks": max([r.get("closed_weeks") or 0 for r in rows] or [0]),
+            "open_weeks": max([r.get("open_weeks") or 0 for r in rows] or [0]),
+            "closed_qty_plan": sum(r.get("closed_qty_plan") or 0 for r in rows),
+            "closed_qty_actual": sum(r.get("closed_qty_actual") or 0 for r in rows),
+            "closed_revenue": sum(r.get("closed_revenue") or 0 for r in rows),
+            "closed_plan_revenue": sum(r.get("closed_plan_revenue") or 0 for r in rows),
+            "open_qty_plan": sum(r.get("open_qty_plan") or 0 for r in rows),
+            "open_plan_revenue": sum(r.get("open_plan_revenue") or 0 for r in rows),
         },
         "projects": rows,
     }
@@ -22272,7 +22317,7 @@ def get_home_alerts(limit: int = 12):
         visible = set()
 
     today = _dth.date.today()
-    counts = {"total": 0, "delayed": 0, "soon": 0, "hold": 0,
+    counts = {"total": 0, "delayed": 0, "issue": 0, "soon": 0, "hold": 0,
               "po_wait": 0, "done": 0, "running": 0}
     alerts = []
     holds = []
@@ -22338,6 +22383,27 @@ def get_home_alerts(limit: int = 12):
                     "days": (today - d).days if d else None,
                     "stage": str(e.get("current_stage") or ""),
                     "note": str(e.get("note") or "").strip().replace("\n", " · "),
+                    "issue": "",
+                })
+                hit_projects.add(pk)
+
+            # 이슈 — 적어 둔 문제. 지연과 겹치지 않는다: 지연은 개발품 공정이
+            # 밀린 것이고, 이슈는 주로 양산품에 사람이 적어 넣은 것이다.
+            # 경영진에게는 '일정이 늦었나' 와 '문제가 있나' 둘 다 문제다.
+            _iss = str(e.get("issues") or "").strip()
+            if _iss and not hold and not done:
+                counts["issue"] += 1
+                alerts.append({
+                    "project_key": pk,
+                    "project": label,
+                    "model": e.get("name") or e.get("id") or "",
+                    "id": e.get("id") or "",
+                    "kind": "이슈",
+                    "expected": str(e.get("current_expected") or ""),
+                    "days": None,
+                    "stage": str(e.get("current_stage") or ""),
+                    "note": str(e.get("note") or "").strip().replace("\n", " · "),
+                    "issue": _iss.replace("\n", " · "),
                 })
                 hit_projects.add(pk)
 
@@ -22349,10 +22415,13 @@ def get_home_alerts(limit: int = 12):
     for a in alerts:
         row = by_project.setdefault(a["project_key"], {
             "key": a["project_key"], "label": a["project"],
-            "delayed": 0, "soon": 0, "worst_days": 0, "worst_model": "",
+            "delayed": 0, "issue": 0, "soon": 0,
+            "worst_days": 0, "worst_model": "",
         })
         if a["kind"] == "지연":
             row["delayed"] += 1
+        elif a["kind"] == "이슈":
+            row["issue"] += 1
         else:
             row["soon"] += 1
         d = a["days"] if a["days"] is not None else 0
@@ -22360,9 +22429,11 @@ def get_home_alerts(limit: int = 12):
             row["worst_days"] = d
             row["worst_model"] = a["model"]
     rows = sorted(by_project.values(),
-                  key=lambda r: (-r["delayed"], -r["worst_days"], -r["soon"]))
-    # 지연 먼저, 그 안에서는 오래 밀린 것부터
-    alerts.sort(key=lambda a: (0 if a["kind"] == "지연" else 1,
+                  key=lambda r: (-(r["delayed"] + r["issue"]), -r["worst_days"],
+                                 -r["soon"]))
+    # 문제(지연·이슈) 먼저, 그 안에서는 오래 밀린 것부터. 임박은 뒤로.
+    _ORD = {"지연": 0, "이슈": 1}
+    alerts.sort(key=lambda a: (_ORD.get(a["kind"], 2),
                                -(a["days"] if a["days"] is not None else -9999)))
     try:
         n = max(1, min(60, int(limit)))

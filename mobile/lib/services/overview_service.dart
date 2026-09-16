@@ -58,6 +58,16 @@ class OverviewSummary {
   final int qtyActual;
   final int revenue;
   final int planRevenue;
+  // 끝난 주 / 남은 주. 월 달성률만 보면 월초에는 늘 20~30% 라
+  // '큰일났다' 로 읽힌다. 아직 안 온 주차의 계획이 분모에 있어서다.
+  final int closedWeeks;
+  final int openWeeks;
+  final int closedQtyPlan;
+  final int closedQtyActual;
+  final int closedRevenue;
+  final int closedPlanRevenue;
+  final int openQtyPlan;
+  final int openPlanRevenue;
   final List<OverviewProject> items;
   final bool loaded;
 
@@ -72,6 +82,14 @@ class OverviewSummary {
     required this.revenue,
     required this.planRevenue,
     required this.items,
+    this.closedWeeks = 0,
+    this.openWeeks = 0,
+    this.closedQtyPlan = 0,
+    this.closedQtyActual = 0,
+    this.closedRevenue = 0,
+    this.closedPlanRevenue = 0,
+    this.openQtyPlan = 0,
+    this.openPlanRevenue = 0,
     this.loaded = true,
   });
 
@@ -95,6 +113,18 @@ class OverviewSummary {
   int? get achievement =>
       planRevenue <= 0 ? null : (revenue * 100 / planRevenue).round();
 
+  /// 끝난 주까지만 놓고 본 달성률. '지금까지 계획을 지켰나' 가 여기서 보인다.
+  int? get closedAchievement => closedPlanRevenue <= 0
+      ? null
+      : (closedRevenue * 100 / closedPlanRevenue).round();
+
+  /// 남은 주 계획이 이번 달 계획에서 차지하는 몫.
+  int? get openShare =>
+      planRevenue <= 0 ? null : (openPlanRevenue * 100 / planRevenue).round();
+
+  /// 주차를 가를 수 있는 데이터가 왔는지. 안 왔으면 예전처럼 월 합계만 보인다.
+  bool get hasWeekSplit => closedWeeks > 0 || openWeeks > 0;
+
   /// 매출이 있는 프로젝트를 실적 큰 순으로.
   List<OverviewProject> get topByRevenue {
     final list = items.where((e) => e.planRevenue > 0 || e.revenue > 0).toList()
@@ -115,6 +145,14 @@ class OverviewSummary {
       qtyActual: (t['qty_actual'] as num?)?.toInt() ?? 0,
       revenue: (t['revenue'] as num?)?.toInt() ?? 0,
       planRevenue: (t['plan_revenue'] as num?)?.toInt() ?? 0,
+      closedWeeks: (t['closed_weeks'] as num?)?.toInt() ?? 0,
+      openWeeks: (t['open_weeks'] as num?)?.toInt() ?? 0,
+      closedQtyPlan: (t['closed_qty_plan'] as num?)?.toInt() ?? 0,
+      closedQtyActual: (t['closed_qty_actual'] as num?)?.toInt() ?? 0,
+      closedRevenue: (t['closed_revenue'] as num?)?.toInt() ?? 0,
+      closedPlanRevenue: (t['closed_plan_revenue'] as num?)?.toInt() ?? 0,
+      openQtyPlan: (t['open_qty_plan'] as num?)?.toInt() ?? 0,
+      openPlanRevenue: (t['open_plan_revenue'] as num?)?.toInt() ?? 0,
       items: raw
           .whereType<Map>()
           .map((e) => OverviewProject.fromJson(e))

@@ -1,4 +1,4 @@
-// 지연·임박 전체 목록.
+// 문제(지연·이슈)·임박·보류·PO 대기 전체 목록.
 //
 // 홈의 '지금 봐야 할 것' 은 프로젝트로 묶어서 다섯 줄만 보여준다.
 // 여기서는 모델 한 건씩, 오래 밀린 것부터 전부 늘어놓는다.
@@ -10,7 +10,8 @@ import '../services/home_alerts_service.dart';
 import 'project_overview_screen.dart';
 
 class AlertListScreen extends StatefulWidget {
-  /// '' = 지연+임박 전체 · '지연' · '임박' · '보류' · 'PO 대기'
+  /// '문제' = 지연+이슈 (홈에서 들어오는 기본) · '' = 전부
+  /// · '지연' · '이슈' · '임박' · '보류' · 'PO 대기'
   final String initialFilter;
 
   const AlertListScreen({super.key, this.initialFilter = ''});
@@ -33,8 +34,12 @@ class _AlertListScreenState extends State<AlertListScreen> {
   /// 칩 하나가 보여줄 목록. 보류·PO 대기는 지연 목록과 별개다.
   List<AlertModel> _listFor(HomeAlerts a) {
     switch (_filter) {
+      case '문제':
+        return a.blockers;
       case '지연':
         return a.alerts.where((m) => m.kind == '지연').toList();
+      case '이슈':
+        return a.alerts.where((m) => m.kind == '이슈').toList();
       case '임박':
         return a.alerts.where((m) => m.kind == '임박').toList();
       case '보류':
@@ -77,6 +82,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
   static Color _tintOf(String kind) {
     switch (kind) {
       case '지연':
+      case '이슈':
         return const Color(0xFFDC2626);
       case '임박':
         return const Color(0xFFE97132);
@@ -90,6 +96,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
   static Color _softOf(String kind) {
     switch (kind) {
       case '지연':
+      case '이슈':
         return const Color(0xFFFEE2E2);
       case '임박':
         return const Color(0xFFFFEDD5);
@@ -149,13 +156,22 @@ class _AlertListScreenState extends State<AlertListScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: AppText.bodyStrong.copyWith(fontSize: 14)),
               const SizedBox(height: 2),
-              Text(
-                  [
-                    if (m.stage.isNotEmpty) m.stage,
-                    if (m.expected.isNotEmpty) '완료예정 ${m.expected}',
-                    if (m.days != null && m.days! > 0) '${m.days}일 경과',
-                  ].join(' · '),
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280))),
+              // 이슈는 적어 둔 내용이 곧 이유다. 공정·예정일보다 먼저 보여준다.
+              if (m.issue.isNotEmpty)
+                Text(m.issue,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, height: 1.35, color: Color(0xFF374151)))
+              else
+                Text(
+                    [
+                      if (m.stage.isNotEmpty) m.stage,
+                      if (m.expected.isNotEmpty) '완료예정 ${m.expected}',
+                      if (m.days != null && m.days! > 0) '${m.days}일 경과',
+                    ].join(' · '),
+                    style:
+                        const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280))),
               if (m.note.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
@@ -180,7 +196,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(_filter.isEmpty ? '지연 · 마감임박' : _filter,
+        title: Text(_filter.isEmpty ? '전체 현황' : _filter,
             style: AppText.bodyStrong.copyWith(fontSize: 17)),
         iconTheme: const IconThemeData(color: Color(0xFF111827)),
       ),
@@ -205,10 +221,14 @@ class _AlertListScreenState extends State<AlertListScreen> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
-                  _chip('전체', a.alertsTotal, _filter.isEmpty,
-                      () => setState(() => _filter = ''), const Color(0xFF0E2841)),
+                  _chip('문제', a.blocked, _filter == '문제',
+                      () => setState(() => _filter = '문제'),
+                      const Color(0xFFDC2626)),
                   _chip('지연', a.delayed, _filter == '지연',
                       () => setState(() => _filter = '지연'),
+                      const Color(0xFFDC2626)),
+                  _chip('이슈', a.issue, _filter == '이슈',
+                      () => setState(() => _filter = '이슈'),
                       const Color(0xFFDC2626)),
                   _chip('임박', a.soon, _filter == '임박',
                       () => setState(() => _filter = '임박'),
@@ -219,6 +239,9 @@ class _AlertListScreenState extends State<AlertListScreen> {
                   _chip('PO 대기', a.poWait, _filter == 'PO 대기',
                       () => setState(() => _filter = 'PO 대기'),
                       const Color(0xFFB45309)),
+                  _chip('전체', a.alertsTotal, _filter.isEmpty,
+                      () => setState(() => _filter = ''),
+                      const Color(0xFF0E2841)),
                 ]),
               ),
             ),

@@ -267,13 +267,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _bloom = a.bloom);
   }
 
-  /// "오늘 15:47 기준"
-  String _formatHomeCaption(DateTime now) {
-    final hh = now.hour.toString().padLeft(2, '0');
-    final mm = now.minute.toString().padLeft(2, '0');
-    return '오늘 $hh:$mm 기준';
-  }
-
   /// 진행률이 없는 사업부에 무엇이 있는지 한 마디로 적는다.
   String? _divisionNote(String divisionId) {
     if (divisionId == 'bloom') {
@@ -788,7 +781,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
 
-                    // 전체 현황 요약 (KPI)
+                    // 이번 달 한 장 — 매출 · 끝난 주 · 남은 주 · 막힌 것.
+                    // 예전에는 '전체 현황' 타일 4개 + 전체 진행률 + 매출 카드가
+                    // 따로 떠 있었다. 숫자가 일곱 개인데 서로 무슨 관계인지가
+                    // 없어서, 열었을 때 어디를 봐야 할지 알 수 없었다.
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.x4,
@@ -796,32 +792,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: _RiskSummaryCard(
-                        alertsFuture: _alertsFuture,
-                        divisionsFuture: _divisionsFuture,
-                        progressFuture: _progressFuture,
-                        caption: _formatHomeCaption(DateTime.now()),
-                      ),
-                    ),
-
-                    // 이번 달 매출 (경영진이 가장 먼저 봐야 하는 숫자)
-                    // - 기존에는 홈 → 사업부 → 프로젝트 3단계를 들어가야 볼 수 있었음
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.x4,
-                        0,
-                        AppSpacing.x4,
-                        AppSpacing.x3,
-                      ),
                       child: FutureBuilder<OverviewSummary>(
                         future: _overviewFuture,
                         builder: (context, snap) {
-                          return ExecRevenueCard(
-                            summary: snap.data ?? OverviewSummary.empty,
-                            loading:
-                                snap.connectionState == ConnectionState.waiting,
-                            onTap: () => _openRevenueDetail(
-                                snap.data?.month ?? ''),
+                          return FutureBuilder<HomeAlerts>(
+                            future: _alertsFuture,
+                            builder: (context, aSnap) {
+                              return MonthOverviewCard(
+                                summary: snap.data ?? OverviewSummary.empty,
+                                alerts: aSnap.data ?? HomeAlerts.empty,
+                                loading: snap.connectionState ==
+                                    ConnectionState.waiting,
+                                onTapRevenue: () => _openRevenueDetail(
+                                    snap.data?.month ?? ''),
+                                onTapBlocked: () =>
+                                    Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const AlertListScreen(
+                                          initialFilter: '문제')),
+                                ),
+                              );
+                            },
                           );
                         },
                       ),
@@ -845,7 +836,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         // 모두 보기도 같은 /home/alerts 를 본다.
                         // 예전 '즉시 확인' 화면은 주간보고 카드라 홈과 숫자가 달랐다.
                         onTapShowAll: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const AlertListScreen()),
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const AlertListScreen(initialFilter: '문제')),
                         ),
                       ),
                     ),
@@ -1477,112 +1470,6 @@ class _RankedCard {
   _RankedCard({required this.card, required this.diffDays});
 }
 
-// 즉시 확인 섹션.
-// - _dashboardFuture 결과를 받아 ImmediateCheckCard 로 변환해 그립니다.
-// - 후보 항목이 0개이면 카드 자체를 그리지 않습니다 (시안: 빨간 카드가 화면에 떠 있어선 안 됨).
-// - 변환 로직은 HomeScreen 의 _buildImmediateItems 를 그대로 위임받습니다.
-// ignore: unused_element
-class _ImmediateCheckSection extends StatelessWidget {
-  // SummaryCard 가 쓰던 동일한 Future. 재사용해 추가 네트워크 호출 없음.
-  final Future<List<DashboardCard>> future;
-
-  // DashboardCard 리스트 → ImmediateCheckItem 리스트 변환 함수.
-  // - 시그니처: (cards) => List<ImmediateCheckItem>
-  final List<ImmediateCheckItem> Function(List<DashboardCard> cards) buildItems;
-
-  // 항목 탭 콜백.
-  final void Function(ImmediateCheckItem item) onTapItem;
-
-  // '모두 보기' 탭 콜백.
-  final VoidCallback? onTapShowAll;
-
-  const _ImmediateCheckSection({
-    required this.future,
-    required this.buildItems,
-    required this.onTapItem,
-    this.onTapShowAll,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<DashboardCard>>(
-      future: future,
-      builder: (context, snap) {
-        // 로딩 / 에러 / 0건을 반드시 구분해서 보여준다.
-        // 예전에는 셋 다 SizedBox.shrink() 라, 조회가 실패해도 화면상으로는
-        // '지연 없음' 과 똑같이 보였다 (경영 판단이 걸린 정보라 위험).
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const _ImmediateNotice(
-            icon: Icons.hourglass_empty,
-            text: '지연·마감임박 항목 확인 중...',
-          );
-        }
-
-        if (snap.hasError) {
-          return const _ImmediateNotice(
-            icon: Icons.error_outline,
-            text: '지연 현황을 불러오지 못했습니다',
-            color: AppColors.statusRed,
-          );
-        }
-
-        final cards = snap.data ?? const <DashboardCard>[];
-        final items = buildItems(cards);
-
-        if (items.isEmpty) {
-          return const _ImmediateNotice(
-            icon: Icons.check_circle_outline,
-            text: '지연·마감임박 항목이 없습니다',
-            color: AppColors.summaryNormal,
-          );
-        }
-
-        return ImmediateCheckCard(
-          items: items,
-          onTapItem: onTapItem,
-          onTapShowAll: onTapShowAll,
-        );
-      },
-    );
-  }
-}
-
-// 즉시 확인 섹션의 로딩/에러/0건 안내 한 줄.
-class _ImmediateNotice extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color? color;
-
-  const _ImmediateNotice({
-    required this.icon,
-    required this.text,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? AppColors.textMute;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.bgCard,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.borderDefault),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 17, color: c),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text, style: AppText.body.copyWith(color: c)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // 사업부 필터 종류. 필터 시트에서 고른다.
 enum _DivFilter { all, active, empty }
 
@@ -1847,172 +1734,9 @@ class _ProjHit {
 // 서로 다른 것을 세고 있었던 것. 이제 둘 다 같은 모델 alert 를 본다.
 // ─────────────────────────────────────────────────────────────
 
-/// 전체 현황 — 지연 · 임박 · 보류 · PO 대기
-class _RiskSummaryCard extends StatelessWidget {
-  final Future<HomeAlerts> alertsFuture;
-  final Future<List<Division>> divisionsFuture;
-  final Future<ProgressSummary> progressFuture;
-  final String caption;
-
-  const _RiskSummaryCard({
-    required this.alertsFuture,
-    required this.divisionsFuture,
-    required this.progressFuture,
-    required this.caption,
-  });
-
-  /// 숫자만 보여주면 '그래서 어떤 게 지연인데' 를 다시 물어야 한다.
-  /// 0 이 아니면 눌러서 그 목록으로 바로 들어간다.
-  static Widget _kpi(BuildContext context, String label, int value,
-      Color color, String filter) {
-    final on = value > 0;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: on
-            ? () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => AlertListScreen(initialFilter: filter),
-                ))
-            : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(children: [
-            Text('$value',
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: on ? color : const Color(0xFFCBD5E1))),
-            const SizedBox(height: 2),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text(label,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-              if (on)
-                const Icon(Icons.chevron_right, size: 13, color: Color(0xFFCBD5E1)),
-            ]),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<HomeAlerts>(
-      future: alertsFuture,
-      builder: (context, snap) {
-        final loading = snap.connectionState == ConnectionState.waiting;
-        final a = snap.data ?? HomeAlerts.empty;
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Text('전체 현황',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-              const Spacer(),
-              Text(caption,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-            ]),
-            const SizedBox(height: 14),
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 18),
-                child: Center(
-                    child: SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))),
-              )
-            // 못 받아왔을 때 0 을 그리면 '지연 없음' 과 똑같이 보인다.
-            // 경영 판단이 걸린 숫자라 모르는 건 모른다고 말해야 한다.
-            else if (!a.loaded)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
-                child: Row(children: [
-                  Icon(Icons.error_outline, size: 16, color: Color(0xFFDC2626)),
-                  SizedBox(width: 6),
-                  Text('현황을 불러오지 못했습니다',
-                      style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
-                ]),
-              )
-            else ...[
-              Row(children: [
-                _kpi(context, '지연', a.delayed, const Color(0xFFDC2626), '지연'),
-                _kpi(context, '임박', a.soon, const Color(0xFFE97132), '임박'),
-                _kpi(context, '보류', a.hold, const Color(0xFF6B7280), '보류'),
-                _kpi(context, 'PO 대기', a.poWait, const Color(0xFFB45309), 'PO 대기'),
-              ]),
-              const SizedBox(height: 14),
-              FutureBuilder<List<Division>>(
-                future: divisionsFuture,
-                builder: (context, dSnap) {
-                  final divisions = dSnap.data ?? const <Division>[];
-                  final keys = <String>{
-                    for (final d in divisions)
-                      for (final p in d.projects)
-                        if (p.id.isNotEmpty) p.id
-                  };
-                  return FutureBuilder<ProgressSummary>(
-                    future: progressFuture,
-                    builder: (context, pSnap) {
-                      final prog = pSnap.data ?? ProgressSummary.empty;
-                      final pct = keys.isEmpty
-                          ? prog.progress
-                          : (prog.weightedFor(keys) ?? prog.progress);
-                      return Column(children: [
-                        Row(children: [
-                          Text(
-                              '모델 ${a.total}종 · 진행 중 ${a.running} · 완료 ${a.done}',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF6B7280))),
-                          const Spacer(),
-                          Text(
-                              '사업부 ${divisions.length} · 프로젝트 ${a.projects}',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF6B7280))),
-                        ]),
-                        const SizedBox(height: 10),
-                        Row(children: [
-                          const Text('전체 진행률',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF374151))),
-                          const Spacer(),
-                          Text(pct == null ? '-' : '$pct%',
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0E2841))),
-                        ]),
-                        const SizedBox(height: 6),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(99),
-                          child: LinearProgressIndicator(
-                            value: (pct ?? 0) / 100,
-                            minHeight: 8,
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                                Color(0xFF156082)),
-                          ),
-                        ),
-                      ]);
-                    },
-                  );
-                },
-              ),
-            ],
-          ]),
-        );
-      },
-    );
-  }
-}
-
-/// 지금 봐야 할 것 — 지연·임박이 걸린 프로젝트를 급한 순으로
+/// 지금 봐야 할 것 — 문제(지연·이슈)가 있는 프로젝트를 급한 순으로.
+/// 임박은 빠진다. 경영진은 '문제 있냐 없냐' 를 보지, 아직 안 늦은 것을
+/// 보지 않는다.
 class _RiskListCard extends StatelessWidget {
   final Future<HomeAlerts> alertsFuture;
   final void Function(String projectKey) onTapProject;
@@ -2038,9 +1762,11 @@ class _RiskListCard extends StatelessWidget {
   }
 
   Widget _row(AlertProject p) {
+    // 임박은 여기서 세지 않는다. 경영진이 보는 것은 문제 유무고,
+    // 임박은 아직 늦지 않은 것이다 — 모델 목록의 '임박' 칩에서 본다.
     final bits = <String>[];
     if (p.delayed > 0) bits.add('지연 ${p.delayed}');
-    if (p.soon > 0) bits.add('임박 ${p.soon}');
+    if (p.issue > 0) bits.add('이슈 ${p.issue}');
     return InkWell(
       onTap: () => onTapProject(p.key),
       child: Padding(
@@ -2076,12 +1802,10 @@ class _RiskListCard extends StatelessWidget {
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(bits.join(' · '),
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
-                    color: p.delayed > 0
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFFE97132))),
+                    color: Color(0xFFDC2626))),
             if (p.worstDays > 0)
               Text('최장 ${p.worstDays}일',
                   style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
@@ -2102,7 +1826,7 @@ class _RiskListCard extends StatelessWidget {
             Row(children: [
               Icon(Icons.hourglass_empty, size: 16, color: Color(0xFF9CA3AF)),
               SizedBox(width: 6),
-              Text('지연·마감임박 확인 중...',
+              Text('지연·이슈 확인 중...',
                   style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
             ]),
           ]);
@@ -2113,22 +1837,25 @@ class _RiskListCard extends StatelessWidget {
             Row(children: [
               Icon(Icons.error_outline, size: 16, color: Color(0xFFDC2626)),
               SizedBox(width: 6),
-              Text('지연 현황을 불러오지 못했습니다',
+              Text('지연·이슈 현황을 불러오지 못했습니다',
                   style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
             ]),
           ]);
         }
-        if (a.byProject.isEmpty) {
+        // 임박만 걸린 프로젝트는 '지금 봐야 할 것' 이 아니다.
+        final blocked =
+            a.byProject.where((p) => p.blocked > 0).toList(growable: false);
+        if (blocked.isEmpty) {
           return _shell(const [
             Row(children: [
               Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF059669)),
               SizedBox(width: 6),
-              Text('지연·마감임박 항목이 없습니다',
+              Text('지연·이슈 항목이 없습니다',
                   style: TextStyle(fontSize: 13, color: Color(0xFF059669))),
             ]),
           ]);
         }
-        final rows = a.byProject.take(5).toList();
+        final rows = blocked.take(5).toList();
         return _shell([
           Row(children: [
             const Icon(Icons.warning_amber_rounded, size: 17, color: Color(0xFFDC2626)),
@@ -2142,7 +1869,7 @@ class _RiskListCard extends StatelessWidget {
                 color: const Color(0xFFFEE2E2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text('${a.alertsTotal}',
+              child: Text('${a.blocked}',
                   style: const TextStyle(
                       fontSize: 12, fontWeight: FontWeight.w800,
                       color: Color(0xFFDC2626))),
@@ -2153,12 +1880,12 @@ class _RiskListCard extends StatelessWidget {
             if (i > 0) const Divider(height: 1, color: Color(0xFFF1F5F9)),
             _row(rows[i]),
           ],
-          if (a.byProject.length > rows.length || onTapShowAll != null)
+          if (blocked.length > rows.length || onTapShowAll != null)
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: onTapShowAll,
-                child: Text('모두 보기 (${a.alertsTotal})',
+                child: Text('모두 보기 (${a.blocked})',
                     style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
