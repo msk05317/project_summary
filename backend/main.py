@@ -2834,10 +2834,86 @@ def _read_app_version() -> dict:
     return dict(best) if best else dict(APP_VERSION_FALLBACK)
 
 
+# ─────────────────────────────────────────────────────────────
+# 변경 내역 (CHANGELOG.md)
+#
+# 전에는 app_version.json 에 release_notes 한 줄만 있었다. 버전을 올려도
+# 그 줄을 안 고치면 옛 노트가 그대로 나갔고, 실제로 2.3.10 이 몇 버전 전의
+# 블룸 일 보고 얘기를 띄우고 있었다. 게다가 '2.3.9 와 2.3.10 이 뭐가
+# 다른가' 는 어디에도 안 남아서 답할 수가 없었다.
+#
+# 이제 버전별로 CHANGELOG.md 에 쌓고, release.sh 가 배포하는 버전의
+# 항목이 없으면 배포를 멈춘다.
+_CHANGELOG_FILE = BASE_DIR / "CHANGELOG.md"
+_CHANGELOG_FILE_ALT = BASE_DIR.parent / "CHANGELOG.md"
+
+
+def _parse_changelog(text: str) -> list:
+    """'## 2.3.10 — 2026-09-16' 단위로 쪼갠다."""
+    import re as _re
+    out = []
+    cur = None
+    for line in (text or "").split("\n"):
+        # '## 2.3.10 — 2026-09-16' 도 '## 2.3.9 이전' 도 받는다.
+        # 날짜 자리를 엄격하게 잡으면 뒤엣것이 머리로 안 잡혀서
+        # 앞 버전의 본문에 통째로 딸려 들어간다.
+        m = _re.match(r"^##\s+(\S+)\s*(.*)$", line.strip())
+        if m:
+            if cur:
+                out.append(cur)
+            cur = {"version": m.group(1).strip(),
+                   "date": _re.sub(r"^[—–-]\s*", "", (m.group(2) or "").strip()),
+                   "body": []}
+            continue
+        if cur is not None:
+            cur["body"].append(line)
+    if cur:
+        out.append(cur)
+    for e in out:
+        e["body"] = "\n".join(e["body"]).strip()
+    return [e for e in out if e["body"]]
+
+
+def _load_changelog() -> list:
+    for path in (_CHANGELOG_FILE, _CHANGELOG_FILE_ALT):
+        try:
+            if path.exists():
+                return _parse_changelog(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[CHANGELOG] {path} 읽기 실패: {e}")
+    return []
+
+
+def _changelog_for(version: str) -> str:
+    """그 버전의 본문. 없으면 빈 문자열."""
+    v = str(version or "").strip().lstrip("vV")
+    for e in _load_changelog():
+        if e["version"].lstrip("vV") == v:
+            return e["body"]
+    return ""
+
+
+@app.get("/app/changelog")
+def get_app_changelog(limit: int = 20):
+    """설정 화면의 '변경 내역'. 최신 버전부터."""
+    try:
+        n = max(1, min(100, int(limit)))
+    except (TypeError, ValueError):
+        n = 20
+    items = _load_changelog()[:n]
+    return {"current": _read_app_version().get("latest_version") or "",
+            "count": len(items), "items": items}
+
+
 @app.get("/app/version")
 def get_app_version():
     """앱 시작 시 호출. 최신 버전 정보 반환."""
     data = dict(_read_app_version())
+    # 노트는 CHANGELOG.md 가 정본이다. app_version.json 의 release_notes 는
+    # 한 줄뿐이라 버전을 올려도 안 고치면 옛 노트가 그대로 나갔다.
+    _note = _changelog_for(data.get("latest_version"))
+    if _note:
+        data["release_notes"] = _note
     # APK 가 서버에 올라와 있으면 받는 곳을 서버로 돌린다.
     # (비공개 저장소의 릴리스 주소는 앱이 못 받는다 — 404 가 난다)
     _ready = APP_APK_FILE.exists() or (BASE_DIR / "app_release.apk").exists()

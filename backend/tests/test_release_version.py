@@ -41,7 +41,10 @@ for cur, want in [(('2.3.0', '23'), '2.3.1+24'),
 ok += 1
 
 # 릴리스 노트가 지난 릴리스 것 그대로면 안 된다 (사람이 눈으로 볼 수 있게 찍어준다)
-assert '릴리스 노트:' in SH, '무슨 노트로 나가는지 안 보여준다'
+assert '릴리스 노트 (CHANGELOG.md):' in SH, '무슨 노트로 나가는지 안 보여준다'
+# 노트는 CHANGELOG.md 가 정본. 없으면 배포가 멈춰야 한다
+assert 'tools_changelog.py' in SH and 'if [ -z "$NOTES" ]; then' in SH, \
+    '노트 없이도 배포가 나간다'
 ok += 1
 
 # app_version.json 모양

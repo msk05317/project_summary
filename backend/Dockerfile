@@ -10,6 +10,8 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # backend 전체 복사
+# 변경 내역은 저장소 루트에 둔다. /app/version 과 /app/changelog 가 읽는다.
+COPY CHANGELOG.md .
 COPY backend/ .
 
 # 데이터 디렉토리

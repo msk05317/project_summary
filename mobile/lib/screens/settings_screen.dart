@@ -8,6 +8,7 @@ import '../services/fcm_service.dart';
 import '../services/background_service.dart';
 import '../services/favorites_service.dart';
 import '../services/divisions_service.dart';
+import 'changelog_screen.dart';
 import 'division_projects_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -251,6 +252,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.info_outline),
             title: const Text('버전'),
             subtitle: Text(_appVersion),
+          ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('변경 내역'),
+            subtitle: const Text('버전마다 무엇이 달라졌는지'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ChangelogScreen(installed: _appVersion),
+            )),
           ),
         ],
       ),

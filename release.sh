@@ -56,10 +56,29 @@ if [ "$VER+$CODE" = "$PREV" ] && [ "${1:-}" != "--same" ]; then
 fi
 
 TAG="v$VER"
-NOTES=$(python3 -c "import json;print(json.load(open('backend/app_version.json'))['release_notes'])")
+
+# 릴리스 노트는 CHANGELOG.md 가 정본이다.
+#
+# 예전에는 app_version.json 의 release_notes 한 줄을 그대로 썼다. 버전을
+# 올려도 그 줄을 안 고치면 옛 노트가 그대로 나갔고, 실제로 2.3.10 이 몇
+# 버전 전의 블룸 일 보고 얘기를 띄웠다. 사람 기억에 맡기지 않는다.
+NOTES=$(python3 tools_changelog.py "$VER")
+if [ -z "$NOTES" ]; then
+  die "CHANGELOG.md 에 '## $VER' 항목이 없습니다.
+     이번에 뭐가 바뀌는지 적고 다시 실행하세요. 맨 위에 이렇게:
+
+       ## $VER — $(date +%Y-%m-%d)
+
+       무엇이 달라지는지 한 줄.
+
+       · 화면에서 보이는 변화
+       · 고친 것"
+fi
+
 step "릴리스 $TAG (코드 $CODE)"
-printf '  릴리스 노트: %s\n' "$(printf '%s' "$NOTES" | head -1)"
-printf '  (바꾸려면 backend/app_version.json 의 release_notes 를 고치고 다시 실행)\n'
+printf '  릴리스 노트 (CHANGELOG.md):\n'
+printf '%s\n' "$NOTES" | sed 's/^/    /'
+printf '\n'
 
 # ── 2. 빌드
 step "APK 빌드"
@@ -125,10 +144,19 @@ d = json.loads(p.read_text(encoding='utf-8'))
 # 받는 곳은 우리 서버. 비공개 저장소의 릴리스 주소는 앱이 못 받는다.
 d.update({'latest_version': ver, 'latest_version_code': code,
           'download_url': '/app/download', 'apk_url': '/app/download'})
+# 서버는 CHANGELOG.md 를 먼저 보지만, 못 읽을 때를 대비해 여기에도 넣는다
+sys.path.insert(0, '.')
+try:
+    from tools_changelog import notes_for
+    _txt = notes_for(ver)
+    if _txt:
+        d['release_notes'] = _txt
+except Exception as _e:
+    print(f'  ! CHANGELOG 를 못 읽었습니다: {_e}')
 p.write_text(json.dumps(d, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 print(f'  {ver}+{code}')
 PY
-git add backend/app_version.json "$PUBSPEC"
+git add backend/app_version.json "$PUBSPEC" CHANGELOG.md
 git diff --cached --quiet || git commit -m "release $TAG"
 git push
 

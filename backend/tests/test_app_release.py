@@ -11,7 +11,8 @@ SRC = pathlib.Path(__file__).resolve().parents[1] / 'main.py'
 src = SRC.read_text(encoding='utf-8')
 tree = ast.parse(src)
 
-want = {'_read_app_version', 'get_app_version', '_as_int'}
+want = {'_read_app_version', 'get_app_version', '_as_int',
+        '_parse_changelog', '_load_changelog', '_changelog_for'}
 grab = {}
 for n in ast.walk(tree):
     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in want:
@@ -27,6 +28,9 @@ exec('\n\n'.join(grab.values()), g)
 g.update({
     'APP_VERSION_FILE': VOL, 'APP_VERSION_SEED': SEED, 'APP_APK_FILE': APK,
     'BASE_DIR': tmp,
+    # 변경 내역은 이 테스트가 보는 곳에 없다 — 없으면 옛 노트를 그대로 둔다
+    '_CHANGELOG_FILE': tmp / 'CHANGELOG.md',
+    '_CHANGELOG_FILE_ALT': tmp / 'CHANGELOG.md',
     'APP_VERSION_FALLBACK': {'latest_version': '1.0.0', 'latest_version_code': 1,
                              'download_url': '/app/download', 'release_notes': '',
                              'force_update': False},
