@@ -38,7 +38,8 @@ assert (order.index('delayed') < order.index('soon') < order.index('running')
 ok += 1
 
 # 칩: 전체 · 지연 · 임박 · 진행중 · 완료 · 보류
-for label in ('전체', '지연', '임박', '진행중', '완료', '보류'):
+# '임박' 혼자 쓰면 광고 문구처럼 읽힌다 — 화면에는 '마감 임박'
+for label in ('전체', '지연', '마감 임박', '진행중', '완료', '보류'):
     assert f"chip('{label}'" in D, f'{label} 칩이 없다'
 assert "chip('미완료'" not in D, '미완료 칩이 아직 남아 있다'
 ok += 1

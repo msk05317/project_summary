@@ -24,7 +24,7 @@ import '../services/offline_store.dart';
 class _CheckRow {
   final Map<String, dynamic> model;
   final String name;
-  final String kind;   // 지연 · 임박 · 드롭예정 · 보류 · 이슈 · 비고
+  final String kind;   // 지연 · 마감 임박 · 드롭예정 · 보류 · 이슈 · 비고
   final int rank;      // 정렬 순서
   final int days;      // 지연 일수
   final String stage;
@@ -332,7 +332,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                         _pill('지연', delayed, const Color(0xFFDC2626), models,
                             ModelBucket.delayed),
                         const SizedBox(width: 6),
-                        _pill('임박', watched, const Color(0xFFE97132), models,
+                        _pill('마감 임박', watched, const Color(0xFFE97132), models,
                             ModelBucket.soon),
                         const SizedBox(width: 6),
                         _pill('보류', held, const Color(0xFF6B7280), models,
@@ -488,6 +488,8 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                     color: on ? color : const Color(0xFFCBD5E1))),
             const SizedBox(height: 1),
             Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 10.5, color: Color(0xFF6B7280))),
           ]),
         ),
@@ -539,7 +541,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
         kind = '이슈';
         rank = 1;
       } else if (alert == '주의') {
-        kind = '임박';
+        // '임박' 혼자 쓰면 광고 문구처럼 읽힌다. 우리말로는 앞에 '마감' 이
+        // 붙어야 자연스럽다.
+        kind = '마감 임박';
         rank = 3;
       } else if (note.isNotEmpty) {
         kind = '비고';
@@ -583,7 +587,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     switch (kind) {
       case '지연':
         return const Color(0xFFDC2626);
-      case '임박':
+      case '마감 임박':
         return const Color(0xFFE97132);
       case '이슈':
         return const Color(0xFFDC2626);
@@ -841,7 +845,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           groupName: '전체',
           models: models,
           initialFilter:
-              kinds.length == 1 && kinds.first == '임박' ? ModelBucket.soon : null,
+              kinds.length == 1 && kinds.first == '마감 임박'
+                  ? ModelBucket.soon
+                  : null,
         ),
       )),
       child: Padding(

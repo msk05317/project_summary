@@ -196,7 +196,9 @@ class _AlertListScreenState extends State<AlertListScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(_filter.isEmpty ? '전체 현황' : _filter,
+        title: Text(_filter.isEmpty
+                ? '전체 현황'
+                : (_filter == '임박' ? '마감 임박' : _filter),
             style: AppText.bodyStrong.copyWith(fontSize: 17)),
         iconTheme: const IconThemeData(color: Color(0xFF111827)),
       ),
@@ -230,7 +232,8 @@ class _AlertListScreenState extends State<AlertListScreen> {
                   _chip('이슈', a.issue, _filter == '이슈',
                       () => setState(() => _filter = '이슈'),
                       const Color(0xFFDC2626)),
-                  _chip('임박', a.soon, _filter == '임박',
+                  // 칩 글자는 '마감 임박', 걸러내는 값은 서버가 쓰는 '임박'
+                  _chip('마감 임박', a.soon, _filter == '임박',
                       () => setState(() => _filter = '임박'),
                       const Color(0xFFE97132)),
                   _chip('보류', a.hold, _filter == '보류',

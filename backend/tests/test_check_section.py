@@ -27,7 +27,7 @@ def rank_of(kind):
 assert rank_of("'지연'") == 0
 assert rank_of("'이슈'") == 1
 assert rank_of("hold") == 2, '보류가 문제 쪽에 없다'
-assert rank_of("'임박'") == 3, '임박이 아직 문제로 잡힌다'
+assert rank_of("'마감 임박'") == 3, '마감 임박이 아직 문제로 잡힌다'
 assert rank_of("'비고'") == 4
 ok += 1
 

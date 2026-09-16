@@ -109,7 +109,7 @@ ModelBucket _bucketOf(Map m) {
 
 const Map<ModelBucket, String> _bucketLabel = {
   ModelBucket.delayed: '지연',
-  ModelBucket.soon: '임박',
+  ModelBucket.soon: '마감 임박',
   ModelBucket.running: '진행 중',
   ModelBucket.done: '완료',
   ModelBucket.hold: '보류',
@@ -216,7 +216,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
           chip('지연', c[ModelBucket.delayed] ?? 0, _filter == ModelBucket.delayed,
               () => setState(() => _filter = ModelBucket.delayed),
               const Color(0xFFDC2626)),
-          chip('임박', c[ModelBucket.soon] ?? 0, _filter == ModelBucket.soon,
+          chip('마감 임박', c[ModelBucket.soon] ?? 0, _filter == ModelBucket.soon,
               () => setState(() => _filter = ModelBucket.soon),
               const Color(0xFFE97132)),
           chip('진행중', c[ModelBucket.running] ?? 0, _filter == ModelBucket.running,
@@ -296,7 +296,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
       final daysLeft = expectedDate.difference(now).inDays;
       
       if (daysLeft < 0) return '지연중 · $stage';
-      if (daysLeft <= 7) return '임박 · $stage';
+      if (daysLeft <= 7) return '마감 임박 · $stage';
       return '진행중 · $stage';
     } catch (_) {
       return '진행중 · $stage';

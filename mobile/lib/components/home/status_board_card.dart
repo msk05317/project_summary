@@ -41,10 +41,20 @@ class StatusBoardCard extends StatefulWidget {
 class _StatusBoardCardState extends State<StatusBoardCard> {
   _Kind _sel = _Kind.delayed;
 
-  static const _label = {
+  /// 서버가 쓰는 값. by_kind 의 키이자 alert 의 kind 다. 바꾸면 안 된다.
+  static const _key = {
     _Kind.delayed: '지연',
     _Kind.issue: '이슈',
     _Kind.soon: '임박',
+    _Kind.hold: '보류',
+  };
+
+  /// 화면에 보이는 말. '임박' 혼자 쓰면 광고 문구처럼 읽힌다 —
+  /// 우리말로는 앞에 '마감' 이 붙어야 자연스럽다.
+  static const _label = {
+    _Kind.delayed: '지연',
+    _Kind.issue: '이슈',
+    _Kind.soon: '마감 임박',
     _Kind.hold: '보류',
   };
 
@@ -71,7 +81,7 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
   }
 
   List<AlertProject> _rowsOf(_Kind k) =>
-      widget.alerts.byKind[_label[k]] ?? const <AlertProject>[];
+      widget.alerts.byKind[_key[k]] ?? const <AlertProject>[];
 
   Widget _shell(Widget child) => Container(
         width: double.infinity,
@@ -145,7 +155,7 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
           child: TextButton(
             onPressed: widget.onTapAll == null
                 ? null
-                : () => widget.onTapAll!(_label[_sel]!),
+                : () => widget.onTapAll!(_key[_sel]!),
             child: Text('모두 보기 (${rows.length}곳)',
                 style: const TextStyle(
                     fontSize: 12.5,

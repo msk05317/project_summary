@@ -148,10 +148,17 @@ assert 'AlertListScreen' in H, '모두 보기가 새 목록으로 안 간다'
 B = (LIB / 'components' / 'home' / 'status_board_card.dart').read_text(encoding='utf-8')
 # 못 받아왔을 때 0 을 그리면 '지연 없음' 과 구분이 안 된다
 assert '!widget.alerts.loaded' in B and '현황을 불러오지 못했습니다' in B
-assert 'byKind[_label[k]]' in B, '타일과 목록이 이어져 있지 않다'
+assert 'byKind[_key[k]]' in B, '타일과 목록이 이어져 있지 않다'
 assert '_sel = k' in B, '타일을 눌러도 목록이 안 바뀐다'
 for _k in ('지연', '이슈', '임박', '보류'):
     assert f"'{_k}'" in B, f'{_k} 타일이 없다'
+# 서버가 쓰는 값(_key)과 화면에 보이는 말(_label)은 다르다.
+# '임박' 혼자 쓰면 광고 문구처럼 읽혀서 '마감 임박' 으로 보여준다.
+# 보이는 말로 byKind 를 찾으면 목록이 통째로 빈다.
+assert 'static const _key' in B and 'byKind[_key[k]]' in B, \
+    '보이는 말로 목록을 찾는다 — 서버 값과 어긋난다'
+assert "_Kind.soon: '마감 임박'" in B, '임박을 그대로 쓴다'
+assert "onTapAll!(_key[_sel]!)" in B, '모두 보기가 보이는 말로 넘어간다'
 assert 'AlertListScreen(initialFilter: filter)' in H, '모두 보기가 그 종류로 안 간다'
 # 블룸은 모델이 없어도 진행 중이다
 assert "divisionId == 'bloom'" in H and '_bloom' in H, '블룸이 여전히 진행 데이터 없음이다'
@@ -159,7 +166,8 @@ ok += 1
 
 # 목록 화면이 네 가지를 다 받는다
 A = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
-for label in ('문제', '지연', '이슈', '임박', '보류', 'PO 대기'):
+# 칩 글자는 '마감 임박', 걸러내는 값은 서버가 쓰는 '임박'
+for label in ('문제', '지연', '이슈', '마감 임박', '보류', 'PO 대기'):
     assert f"_chip('{label}'" in A, f'{label} 칩이 없다'
 assert 'initialFilter' in A
 ok += 1
