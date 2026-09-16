@@ -73,7 +73,9 @@ String holdOf(Map m) {
   }
   if (txt.contains('드롭') || txt.contains('drop')) return '드롭예정';
   if (txt.contains('보류') || txt.contains('홀드') ||
-      txt.contains('hold') || txt.contains('중단')) return '보류';
+      txt.contains('hold') || txt.contains('중단')) {
+    return '보류';
+  }
   return '';
 }
 
