@@ -30,6 +30,11 @@ class _CheckRow {
   final String expected;
   final List<String> lines;
 
+  /// 0~2 는 문제(지연·이슈·보류), 3~4 는 참고(임박·비고).
+  /// 경영진이 보는 것은 문제 유무다. 임박은 아직 안 늦은 것이고,
+  /// 비고는 하바처럼 상태 표시로 쓰는 프로젝트에서 23줄이 쏟아진다.
+  bool get isProblem => rank <= 2;
+
   const _CheckRow({
     required this.model,
     required this.name,
@@ -427,6 +432,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
   }
 
   bool _checkAll = false;
+  bool _sideOpen = false;
 
   Widget _pill(String label, int n, Color color,
       List<Map<String, dynamic>> models, ModelBucket? bucket) {
@@ -493,20 +499,26 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       final scope = (m['hold_scope'] ?? '').toString();
       if (scope == 'project' && issues.isEmpty && note.isEmpty) continue;
 
+      // rank 0~2 는 '문제', 3~4 는 '참고'.
+      //   0 지연  일정이 이미 밀렸다
+      //   1 이슈  사람이 적어 둔 문제
+      //   2 보류  멈춰 세운 것 (드롭예정 포함)
+      //   3 임박  아직 안 늦었다
+      //   4 비고  메모
       String kind;
       int rank;
       if (hold.isNotEmpty) {
         kind = hold;
-        rank = 3;
+        rank = 2;
       } else if (alert == '지연') {
         kind = '지연';
         rank = 0;
-      } else if (alert == '주의') {
-        kind = '임박';
-        rank = 1;
       } else if (issues.isNotEmpty) {
         kind = '이슈';
-        rank = 2;
+        rank = 1;
+      } else if (alert == '주의') {
+        kind = '임박';
+        rank = 3;
       } else if (note.isNotEmpty) {
         kind = '비고';
         rank = 4;
@@ -548,7 +560,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       case '임박':
         return const Color(0xFFE97132);
       case '이슈':
-        return const Color(0xFF156082);
+        return const Color(0xFFDC2626);
       case '비고':
         return const Color(0xFF9CA3AF);
       default:
@@ -638,14 +650,18 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
               .map((e) => e.trim())
               .where((e) => e.isNotEmpty));
         }
-        final rows = _checkRows(models, ai);
+        final all = _checkRows(models, ai);
+        // 확인 필요 = 문제만. 임박·비고는 아래 '참고' 로 접어 둔다.
+        final rows = all.where((r) => r.isProblem).toList(growable: false);
+        final side = all.where((r) => !r.isProblem).toList(growable: false);
         final counts = <String, int>{};
         for (final r in rows) {
           counts[r.kind] = (counts[r.kind] ?? 0) + 1;
         }
         final shown = _checkAll ? rows : rows.take(6).toList();
 
-        return Container(
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           decoration: BoxDecoration(
@@ -686,8 +702,8 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
             if (rows.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 10),
-                child: Text('확인할 항목이 없습니다',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF))),
+                child: Text('문제 없음 — 지연·이슈·보류 없습니다',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF059669))),
               )
             else ...[
               for (int i = 0; i < shown.length; i++) ...[
@@ -709,8 +725,135 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 ),
             ],
           ]),
-        );
+          ),
+          _buildSideSection(side, models),
+        ]);
       },
+    );
+  }
+
+  /// 참고 — 임박·비고. 접어 둔다.
+  ///
+  /// 챔버는 이슈 칸이 비어 있고 할 말을 전부 비고에 적는다. 하바는 비고를
+  /// 상태 표시로 쓴다. 그래서 비고를 '확인 필요' 에 섞으면 23줄이 쏟아지고
+  /// 정작 지연 3건이 묻힌다. 여기로 내리고, 같은 말은 한 줄로 묶는다.
+  Widget _buildSideSection(
+      List<_CheckRow> side, List<Map<String, dynamic>> models) {
+    if (side.isEmpty) return const SizedBox.shrink();
+    final counts = <String, int>{};
+    for (final r in side) {
+      counts[r.kind] = (counts[r.kind] ?? 0) + 1;
+    }
+
+    // 같은 비고는 한 줄로. '가공 완료' 가 다섯 번 뜨면 다섯 번 읽게 된다.
+    final groups = <String, List<_CheckRow>>{};
+    for (final r in side) {
+      groups.putIfAbsent(r.lines.join('\n'), () => []).add(r);
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) => groups[b]!.length.compareTo(groups[a]!.length));
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFBFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _sideOpen = !_sideOpen),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(children: [
+              const Text('참고',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF6B7280))),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                    counts.entries.map((e) => '${e.key} ${e.value}').join(' · '),
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFF9CA3AF))),
+              ),
+              Icon(_sideOpen ? Icons.expand_less : Icons.expand_more,
+                  size: 20, color: const Color(0xFFCBD5E1)),
+            ]),
+          ),
+        ),
+        if (_sideOpen)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (int i = 0; i < keys.length; i++) ...[
+                    if (i > 0)
+                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    _sideGroupTile(groups[keys[i]]!, models),
+                  ],
+                ]),
+          ),
+      ]),
+    );
+  }
+
+  /// 같은 말을 쓰는 모델을 한 줄로 묶어서 보여준다.
+  Widget _sideGroupTile(
+      List<_CheckRow> rows, List<Map<String, dynamic>> models) {
+    final head = rows.first;
+    final names = rows.map((r) => r.name).toList();
+    final kinds = rows.map((r) => r.kind).toSet().toList()..sort();
+    return InkWell(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ModelListScreen(
+          projectKey: widget.projectKey,
+          projectName: widget.projectName,
+          groupName: '전체',
+          models: models,
+          initialFilter:
+              kinds.length == 1 && kinds.first == '임박' ? ModelBucket.soon : null,
+        ),
+      )),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text(kinds.join('·'),
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: _kindColor(kinds.first))),
+            const SizedBox(width: 6),
+            if (rows.length > 1)
+              Text('${rows.length}건',
+                  style: const TextStyle(
+                      fontSize: 11.5, color: Color(0xFF9CA3AF))),
+          ]),
+          if (head.lines.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(head.lines.join(' · '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12.5, height: 1.4, color: Color(0xFF4B5563))),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+                names.length <= 3
+                    ? names.join(', ')
+                    : '${names.take(3).join(', ')} 외 ${names.length - 3}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+          ),
+        ]),
+      ),
     );
   }
 
