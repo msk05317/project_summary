@@ -35,8 +35,30 @@ for fn in ('_parse_changelog', '_load_changelog', '_changelog_for'):
 
 items = g['_load_changelog']()
 assert items, '서버가 변경 내역을 못 읽는다'
-assert items[0]['version'] == '2.3.10', items[0]['version']
-assert items[0]['date'] == '2026-09-16', items[0]['date']
+assert len(items) >= 2, items
+
+# 버전을 박아두면 배포할 때마다 이 테스트가 깨진다. 규칙만 지킨다.
+import re as _re
+_vers = [e['version'] for e in items if _re.fullmatch(r'\d+\.\d+\.\d+', e['version'])]
+assert _vers, '버전 모양의 항목이 없다'
+
+
+def _key(v):
+    return tuple(int(x) for x in v.split('.'))
+
+
+assert _vers == sorted(_vers, key=_key, reverse=True), f'최신이 위가 아니다: {_vers}'
+assert all(e['body'].strip() for e in items), '본문이 빈 항목이 있다'
+ok += 1
+
+# ── 지금 배포된 버전은 반드시 적혀 있어야 한다 ──
+#
+# 이게 진짜 지켜야 할 규칙이다. 나가 있는 버전에 노트가 없으면
+# 사용자는 '뭐가 바뀌었나' 에 답을 못 듣는다.
+import json as _js
+_av = _js.loads((ROOT / 'app_version.json').read_text(encoding='utf-8'))
+_cur = str(_av.get('latest_version') or '')
+assert g['_changelog_for'](_cur), f'배포된 {_cur} 의 변경 내역이 없다'
 ok += 1
 
 # 날짜 없는 머리('## 2.3.9 이전')도 머리로 잡혀야 한다.
