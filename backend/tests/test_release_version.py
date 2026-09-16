@@ -50,8 +50,16 @@ for k in ('latest_version', 'latest_version_code', 'download_url', 'release_note
     assert k in d, f'app_version.json 에 {k} 가 없다'
 assert re.match(r'^\d+\.\d+\.\d+$', d['latest_version']), d['latest_version']
 assert isinstance(d['latest_version_code'], int), d['latest_version_code']
-assert f"/v{d['latest_version']}/" in d['download_url'], \
-    f"받는 곳 주소가 버전과 어긋난다: {d['download_url']}"
+# APK 는 이제 fly 볼륨에서 직접 준다. 예전엔 github 릴리스 주소였는데
+# 그 주소가 404 라 앱이 업데이트를 못 받았다 (DioException 404).
+assert d['download_url'].rstrip('/').endswith('/app/download'), \
+    f"받는 곳이 /app/download 가 아니다: {d['download_url']}"
+assert 'github.com' not in d['download_url'], 'github 릴리스 주소로 되돌아갔다'
 ok += 1
 
-print(f'전부 통과 ({ok}/7)')
+# release.sh 가 APK 를 서버에 올리고, 받아지는지 확인까지 하는지
+assert '/admin/app/release' in SH, 'APK 를 서버에 안 올린다'
+assert '/app/download' in SH, '받아지는지 확인을 안 한다'
+ok += 1
+
+print(f'전부 통과 ({ok}/8)')

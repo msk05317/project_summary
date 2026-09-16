@@ -7324,6 +7324,62 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       });
   }
 
+  // 판가·재료비가 바뀌었을 때 '언제부터' 를 묻는다.
+  // 그냥 저장하면 오늘 고친 판가로 지난달 매출까지 다시 계산된다.
+  function askPriceMode(changes) {
+    return new Promise(function (resolve) {
+      var ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;' +
+        'display:flex;align-items:center;justify-content:center;padding:20px;';
+      var money = function (v) {
+        var n = Number(v) || 0;
+        return '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      };
+      var rows = changes.map(function (c) {
+        var bits = [];
+        if (Number(c.price[0]) !== Number(c.price[1]))
+          bits.push('판가 ' + money(c.price[0]) + ' → <b>' + money(c.price[1]) + '</b>');
+        if (Number(c.material_cost[0]) !== Number(c.material_cost[1]))
+          bits.push('재료비 ' + money(c.material_cost[0]) + ' → <b>' + money(c.material_cost[1]) + '</b>');
+        return '<div style="padding:7px 0;border-top:1px solid #F1F5F9;font-size:13px;">' +
+          '<span style="font-weight:700;font-family:monospace;">' + c.id + '</span><br>' +
+          '<span style="color:#475569;">' + bits.join(' · ') + '</span></div>';
+      }).join('');
+      var since = (changes[0] && changes[0].from) || '';
+      ov.innerHTML =
+        '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;' +
+        'box-shadow:0 20px 60px rgba(15,23,42,.3);overflow:hidden;">' +
+          '<div style="padding:18px 20px 12px;">' +
+            '<div style="font-size:16px;font-weight:800;color:#0E2841;">판가가 바뀐 모델 ' +
+              changes.length + '종</div>' +
+            '<div style="max-height:190px;overflow:auto;margin-top:8px;">' + rows + '</div>' +
+          '</div>' +
+          '<label style="display:block;padding:12px 20px;border-top:1px solid #E5E7EB;cursor:pointer;">' +
+            '<input type="radio" name="pm" value="from_now" checked> ' +
+            '<b style="font-size:13.5px;">이번 주(' + since + ')부터 적용</b>' +
+            '<div style="font-size:12px;color:#6B7280;margin:3px 0 0 20px;">' +
+              '지난 주차 매출은 그대로 둡니다</div></label>' +
+          '<label style="display:block;padding:12px 20px;border-top:1px solid #E5E7EB;cursor:pointer;">' +
+            '<input type="radio" name="pm" value="retro"> ' +
+            '<b style="font-size:13.5px;">처음부터 고침 (입력 오류였음)</b>' +
+            '<div style="font-size:12px;color:#B45309;margin:3px 0 0 20px;">' +
+              '이 판가가 적용되던 구간 전체가 다시 계산됩니다 — 지난달 매출이 바뀝니다</div></label>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 20px;' +
+            'border-top:1px solid #E5E7EB;background:#F8FAFC;">' +
+            '<button type="button" id="pm-cancel" class="ov-btn">취소</button>' +
+            '<button type="button" id="pm-ok" class="ov-btn ov-btn-primary">저장</button>' +
+          '</div></div>';
+      document.body.appendChild(ov);
+      ov.querySelector('#pm-cancel').addEventListener('click', function () {
+        ov.remove(); resolve(null);
+      });
+      ov.querySelector('#pm-ok').addEventListener('click', function () {
+        var v = ov.querySelector('input[name=pm]:checked');
+        ov.remove(); resolve(v ? v.value : 'from_now');
+      });
+    });
+  }
+
   // 모델 저장
   function saveModels(statusEl) {
     if (!_currentProjectKey) {
@@ -7331,24 +7387,42 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       return;
     }
     if (statusEl) { statusEl.textContent = '저장 중...'; statusEl.className = 'mdl-status'; }
-    fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ models: window._modelsData })
-    })
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
+    var _url = '/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/models';
+    var _put = function (mode) {
+      return fetch(_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ models: window._modelsData, price_mode: mode })
+      });
+    };
+    // 먼저 무엇이 바뀌는지만 물어본다 (저장 안 함)
+    _put('preview')
+      .then(function (r) { return r.ok ? r.json() : { price_changes: [] }; })
+      .then(function (pv) {
+        var ch = (pv && pv.price_changes) || [];
+        if (!ch.length) return _put('from_now');
+        return askPriceMode(ch).then(function (mode) {
+          if (!mode) {
+            if (statusEl) { statusEl.textContent = '저장을 취소했습니다'; statusEl.className = 'mdl-status'; }
+            return null;
+          }
+          return _put(mode);
+        });
+      })
+      .then(function (r) {
+        if (!r) return null;
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
     .then(function(d) {
-      var _tp = window._phaseTouched || {};
-      var _tk = Object.keys(_tp);
+      if (!d) return;
+      var _n = (d.price_changes || []).length;
       var _msg = '✅ 저장 완료 (' + (d.count || 0) + '개)';
-      if (_tk.length === 1) {
-        _msg += ' · 판가를 ' + _tp[_tk[0]] + ' 부터 구간에 반영했습니다';
-      } else if (_tk.length > 1) {
-        _msg += ' · 판가 ' + _tk.length + '건을 현재 구간에 반영했습니다';
+      if (_n) {
+        _msg += d.price_mode === 'retro'
+          ? ' · 판가 ' + _n + '건을 현재 구간에 덮어썼습니다'
+          : ' · 판가 ' + _n + '건을 이번 주부터 반영했습니다';
       }
       window._phaseTouched = {};
       if (statusEl) { statusEl.textContent = _msg; statusEl.className = 'mdl-status ok'; }

@@ -14014,6 +14014,15 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
     proj = projects.setdefault(_key, {})
     old_map = {m.get("id"): m for m in proj.get("models", []) if isinstance(m, dict)}
 
+    # 판가·재료비를 언제부터 적용할지. 화면에서 저장할 때 물어본다.
+    #   from_now  이번 주부터 (지난 주차 매출은 그대로)
+    #   retro     지금 적용 중인 구간을 덮는다 (입력 오류 정정)
+    #   preview   저장하지 않고 '무엇이 바뀌는지' 만 돌려준다
+    _price_mode = str(payload.get("price_mode") or "from_now").strip()
+    if _price_mode not in ("from_now", "retro", "preview"):
+        _price_mode = "from_now"
+    _price_changes = []
+
     normalized = []
     seen_ids = set()
     for m in raw_models:
@@ -14088,6 +14097,12 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         _ph = _norm_phases(m.get("phases") if m.get("phases") is not None else old.get("phases"))
         if _ph:
             entry["phases"] = _ph
+        # 판가·재료비가 바뀌었으면 구간으로 남긴다. 안 그러면 오늘 고친 판가로
+        # 지난달 매출까지 다시 계산된다.
+        _chg = _apply_price_change(
+            entry, old, "from_now" if _price_mode == "preview" else _price_mode)
+        if _chg:
+            _price_changes.append(_chg)
         # 프로세스는 이 화면에서 편집하지 않는다. 그런데 목록을 열 때 받아 둔
         # 사본을 저장할 때 같이 돌려보내서, 그 사이에 'Process 입력' 에서
         # 고친 내용이 옛날 값으로 덮여 되돌아갔다.
@@ -14112,10 +14127,16 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         normalized.append(entry)
 
     normalized.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+    if _price_mode == "preview":
+        # 무엇이 바뀌는지만 알려주고 아무것도 저장하지 않는다.
+        return {"ok": True, "project_key": _key, "preview": True,
+                "count": len(normalized), "price_changes": _price_changes}
     proj["models"] = normalized
     _save_models(data)
-    print(f"[models] saved {_key}: {len(normalized)} models")
-    return {"ok": True, "project_key": _key, "count": len(normalized)}
+    print(f"[models] saved {_key}: {len(normalized)} models"
+          + (f" · 판가 이력 {len(_price_changes)}건({_price_mode})" if _price_changes else ""))
+    return {"ok": True, "project_key": _key, "count": len(normalized),
+            "price_mode": _price_mode, "price_changes": _price_changes}
 
 
 
@@ -14179,8 +14200,11 @@ def put_project_status_note(project_key: str, payload: dict,
         # admin 에서 직접 고른 값이 문구보다 우선한다
         _h = str(payload.get("hold") or "").strip()
         if _h in ("", "진행", "해제", "없음"):
-            for _f in ("hold", "hold_reason", "hold_source"):
-                proj.pop(_f, None)
+            # 지우기만 하면 서버가 다시 뜰 때 현황 문구를 읽고 되살린다.
+            # '진행' 을 손으로 골랐다는 사실 자체를 남긴다.
+            proj["hold"] = "진행"
+            proj["hold_source"] = "manual"
+            proj.pop("hold_reason", None)
         else:
             proj["hold"] = "드롭예정" if "드롭" in _h else "보류"
             proj["hold_source"] = "manual"
@@ -19483,7 +19507,7 @@ async def chat(payload: dict):
 
 
 @app.get("/admin/rag/status")
-def rag_status():
+def rag_status(_admin: int = Depends(get_admin_session)):
     """벡터 인덱스 상태 (몇 조각이 언제 만들어졌는지)."""
     import datetime as _dtr
     out = {"ready": False, "count": 0, "built_at": "", "kinds": {}}
@@ -19504,7 +19528,7 @@ def rag_status():
 
 
 @app.post("/admin/rag/rebuild")
-def rag_rebuild():
+def rag_rebuild(_admin: int = Depends(get_admin_session)):
     """지금 데이터로 벡터 인덱스를 다시 만든다."""
     try:
         return _rag_rebuild()
@@ -20658,8 +20682,6 @@ def admin_kpi_upsert_week(
     return {"status": "ok", "week": payload.week, "row": proj["weeks"][payload.week]}
 
 
-@app.post("/admin/kpi/{project_key}/issue_lines")
-
 @app.post("/admin/kpi/{project_key}/upload_excel")
 async def admin_kpi_upload_excel(
     project_key: str,
@@ -20866,6 +20888,7 @@ async def admin_kpi_upload_excel(
         "detail": result,
     }
 
+@app.post("/admin/kpi/{project_key}/issue_lines")
 def admin_kpi_replace_issue_lines(
     project_key: str,
     payload: KpiIssueLinesPayload,
@@ -22090,6 +22113,11 @@ def _stamp_project_hold(proj: dict, note: str) -> bool:
     한 번 읽어낸 보류는 필드로 남기고, 풀 때는 현황에 '홀딩 해제' 라고
     적거나 admin 에서 상태를 '진행' 으로 바꾸면 된다.
     """
+    # 손으로 푼 건 손으로만 되돌린다. 여기서 문구를 다시 읽어 덮으면
+    # admin 에서 '진행' 으로 바꿔놔도 서버가 뜰 때마다 보류가 되살아난다.
+    if str((proj or {}).get("hold_source") or "") == "manual":
+        return False
+
     kind, why = _hold_from_note(note)
     changed = False
     if kind:
@@ -24883,21 +24911,104 @@ def _norm_phases(v):
             p = max(0, _as_money(e.get("price")))
         except Exception:
             p = 0
-        out.append({"from": "%04d-W%02d" % (o // 100, o % 100), "group": g, "price": p})
+        try:
+            mc = max(0, _as_money(e.get("material_cost")))
+        except Exception:
+            mc = 0
+        out.append({"from": "%04d-W%02d" % (o // 100, o % 100), "group": g,
+                    "price": p, "material_cost": mc})
     out.sort(key=lambda e: _phase_ord(e["from"]))
     return out
 
 
-def _phase_at(m: dict, month: str, week):
-    """그 주차에 유효한 (구분, 판가). phases 가 없으면 모델의 현재 값."""
-    g = "개발" if (m or {}).get("group") == "개발" else "양산"
-    try:
-        price = max(0, _as_money((m or {}).get("price")))
-    except Exception:
-        price = 0
+# 판가를 고치면 그 값으로 지난 주차 매출까지 다시 계산된다. 8월에 판
+# $7,243 으로 나간 물량이 오늘 $7,800 으로 고치는 순간 8월 매출이 올라간다.
+# 그래서 판가·재료비는 '언제부터' 를 달고 구간으로 쌓는다.
+_PHASE_EPOCH = "2000-W01"      # '처음부터' 를 뜻하는 구간 시작점
+
+
+def _this_week_tag(ref=None) -> str:
+    """오늘이 속한 주차를 구간 시작점 형식으로."""
+    import datetime as _dtw
+    iso = (ref or _dtw.date.today()).isocalendar()
+    return "%04d-W%02d" % (int(iso[0]), int(iso[1]))
+
+
+def _apply_price_change(entry: dict, old: dict, mode: str) -> dict:
+    """판가·재료비가 바뀌었으면 구간으로 남긴다.
+
+    mode 'from_now'  이번 주부터 새 구간. 지난 주차 매출은 그대로.
+    mode 'retro'     지금 적용 중인 구간의 값을 덮는다 (입력 오류 정정).
+
+    바뀐 게 없으면 아무것도 안 한다. 반환은 화면에 보여줄 요약.
+    """
+    def _money(v):
+        try:
+            return max(0, _as_money(v))
+        except Exception:
+            return 0
+
+    new_p, new_c = _money(entry.get("price")), _money(entry.get("material_cost"))
+    old_p, old_c = _money(old.get("price")), _money(old.get("material_cost"))
+    if not old:                       # 새 모델은 이력이 필요 없다
+        return {}
+    if abs(new_p - old_p) < 0.005 and abs(new_c - old_c) < 0.005:
+        return {}
+
+    ph = _norm_phases(entry.get("phases") or old.get("phases"))
+    # 새 구간의 구분은 '직전 구간' 을 따라간다. 저장된 group 은 개발→양산
+    # 전환 뒤에도 개발 그대로라, entry 를 보면 양산 모델이 개발로 되돌아간다.
+    _prev = ph[-1] if ph else None
+    grp = (_prev or {}).get("group") or entry.get("group") or old.get("group") or "양산"
+    now = _this_week_tag()
+
+    if str(mode) == "retro":
+        # 지금 적용 중인 구간(마지막 구간)의 값을 고친다. 구간을 늘리지 않는다.
+        if ph:
+            ph[-1]["price"] = new_p
+            ph[-1]["material_cost"] = new_c
+            entry["phases"] = ph
+        # 이력이 없으면 price 만 바뀌면 전 기간이 새 값이다 — 그게 의도다.
+        return {"id": entry.get("id"), "mode": "retro",
+                "from": (ph[-1]["from"] if ph else _PHASE_EPOCH),
+                "price": [old_p, new_p], "material_cost": [old_c, new_c]}
+
+    # from_now — 이번 주부터
+    if not ph:
+        # 이력이 없던 모델: 옛 값을 '처음부터' 구간으로 박아 과거를 고정한다
+        ph = [{"from": _PHASE_EPOCH, "group": grp,
+               "price": old_p, "material_cost": old_c}]
+    # 안 바뀐 쪽은 직전 구간 값을 이어받는다 (판가만 고쳤는데 재료비가
+    # 0 으로 덮이면 재료비율이 통째로 날아간다)
+    _keep = ph[-1] if ph else {}
+    _p = new_p or _keep.get("price") or 0
+    _c = new_c or _keep.get("material_cost") or 0
+    if ph and ph[-1]["from"] == now:
+        # 같은 주에 두 번 고쳐도 구간이 늘지 않는다
+        ph[-1]["price"] = _p
+        ph[-1]["material_cost"] = _c
+    else:
+        ph.append({"from": now, "group": grp,
+                   "price": _p, "material_cost": _c})
+    entry["phases"] = _norm_phases(ph)
+    return {"id": entry.get("id"), "mode": "from_now", "from": now,
+            "price": [old_p, new_p], "material_cost": [old_c, new_c]}
+
+
+def _phase_row_at(m: dict, month: str, week) -> dict:
+    """그 주차에 유효한 구간 {group, price, material_cost}.
+    이력이 없으면 모델의 현재 값 (기존 동작 그대로)."""
+    def _money(v):
+        try:
+            return max(0, _as_money(v))
+        except Exception:
+            return 0
+    base = {"group": "개발" if (m or {}).get("group") == "개발" else "양산",
+            "price": _money((m or {}).get("price")),
+            "material_cost": _money((m or {}).get("material_cost"))}
     ph = _norm_phases((m or {}).get("phases"))
     if not ph:
-        return g, price
+        return base
     cur = _week_ord(month, week)
     hit = None
     for e in ph:
@@ -24906,9 +25017,21 @@ def _phase_at(m: dict, month: str, week):
         else:
             break
     # 첫 구간보다 앞선 주차는 첫 구간을 적용한다 (이력 이전 = 최초 상태)
-    if hit is None:
-        hit = ph[0]
-    return hit["group"], (hit["price"] or price)
+    hit = hit or ph[0]
+    return {"group": hit["group"],
+            "price": hit.get("price") or base["price"],
+            "material_cost": hit.get("material_cost") or base["material_cost"]}
+
+
+def _phase_cost_at(m: dict, month: str, week):
+    """그 주차의 재료비."""
+    return _phase_row_at(m, month, week)["material_cost"]
+
+
+def _phase_at(m: dict, month: str, week):
+    """그 주차에 유효한 (구분, 판가). phases 가 없으면 모델의 현재 값."""
+    r = _phase_row_at(m, month, week)
+    return r["group"], r["price"]
 
 
 def _display_group(m: dict, ref=None) -> str:
