@@ -719,12 +719,13 @@
     {
       "id": "fluence",
       "division_id": "ess",
-      "label": "FLUENCE",
-      "badge_label": "FLUENCE",
+      "label": "플루언스",
+      "badge_label": "플루언스",
       "aliases": [
         "FLUENCE",
         "Fluence",
-        "fluence"
+        "fluence",
+        "플루언스"
       ],
       "keywords": [
         "FLUENCE",

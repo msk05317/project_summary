@@ -181,4 +181,34 @@ assert wend('2025-12', 'W52') == datetime.date(2025, 12, 28)
 assert wend('2026-09', 'W37') == datetime.date(2026, 9, 13)
 ok += 1
 
+# ── 재료비도 구간으로 쌓인다 ──
+#
+# "판가 변경 될 수 있다고 얘기했지만 얘기 못해준게 재료비도 변동이 될 수도 있어"
+e11 = {'id': 'M11', 'group': '양산', 'price': 7243, 'material_cost': 6100}
+ch11 = apply_(e11, {'group': '양산', 'price': 7243, 'material_cost': 5000}, 'from_now',
+              sent={'id': 'M11', 'price': 7243, 'material_cost': 6100})
+assert ch11 and ch11['material_cost'] == [5000, 6100], ch11
+assert e11['phases'][0]['material_cost'] == 5000, '지난 구간 재료비가 덮였다'
+assert e11['phases'][-1]['material_cost'] == 6100
+assert cost_at(e11, '2026-08', 33) == 5000, '지난달 재료비가 새 값으로 바뀌었다'
+assert cost_at(e11, '2099-12', 50) == 6100
+assert at(e11, '2026-08', 33) == ('양산', 7243), '판가는 안 바뀌었는데 흔들렸다'
+ok += 1
+
+# 재료비만 바뀌어도 구간이 생긴다 (판가는 그대로 이어받는다)
+e12 = {'id': 'M12', 'group': '양산', 'price': 7243, 'material_cost': 4000,
+       'phases': [{'from': EPOCH, 'group': '양산', 'price': 7243, 'material_cost': 5000}]}
+apply_(e12, {'group': '양산', 'price': 7243, 'material_cost': 5000}, 'from_now',
+       sent={'id': 'M12', 'price': 7243, 'material_cost': 4000})
+assert len(e12['phases']) == 2
+assert e12['phases'][-1]['price'] == 7243 and e12['phases'][-1]['material_cost'] == 4000
+ok += 1
+
+# ── admin 이력 편집창에 재료비 칸이 있다 ──
+assert 'ph-mc' in ADMIN, '이력 편집창에 재료비 칸이 없다'
+assert '재료비($)' in ADMIN, '재료비 열 머리글이 없다'
+assert 'material_cost: parseInt((_mcEl' in ADMIN, '재료비를 입력 칸에서 안 읽는다'
+assert '판가·재료비가 바뀐 모델' in ADMIN, '재료비만 바뀐 경우 제목이 판가라고만 한다'
+ok += 1
+
 print(f'전부 통과 · {ok}개 항목')

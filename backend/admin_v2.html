@@ -6078,12 +6078,14 @@ window.renderAdminV2ByDivision = function(){
     if (!rows.length) {
       var y = new Date().getFullYear();
       rows = [{ from: y + '-W01', group: (m.group === '개발' ? '개발' : '양산'),
-                price: parseInt(m.price || 0, 10) || 0 }];
+                price: _moneyOf(m.price),
+                material_cost: _moneyOf(m.material_cost) }];
     }
     if (isTransition) {
       rows[0].group = '개발';
       rows.push({ from: _curWeekTag(), group: '양산',
-                  price: parseInt(m.price || 0, 10) || 0 });
+                  price: _moneyOf(m.price),
+                  material_cost: _moneyOf(m.material_cost) });
     }
 
     var back = document.createElement('div');
@@ -6091,14 +6093,15 @@ window.renderAdminV2ByDivision = function(){
     back.innerHTML =
       '<div class="ph-box">' +
         '<div class="ph-hd">' +
-          '<h3>' + (m.name || m.id) + ' · 구분 · 판가 이력</h3>' +
-          '<p>주차마다 <b>그 시점에 유효한 구분과 판가</b>로 매출을 계산합니다.<br>' +
+          '<h3>' + (m.name || m.id) + ' · 구분 · 판가 · 재료비 이력</h3>' +
+          '<p>주차마다 <b>그 시점에 유효한 구분·판가·재료비</b>로 계산합니다.<br>' +
           '예) W35까지 개발 $138,470 → W36부터 양산 $96,000 이면 8월 매출은 개발가 그대로 남습니다.</p>' +
         '</div>' +
         '<div class="ph-body">' +
           '<table class="ph-tbl"><thead><tr>' +
-            '<th style="width:34%">이 주차부터</th><th style="width:24%">구분</th>' +
-            '<th style="width:32%">판가($)</th><th style="width:10%"></th>' +
+            '<th style="width:26%">이 주차부터</th><th style="width:18%">구분</th>' +
+            '<th style="width:24%">판가($)</th><th style="width:24%">재료비($)</th>' +
+            '<th style="width:8%"></th>' +
           '</tr></thead><tbody id="ph-rows"></tbody></table>' +
           '<button type="button" class="ov-btn" id="ph-add" style="margin-top:8px;">＋ 구간 추가</button>' +
         '</div>' +
@@ -6121,13 +6124,15 @@ window.renderAdminV2ByDivision = function(){
           '<option value="양산"' + (p.group !== '개발' ? ' selected' : '') + '>양산</option>' +
         '</select></td>' +
         '<td><input class="ph-price" type="number" min="0" value="' + (p.price || 0) + '"></td>' +
+        '<td><input class="ph-mc" type="number" min="0" value="' + (p.material_cost || 0) + '"></td>' +
         '<td><button type="button" class="ph-del" title="구간 삭제">🗑</button></td>';
       tr.querySelector('.ph-del').onclick = function() { tr.remove(); };
       tb.appendChild(tr);
     }
     rows.forEach(addRow);
     back.querySelector('#ph-add').onclick = function() {
-      addRow({ from: _curWeekTag(), group: '양산', price: parseInt(m.price || 0, 10) || 0 });
+      addRow({ from: _curWeekTag(), group: '양산',
+               price: _moneyOf(m.price), material_cost: _moneyOf(m.material_cost) });
     };
 
     function close() { back.remove(); }
@@ -6140,13 +6145,10 @@ window.renderAdminV2ByDivision = function(){
         var f = tr.querySelector('.ph-from').value.trim();
         if (!f) return;
         if (_phaseOrd(f) === null) { bad = f; return; }
-        var _was = (m.phases || []).filter(function(x) {
-          return _phaseOrd(x && x.from) === _phaseOrd(f);
-        })[0] || {};
+        var _mcEl = tr.querySelector('.ph-mc');
         out.push({ from: f, group: tr.querySelector('.ph-group').value,
                    price: parseInt(tr.querySelector('.ph-price').value || '0', 10) || 0,
-                   // 이 창에는 재료비 칸이 없다. 있던 값을 그대로 들고 간다.
-                   material_cost: _moneyOf(_was.material_cost) });
+                   material_cost: parseInt((_mcEl && _mcEl.value) || '0', 10) || 0 });
       });
       var err = back.querySelector('#ph-err');
       if (bad) { err.textContent = '주차 형식이 잘못됐습니다: ' + bad + ' (예: 2026-W36)'; return; }
@@ -7372,7 +7374,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
         '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;' +
         'box-shadow:0 20px 60px rgba(15,23,42,.3);overflow:hidden;">' +
           '<div style="padding:18px 20px 12px;">' +
-            '<div style="font-size:16px;font-weight:800;color:#0E2841;">판가가 바뀐 모델 ' +
+            '<div style="font-size:16px;font-weight:800;color:#0E2841;">판가·재료비가 바뀐 모델 ' +
               changes.length + '종</div>' +
             '<div style="max-height:190px;overflow:auto;margin-top:8px;">' + rows + '</div>' +
           '</div>' +

@@ -550,7 +550,7 @@ def _rag_build_chunks() -> list:
     # 2) 모델 비고 / 이슈 (프로젝트 단위로 묶는다)
     try:
         for pk, proj in (_load_models().get("projects") or {}).items():
-            label = PROJECT_LABELS.get(pk, pk)
+            label = _display_project_label(pk)
             rows = []
             for m in (proj.get("models") or []):
                 bits = []
@@ -683,7 +683,7 @@ def _issue_answer(project_key: str) -> str:
     models = proj.get("models") or []
     if not models:
         return ""
-    label = PROJECT_LABELS.get(project_key, project_key)
+    label = _display_project_label(project_key)
     # 프로젝트가 통째로 멈춰 있으면 그것부터 말한다.
     _phold = _project_hold(proj)
     if _phold:
@@ -18389,7 +18389,7 @@ def _week_shipment_answer(project_key, week, mode='qty', with_models=False, with
         dc = ((grp.get('개발') or {}).get('weeks') or {}).get(week) or {}
         if not any(int(x.get(f) or 0) for x in (yc, dc) for f in ('plan', 'actual')):
             continue
-        used_labels.append(PROJECT_LABELS.get(k, k))
+        used_labels.append(_display_project_label(k))
         _yp, _ya = int(yc.get('plan') or 0), int(yc.get('actual') or 0)
         # 원본 주간보고 합계가 있으면 양산 수량은 그쪽을 정본으로
         _src = ((_data.get('projects') or {}).get(_model_key_alias(k)) or {}) \
@@ -18486,7 +18486,7 @@ def _month_shipment_answer(project_key, month, mode='qty', with_models=False, wi
         d_tot = (grp.get('개발') or {}).get('total') or {}
         if not any(int(x.get(f) or 0) for x in (y_tot, d_tot) for f in ('plan', 'actual')):
             continue
-        used_labels.append(PROJECT_LABELS.get(k, k))
+        used_labels.append(_display_project_label(k))
         for tgt, src_t in ((g_yang, y_tot), (g_dev, d_tot)):
             for f in ('plan', 'actual', 'revenue', 'plan_revenue'):
                 tgt[f] = tgt.get(f, 0) + int(src_t.get(f) or 0)
@@ -18662,7 +18662,7 @@ async def chat(payload: dict):
             print(f"[chat] 이슈 즉답 → {last_project}")
             return {'answer': _ans_i,
                     'sources': [{'key': last_project,
-                                 'label': PROJECT_LABELS.get(last_project, last_project)}],
+                                 'label': _display_project_label(last_project)}],
                     'corrected_query': None}
 
     # ── 월 범위 기억 + 월 단위 수량/매출 즉답 (후속 질문 '각각 몇 대씩' 대응) ──
@@ -18725,7 +18725,7 @@ async def chat(payload: dict):
             if _ans_w:
                 sess['last_question_scope'] = True
                 print(f"[chat] 후속 질문 → 직전 주차 {_wk_prev} 유지 / {_mode_m}")
-                _src_w = ([{'key': last_project, 'label': PROJECT_LABELS.get(last_project, last_project)}]
+                _src_w = ([{'key': last_project, 'label': _display_project_label(last_project)}]
                           if last_project and last_project != 'all' else [])
                 return {'answer': _ans_w, 'sources': _src_w, 'corrected_query': None}
         elif sess.get('last_month'):
@@ -18743,7 +18743,7 @@ async def chat(payload: dict):
             sess['last_month'] = _scope_month
             sess['last_question_scope'] = True
             print(f"[chat] 월 즉답 → {_scope_month} / {_mode_m} (project={last_project})")
-            _src_m = ([{'key': last_project, 'label': PROJECT_LABELS.get(last_project, last_project)}]
+            _src_m = ([{'key': last_project, 'label': _display_project_label(last_project)}]
                       if last_project and last_project != 'all' else [])
             return {'answer': _ans_m, 'sources': _src_m, 'corrected_query': None}
 
@@ -18826,7 +18826,7 @@ async def chat(payload: dict):
                 sess['last_question_scope'] = True
                 print(f"[chat] 기준 미지정 → 이번 달 {_def_month} 기본 답변")
                 _src_d = ([{'key': last_project,
-                            'label': PROJECT_LABELS.get(last_project, last_project)}]
+                            'label': _display_project_label(last_project)}]
                           if last_project and last_project != 'all' else [])
                 return {'answer': _ans_d, 'sources': _src_d, 'corrected_query': None}
             _scope_month = _def_month
@@ -21817,6 +21817,7 @@ def _display_project_label(project_key: str) -> str:
             return p["label"].strip()
     except Exception:
         pass
+    # 여기서만 고정 맵을 본다. 다른 곳은 전부 이 함수를 거친다.
     return PROJECT_LABELS.get(project_key, project_key)
 
 
@@ -22357,7 +22358,7 @@ def get_home_alerts(limit: int = 12):
         if not models:
             continue
         seen_projects.add(pk)
-        label = PROJECT_LABELS.get(pk, pk)
+        label = _display_project_label(pk)
         _phold = _project_hold(proj)
         for m in models:
             if not isinstance(m, dict):
@@ -22447,7 +22448,7 @@ def get_home_alerts(limit: int = 12):
         except Exception as _e:
             print(f"[home/alerts] {pk} 주차 미달 계산 실패: {_e}")
             continue
-        label = PROJECT_LABELS.get(pk, pk)
+        label = _display_project_label(pk)
         # 방금 끝난 주만 본다. 3주 전에 못 채운 것은 이미 지나간 이야기고,
         # 마감 주차가 쌓일수록 목록이 주차 미달로만 가득 찬다.
         _last = (board.get("closed_weeks") or [])[-1:] or [""]

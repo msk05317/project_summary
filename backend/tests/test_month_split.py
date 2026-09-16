@@ -87,7 +87,7 @@ ok += 1
 # ── 앱: 홈 한 장 + 문제(지연+이슈) ──
 M = ROOT.parent / 'mobile' / 'lib'
 CARD = (M / 'components' / 'home' / 'month_overview_card.dart').read_text(encoding='utf-8')
-for t in ('closedAchievement', 'openShare', 'hasWeekSplit', '막힌 것'):
+for t in ('closedAchievement', 'hasWeekSplit', 'openPlanRevenue'):
     assert t in CARD, f'카드에 {t} 가 없다'
 ok += 1
 

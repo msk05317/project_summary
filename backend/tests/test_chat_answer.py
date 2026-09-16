@@ -136,7 +136,7 @@ ok += 1
 assert "m.get('issues')[:80]" not in SRC, '이슈 컨텍스트가 아직 80자에서 잘린다'
 assert '_issue_answer(last_project)' in SRC, '이슈 즉답이 /chat 에 연결되지 않았다'
 
-iss = load(['_issue_answer', '_model_alert', '_display_group', '_norm_phases',
+iss = load(['_issue_answer', '_display_project_label', '_model_alert', '_display_group', '_norm_phases',
             '_phase_ord', '_as_money', '_process_step_done', '_model_hold',
             '_project_hold', '_project_hold_reason', '_hold_from_note',
             '_CHAT_KW_EXTRA',

@@ -173,4 +173,18 @@ assert '_holdBanner(' in O2 and "data['hold_reason']" in O2, '보류 배너가 �
 assert "scope == 'project'" in O2, '프로젝트 보류 모델을 그대로 다 늘어놓는다'
 ok += 1
 
+# ── 프로젝트 이름이 키로 새지 않는다 ──
+#
+# PROJECT_LABELS 는 초창기 8개(반도체)만 담은 고정 맵이라, ESS 를 그걸로
+# 찾으면 'fluence' / 'sdi' 가 소문자 키 그대로 화면에 떴다.
+assert 'PROJECT_LABELS.get(pk, pk)' not in SRC, '알림이 아직 고정 맵으로 이름을 찾는다'
+assert '_display_project_label(pk)' in SRC, '설정 라벨을 안 본다'
+import json as _json
+_cfg = _json.loads((ROOT / 'config' / 'projects.json').read_text(encoding='utf-8'))
+_ps = _cfg['projects'] if isinstance(_cfg.get('projects'), list) else list(_cfg['projects'].values())
+_lab = {x['id']: x.get('label') for x in _ps}
+assert _lab.get('fluence') == '플루언스', _lab.get('fluence')
+assert _lab.get('sdi') == 'SDI', 'SDI 는 SDI 로 둔다'
+ok += 1
+
 print(f'전부 통과 · {ok}개 항목')
