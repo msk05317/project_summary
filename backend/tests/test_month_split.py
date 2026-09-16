@@ -84,11 +84,16 @@ assert '"kind": "이슈"' in SRC, '이슈가 alert 로 안 나간다'
 assert '"issue": 0' in SRC and 'counts["issue"]' in SRC, 'counts 에 이슈가 없다'
 ok += 1
 
-# ── 앱: 홈 한 장 + 문제(지연+이슈) ──
+# ── 앱: 매출 카드가 '남은 N주 계획' 을 쓴다 ──
+#
+# '계획 대비 부족 $750만' 이라고 적었는데 그 $751만 중 $735만은 아직
+# 안 온 3주치 계획이었다. 못 채운 게 아니라 아직 안 온 것이다.
 M = ROOT.parent / 'mobile' / 'lib'
-CARD = (M / 'components' / 'home' / 'month_overview_card.dart').read_text(encoding='utf-8')
-for t in ('closedAchievement', 'hasWeekSplit', 'openPlanRevenue'):
-    assert t in CARD, f'카드에 {t} 가 없다'
+CARD = (M / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
+assert "'남은 ${summary.openWeeks}주 계획'" in CARD, '아직 부족이라고 적는다'
+assert 'openPlanRevenue' in CARD and 'hasWeekSplit' in CARD
+# 문구는 들어간 것만. 무엇이 빠졌는지까지 적으면 카드가 변명처럼 읽힌다
+assert "는 주차 계획 미등록'" not in CARD, '미등록 문구가 남아 있다'
 ok += 1
 
 SVC = (M / 'services' / 'home_alerts_service.dart').read_text(encoding='utf-8')
@@ -97,12 +102,11 @@ assert 'blockers' in SVC, '지연·이슈만 뽑는 게 없다'
 ok += 1
 
 HOME = (M / 'screens' / 'home_screen.dart').read_text(encoding='utf-8')
-assert 'MonthOverviewCard' in HOME, '홈이 새 카드를 안 쓴다'
-assert '_RiskSummaryCard' not in HOME, '옛 전체 현황 카드가 남아 있다'
-assert 'ExecRevenueCard' not in HOME, '옛 매출 카드가 홈에 남아 있다'
-# 전체 진행률 게이지는 뺐다 (42% 라는 숫자가 무엇의 42% 인지 아무도 몰랐다)
-assert "const Text('전체 진행률'" not in HOME, '전체 진행률 게이지가 홈에 남아 있다'
-assert "임박 ${p.soon}" not in HOME, "'지금 봐야 할 것' 에 임박이 남아 있다"
+assert 'StatusBoardCard' in HOME, '홈이 합친 카드를 안 쓴다'
+assert '_RiskListCard' not in HOME.replace(
+    "// 홈 상단이 모델 기준(_RiskListCard)으로 바뀌면서 안 쓰게 됐다.", ''), \
+    "'지금 봐야 할 것' 이 아직 따로 있다"
+assert "const Text('전체 진행률'" not in HOME, '전체 진행률 게이지가 남아 있다'
 ok += 1
 
 LIST = (M / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')

@@ -26,8 +26,8 @@ class ExecRevenueCard extends StatelessWidget {
     this.onTap,
   });
 
-  /// 이 숫자에 무엇이 들어 있는지 한 줄로 밝힌다.
-  /// '전체 사업부 매출' 로 읽히면 안 된다 — 주차 계획이 올라온 프로젝트만이다.
+  /// 이 숫자에 무엇이 들어 있는지 한 줄로. '반도체 7개 프로젝트' 면 충분하다.
+  /// 무엇이 안 들어갔는지(주차 계획 미등록)까지 적으면 카드가 변명처럼 읽힌다.
   String _coverage() {
     const names = {
       'semiconductor': '반도체',
@@ -38,7 +38,6 @@ class ExecRevenueCard extends StatelessWidget {
       'pcb': 'PCB',
     };
     final inn = <String>{};
-    final out = <String>{};
     var n = 0;
     for (final p in summary.items) {
       final d = names[p.divisionId] ?? (p.divisionId ?? '');
@@ -46,15 +45,10 @@ class ExecRevenueCard extends StatelessWidget {
       if (p.planRevenue > 0 || p.revenue > 0) {
         inn.add(d);
         n++;
-      } else if (p.modelsTotal > 0) {
-        out.add(d);
       }
     }
     if (inn.isEmpty) return '';
-    var t = '${inn.join(' · ')} $n개 프로젝트';
-    final miss = out.difference(inn);
-    if (miss.isNotEmpty) t += ' · ${miss.join('·')}는 주차 계획 미등록';
-    return t;
+    return '${inn.join(' · ')} $n개 프로젝트';
   }
 
   @override
@@ -204,12 +198,22 @@ class ExecRevenueCard extends StatelessWidget {
                 color: AppColors.borderSoft,
               ),
               Expanded(
-                child: _MiniStat(
-                  label: ahead ? '계획 대비 초과' : '계획 대비 부족',
-                  value: Fmt.moneyShort(
-                      (summary.revenue - summary.planRevenue).abs()),
-                  color: ahead ? AppColors.summaryNormal : AppColors.summaryCaution,
-                ),
+                // '계획 대비 부족 $750만' 이라고 적었는데, 그 $751만 중
+                // $735만은 아직 안 온 3주치 계획이었다. 못 채운 게 아니라
+                // 아직 안 온 것이라 부족이라고 부를 수 없다.
+                child: summary.hasWeekSplit && summary.openWeeks > 0
+                    ? _MiniStat(
+                        label: '남은 ${summary.openWeeks}주 계획',
+                        value: Fmt.moneyShort(summary.openPlanRevenue),
+                      )
+                    : _MiniStat(
+                        label: ahead ? '계획 대비 초과' : '계획 대비 부족',
+                        value: Fmt.moneyShort(
+                            (summary.revenue - summary.planRevenue).abs()),
+                        color: ahead
+                            ? AppColors.summaryNormal
+                            : AppColors.summaryCaution,
+                      ),
               ),
             ],
           ),

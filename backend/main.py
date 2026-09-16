@@ -22236,6 +22236,13 @@ def _model_po_wait(m: dict, disp_group: str = "") -> bool:
         return True
 
 
+# 완료예정일이 며칠 안 남았을 때 '임박' 으로 볼 것인가.
+#
+# 7일이면 34건이 뜬다. 그 정도면 목록이 아니라 배경이 되어서 아무도 안 본다.
+# 3일로 좁히면 24건 — 크게 안 줄어드는데, 16건이 같은 날 하나에 몰려 있어서다.
+SOON_DAYS = 3
+
+
 def _model_alert(m: dict, disp_group: str = "", expected: str = "",
                  progress=None) -> str:
     """'지연' · '주의' · '정상'.
@@ -22246,7 +22253,7 @@ def _model_alert(m: dict, disp_group: str = "", expected: str = "",
 
     여기서 한 번만 정하고 양쪽이 이걸 쓴다.
       - 손으로 '지연'/'주의' 를 적어뒀으면 그게 우선
-      - 개발: 완료예정일이 지났으면 지연, 7일 이내면 주의
+      - 개발: 완료예정일이 지났으면 지연, SOON_DAYS 이내면 주의
       - 진행률 100% 면 정상
     """
     manual = str((m or {}).get("status") or "").strip()
@@ -22278,7 +22285,7 @@ def _model_alert(m: dict, disp_group: str = "", expected: str = "",
     left = (d - _dt.date.today()).days
     if left < 0:
         return "지연"
-    if left <= 7:
+    if left <= SOON_DAYS:
         return "주의"
     return "정상"
 
@@ -22502,6 +22509,25 @@ def get_home_alerts(limit: int = 12):
     rows = sorted(by_project.values(),
                   key=lambda r: (-(r["delayed"] + r["issue"]), -r["worst_days"],
                                  -r["soon"]))
+
+    # 타일별 내역. 홈의 '전체 현황' 타일을 누르면 그 종류가 어느 프로젝트에
+    # 몇 건씩 있는지가 바로 아래 펼쳐진다. 전에는 타일(합계)과 목록(내역)이
+    # 카드 두 장으로 떨어져 있어서 서로 무슨 관계인지가 안 보였다.
+    _by_kind = {k: {} for k in ("지연", "이슈", "임박", "보류")}
+    for a in alerts:
+        b = _by_kind.get(a["kind"])
+        if b is None:
+            continue
+        r = b.setdefault(a["project_key"],
+                         {"key": a["project_key"], "label": a["project"], "count": 0})
+        r["count"] += 1
+    for h in holds:
+        r = _by_kind["보류"].setdefault(
+            h["project_key"],
+            {"key": h["project_key"], "label": h["project"], "count": 0})
+        r["count"] += 1
+    by_kind = {k: sorted(v.values(), key=lambda r: (-r["count"], r["label"]))
+               for k, v in _by_kind.items()}
     # 문제(지연·이슈) 먼저, 그 안에서는 오래 밀린 것부터. 임박은 뒤로.
     _ORD = {"지연": 0, "이슈": 1}
     alerts.sort(key=lambda a: (_ORD.get(a["kind"], 2),
@@ -22544,6 +22570,7 @@ def get_home_alerts(limit: int = 12):
         "projects": len(seen_projects),
         "projects_with_alert": len(hit_projects),
         "by_project": rows,
+        "by_kind": by_kind,
         "alerts": alerts[:n],
         "alerts_total": len(alerts),
         "holds": holds[:n],

@@ -24,7 +24,7 @@ export 'domain/division_card.dart';
 export 'home/home_header.dart';
 export 'home/summary_card.dart';
 export 'home/exec_revenue_card.dart';
-export 'home/month_overview_card.dart';
+export 'home/status_board_card.dart';
 export 'home/issue_card.dart';
 
 // Report

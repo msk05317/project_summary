@@ -781,10 +781,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
 
-                    // 이번 달 한 장 — 매출 · 끝난 주 · 남은 주 · 막힌 것.
-                    // 예전에는 '전체 현황' 타일 4개 + 전체 진행률 + 매출 카드가
-                    // 따로 떠 있었다. 숫자가 일곱 개인데 서로 무슨 관계인지가
-                    // 없어서, 열었을 때 어디를 봐야 할지 알 수 없었다.
+                    // 전체 현황 — 타일이 곧 아래 목록의 머리다.
+                    // 전에는 타일(합계)과 '지금 봐야 할 것'(내역)이 카드 두
+                    // 장으로 떨어져 있었다. 같은 데이터인데 관계가 안 보였다.
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.x4,
@@ -792,45 +791,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: FutureBuilder<OverviewSummary>(
-                        future: _overviewFuture,
-                        builder: (context, snap) {
-                          return FutureBuilder<HomeAlerts>(
-                            future: _alertsFuture,
-                            builder: (context, aSnap) {
-                              return MonthOverviewCard(
-                                summary: snap.data ?? OverviewSummary.empty,
-                                alerts: aSnap.data ?? HomeAlerts.empty,
-                                // 둘 다 기다린다. /home/alerts 가 /overview
-                                // 보다 느려서, 하나만 보면 아직 오는 중인
-                                // 동안 '불러오지 못했습니다' 를 띄운다.
-                                loading: snap.connectionState ==
-                                        ConnectionState.waiting ||
-                                    aSnap.connectionState ==
-                                        ConnectionState.waiting,
-                                onTapRevenue: () => _openRevenueDetail(
-                                    snap.data?.month ?? ''),
-                                onTapBlocked: () =>
-                                    Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                      builder: (_) => const AlertListScreen(
-                                          initialFilter: '문제')),
-                                ),
-                                // 위험 금액이 걸린 프로젝트를 바로 연다.
-                                // 숫자를 보고 '어디?' 를 다시 물으면 안 된다.
-                                onTapProject: _openProject,
-                              );
-                            },
+                      child: FutureBuilder<HomeAlerts>(
+                        future: _alertsFuture,
+                        builder: (context, aSnap) {
+                          return StatusBoardCard(
+                            alerts: aSnap.data ?? HomeAlerts.empty,
+                            loading: aSnap.connectionState ==
+                                ConnectionState.waiting,
+                            onTapProject: _openProject,
+                            onTapAll: (filter) => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      AlertListScreen(initialFilter: filter)),
+                            ),
                           );
                         },
                       ),
                     ),
 
-                    // 즉시 확인 섹션 (시안 v2 신규)
-                    // - SummaryCard 아래, 즐겨찾기 위에 배치
-                    // - 데이터 소스: _dashboardFuture (SummaryCard 가 쓰던 Future 재사용)
-                    // - 항목 추출 로직: _HomeScreenState._buildImmediateItems
-                    // - 항목 탭: 보고 상세 화면으로 이동
+                    // 이번 달 매출
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.x4,
@@ -838,18 +817,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: _RiskListCard(
-                        alertsFuture: _alertsFuture,
-                        onTapProject: _openProject,
-                        // 모두 보기도 같은 /home/alerts 를 본다.
-                        // 예전 '즉시 확인' 화면은 주간보고 카드라 홈과 숫자가 달랐다.
-                        onTapShowAll: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const AlertListScreen(initialFilter: '문제')),
-                        ),
+                      child: FutureBuilder<OverviewSummary>(
+                        future: _overviewFuture,
+                        builder: (context, snap) {
+                          return ExecRevenueCard(
+                            summary: snap.data ?? OverviewSummary.empty,
+                            loading:
+                                snap.connectionState == ConnectionState.waiting,
+                            onTap: () =>
+                                _openRevenueDetail(snap.data?.month ?? ''),
+                          );
+                        },
                       ),
                     ),
+
+                    // '지금 봐야 할 것' 은 없앴다. 전체 현황 타일이 곧 그
+                    // 목록의 머리라, 같은 것을 두 번 그리는 셈이었다.
 
                     _DivisionsSection(
                       future: _divisionsFuture,
@@ -1741,167 +1724,3 @@ class _ProjHit {
 // 프로젝트 안에는 지연이 널려 있는데 홈은 '지연 0' 이었다. 홈과 안쪽이
 // 서로 다른 것을 세고 있었던 것. 이제 둘 다 같은 모델 alert 를 본다.
 // ─────────────────────────────────────────────────────────────
-
-/// 지금 봐야 할 것 — 문제(지연·이슈)가 있는 프로젝트를 급한 순으로.
-/// 임박은 빠진다. 경영진은 '문제 있냐 없냐' 를 보지, 아직 안 늦은 것을
-/// 보지 않는다.
-class _RiskListCard extends StatelessWidget {
-  final Future<HomeAlerts> alertsFuture;
-  final void Function(String projectKey) onTapProject;
-  final VoidCallback? onTapShowAll;
-
-  const _RiskListCard({
-    required this.alertsFuture,
-    required this.onTapProject,
-    this.onTapShowAll,
-  });
-
-  Widget _shell(List<Widget> children) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
-    );
-  }
-
-  Widget _row(AlertProject p) {
-    // 임박은 여기서 세지 않는다. 경영진이 보는 것은 문제 유무고,
-    // 임박은 아직 늦지 않은 것이다 — 모델 목록의 '임박' 칩에서 본다.
-    final bits = <String>[];
-    if (p.delayed > 0) bits.add('지연 ${p.delayed}');
-    if (p.issue > 0) bits.add('이슈 ${p.issue}');
-    return InkWell(
-      onTap: () => onTapProject(p.key),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(children: [
-          Container(
-            width: 6, height: 6,
-            decoration: BoxDecoration(
-              color: p.delayed > 0
-                  ? const Color(0xFFDC2626)
-                  : const Color(0xFFE97132),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(p.label,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827))),
-              if (p.worstModel.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Text(p.worstModel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11, color: Color(0xFF9CA3AF))),
-                ),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(bits.join(' · '),
-                style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFDC2626))),
-            if (p.worstDays > 0)
-              Text('최장 ${p.worstDays}일',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
-          ]),
-          const Icon(Icons.chevron_right, size: 18, color: Color(0xFFCBD5E1)),
-        ]),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<HomeAlerts>(
-      future: alertsFuture,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return _shell(const [
-            Row(children: [
-              Icon(Icons.hourglass_empty, size: 16, color: Color(0xFF9CA3AF)),
-              SizedBox(width: 6),
-              Text('지연·이슈 확인 중...',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
-            ]),
-          ]);
-        }
-        final a = snap.data ?? HomeAlerts.empty;
-        if (!a.loaded) {
-          return _shell(const [
-            Row(children: [
-              Icon(Icons.error_outline, size: 16, color: Color(0xFFDC2626)),
-              SizedBox(width: 6),
-              Text('지연·이슈 현황을 불러오지 못했습니다',
-                  style: TextStyle(fontSize: 13, color: Color(0xFFDC2626))),
-            ]),
-          ]);
-        }
-        // 임박만 걸린 프로젝트는 '지금 봐야 할 것' 이 아니다.
-        final blocked =
-            a.byProject.where((p) => p.blocked > 0).toList(growable: false);
-        if (blocked.isEmpty) {
-          return _shell(const [
-            Row(children: [
-              Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF059669)),
-              SizedBox(width: 6),
-              Text('지연·이슈 항목이 없습니다',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF059669))),
-            ]),
-          ]);
-        }
-        final rows = blocked.take(5).toList();
-        return _shell([
-          Row(children: [
-            const Icon(Icons.warning_amber_rounded, size: 17, color: Color(0xFFDC2626)),
-            const SizedBox(width: 6),
-            const Text('지금 봐야 할 것',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text('${a.blocked}',
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w800,
-                      color: Color(0xFFDC2626))),
-            ),
-          ]),
-          const SizedBox(height: 4),
-          for (int i = 0; i < rows.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: Color(0xFFF1F5F9)),
-            _row(rows[i]),
-          ],
-          if (blocked.length > rows.length || onTapShowAll != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onTapShowAll,
-                child: Text('모두 보기 (${a.blocked})',
-                    style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF156082))),
-              ),
-            ),
-        ]);
-      },
-    );
-  }
-}

@@ -18,14 +18,18 @@ class AlertProject {
   final int worstDays;
   final String worstModel;
 
+  /// by_kind 로 올 때의 그 종류 건수. by_project 로 올 때는 0.
+  final int count;
+
   const AlertProject({
     required this.key,
     required this.label,
     required this.delayed,
     required this.soon,
-    required this.worstDays,
-    required this.worstModel,
+    this.worstDays = 0,
+    this.worstModel = '',
     this.issue = 0,
+    this.count = 0,
   });
 
   /// 경영진이 보는 것은 '문제 있냐 없냐' 다. 지연과 이슈가 그 둘이다.
@@ -39,6 +43,7 @@ class AlertProject {
         soon: (j['soon'] as num?)?.toInt() ?? 0,
         worstDays: (j['worst_days'] as num?)?.toInt() ?? 0,
         worstModel: (j['worst_model'] ?? '').toString(),
+        count: (j['count'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -133,6 +138,10 @@ class HomeAlerts {
   final int projectsWithAlert;
   final int alertsTotal;
   final List<AlertProject> byProject;
+
+  /// 타일별 내역. '지연'·'이슈'·'임박'·'보류' → 그 종류가 걸린 프로젝트들.
+  /// 홈의 전체 현황 타일을 누르면 바로 아래 펼쳐지는 목록이다.
+  final Map<String, List<AlertProject>> byKind;
   final List<AlertModel> alerts;
   final List<AlertModel> holds;
   final List<AlertModel> poWaits;
@@ -155,6 +164,7 @@ class HomeAlerts {
     required this.projectsWithAlert,
     required this.alertsTotal,
     required this.byProject,
+    this.byKind = const {},
     required this.alerts,
     required this.holds,
     required this.poWaits,
@@ -177,7 +187,8 @@ class HomeAlerts {
         soon: soon, hold: hold,
         poWait: poWait, done: done, running: running, projects: projects,
         projectsWithAlert: projectsWithAlert, alertsTotal: alertsTotal,
-        byProject: byProject, alerts: alerts, holds: holds, poWaits: poWaits,
+        byProject: byProject, byKind: byKind,
+        alerts: alerts, holds: holds, poWaits: poWaits,
         bloom: bloom, loaded: loaded,
         fromCache: fromCache ?? this.fromCache,
         savedAt: savedAt ?? this.savedAt,
@@ -186,7 +197,8 @@ class HomeAlerts {
   static const HomeAlerts empty = HomeAlerts(
     date: '', total: 0, delayed: 0, soon: 0, hold: 0, poWait: 0, done: 0,
     running: 0, projects: 0, projectsWithAlert: 0, alertsTotal: 0,
-    byProject: [], alerts: [], holds: [], poWaits: [], bloom: null,
+    byProject: [], byKind: {},
+    alerts: [], holds: [], poWaits: [], bloom: null,
     issue: 0, loaded: false,
   );
 
@@ -210,6 +222,13 @@ class HomeAlerts {
           .whereType<Map>()
           .map(AlertProject.fromJson)
           .toList(),
+      byKind: {
+        for (final e in ((j['by_kind'] as Map?) ?? const {}).entries)
+          e.key.toString(): ((e.value as List?) ?? const [])
+              .whereType<Map>()
+              .map(AlertProject.fromJson)
+              .toList(),
+      },
       alerts: ((j['alerts'] as List?) ?? const [])
           .whereType<Map>()
           .map(AlertModel.fromJson)

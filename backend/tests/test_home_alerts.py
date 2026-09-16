@@ -141,15 +141,18 @@ LIB = ROOT.parent / 'mobile' / 'lib'
 SVC = (LIB / 'services' / 'home_alerts_service.dart').read_text(encoding='utf-8')
 assert '/home/alerts' in SVC and 'class HomeAlerts' in SVC
 H = (LIB / 'screens' / 'home_screen.dart').read_text(encoding='utf-8')
-assert 'MonthOverviewCard' in H and '_RiskListCard' in H, '홈이 새 카드를 안 쓴다'
+assert 'StatusBoardCard' in H, '홈이 합친 카드를 안 쓴다'
 assert 'HomeAlertsService.fetch()' in H
-# 못 받아왔을 때 0 을 그리면 '지연 없음' 과 구분이 안 된다
-assert '!a.loaded' in H and '현황을 불러오지 못했습니다' in H
 assert 'AlertListScreen' in H, '모두 보기가 새 목록으로 안 간다'
-# 숫자만 보여주면 '그래서 어떤 게 막혔는데' 를 다시 물어야 한다
-assert "AlertListScreen(\n" in H or "AlertListScreen(initialFilter:" in H, \
-    '막힌 것을 눌러도 목록이 안 열린다'
-assert "initialFilter: '문제'" in H, "막힌 것이 지연+이슈 목록으로 안 간다"
+# 타일을 누르면 그 종류의 내역이 바로 아래 펼쳐져야 한다
+B = (LIB / 'components' / 'home' / 'status_board_card.dart').read_text(encoding='utf-8')
+# 못 받아왔을 때 0 을 그리면 '지연 없음' 과 구분이 안 된다
+assert '!widget.alerts.loaded' in B and '현황을 불러오지 못했습니다' in B
+assert 'byKind[_label[k]]' in B, '타일과 목록이 이어져 있지 않다'
+assert '_sel = k' in B, '타일을 눌러도 목록이 안 바뀐다'
+for _k in ('지연', '이슈', '임박', '보류'):
+    assert f"'{_k}'" in B, f'{_k} 타일이 없다'
+assert 'AlertListScreen(initialFilter: filter)' in H, '모두 보기가 그 종류로 안 간다'
 # 블룸은 모델이 없어도 진행 중이다
 assert "divisionId == 'bloom'" in H and '_bloom' in H, '블룸이 여전히 진행 데이터 없음이다'
 ok += 1

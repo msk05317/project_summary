@@ -13,7 +13,7 @@ srcs = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name in WANT}
 assert set(srcs) == WANT, f'못 찾은 함수: {WANT - set(srcs)}'
 g = {}
-for n in ('_HOLD_WORDS', '_HOLD_NEGATIONS'):
+for n in ('_HOLD_WORDS', '_HOLD_NEGATIONS', 'SOON_DAYS'):
     for x in tree.body:
         if isinstance(x, ast.Assign) and getattr(x.targets[0], 'id', '') == n:
             exec(ast.get_source_segment(SRC, x), g)
@@ -35,12 +35,13 @@ ok = 0
 assert f(dev(d(-1))) == '지연'
 assert f(dev(d(-30))) == '지연'
 ok += 1
-# 7일 이내면 주의 (오늘 포함)
+# SOON_DAYS(3일) 이내면 주의 (오늘 포함).
+# 7일이면 34건이라 목록이 아니라 배경이 됐다.
 assert f(dev(d(0))) == '주의'
-assert f(dev(d(7))) == '주의'
+assert f(dev(d(3))) == '주의'        # SOON_DAYS = 3
 ok += 1
 # 그 뒤는 정상
-assert f(dev(d(8))) == '정상'
+assert f(dev(d(4))) == '정상'        # 3일을 넘기면 아직 임박이 아니다
 ok += 1
 # 진행률 100% 면 날짜가 지났어도 정상
 assert f(dev(d(-10), progress=100)) == '정상'
