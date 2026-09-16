@@ -87,13 +87,17 @@ ok += 1
 PB = {'models': [{'id': '925-800083-394', 'group': '양산'},
                  {'id': 'pb-mass', 'group': '양산'},
                  {'id': 'pb-ema', 'group': '양산', 'dev_type': 'EMA'},
+                 {'id': 'pb-ema-dev', 'group': '개발', 'dev_type': 'EMA'},
                  {'id': 'pb-dev', 'group': '개발'}]}
 ps = BOARDS['powerbox']
 pc = claimed_of(ps)
 mass = [m['id'] for m in rows_of(PB, find(ps, 'mass19'), pc)]
 assert mass == ['pb-mass'], mass
 assert [m['id'] for m in rows_of(PB, find(ps, 'aether'), pc)] == ['925-800083-394']
-assert [m['id'] for m in rows_of(PB, find(ps, 'ema10'), pc)] == ['pb-ema']
+# EMA 는 양산·개발을 한 줄로 합친다
+assert [m['id'] for m in rows_of(PB, find(ps, 'ema10'), pc)] == ['pb-ema', 'pb-ema-dev']
+assert [m['id'] for m in rows_of(PB, find(ps, 'dev22'), pc)] == ['pb-dev'], \
+    '개발 EMA 가 개발 행에도 들어가 두 번 세진다'
 ok += 1
 
 # ── claimed 를 안 넘기면 예전 동작 그대로 (다른 호출부 보호)

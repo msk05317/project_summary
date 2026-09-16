@@ -105,9 +105,13 @@ def test_powerbox_partition():
         counts[ids[0]] = counts.get(ids[0], 0) + 1
     assert counts.get("mass19") == 18, counts
     assert counts.get("dev22") == 22, counts
-    assert counts.get("ema10") == 10, counts
-    # 개발 EMA 15종은 어느 행에도 안 들어간다 (엑셀에 그 줄이 없다)
-    assert len(hits) == 51, len(hits)
+    # EMA 행은 양산·개발을 같이 센다. 예전에는 양산 10종만 세고 개발
+    # 15종은 어느 행에도 안 들어가 보드에서 통째로 빠져 있었다.
+    assert counts.get("ema10") == 25, counts
+    assert len(hits) == len(models), f"{len(hits)} / {len(models)}"
+
+    # 개발 EMA 가 개발 행에 끼어들면 두 번 세게 된다
+    assert counts.get("dev22") == 22, counts
 
 
 

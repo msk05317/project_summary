@@ -173,8 +173,7 @@
             },
             {
               "key": "ema10",
-              "label": "EMA 양산 10종",
-              "group": "양산",
+              "label": "EMA 36종",
               "dev_type": "EMA"
             }
           ]
