@@ -20,6 +20,8 @@ class OverviewProject {
   final int revenue;
   final int planRevenue;
   final bool hasWeekly;
+  /// 아직 안 온 주차의 계획 매출. '이 프로젝트가 이번 달에 아직 들고 있는 돈'.
+  final int openPlanRevenue;
 
   const OverviewProject({
     required this.key,
@@ -32,6 +34,7 @@ class OverviewProject {
     required this.revenue,
     required this.planRevenue,
     required this.hasWeekly,
+    this.openPlanRevenue = 0,
   });
 
   factory OverviewProject.fromJson(Map j) => OverviewProject(
@@ -45,6 +48,7 @@ class OverviewProject {
         revenue: (j['revenue'] as num?)?.toInt() ?? 0,
         planRevenue: (j['plan_revenue'] as num?)?.toInt() ?? 0,
         hasWeekly: j['has_weekly'] == true,
+        openPlanRevenue: (j['open_plan_revenue'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -124,6 +128,41 @@ class OverviewSummary {
 
   /// 주차를 가를 수 있는 데이터가 왔는지. 안 왔으면 예전처럼 월 합계만 보인다.
   bool get hasWeekSplit => closedWeeks > 0 || openWeeks > 0;
+
+  /// 이대로 가면 이번 달이 얼마로 끝나는가.
+  ///
+  /// 끝난 주차를 채운 비율이 남은 주차에도 이어진다고 본다. 9월 16일에
+  /// '달성 35%' 만 보면 큰일난 것처럼 읽히지만, 그건 아직 안 온 3주의
+  /// 계획이 분모에 있어서다. 마감된 2주를 96% 로 채웠으면 남은 3주도
+  /// 96% 로 보는 게 지금 아는 것 중 가장 나은 추정이다.
+  ///
+  /// 끝난 주차가 없으면(월초) 추정할 근거가 없어 null.
+  int? get forecast {
+    if (!hasWeekSplit || closedWeeks <= 0 || closedPlanRevenue <= 0) return null;
+    final rate = closedRevenue / closedPlanRevenue;
+    return (closedRevenue + openPlanRevenue * rate).round();
+  }
+
+  /// 예상이 계획에서 얼마나 벗어나는가. 양수면 초과, 음수면 부족.
+  int? get forecastGap {
+    final f = forecast;
+    return f == null || planRevenue <= 0 ? null : f - planRevenue;
+  }
+
+  /// 예상 달성률(%).
+  int? get forecastRate {
+    final f = forecast;
+    return f == null || planRevenue <= 0 ? null : (f * 100 / planRevenue).round();
+  }
+
+  /// 이번 달이 이미 끝났는지 (남은 주차 없음).
+  bool get monthClosed => hasWeekSplit && openWeeks <= 0;
+
+  /// 프로젝트 키 → 남은 주차 계획 매출.
+  Map<String, int> get openByProject => {
+        for (final p in items)
+          if (p.key.isNotEmpty) p.key: p.openPlanRevenue,
+      };
 
   /// 매출이 있는 프로젝트를 실적 큰 순으로.
   List<OverviewProject> get topByRevenue {

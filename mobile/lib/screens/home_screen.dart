@@ -816,6 +816,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       builder: (_) => const AlertListScreen(
                                           initialFilter: '문제')),
                                 ),
+                                // 위험 금액이 걸린 프로젝트를 바로 연다.
+                                // 숫자를 보고 '어디?' 를 다시 물으면 안 된다.
+                                onTapProject: _openProject,
                               );
                             },
                           );

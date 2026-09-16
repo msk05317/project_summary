@@ -1,25 +1,42 @@
-// 홈 첫 장 — '이번 달' 한 카드.
+// 홈 첫 장 — "이번 달 매출 맞나".
 //
-// 예전 홈은 '전체 현황'(지연·임박·보류·PO 대기 타일 4개 + 전체 진행률)과
-// '이번 달 매출' 카드가 따로 있었다. 숫자가 일곱 개 널려 있는데 서로
-// 무슨 관계인지가 없어서, 임원이 열면 어디를 봐야 할지 모른다.
+// 홈 화면을 세 번 고쳤는데 세 번 다 빗나갔다. 배치가 나빠서가 아니라
+// 이 화면이 무슨 질문에 답하는지를 안 정한 채로 카드만 늘어놨기 때문이다.
+// 숫자가 일곱 개 있어도 보고 나서 할 말이 없으면 그 화면은 실패다.
 //
-// 이 카드는 한 달을 이렇게 읽는다.
+// 경영진이 이 앱을 여는 이유는 하나다 — 이번 달 매출을 맞출 수 있나.
+// 그래서 이 카드는 카드 묶음이 아니라 '문장 하나 + 그 근거' 다.
 //
-//   이번 달 계획이 얼마고 지금 얼마 왔나        → 매출 / 달성률
-//   끝난 주까지만 보면 계획을 지켰나            → 지금까지
-//   남은 주에 얼마가 걸려 있나                  → 남은 N주
-//   그걸 막고 있는 게 몇 건인가                 → 막힌 것 (지연 + 이슈)
+//   9월
+//   $1108만                          이대로면 · 계획의 96%
+//   실적 $400만 · 남은 3주 계획 $735만 · 마감 2주 96% 달성
 //
-// 월 달성률 35% 만 크게 띄우면 '큰일났다' 로 읽힌다. 아직 3주가 남았고
-// 그 3주 계획이 분모에 들어 있어서다. 끝난 주만 놓고 보면 96% 다.
-// 그래서 두 숫자를 같은 카드 안에 나란히 둔다.
+//   남은 $735만 중 $506만이 문제 걸린 프로젝트에 있습니다
+//     파워박스 $216만 · 메이저모듈 $198만 · 하바플레이트 $88.3만
+//
+// 마지막 블록이 이 앱에 계속 없던 연결성이다. '막힌 것 15건' 은 경영진에게
+// 아무 뜻이 없고, '남은 매출의 69%가 거기 있다' 는 뜻이 있다.
+//
+// 판정은 하지 않는다. '모자랍니다', '계획대로입니다' 같은 말도, 빨강·주황도
+// 쓰지 않는다. 96% 를 매달 빨갛게 칠하면 두 달 만에 아무도 안 본다. 그리고
+// 아직 3주가 남은 추정을 확정처럼 말하면 앱이 아는 것보다 더 확신하는 것이다.
+// 보는 사람이 '아 이렇구나' 하면 그걸로 됐다.
 import 'package:flutter/material.dart';
 
 import '../../design/design.dart';
 import '../../services/home_alerts_service.dart';
 import '../../services/overview_service.dart';
 import '../../utils/format.dart';
+
+/// 위험 금액이 걸린 프로젝트 한 줄
+class _AtRisk {
+  final String key;
+  final String label;
+  final int money;
+  final int blocked;
+
+  const _AtRisk(this.key, this.label, this.money, this.blocked);
+}
 
 class MonthOverviewCard extends StatelessWidget {
   final OverviewSummary summary;
@@ -29,8 +46,11 @@ class MonthOverviewCard extends StatelessWidget {
   /// 매출 자리를 누르면 프로젝트별 내역으로
   final VoidCallback? onTapRevenue;
 
-  /// '막힌 것' 을 누르면 그 목록으로
+  /// 위험 블록을 누르면 문제 목록으로
   final VoidCallback? onTapBlocked;
+
+  /// 위험 프로젝트 한 줄을 누르면 그 프로젝트로
+  final void Function(String projectKey)? onTapProject;
 
   const MonthOverviewCard({
     super.key,
@@ -39,37 +59,37 @@ class MonthOverviewCard extends StatelessWidget {
     this.loading = false,
     this.onTapRevenue,
     this.onTapBlocked,
+    this.onTapProject,
   });
 
-  /// 이 숫자에 무엇이 들어 있는지 한 줄로 밝힌다.
-  /// '전체 사업부 매출' 로 읽히면 안 된다 — 주차 계획이 올라온 프로젝트만이다.
-  String _coverage() {
-    const names = {
-      'semiconductor': '반도체',
-      'automotive': '자동차',
-      'ess': 'ESS',
-      'bloom': '블룸',
-      'network': '네트워크',
-      'pcb': 'PCB',
-    };
-    final inn = <String>{};
-    final out = <String>{};
-    var n = 0;
-    for (final p in summary.items) {
-      final d = names[p.divisionId] ?? (p.divisionId ?? '');
-      if (d.isEmpty) continue;
-      if (p.planRevenue > 0 || p.revenue > 0) {
-        inn.add(d);
-        n++;
-      } else if (p.modelsTotal > 0) {
-        out.add(d);
-      }
+  // ── 위험 금액 ────────────────────────────────────────────────
+  //
+  // 문제가 걸린 프로젝트가 이번 달에 아직 들고 있는 돈. 끝난 주차의 돈은
+  // 이미 나갔으므로 위험하지 않다 — 남은 주차의 계획만 센다.
+  List<_AtRisk> _atRisk() {
+    if (!alerts.loaded || !summary.loaded) return const [];
+    final open = summary.openByProject;
+    final labels = {for (final p in summary.items) p.key: p.label};
+    final out = <_AtRisk>[];
+    for (final p in alerts.byProject) {
+      if (p.blocked <= 0) continue;
+      final money = open[p.key] ?? 0;
+      if (money <= 0) continue; // 금액이 안 잡힌 곳은 아래 한 줄로 따로 말한다
+      out.add(_AtRisk(p.key, labels[p.key] ?? p.label, money, p.blocked));
     }
-    if (inn.isEmpty) return '';
-    var t = '${inn.join(' · ')} $n개 프로젝트';
-    final miss = out.difference(inn);
-    if (miss.isNotEmpty) t += ' · ${miss.join('·')}는 주차 계획 미등록';
-    return t;
+    out.sort((a, b) => b.money.compareTo(a.money));
+    return out;
+  }
+
+  /// 문제는 있는데 금액이 0 인 프로젝트 수.
+  /// ESS(SDI·FLUENCE·EPC POWER)는 판가가 등록돼 있지 않아 매출이 $0 이다.
+  /// 그걸 '위험 없음' 으로 보여주면 거짓말이 된다.
+  int _unpricedCount() {
+    if (!alerts.loaded || !summary.loaded) return 0;
+    final open = summary.openByProject;
+    return alerts.byProject
+        .where((p) => p.blocked > 0 && (open[p.key] ?? 0) <= 0)
+        .length;
   }
 
   Widget _shell({required Widget child}) => Container(
@@ -87,7 +107,7 @@ class MonthOverviewCard extends StatelessWidget {
     if (loading) {
       return _shell(
         child: const Padding(
-          padding: EdgeInsets.symmetric(vertical: 34),
+          padding: EdgeInsets.symmetric(vertical: 44),
           child: Center(
             child: SizedBox(
                 width: 20, height: 20,
@@ -113,189 +133,129 @@ class MonthOverviewCard extends StatelessWidget {
       );
     }
 
-    final rate = summary.achievement;
-    final ratio = rate == null ? 0.0 : (rate / 100).clamp(0.0, 1.0);
-    final barColor = rate == null
-        ? AppColors.statusGray
-        : (rate >= 100
-            ? AppColors.summaryNormal
-            : (rate >= 80
-                ? AppColors.summaryInProgress
-                : AppColors.summaryCaution));
-
     return _shell(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          onTap: summary.hasRevenue ? onTapRevenue : null,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Text(Fmt.monthShort(summary.month), style: AppText.h2),
-                    const SizedBox(width: 6),
-                    Text(_headline(),
-                        style: AppText.caption
-                            .copyWith(color: AppColors.textMute)),
-                    const Spacer(),
-                    if (summary.hasRevenue && onTapRevenue != null)
-                      const Icon(Icons.chevron_right,
-                          size: 18, color: AppColors.textMute),
-                  ]),
-                  if (!summary.hasRevenue) ...[
-                    const SizedBox(height: 10),
-                    Text('${Fmt.monthShort(summary.month)} 등록된 매출 계획이 없습니다',
-                        style:
-                            AppText.body.copyWith(color: AppColors.textMute)),
-                  ] else ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          Fmt.moneyShort(summary.revenue),
-                          style: const TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textMain,
-                              height: 1.1),
-                        ),
-                        const SizedBox(width: 8),
-                        Text('/ ${Fmt.moneyShort(summary.planRevenue)}',
-                            style: AppText.body
-                                .copyWith(color: AppColors.textMute)),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: barColor.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(rate == null ? '-' : '달성 $rate%',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: barColor)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: ratio,
-                        minHeight: 8,
-                        backgroundColor: AppColors.statusGraySoft,
-                        valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                      ),
-                    ),
-                    if (_coverage().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(_coverage(),
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textHint)),
-                    ],
-                  ],
-                ]),
-          ),
-        ),
-
-        // 끝난 주 / 남은 주
-        if (summary.hasRevenue && summary.hasWeekSplit) ...[
-          const Divider(height: 1, color: AppColors.borderSoft),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _closedSide()),
-                  Container(
-                    width: 1,
-                    margin: const EdgeInsets.symmetric(horizontal: 14),
-                    color: AppColors.borderSoft,
-                  ),
-                  Expanded(child: _openSide()),
-                ],
-              ),
-            ),
-          ),
-        ],
-
-        // 막힌 것 — 지연 + 이슈
+        _verdict(context),
         const Divider(height: 1, color: AppColors.borderSoft),
-        _blockedRow(),
+        _riskBlock(context),
       ]),
     );
   }
 
-  /// 제목 옆 한 줄. '남은 주' 가 있으면 그게 제일 쓸모 있는 맥락이다.
-  String _headline() {
-    if (!summary.hasWeekSplit) return '실적 / 계획';
-    if (summary.openWeeks <= 0) return '이번 달 마감';
-    return '${summary.openWeeks}주 남음';
-  }
+  // ── 결론 ──────────────────────────────────────────────────────
+  Widget _verdict(BuildContext context) {
+    final mon = Fmt.monthShort(summary.month);
 
-  Widget _closedSide() {
-    final pct = summary.closedAchievement;
-    final good = pct != null && pct >= 95;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('지금까지 · ${summary.closedWeeks}주 마감',
-          style: AppText.caption.copyWith(color: AppColors.textMute)),
-      const SizedBox(height: 4),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text(pct == null ? '-' : '$pct%',
-              style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: good
-                      ? AppColors.summaryNormal
-                      : AppColors.summaryCaution)),
-          const SizedBox(width: 5),
-          Text('계획 대비',
+    if (!summary.hasRevenue) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(mon, style: AppText.h2),
+          const SizedBox(height: 6),
+          Text('$mon 등록된 매출 계획이 없습니다',
+              style: AppText.body.copyWith(color: AppColors.textMute)),
+        ]),
+      );
+    }
+
+    final fc = summary.forecast;
+    final fcRate = summary.forecastRate;
+    final closed = summary.monthClosed;
+
+    // 색으로 판정하지 않는다. 96% 를 주황으로 칠하면 '뭔가 잘못됐다' 로
+    // 읽히는데, 3주 남은 추정에 그렇게 말할 근거가 없다.
+    const tone = AppColors.textMain;
+
+    // 예상을 낼 수 없으면(월초) 실적/계획만 말한다.
+    final head = fc == null
+        ? Fmt.moneyShort(summary.revenue)
+        : Fmt.moneyShort(fc);
+    // 숫자 옆에 그 숫자가 무엇인지만 붙인다.
+    final tag = fc == null
+        ? (summary.achievement == null
+            ? '실적'
+            : '실적 · 계획의 ${summary.achievement}%')
+        : (closed
+            ? '마감 · 계획의 $fcRate%'
+            : '이대로면 · 계획의 $fcRate%');
+    final ratio = ((fcRate ?? summary.achievement ?? 0) / 100).clamp(0.0, 1.0);
+
+    return InkWell(
+      onTap: onTapRevenue,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text(mon, style: AppText.h2),
+            const Spacer(),
+            if (onTapRevenue != null)
+              const Icon(Icons.chevron_right,
+                  size: 18, color: AppColors.textMute),
+          ]),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Flexible(
+                child: Text(head,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 31,
+                        fontWeight: FontWeight.w800,
+                        color: tone,
+                        height: 1.1)),
+              ),
+              const SizedBox(width: 9),
+              Flexible(
+                child: Text(tag,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(color: AppColors.textMute)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 11),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 8,
+              backgroundColor: AppColors.statusGraySoft,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.summaryInProgress),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(_basis(),
               style: AppText.caption.copyWith(color: AppColors.textHint)),
-        ],
+        ]),
       ),
-      const SizedBox(height: 2),
-      Text(
-          '출하 ${Fmt.qty(summary.closedQtyActual)} / '
-          '${Fmt.qty(summary.closedQtyPlan)}대',
-          style: AppText.caption.copyWith(color: AppColors.textMute)),
-    ]);
+    );
   }
 
-  Widget _openSide() {
-    final share = summary.openShare;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(summary.openWeeks > 0 ? '남은 ${summary.openWeeks}주' : '남은 주 없음',
-          style: AppText.caption.copyWith(color: AppColors.textMute)),
-      const SizedBox(height: 4),
-      Text(Fmt.moneyShort(summary.openPlanRevenue),
-          style: const TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textMain)),
-      const SizedBox(height: 2),
-      Text(
-          '${Fmt.qty(summary.openQtyPlan)}대'
-          '${share == null ? '' : ' · 월 계획의 $share%'}',
-          style: AppText.caption.copyWith(color: AppColors.textMute)),
-    ]);
+  /// 예상이 어디서 나왔는지 한 줄. 근거 없는 숫자는 경영진이 안 믿는다.
+  String _basis() {
+    final bits = <String>[
+      '실적 ${Fmt.moneyShort(summary.revenue)}',
+      if (summary.hasWeekSplit && summary.openWeeks > 0)
+        '남은 ${summary.openWeeks}주 계획 ${Fmt.moneyShort(summary.openPlanRevenue)}',
+    ];
+    final line = bits.join(' · ');
+    final r = summary.closedAchievement;
+    if (r == null || summary.closedWeeks <= 0 || summary.monthClosed) {
+      return line;
+    }
+    return '$line · 마감 ${summary.closedWeeks}주 $r% 달성';
   }
 
-  /// 매출을 막고 있는 것. 지연(일정이 밀림) + 이슈(적어 둔 문제).
-  /// 임박은 아직 늦지 않았으니 여기 없다 — 모델 목록의 '임박' 칩에서 본다.
-  Widget _blockedRow() {
+  // ── 무엇이 그걸 막고 있나 ──────────────────────────────────────
+  Widget _riskBlock(BuildContext context) {
     if (!alerts.loaded) {
       return const Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: EdgeInsets.fromLTRB(16, 13, 16, 13),
         child: Row(children: [
           Icon(Icons.error_outline, size: 16, color: AppColors.statusRed),
           SizedBox(width: 6),
@@ -304,56 +264,94 @@ class MonthOverviewCard extends StatelessWidget {
         ]),
       );
     }
-    final n = alerts.blocked;
-    if (n == 0) {
+    if (alerts.blocked == 0) {
       return const Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(children: [
-          Icon(Icons.check_circle_outline,
-              size: 16, color: AppColors.summaryNormal),
-          SizedBox(width: 6),
-          Text('막힌 것 없음',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.summaryNormal)),
-        ]),
+        padding: EdgeInsets.fromLTRB(16, 13, 16, 13),
+        child: Text('지연·이슈로 잡힌 건 없습니다',
+            style: TextStyle(fontSize: 13, color: AppColors.textMute)),
       );
     }
-    final bits = <String>[];
-    if (alerts.delayed > 0) bits.add('지연 ${alerts.delayed}');
-    if (alerts.issue > 0) bits.add('이슈 ${alerts.issue}');
+
+    final risk = _atRisk();
+    final money = risk.fold<int>(0, (a, b) => a + b.money);
+    final open = summary.openPlanRevenue;
+    final share = open > 0 ? (money * 100 / open).round() : null;
+    final unpriced = _unpricedCount();
+    final rows = risk.take(3).toList();
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      InkWell(
+        onTap: onTapBlocked,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 13, 12, 8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Text(
+                  // 건수가 아니라 금액으로 말한다. '15건' 은 경영진에게
+                  // 아무 뜻이 없고, '남은 매출의 69%' 는 뜻이 있다.
+                  money > 0 && share != null
+                      ? '남은 ${Fmt.moneyShort(open)} 중 '
+                          '${Fmt.moneyShort(money)}($share%)이 '
+                          '지연·이슈가 있는 프로젝트에 있습니다'
+                      : '지연·이슈 ${alerts.blocked}건',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMain)),
+            ),
+            const SizedBox(width: 6),
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(Icons.chevron_right,
+                  size: 18, color: AppColors.statusGray),
+            ),
+          ]),
+        ),
+      ),
+      for (final r in rows) _riskRow(r),
+      if (risk.length > rows.length || unpriced > 0)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 5, 16, 0),
+          child: Text(
+              [
+                if (risk.length > rows.length) '외 ${risk.length - rows.length}곳',
+                if (unpriced > 0) '판가 미등록 $unpriced곳은 금액이 잡히지 않습니다',
+              ].join(' · '),
+              style: AppText.caption.copyWith(color: AppColors.textHint)),
+        ),
+      const SizedBox(height: 12),
+    ]);
+  }
+
+  Widget _riskRow(_AtRisk r) {
     return InkWell(
-      onTap: onTapBlocked,
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
+      onTap: onTapProject == null ? null : () => onTapProject!(r.key),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
         child: Row(children: [
-          const Icon(Icons.report_problem_outlined,
-              size: 16, color: AppColors.statusRed),
-          const SizedBox(width: 6),
-          const Text('막힌 것',
-              style: TextStyle(
-                  fontSize: 13.5,
+          Expanded(
+            child: Text(r.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMain)),
+          ),
+          const SizedBox(width: 8),
+          Text(Fmt.moneyShort(r.money),
+              style: const TextStyle(
+                  fontSize: 13,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textMain)),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppColors.statusRedSoft,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text('$n',
-                style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.statusRed)),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 52,
+            child: Text('${r.blocked}건',
+                textAlign: TextAlign.right,
+                style: AppText.caption.copyWith(color: AppColors.textMute)),
           ),
-          const Spacer(),
-          Text(bits.join(' · '),
-              style: AppText.caption.copyWith(color: AppColors.textMute)),
-          const Icon(Icons.chevron_right, size: 18, color: AppColors.statusGray),
         ]),
       ),
     );
