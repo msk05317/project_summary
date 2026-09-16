@@ -22436,11 +22436,13 @@ def get_home_alerts(limit: int = 12):
     # 단, 끝난 주차만 보고, 사유가 '참고' 로 적혀 있으면 세지 않는다
     # (엔클로저는 매출을 맞추려고 일부러 덜 출하하기도 한다).
     for pk, proj in (data.get("projects") or {}).items():
-        if visible and pk not in visible:
-            continue
-        if _project_hold(proj):
+        # 위 반복에서 모델이 있어 이미 센 프로젝트만 본다. 나머지는 보드도
+        # 비어 있어서 계산만 하고 버리게 된다.
+        if pk not in seen_projects:
             continue
         try:
+            if _project_hold(proj):
+                continue
             board = get_weekly_board(pk, today.strftime("%Y-%m")) or {}
         except Exception as _e:
             print(f"[home/alerts] {pk} 주차 미달 계산 실패: {_e}")
