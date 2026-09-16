@@ -22535,29 +22535,22 @@ def get_home_alerts(limit: int = 12):
         # 방금 끝난 주만 본다. 3주 전에 못 채운 것은 이미 지나간 이야기고,
         # 마감 주차가 쌓일수록 목록이 주차 미달로만 가득 찬다.
         _last = (board.get("closed_weeks") or [])[-1:] or [""]
-        _rows = [sh for sh in (board.get("shortfalls") or [])
-                 if sh.get("week") == _last[0] and sh.get("kind") != "참고"]
-        if not _rows:
+        _sh = next((x for x in (board.get("shortfalls") or [])
+                    if x.get("week") == _last[0] and x.get("kind") != "참고"), None)
+        if not _sh:
             continue
-        # 한 주에 여러 행이 못 채웠어도 프로젝트당 한 줄이다. 사유도 주 단위로
-        # 적으므로 행마다 같은 말을 되풀이하게 된다.
-        _short = sum(int(sh.get("short") or 0) for sh in _rows)
-        _plan = sum(int(sh.get("plan") or 0) for sh in _rows)
-        _actual = sum(int(sh.get("actual") or 0) for sh in _rows)
-        _why = _rows[0].get("reason") or "사유 미입력"
-        _names = " · ".join(str(sh.get("row") or "") for sh in _rows[:3])
-        if len(_rows) > 3:
-            _names += f" 외 {len(_rows) - 3}"
+        # 미달은 합계 기준이라 주차당 한 건이다.
+        _why = _sh.get("reason") or "사유 미입력"
         counts["issue"] += 1
         alerts.append({
             "project_key": pk, "project": label,
             "model": f"{_last[0]} 계획 미달",
             "id": "", "kind": "이슈",
             "expected": "", "days": None,
-            "stage": _names,
+            "stage": "주차 합계",
             "note": "",
-            "issue": (f"계획 {_plan} → 실적 {_actual} (미달 {_short}"
-                      f" · {round(_actual * 100 / _plan) if _plan else 0}%) · {_why}"),
+            "issue": (f"계획 {_sh.get('plan')} → 실적 {_sh.get('actual')}"
+                      f" (미달 {_sh.get('short')} · {_sh.get('rate')}%) · {_why}"),
         })
         hit_projects.add(pk)
 
@@ -24185,23 +24178,35 @@ def _closed_week_labels(month: str, weeks: list, today=None) -> list:
 
 def _mark_board_shortfalls(rows: list, total: dict, weeks: list, month: str,
                            reasons: dict, today=None) -> tuple:
-    """마감된 주차에서 계획에 못 미친 칸에 표시를 달고 목록으로 돌려준다.
+    """마감된 주차에서 합계가 계획에 못 미치면 표시를 달고 목록으로 돌려준다.
+
+    미달은 '합계' 기준이다. 품목별로 따지지 않는다.
+    하바플레이트 W37 이 그 경우다 — 양산이 19대 모자랐는데 개발이 그만큼
+    더 나가서 합계(97 → 117)는 넘겼다. 행마다 빨갛게 칠하면 설명할 것도
+    없는 주에 사유를 적으라고 조르게 된다.
 
     칸에 붙는 것
       closed  그 주가 끝났는지 (앱은 안 끝난 주의 실적을 '·' 로 그린다)
-      short   모자란 수량 (계획 - 실적). 끝난 주에서만.
+      short   합계가 모자란 수량 (계획 - 실적). 끝난 주의 합계 행에만.
 
-    돌려주는 것은 (마감 주차 목록, 미달 목록).
+    돌려주는 것은 (마감 주차 목록, 미달 목록). 미달은 주차당 한 건이다.
     """
     closed = set(_closed_week_labels(month, weeks, today))
-    shorts = []
-    for r in list(rows or []) + ([total] if isinstance(total, dict) else []):
+
+    # 행은 '끝난 주인지' 만 달아 준다. 빨간 칸은 합계에만.
+    for r in (rows or []):
         if not isinstance(r, dict):
             continue
-        label = str(r.get("label") or r.get("group") or r.get("key") or "")
-        is_total = r is total
         for w in (weeks or []):
             cell = (r.get("weeks") or {}).get(w)
+            if isinstance(cell, dict):
+                cell["closed"] = str(w) in closed
+                cell.pop("short", None)
+
+    shorts = []
+    if isinstance(total, dict):
+        for w in (weeks or []):
+            cell = (total.get("weeks") or {}).get(w)
             if not isinstance(cell, dict):
                 continue
             done = str(w) in closed
@@ -24215,17 +24220,15 @@ def _mark_board_shortfalls(rows: list, total: dict, weeks: list, month: str,
                 cell.pop("short", None)
                 continue
             cell["short"] = plan - actual
-            if is_total:
-                continue          # 합계는 칸에 표시만, 목록에는 행만 올린다
             rs = reasons.get(str(w)) or {}
             shorts.append({
-                "week": str(w), "row": label,
+                "week": str(w), "row": "합계",
                 "plan": plan, "actual": actual, "short": plan - actual,
                 "rate": round(actual * 100 / plan),
                 "kind": rs.get("kind") or "",       # '' = 사유 미입력
                 "reason": rs.get("text") or "",
             })
-    shorts.sort(key=lambda e: (e["week"], -e["short"]))
+    shorts.sort(key=lambda e: e["week"])
     return sorted(closed), shorts
 
 

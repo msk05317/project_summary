@@ -5,9 +5,13 @@
 #  적으면 뜨게끔 하면 되는데 (...) 엔클로저 같은 경우에는 매출을 맞추려고
 #  일부러 덜 출하하는것도 있단 말이야 이건 이슈가 아니라 참고 사항인데"
 #
-# 그래서 두 가지를 지킨다.
-#   1. 끝난 주차만 본다. 아직 안 온 주의 실적 0 은 미달이 아니다.
-#   2. 사유에 '참고' 가 달리면 문제로 세지 않는다.
+# "계획 미달을 적어야 되는 경우는 합계가 계획대비 실적이 안 나왔을 때야
+#  품목별로 할 필요는 없어"
+#
+# 그래서 세 가지를 지킨다.
+#   1. 미달은 합계 기준이다. 품목(행)별로 따지지 않는다.
+#   2. 끝난 주차만 본다. 아직 안 온 주의 실적 0 은 미달이 아니다.
+#   3. 사유에 '참고' 가 달리면 문제로 세지 않는다.
 import ast, datetime, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -52,17 +56,24 @@ def board():
     ]
 
 
-# ── 미달은 끝난 주에서만 잡힌다 ──
+def total_of(rows):
+    return {'label': '합계', 'weeks': {
+        w: {'plan': sum(r['weeks'][w]['plan'] for r in rows),
+            'actual': sum(r['weeks'][w]['actual'] for r in rows)} for w in WEEKS}}
+
+
+# ── 미달은 끝난 주의 '합계' 에서만 잡힌다 ──
 rows = board()
-total = {'label': '합계', 'weeks': {
-    w: {'plan': sum(r['weeks'][w]['plan'] for r in rows),
-        'actual': sum(r['weeks'][w]['actual'] for r in rows)} for w in WEEKS}}
+total = total_of(rows)
 cl, sh = mark(rows, total, WEEKS, '2026-09', {}, TODAY)
 assert cl == ['W36', 'W37']
-got = {(e['week'], e['row']): e for e in sh}
-assert set(got) == {('W36', '직납'), ('W37', '직납'), ('W37', '자빌')}, got.keys()
-assert got[('W37', '자빌')]['short'] == 20 and got[('W37', '자빌')]['rate'] == 0
-assert got[('W36', '직납')]['short'] == 13 and got[('W36', '직납')]['rate'] == 62
+assert [e['week'] for e in sh] == ['W36', 'W37'], [e['week'] for e in sh]
+assert {e['row'] for e in sh} == {'합계'}, '행 단위로 미달을 잡고 있다'
+w36, w37 = sh[0], sh[1]
+assert (w36['plan'], w36['actual'], w36['short']) == (54, 46, 8), w36
+assert w36['rate'] == 85
+assert (w37['plan'], w37['actual'], w37['short']) == (55, 30, 25), w37
+assert w37['rate'] == 55
 ok += 1
 
 # 아직 안 온 주(W38~W40)는 실적 0 이어도 미달이 아니다
@@ -70,27 +81,43 @@ assert not [e for e in sh if e['week'] in ('W38', 'W39', 'W40')], \
     '아직 안 온 주를 미달로 잡았다'
 ok += 1
 
-# ── 칸 표시: 끝났는지 / 얼마 모자란지 ──
+# ── 빨간 칸은 합계 행에만 ──
+assert total['weeks']['W36']['short'] == 8
+assert total['weeks']['W37']['short'] == 25
+assert 'short' not in total['weeks']['W38'], '앞으로 올 주에 미달 표시가 붙었다'
+for r in rows:
+    for w in WEEKS:
+        assert 'short' not in r['weeks'][w], f"행({r['label']} {w})에 미달 표시가 붙었다"
+# 다만 '끝난 주인지' 는 행에도 달아 준다 (앱이 안 온 주를 '·' 로 그린다)
 assert rows[0]['weeks']['W36']['closed'] is True
 assert rows[0]['weeks']['W38']['closed'] is False
-assert rows[0]['weeks']['W36']['short'] == 13
-assert 'short' not in rows[1]['weeks']['W36'], '초과한 칸에 미달 표시가 붙었다'
-assert 'short' not in rows[0]['weeks']['W38'], '앞으로 올 주에 미달 표시가 붙었다'
 ok += 1
 
-# 합계 행도 칸 표시는 받는다. 다만 목록에는 행만 올라간다 (두 번 세면 안 된다)
-assert total['weeks']['W37']['short'] == 25
-assert '합계' not in [e['row'] for e in sh], '합계를 미달 목록에 또 올렸다'
+# ── 품목이 모자라도 합계가 넘으면 미달이 아니다 (하바플레이트 W37) ──
+hava = [
+    {'label': '양산', 'weeks': {w: {'plan': 0, 'actual': 0} for w in WEEKS}},
+    {'label': '개발', 'weeks': {w: {'plan': 0, 'actual': 0} for w in WEEKS}},
+]
+hava[0]['weeks']['W37'] = {'plan': 63, 'actual': 44}    # 19대 모자라지만
+hava[1]['weeks']['W37'] = {'plan': 34, 'actual': 73}    # 개발이 더 나갔다
+_, sh3 = mark(hava, total_of(hava), WEEKS, '2026-09', {}, TODAY)
+assert not sh3, f'합계(97 → 117)가 넘었는데 미달로 잡았다: {sh3}'
 ok += 1
 
 # ── 사유가 붙는다 ──
 R = {'W37': {'kind': '참고', 'text': '매출 맞추려고 일부러 덜 출하', 'at': ''}}
-_, sh2 = mark(board(), None, WEEKS, '2026-09', R, TODAY)
-by = {(e['week'], e['row']): e for e in sh2}
-assert by[('W37', '자빌')]['kind'] == '참고'
-assert '일부러' in by[('W37', '자빌')]['reason']
-assert by[('W36', '직납')]['kind'] == '' , '사유 없는 주에 사유가 생겼다'
-assert by[('W36', '직납')]['reason'] == ''
+rows2 = board()
+_, sh2 = mark(rows2, total_of(rows2), WEEKS, '2026-09', R, TODAY)
+by = {e['week']: e for e in sh2}
+assert by['W37']['kind'] == '참고'
+assert '일부러' in by['W37']['reason']
+assert by['W36']['kind'] == '', '사유 없는 주에 사유가 생겼다'
+assert by['W36']['reason'] == ''
+ok += 1
+
+# 합계가 없으면 잡을 것도 없다 (월 단위 보드)
+_, sh4 = mark(board(), None, WEEKS, '2026-09', {}, TODAY)
+assert sh4 == [], '합계 없이 미달을 만들어 냈다'
 ok += 1
 
 # ── 저장된 사유 읽기 ──
@@ -110,34 +137,39 @@ ok += 1
 # ── 서버가 그걸 내보내고 받는지 ──
 for t in ('"closed_weeks"', '"shortfalls"', '"week_reasons"'):
     assert t in SRC, f'보드 응답에 {t} 가 없다'
+assert '"row": "합계"' in SRC, '미달을 합계로 적지 않는다'
 assert '/admin/projects/{project_key}/week-reason' in SRC, '사유를 적을 곳이 없다'
 assert 'col_mode != "week"' in SRC, '월 단위 보드(챔버)에도 주차 미달을 붙였다'
 ok += 1
 
 # ── 홈: 주차 미달도 이슈. 단 '참고' 는 빼고 ──
-assert 'sh.get("kind") != "참고"' in SRC, "'참고' 를 문제로 세고 있다"
+assert 'x.get("kind") != "참고"' in SRC, "'참고' 를 문제로 세고 있다"
 assert '계획 미달' in SRC, '주차 미달이 alert 로 안 나간다'
 assert '사유 미입력' in SRC, '사유가 없을 때 아무 말도 안 한다'
 # 방금 끝난 주만. 마감 주차가 쌓일수록 목록이 주차 미달로만 가득 찬다
 assert 'closed_weeks") or [])[-1:]' in SRC, '지난 주차를 전부 올린다'
-# 한 주에 여러 행이 못 채워도 프로젝트당 한 줄
-assert '_rows[:3]' in SRC, '행마다 한 줄씩 올린다'
+# 미달은 합계 기준이라 프로젝트당 한 줄이다
+assert '"stage": "주차 합계"' in SRC, '주차 미달이 어디서 온 건지 안 적는다'
 ok += 1
 
-# ── admin: 미달 칸 색 + 사유 입력 ──
+# ── admin: 합계 행의 미달 칸 + 사유 입력 ──
 A = (ROOT / 'admin_v2.html').read_text(encoding='utf-8')
 assert 'wb-short' in A and 'td.wb-short' in A, 'admin 표에 미달 칸 색이 없다'
+assert '_wbTotCell' in A, 'admin 합계 행이 미달을 모른다'
+assert 'tr.wb-total td.wb-short' in A, '남색 합계 행에서 미달 칸이 안 보인다'
 assert '_wbShortPanel' in A and 'saveWeekReason' in A, 'admin 에 사유 입력이 없다'
 assert "'/week-reason'" in A, 'admin 이 사유를 저장하지 않는다'
 # 아직 안 온 주의 실적 0 은 가운뎃점
 assert "c.closed || c.now || (c.actual || 0) !== 0" in A, '안 온 주의 0 을 그대로 그린다'
 ok += 1
 
-# ── 앱: 표 칸 표시 + 표 밑 사유 ──
+# ── 앱: 합계 행 칸 표시 + 표 밑 사유 ──
 W = (ROOT.parent / 'mobile' / 'lib' / 'widgets' /
      'weekly_board_card.dart').read_text(encoding='utf-8')
 assert 'class _BCell' in W and '_weekPair' in W, '앱 표가 미달을 모른다'
 assert "▼" in W and "short ?" in W, '미달 칸에 표시가 없다'
+assert 'short: values.last[1].short' in W, '앱 합계 행이 미달을 안 받는다'
+assert W.count('short: values.last[1].short') == 2, '한쪽 표만 고쳤다'
 assert '_shortfallNote' in W and '계획 미달' in W, '표 밑 사유가 없다'
 assert '사유 미입력' in W or '아직 적히지 않았습니다' in W, '사유 없을 때 말이 없다'
 assert "week == nowWeek || actual != 0" in W, '앞으로 올 주를 0 으로 그린다'

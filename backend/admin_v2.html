@@ -5616,6 +5616,7 @@ window.renderAdminV2ByDivision = function(){
     '.wb-tbl td.nw { background:#FEF2F2; }',
     '.wb-tbl th.nw { background:#7F1D1D; }',
     '.wb-tbl tr.wb-total td.nw { background:#7F1D1D; }',
+    '.wb-tbl tr.wb-total td.wb-short { background:#B91C1C; color:#fff; }',
     '.wb-tbl .nw-l { border-left:2px solid #DC2626 !important; }',
     '.wb-tbl .nw-r { border-right:2px solid #DC2626 !important; }',
     '.wb-tbl .nw-t { border-top:2px solid #DC2626 !important; }',
@@ -9349,10 +9350,7 @@ window._ovProjectKey = function() {
       '<td>' + _wbNum(t.po_qty) + '</td><td>' + _wbNum(t.actual_total) + '</td>' +
       '<td>' + _wbNum(t.remaining) + '</td><td>' + _wbNum(t.prev_month_actual) + '</td>' +
       wks.map(function(w) {
-        var c = (t.weeks || {})[w] || {};
-        return (w === now)
-          ? '<td class="nw nw-l nw-b">' + _wbNum(c.plan) + '</td><td class="nw nw-r nw-b">' + _wbNum(c.actual) + '</td>'
-          : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
+        return _wbTotCell((t.weeks || {})[w], w === now);
       }).join('') +
       '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td>' +
       (nextM ? '<td>' + _wbNum(t.next_month_plan) + '</td>' : '') +
@@ -9365,7 +9363,7 @@ window._ovProjectKey = function() {
       '<b style="color:#DC2626">빨간 테두리</b>가 이번 주차입니다. ' +
       '주차 계획·실적은 그 행에 묶인 모델들의 주차별 계획 합계입니다. ' +
       'PO 수량·실적은 <b>PO · 실적 · 증감 입력</b> 값이 우선이고, 비워두면 모델 합계를 씁니다. ' +
-      '<b style="color:#991B1B">빨간 칸 ▼</b>은 마감된 주인데 계획에 못 미친 것입니다.</p>' +
+      '<b style="color:#991B1B">빨간 칸 ▼</b>은 마감된 주인데 <b>합계</b>가 계획에 못 미친 것입니다. 품목별로는 따지지 않습니다.</p>' +
       _wbShortPanel(d.project_key || '', d);
   }
 
@@ -9375,6 +9373,17 @@ window._ovProjectKey = function() {
   // 왜 못 채웠는지 적게 한다. 미달이 늘 문제는 아니다 — 엔클로저는
   // 매출을 맞추려고 일부러 덜 출하하기도 한다. 그런 주는 '참고' 로
   // 적어 두면 앱에서 문제로 세지 않는다.
+  // 합계 행의 주차 칸. 미달은 합계 기준이다 — 품목별로 따지지 않는다.
+  function _wbTotCell(c, isNow) {
+    c = c || {};
+    var short = (typeof c.short === 'number' && c.short > 0);
+    var pc = isNow ? ' class="nw nw-l nw-b"' : '';
+    var ac = (isNow ? 'nw nw-r nw-b ' : '') + (short ? 'wb-short' : '');
+    ac = ac.trim() ? ' class="' + ac.trim() + '"' : '';
+    return '<td' + pc + '>' + _wbNum(c.plan) + '</td>' +
+           '<td' + ac + '>' + _wbNum(c.actual) + (short ? ' ▼' : '') + '</td>';
+  }
+
   function _wbCell(c, cls, isNow) {
     c = Object.assign({}, c || {}, { now: !!isNow });
     var short = (typeof c.short === 'number' && c.short > 0);
@@ -9414,7 +9423,7 @@ window._ovProjectKey = function() {
         '<div style="font-size:12px;font-weight:800;color:#0F172A;">' + _esc(w) + '</div>';
       html += items.map(function(e) {
           return '<div style="font-size:11.5px;color:#4B5563;margin-top:2px;">' +
-            _esc(e.row) + ' — 계획 ' + e.plan + ' → 실적 ' + e.actual +
+            '합계 — 계획 ' + e.plan + ' → 실적 ' + e.actual +
             ' (' + e.short + '대 부족 · ' + e.rate + '%)</div>';
         }).join('');
       html += '<div style="display:flex;gap:6px;margin-top:8px;align-items:center;">' +
@@ -9970,10 +9979,7 @@ window._ovProjectKey = function() {
           '<td>' + _wbNum(t.po_qty) + '</td><td>' + _wbNum(t.actual_total) + '</td>' +
           '<td>' + _wbNum(t.remaining) + '</td><td>' + _wbNum(t.prev_month_actual) + '</td>' +
           wks.map(function(w) {
-            var c = (t.weeks || {})[w] || {};
-            return (w === now)
-              ? '<td class="nw nw-l nw-b">' + _wbNum(c.plan) + '</td><td class="nw nw-r nw-b">' + _wbNum(c.actual) + '</td>'
-              : '<td>' + _wbNum(c.plan) + '</td><td>' + _wbNum(c.actual) + '</td>';
+            return _wbTotCell((t.weeks || {})[w], w === now);
           }).join('') +
           '<td>' + _wbNum(t.month_plan) + '</td><td>' + _wbNum(t.month_actual) + '</td>' +
           '<td>' + _wbNum(t.next_month_plan) + '</td><td></td>' +
@@ -9985,7 +9991,7 @@ window._ovProjectKey = function() {
           'PO 수량·실적은 ‘PO · 실적 · 증감 입력’ 값이 우선이고, 비어 있으면 모델 목록 합계를 씁니다. ' +
           '양산 주차는 모델별 주차 계획의 합, 개발 주차는 ‘개발 (합계)’ 입력값. 잔량 = PO 수량 − 실적. ' +
           '<b style="color:#DC2626">빨간 테두리</b>가 이번 주차입니다. ' +
-          '<b style="color:#991B1B">빨간 칸 ▼</b>은 마감된 주인데 계획에 못 미친 것입니다.</p>' +
+          '<b style="color:#991B1B">빨간 칸 ▼</b>은 마감된 주인데 <b>합계</b>가 계획에 못 미친 것입니다. 품목별로는 따지지 않습니다.</p>' +
           _wbShortPanel(pk, d);
       })
       .catch(function(e) {

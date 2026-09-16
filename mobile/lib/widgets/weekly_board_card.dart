@@ -189,7 +189,8 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
 
   // ── 표 밑: 계획에 못 미친 주와 그 사유 ───────────────────────────
   //
-  // 표 안에서는 빨간 칸과 ▼ 로 '어디가' 를 말하고, 여기서 '왜' 를 말한다.
+  // 표에서는 합계 칸이 빨갛게 ▼ 로 '어느 주가' 를 말하고, 여기서 '왜' 를
+  // 말한다. 미달은 합계 기준이다 — 품목별로 따지지 않는다.
   // 미달이 늘 문제인 것은 아니다 — 엔클로저는 매출을 맞추려고 일부러 덜
   // 출하하기도 한다. 그런 주는 admin 에서 '참고' 로 적어 두면 회색으로
   // 내려가고 문제로 세지 않는다. 아무것도 안 적혀 있으면 '사유 미입력'.
@@ -270,7 +271,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Text(
-                '${e['row']}  계획 ${e['plan']} → 실적 ${e['actual']}'
+                '합계 ${e['plan']} → ${e['actual']}'
                 '  (${e['short']}대 부족 · ${e['rate']}%)',
                 style: const TextStyle(
                     fontSize: 11, height: 1.3, color: Color(0xFF4B5563))),
@@ -555,7 +556,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
             Expanded(child: _cell(values.last[0].text, _kTotalH,
                 total: true, redHead: isNow)),
             Expanded(child: _cell(values.last[1].text, _kTotalH,
-                total: true, redHead: isNow)),
+                total: true, redHead: isNow, short: values.last[1].short)),
           ]),
         ],
       ),
@@ -654,7 +655,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
             Expanded(child: _cell(values.last[0].text, _kTotalH,
                 total: true, redHead: isNow)),
             Expanded(child: _cell(values.last[1].text, _kTotalH,
-                total: true, redHead: isNow)),
+                total: true, redHead: isNow, short: values.last[1].short)),
           ]),
         ],
       ),
@@ -739,9 +740,18 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       bg = const Color(0xFFFEF2F2);
     }
     // 마감된 주인데 계획에 못 미친 칸. 숫자만 보면 지나친다.
-    if (short && !head && !total) {
-      bg = const Color(0xFFFEE2E2);
-      fg = const Color(0xFF991B1B);
+    //
+    // 미달은 합계 기준이라 이 표시는 합계 행에 붙는다. 합계 행은 남색
+    // 바탕에 흰 글씨라, 연한 빨강을 깔면 아무것도 안 보인다 — 칸을
+    // 통째로 빨갛게 만든다.
+    if (short) {
+      if (total) {
+        bg = const Color(0xFFB91C1C);
+        fg = Colors.white;
+      } else if (!head) {
+        bg = const Color(0xFFFEE2E2);
+        fg = const Color(0xFF991B1B);
+      }
     }
     return Container(
       height: h,
