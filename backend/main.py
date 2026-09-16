@@ -22407,6 +22407,37 @@ def get_home_alerts(limit: int = 12):
                 })
                 hit_projects.add(pk)
 
+    # 주차 미달도 이슈다. "계획 대비 실적이 안 나오면 이슈가 있는 거 아닐까?"
+    # 단, 끝난 주차만 보고, 사유가 '참고' 로 적혀 있으면 세지 않는다
+    # (엔클로저는 매출을 맞추려고 일부러 덜 출하하기도 한다).
+    for pk, proj in (data.get("projects") or {}).items():
+        if visible and pk not in visible:
+            continue
+        if _project_hold(proj):
+            continue
+        try:
+            board = get_weekly_board(pk, today.strftime("%Y-%m")) or {}
+        except Exception as _e:
+            print(f"[home/alerts] {pk} 주차 미달 계산 실패: {_e}")
+            continue
+        label = PROJECT_LABELS.get(pk, pk)
+        for sh in (board.get("shortfalls") or []):
+            if sh.get("kind") == "참고":
+                continue
+            counts["issue"] += 1
+            _why = sh.get("reason") or "사유 미입력"
+            alerts.append({
+                "project_key": pk, "project": label,
+                "model": f"{sh.get('row') or ''} · {sh.get('week') or ''}".strip(" ·"),
+                "id": "", "kind": "이슈",
+                "expected": "", "days": None,
+                "stage": "주차 미달",
+                "note": "",
+                "issue": (f"계획 {sh.get('plan')} → 실적 {sh.get('actual')}"
+                          f" (미달 {sh.get('short')} · {sh.get('rate')}%) · {_why}"),
+            })
+            hit_projects.add(pk)
+
     counts["running"] = max(0, counts["total"] - counts["done"] - counts["delayed"]
                             - counts["soon"] - counts["hold"])
 
@@ -23418,7 +23449,13 @@ def _spec_board(project_key, proj, spec, month):
         "next_month_plan": sum(r["next_month_plan"] for r in flat),
     }
     import datetime as _dt
+    _reasons = _week_reasons_of(proj, month)
+    # 월 단위 보드(챔버)는 주차 미달이라는 게 없다 — 주차형만 본다.
+    _closed, _shorts = ([], []) if col_mode != "week" else \
+        _mark_board_shortfalls(flat, total, weeks, month, _reasons)
     return {"project_key": project_key, "month": month, "layout": "sections",
+            "closed_weeks": _closed, "shortfalls": _shorts,
+            "week_reasons": _reasons if col_mode == "week" else {},
             "columns": col_mode, "months": months,
             "show_status": spec.get("show_status", True),
             "show_note": spec.get("show_note", True),
@@ -23429,6 +23466,47 @@ def _spec_board(project_key, proj, spec, month):
             # (주차형 보드의 current_week 와 같은 역할)
             "current_month": _dt.date.today().strftime("%Y-%m"),
             "sections": sections, "rows": flat, "total": total}
+
+
+@app.put("/admin/projects/{project_key}/week-reason")
+def admin_put_week_reason(project_key: str, payload: dict,
+                          _admin: int = Depends(get_admin_session)):
+    """주차 미달 사유를 적는다.
+
+    body: {month, week, kind: '문제'|'참고', text}
+    text 가 비면 그 주의 사유를 지운다 (미입력으로 되돌린다).
+    """
+    import datetime as _dt
+    _key = _model_key_alias(project_key)
+    month = str(payload.get("month") or "").strip()
+    week = str(payload.get("week") or "").strip().upper()
+    if not week.startswith("W"):
+        week = "W" + week.lstrip("Ww")
+    if not month or len(week) < 2:
+        raise HTTPException(status_code=400, detail="month 와 week 가 필요합니다.")
+    kind = str(payload.get("kind") or "문제").strip()
+    if kind not in _WEEK_REASON_KINDS:
+        kind = "문제"
+    text = str(payload.get("text") or "").strip()
+
+    data = _load_models()
+    proj = data.setdefault("projects", {}).setdefault(_key, {})
+    store = proj.setdefault("week_reasons", {})
+    if not isinstance(store, dict):
+        store = proj["week_reasons"] = {}
+    bucket = store.setdefault(month, {})
+    if not isinstance(bucket, dict):
+        bucket = store[month] = {}
+    if not text:
+        bucket.pop(week, None)
+        if not bucket:
+            store.pop(month, None)
+    else:
+        bucket[week] = {"kind": kind, "text": text,
+                        "at": _dt.datetime.now().strftime("%Y-%m-%d %H:%M")}
+    _save_models(data)
+    return {"ok": True, "project_key": _key, "month": month, "week": week,
+            "reasons": _week_reasons_of(proj, month)}
 
 
 @app.get("/projects/{project_key}/board-rows")
@@ -23909,6 +23987,98 @@ async def admin_bloom_daily_apply(project_key: str, file: UploadFile = File(...)
             "dates": board.get("dates") or [],
             "diff": diff}
 
+# ─────────────────────────────────────────────────────────────
+# 주차 미달과 그 사유
+#
+# "계획 대비 실적이 안 나오면 이슈가 있는 거 아닐까?"
+#
+# 맞다. 다만 끝난 주차에만 해당한다 — 아직 오지 않은 주의 실적 0 은
+# 미달이 아니라 아직 안 온 것이다. 그리고 미달이 늘 문제인 것도 아니다:
+# 엔클로저는 매출을 맞추려고 일부러 덜 출하하기도 한다. 그래서 사유에
+# '문제' / '참고' 를 달고, 참고로 표시된 주는 문제로 세지 않는다.
+# 사유가 아예 없으면 '사유 미입력' — 그건 문제 쪽이다.
+_WEEK_REASON_KINDS = ("문제", "참고")
+
+
+def _week_reasons_of(proj: dict, month: str) -> dict:
+    """{'W37': {'kind': '참고', 'text': '...', 'at': '...'}}"""
+    store = proj.get("week_reasons")
+    if not isinstance(store, dict):
+        return {}
+    got = store.get(str(month))
+    if not isinstance(got, dict):
+        return {}
+    out = {}
+    for w, v in got.items():
+        if not isinstance(v, dict):
+            continue
+        kind = str(v.get("kind") or "").strip()
+        out[str(w)] = {
+            "kind": kind if kind in _WEEK_REASON_KINDS else "문제",
+            "text": str(v.get("text") or "").strip(),
+            "at": str(v.get("at") or ""),
+        }
+    return out
+
+
+def _closed_week_labels(month: str, weeks: list, today=None) -> list:
+    """마감된 주차 = 그 ISO 주의 일요일이 오늘보다 앞선 주."""
+    import datetime as _dtc
+    today = today or _dtc.date.today()
+    out = []
+    for w in (weeks or []):
+        end = _week_end_date(month, w)
+        if end and end < today:
+            out.append(str(w))
+    return out
+
+
+def _mark_board_shortfalls(rows: list, total: dict, weeks: list, month: str,
+                           reasons: dict, today=None) -> tuple:
+    """마감된 주차에서 계획에 못 미친 칸에 표시를 달고 목록으로 돌려준다.
+
+    칸에 붙는 것
+      closed  그 주가 끝났는지 (앱은 안 끝난 주의 실적을 '·' 로 그린다)
+      short   모자란 수량 (계획 - 실적). 끝난 주에서만.
+
+    돌려주는 것은 (마감 주차 목록, 미달 목록).
+    """
+    closed = set(_closed_week_labels(month, weeks, today))
+    shorts = []
+    for r in list(rows or []) + ([total] if isinstance(total, dict) else []):
+        if not isinstance(r, dict):
+            continue
+        label = str(r.get("label") or r.get("group") or r.get("key") or "")
+        is_total = r is total
+        for w in (weeks or []):
+            cell = (r.get("weeks") or {}).get(w)
+            if not isinstance(cell, dict):
+                continue
+            done = str(w) in closed
+            cell["closed"] = done
+            try:
+                plan = int(cell.get("plan") or 0)
+                actual = int(cell.get("actual") or 0)
+            except (TypeError, ValueError):
+                continue
+            if not done or plan <= 0 or actual >= plan:
+                cell.pop("short", None)
+                continue
+            cell["short"] = plan - actual
+            if is_total:
+                continue          # 합계는 칸에 표시만, 목록에는 행만 올린다
+            rs = reasons.get(str(w)) or {}
+            shorts.append({
+                "week": str(w), "row": label,
+                "plan": plan, "actual": actual, "short": plan - actual,
+                "rate": round(actual * 100 / plan),
+                "kind": rs.get("kind") or "",       # '' = 사유 미입력
+                "reason": rs.get("text") or "",
+            })
+    shorts.sort(key=lambda e: (e["week"], -e["short"]))
+    return sorted(closed), shorts
+
+
 @app.get("/projects/{project_key}/weekly-board")
 def get_weekly_board(project_key: str, month: str = None):
     """엑셀로 올리던 '주차별 계획 원본' 표를 데이터에서 계산해 돌려준다.
@@ -23995,9 +24165,13 @@ def get_weekly_board(project_key: str, month: str = None):
         cur_week = "W%02d" % _dt.date.today().isocalendar()[1]
     except Exception:
         cur_week = None
+    _reasons = _week_reasons_of(proj, month)
+    _closed, _shorts = _mark_board_shortfalls(rows, total, weeks, month, _reasons)
     return {"project_key": _key, "month": month, "weeks": weeks,
             "prev_month": prev, "next_month": nxt,
             "current_week": cur_week, "po_delta": po_delta,
+            "closed_weeks": _closed, "shortfalls": _shorts,
+            "week_reasons": _reasons,
             "rows": rows, "total": total}
 
 

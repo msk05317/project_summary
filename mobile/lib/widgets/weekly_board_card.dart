@@ -22,6 +22,16 @@ const Color _navy = Color(0xFF0F2C59);
 const Color _line = Color(0xFFE5E7EB);
 const Color _red = Color(0xFFDC2626);
 
+/// 표 칸 하나. 숫자만으로는 '계획에 못 미친 칸' 을 말할 수 없다.
+class _BCell {
+  final String text;
+
+  /// 마감된 주차인데 실적이 계획에 못 미쳤다
+  final bool short;
+
+  const _BCell(this.text, {this.short = false});
+}
+
 class WeeklyBoardCard extends StatefulWidget {
   final String projectKey;
   final String? month;
@@ -68,6 +78,24 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       b.write(s[k]);
     }
     return (i < 0 ? '-' : '') + b.toString();
+  }
+
+  /// 주차 칸 하나를 [계획, 실적] 두 칸으로.
+  ///
+  /// 아직 오지 않은 주의 실적 0 은 '아직 안 나갔다' 가 아니라 '아직 안 왔다'
+  /// 다. 0 으로 그리면 미달처럼 보인다 — 가운뎃점으로 비워 둔다.
+  /// 마감된 주에서 계획에 못 미치면 그 칸에 표시를 남긴다.
+  List<_BCell> _weekPair(dynamic cell, String week, String nowWeek) {
+    final m = (cell is Map) ? cell : const {};
+    final closed = m['closed'] == true;
+    final short = (m['short'] is num) && (m['short'] as num) > 0;
+    final actual = (m['actual'] is num) ? (m['actual'] as num).round() : 0;
+    // 마감됐거나, 이번 주거나, 실적이 이미 들어왔으면 숫자를 그린다.
+    final show = closed || week == nowWeek || actual != 0;
+    return [
+      _BCell(_n(m['plan'])),
+      _BCell(show ? _n(m['actual']) : '·', short: short),
+    ];
   }
 
   String _mon(String? ym) {
@@ -129,6 +157,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
                   ),
                 ],
               ),
+              _shortfallNote(d),
               const SizedBox(height: 10),
               InkWell(
                 onTap: () => _openZoom(d),
@@ -155,6 +184,110 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           ),
         );
       },
+    );
+  }
+
+  // ── 표 밑: 계획에 못 미친 주와 그 사유 ───────────────────────────
+  //
+  // 표 안에서는 빨간 칸과 ▼ 로 '어디가' 를 말하고, 여기서 '왜' 를 말한다.
+  // 미달이 늘 문제인 것은 아니다 — 엔클로저는 매출을 맞추려고 일부러 덜
+  // 출하하기도 한다. 그런 주는 admin 에서 '참고' 로 적어 두면 회색으로
+  // 내려가고 문제로 세지 않는다. 아무것도 안 적혀 있으면 '사유 미입력'.
+  Widget _shortfallNote(Map<String, dynamic> d) {
+    final shorts = (d['shortfalls'] as List? ?? const []).cast<Map>();
+    if (shorts.isEmpty) {
+      final closed = (d['closed_weeks'] as List? ?? const []);
+      if (closed.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(children: [
+          const Icon(Icons.check_circle_outline,
+              size: 14, color: Color(0xFF059669)),
+          const SizedBox(width: 5),
+          Text('마감된 ${closed.length}개 주차 모두 계획을 채웠습니다',
+              style: const TextStyle(fontSize: 11.5, color: Color(0xFF059669))),
+        ]),
+      );
+    }
+
+    // 주차별로 묶는다. 사유는 주 단위로 적는다.
+    final byWeek = <String, List<Map>>{};
+    for (final e in shorts) {
+      byWeek.putIfAbsent('${e['week']}', () => []).add(e);
+    }
+    final weeks = byWeek.keys.toList()..sort();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.trending_down_rounded, size: 14, color: Color(0xFF991B1B)),
+          SizedBox(width: 5),
+          Text('계획 미달',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF991B1B))),
+        ]),
+        for (final w in weeks) _shortWeekBlock(w, byWeek[w]!),
+      ]),
+    );
+  }
+
+  Widget _shortWeekBlock(String week, List<Map> items) {
+    final kind = '${items.first['kind'] ?? ''}';
+    final reason = '${items.first['reason'] ?? ''}'.trim();
+    final isNote = kind == '참고';
+    final tint = isNote ? const Color(0xFF6B7280) : const Color(0xFF991B1B);
+    final soft = isNote ? const Color(0xFFF3F4F6) : const Color(0xFFFEE2E2);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+      decoration: BoxDecoration(
+        color: isNote ? const Color(0xFFFAFBFC) : const Color(0xFFFFF7F7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: isNote ? _line : const Color(0xFFFCA5A5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(week,
+              style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A))),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+                color: soft, borderRadius: BorderRadius.circular(6)),
+            child: Text(reason.isEmpty ? '사유 미입력' : kind,
+                style: TextStyle(
+                    fontSize: 9.5, fontWeight: FontWeight.w800, color: tint)),
+          ),
+        ]),
+        for (final e in items)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(
+                '${e['row']}  계획 ${e['plan']} → 실적 ${e['actual']}'
+                '  (${e['short']}대 부족 · ${e['rate']}%)',
+                style: const TextStyle(
+                    fontSize: 11, height: 1.3, color: Color(0xFF4B5563))),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+              reason.isEmpty ? '왜 못 채웠는지 아직 적히지 않았습니다' : reason,
+              style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  fontStyle: reason.isEmpty ? FontStyle.italic : FontStyle.normal,
+                  color: reason.isEmpty
+                      ? const Color(0xFF9CA3AF)
+                      : const Color(0xFF111827))),
+        ),
+      ]),
     );
   }
 
@@ -338,18 +471,13 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
               span: headSpan),
           for (final w in weeks)
             _secPairCol(w, [
-              ...flat.map((r) => [
-                    _n(((r['weeks'] as Map?)?[w] as Map?)?['plan']),
-                    _n(((r['weeks'] as Map?)?[w] as Map?)?['actual']),
-                  ]),
-              [
-                _n(((total['weeks'] as Map?)?[w] as Map?)?['plan']),
-                _n(((total['weeks'] as Map?)?[w] as Map?)?['actual']),
-              ],
+              ...flat.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, nowWeek)),
+              _weekPair((total['weeks'] as Map?)?[w], w, nowWeek),
             ], w == nowWeek),
           _secPairCol(_mon('${d['month']}'), [
-            ...flat.map((r) => [_n(r['month_plan']), _n(r['month_actual'])]),
-            [_n(total['month_plan']), _n(total['month_actual'])],
+            ...flat.map((r) =>
+                [_BCell(_n(r['month_plan'])), _BCell(_n(r['month_actual']))]),
+            [_BCell(_n(total['month_plan'])), _BCell(_n(total['month_actual']))],
           ], false),
           if ((d['next_month'] ?? '').toString().isNotEmpty)
             _numCol2(_mon('${d['next_month']}'), col('next_month_plan'), 46,
@@ -399,7 +527,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // 섹션형의 계획/실적 두 칸 열 (머리글 3단: 제목 / 주차 / 계획·실적)
-  Widget _secPairCol(String title, List<List<String>> values, bool isNow) {
+  Widget _secPairCol(String title, List<List<_BCell>> values, bool isNow) {
     return Container(
       width: 76,
       decoration: isNow
@@ -419,12 +547,15 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           ]),
           for (var i = 0; i < values.length - 1; i++)
             Row(children: [
-              Expanded(child: _cell(values[i][0], _kSecRowH, tint: isNow)),
-              Expanded(child: _cell(values[i][1], _kSecRowH, tint: isNow)),
+              Expanded(child: _cell(values[i][0].text, _kSecRowH, tint: isNow)),
+              Expanded(child: _cell(values[i][1].text, _kSecRowH,
+                  tint: isNow, short: values[i][1].short)),
             ]),
           Row(children: [
-            Expanded(child: _cell(values.last[0], _kTotalH, total: true, redHead: isNow)),
-            Expanded(child: _cell(values.last[1], _kTotalH, total: true, redHead: isNow)),
+            Expanded(child: _cell(values.last[0].text, _kTotalH,
+                total: true, redHead: isNow)),
+            Expanded(child: _cell(values.last[1].text, _kTotalH,
+                total: true, redHead: isNow)),
           ]),
         ],
       ),
@@ -452,18 +583,13 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
         _numCol(_mon(d['prev_month'] as String?), col('prev_month_actual'), 46),
         for (final w in weeks)
           _pairCol(w, [
-            ...rows.map((r) => [
-                  _n(((r['weeks'] as Map?)?[w] as Map?)?['plan']),
-                  _n(((r['weeks'] as Map?)?[w] as Map?)?['actual']),
-                ]),
-            [
-              _n(((total['weeks'] as Map?)?[w] as Map?)?['plan']),
-              _n(((total['weeks'] as Map?)?[w] as Map?)?['actual']),
-            ],
+            ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
+            _weekPair((total['weeks'] as Map?)?[w], w, now),
           ], now == w),
         _pairCol(_mon(d['month'] as String?), [
-          ...rows.map((r) => [_n(r['month_plan']), _n(r['month_actual'])]),
-          [_n(total['month_plan']), _n(total['month_actual'])],
+          ...rows.map((r) =>
+              [_BCell(_n(r['month_plan'])), _BCell(_n(r['month_actual']))]),
+          [_BCell(_n(total['month_plan'])), _BCell(_n(total['month_actual']))],
         ], false),
         _numCol(_mon(d['next_month'] as String?), col('next_month_plan'), 46),
         _deltaCol((d['po_delta'] as Map?) ?? const {}),
@@ -502,7 +628,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // 계획/실적 두 칸짜리 열 (주차 또는 월 합계)
-  Widget _pairCol(String title, List<List<String>> values, bool isNow) {
+  Widget _pairCol(String title, List<List<_BCell>> values, bool isNow) {
     final border = isNow
         ? const Border(
             left: BorderSide(color: _red, width: 2),
@@ -520,12 +646,15 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           ]),
           for (var i = 0; i < values.length - 1; i++)
             Row(children: [
-              Expanded(child: _cell(values[i][0], _kRowH, tint: isNow)),
-              Expanded(child: _cell(values[i][1], _kRowH, tint: isNow)),
+              Expanded(child: _cell(values[i][0].text, _kRowH, tint: isNow)),
+              Expanded(child: _cell(values[i][1].text, _kRowH,
+                  tint: isNow, short: values[i][1].short)),
             ]),
           Row(children: [
-            Expanded(child: _cell(values.last[0], _kTotalH, total: true, redHead: isNow)),
-            Expanded(child: _cell(values.last[1], _kTotalH, total: true, redHead: isNow)),
+            Expanded(child: _cell(values.last[0].text, _kTotalH,
+                total: true, redHead: isNow)),
+            Expanded(child: _cell(values.last[1].text, _kTotalH,
+                total: true, redHead: isNow)),
           ]),
         ],
       ),
@@ -593,6 +722,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       bool total = false,
       bool redHead = false,
       bool tint = false,
+      bool short = false,
       bool bold = false,
       double? size,
       int maxLines = 2,
@@ -607,6 +737,11 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       fg = Colors.white;
     } else if (tint) {
       bg = const Color(0xFFFEF2F2);
+    }
+    // 마감된 주인데 계획에 못 미친 칸. 숫자만 보면 지나친다.
+    if (short && !head && !total) {
+      bg = const Color(0xFFFEE2E2);
+      fg = const Color(0xFF991B1B);
     }
     return Container(
       height: h,
@@ -623,13 +758,15 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           right: BorderSide(color: head || total ? const Color(0xFF1E3A63) : _line),
         ),
       ),
-      child: Text(text,
+      child: Text(short ? '$text ▼' : text,
           textAlign: align,
           maxLines: maxLines,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: size ?? (head || total ? 9.5 : 10.5),
-            fontWeight: head || total || bold ? FontWeight.w800 : FontWeight.w500,
+            fontWeight: head || total || bold || short
+                ? FontWeight.w800
+                : FontWeight.w500,
             color: fg,
             height: 1.15,
           )),
