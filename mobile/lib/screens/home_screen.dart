@@ -801,8 +801,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               return MonthOverviewCard(
                                 summary: snap.data ?? OverviewSummary.empty,
                                 alerts: aSnap.data ?? HomeAlerts.empty,
+                                // 둘 다 기다린다. /home/alerts 가 /overview
+                                // 보다 느려서, 하나만 보면 아직 오는 중인
+                                // 동안 '불러오지 못했습니다' 를 띄운다.
                                 loading: snap.connectionState ==
-                                    ConnectionState.waiting,
+                                        ConnectionState.waiting ||
+                                    aSnap.connectionState ==
+                                        ConnectionState.waiting,
                                 onTapRevenue: () => _openRevenueDetail(
                                     snap.data?.month ?? ''),
                                 onTapBlocked: () =>

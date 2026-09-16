@@ -28,7 +28,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
   void initState() {
     super.initState();
     _filter = widget.initialFilter;
-    _future = HomeAlertsService.fetch(limit: 60);
+    _future = HomeAlertsService.fetch();
   }
 
   /// 칩 하나가 보여줄 목록. 보류·PO 대기는 지연 목록과 별개다.
@@ -52,7 +52,7 @@ class _AlertListScreenState extends State<AlertListScreen> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = HomeAlertsService.fetch(limit: 60));
+    setState(() => _future = HomeAlertsService.fetch());
     await _future;
   }
 

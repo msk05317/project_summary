@@ -230,11 +230,11 @@ class HomeAlerts {
 class HomeAlertsService {
   /// 실패하면 예외 대신 empty 를 돌려준다 — 홈이 통째로 깨지면 안 된다.
   /// 대신 loaded=false 라서 화면이 '지연 없음' 과 구분해서 말할 수 있다.
-  static Future<HomeAlerts> fetch({int limit = 60}) async {
+  static Future<HomeAlerts> fetch({int limit = 300}) async {
     try {
       final got = await OfflineStore.fetch(
           '$kApiBaseUrl/home/alerts?limit=$limit', 'home_alerts',
-          timeout: const Duration(seconds: 12));
+          timeout: const Duration(seconds: 20));
       final decoded = got.data;
       if (decoded is! Map) return HomeAlerts.empty;
       return HomeAlerts.fromJson(decoded)

@@ -14100,7 +14100,8 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         # 판가·재료비가 바뀌었으면 구간으로 남긴다. 안 그러면 오늘 고친 판가로
         # 지난달 매출까지 다시 계산된다.
         _chg = _apply_price_change(
-            entry, old, "from_now" if _price_mode == "preview" else _price_mode)
+            entry, old, "from_now" if _price_mode == "preview" else _price_mode,
+            sent=m)
         if _chg:
             _price_changes.append(_chg)
         # 프로세스는 이 화면에서 편집하지 않는다. 그런데 목록을 열 때 받아 둔
@@ -14196,10 +14197,13 @@ def put_project_status_note(project_key: str, payload: dict,
     data = _load_models()
     proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
     proj["status_note"] = note
-    if "hold" in (payload or {}):
-        # admin 에서 직접 고른 값이 문구보다 우선한다
-        _h = str(payload.get("hold") or "").strip()
-        if _h in ("", "진행", "해제", "없음"):
+    # admin 에서 직접 고른 값이 문구보다 우선한다. 다만 빈 문자열은
+    # '진행을 골랐다' 가 아니라 '그 칸이 화면에 없었다' 는 뜻이다. 그걸
+    # 수동 해제로 읽으면, 현황 메모만 고쳐도 보류가 영구히 풀리고
+    # hold_source='manual' 때문에 문구에서 다시 살아나지도 못한다.
+    _h = str((payload or {}).get("hold") or "").strip()
+    if _h:
+        if _h in ("진행", "해제", "없음"):
             # 지우기만 하면 서버가 다시 뜰 때 현황 문구를 읽고 되살린다.
             # '진행' 을 손으로 골랐다는 사실 자체를 남긴다.
             proj["hold"] = "진행"
@@ -21957,13 +21961,34 @@ def _parse_any_date(v):
 
 
 def _week_end_date(month: str, week_label: str):
-    """'2026-08' + 'W33' → 그 ISO 주의 일요일(주 마감일)."""
+    """'2026-08' + 'W33' → 그 ISO 주의 일요일(주 마감일).
+
+    연말·연초는 달의 연도와 ISO 연도가 어긋난다. 2025년 12월 보드의
+    마지막 열은 'W01' 인데 그건 2026년 1주다. 달의 연도를 그대로 쓰면
+    2025-01-05 가 나오고, 12월 한 달 내내 '이미 끝난 주' 로 잡혀서
+    시작도 안 한 주가 통째로 미달로 올라온다. _week_ord 와 같은 규칙으로
+    연도를 보정한다.
+    """
     import datetime as _dt
     try:
         y = int(str(month).split("-")[0])
+        mm = int(str(month).split("-")[1])
         n = int(str(week_label).upper().lstrip("W"))
+    except (ValueError, IndexError, AttributeError):
+        return None
+    if mm == 12 and n <= 2:
+        y += 1          # 12월 보드의 W01 = 다음 해 1주
+    elif mm == 1 and n >= 52:
+        y -= 1          # 1월 보드의 W52/W53 = 지난 해 마지막 주
+    try:
         return _dt.date.fromisocalendar(y, n, 7)
-    except Exception:
+    except ValueError:
+        # 그 해에 없는 주차(52주 해의 W53). 앞뒤 해에서 찾아본다.
+        for _y in (y - 1, y + 1):
+            try:
+                return _dt.date.fromisocalendar(_y, n, 7)
+            except ValueError:
+                continue
         return None
 
 
@@ -22421,22 +22446,34 @@ def get_home_alerts(limit: int = 12):
             print(f"[home/alerts] {pk} 주차 미달 계산 실패: {_e}")
             continue
         label = PROJECT_LABELS.get(pk, pk)
-        for sh in (board.get("shortfalls") or []):
-            if sh.get("kind") == "참고":
-                continue
-            counts["issue"] += 1
-            _why = sh.get("reason") or "사유 미입력"
-            alerts.append({
-                "project_key": pk, "project": label,
-                "model": f"{sh.get('row') or ''} · {sh.get('week') or ''}".strip(" ·"),
-                "id": "", "kind": "이슈",
-                "expected": "", "days": None,
-                "stage": "주차 미달",
-                "note": "",
-                "issue": (f"계획 {sh.get('plan')} → 실적 {sh.get('actual')}"
-                          f" (미달 {sh.get('short')} · {sh.get('rate')}%) · {_why}"),
-            })
-            hit_projects.add(pk)
+        # 방금 끝난 주만 본다. 3주 전에 못 채운 것은 이미 지나간 이야기고,
+        # 마감 주차가 쌓일수록 목록이 주차 미달로만 가득 찬다.
+        _last = (board.get("closed_weeks") or [])[-1:] or [""]
+        _rows = [sh for sh in (board.get("shortfalls") or [])
+                 if sh.get("week") == _last[0] and sh.get("kind") != "참고"]
+        if not _rows:
+            continue
+        # 한 주에 여러 행이 못 채웠어도 프로젝트당 한 줄이다. 사유도 주 단위로
+        # 적으므로 행마다 같은 말을 되풀이하게 된다.
+        _short = sum(int(sh.get("short") or 0) for sh in _rows)
+        _plan = sum(int(sh.get("plan") or 0) for sh in _rows)
+        _actual = sum(int(sh.get("actual") or 0) for sh in _rows)
+        _why = _rows[0].get("reason") or "사유 미입력"
+        _names = " · ".join(str(sh.get("row") or "") for sh in _rows[:3])
+        if len(_rows) > 3:
+            _names += f" 외 {len(_rows) - 3}"
+        counts["issue"] += 1
+        alerts.append({
+            "project_key": pk, "project": label,
+            "model": f"{_last[0]} 계획 미달",
+            "id": "", "kind": "이슈",
+            "expected": "", "days": None,
+            "stage": _names,
+            "note": "",
+            "issue": (f"계획 {_plan} → 실적 {_actual} (미달 {_short}"
+                      f" · {round(_actual * 100 / _plan) if _plan else 0}%) · {_why}"),
+        })
+        hit_projects.add(pk)
 
     counts["running"] = max(0, counts["total"] - counts["done"] - counts["delayed"]
                             - counts["soon"] - counts["hold"])
@@ -22467,7 +22504,9 @@ def get_home_alerts(limit: int = 12):
     alerts.sort(key=lambda a: (_ORD.get(a["kind"], 2),
                                -(a["days"] if a["days"] is not None else -9999)))
     try:
-        n = max(1, min(60, int(limit)))
+        # 앱 목록 화면은 칩에 '임박 34' 라고 써 놓고 목록은 잘린 걸 보여준다.
+        # 숫자와 목록이 어긋나면 그게 또 '연결성이 없다' 다. 넉넉히 준다.
+        n = max(1, min(300, int(limit)))
     except (TypeError, ValueError):
         n = 12
     # 블룸은 모델이 없고 일 보고 보드로 움직인다. 진행이 있는데도
@@ -23476,21 +23515,26 @@ def admin_put_week_reason(project_key: str, payload: dict,
     body: {month, week, kind: '문제'|'참고', text}
     text 가 비면 그 주의 사유를 지운다 (미입력으로 되돌린다).
     """
-    import datetime as _dt
+    import datetime as _dt, re as _re
     _key = _model_key_alias(project_key)
     month = str(payload.get("month") or "").strip()
-    week = str(payload.get("week") or "").strip().upper()
-    if not week.startswith("W"):
-        week = "W" + week.lstrip("Ww")
-    if not month or len(week) < 2:
-        raise HTTPException(status_code=400, detail="month 와 week 가 필요합니다.")
+    if not _re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="month 는 YYYY-MM 이어야 합니다.")
+    # 'W7' 과 'W07' 이 다른 키가 되면, 적어 둔 사유가 보드 어디에도 안 뜬다.
+    _m = _re.match(r"^[Ww]?(\d{1,2})$", str(payload.get("week") or "").strip())
+    if not _m or not (1 <= int(_m.group(1)) <= 53):
+        raise HTTPException(status_code=400, detail="week 는 W01~W53 이어야 합니다.")
+    week = "W%02d" % int(_m.group(1))
     kind = str(payload.get("kind") or "문제").strip()
     if kind not in _WEEK_REASON_KINDS:
         kind = "문제"
     text = str(payload.get("text") or "").strip()
 
     data = _load_models()
-    proj = data.setdefault("projects", {}).setdefault(_key, {})
+    # 없는 프로젝트에 적으면 빈 프로젝트가 생겨 목록·홈 집계에 끼어든다.
+    if _key not in (data.get("projects") or {}):
+        raise HTTPException(status_code=404, detail=f"프로젝트를 찾을 수 없습니다: {_key}")
+    proj = data["projects"][_key]
     store = proj.setdefault("week_reasons", {})
     if not isinstance(store, dict):
         store = proj["week_reasons"] = {}
@@ -25179,11 +25223,17 @@ def _this_week_tag(ref=None) -> str:
     return "%04d-W%02d" % (int(iso[0]), int(iso[1]))
 
 
-def _apply_price_change(entry: dict, old: dict, mode: str) -> dict:
+def _apply_price_change(entry: dict, old: dict, mode: str,
+                        sent: dict = None) -> dict:
     """판가·재료비가 바뀌었으면 구간으로 남긴다.
 
     mode 'from_now'  이번 주부터 새 구간. 지난 주차 매출은 그대로.
     mode 'retro'     지금 적용 중인 구간의 값을 덮는다 (입력 오류 정정).
+
+    sent 은 화면이 실제로 보낸 원본 dict. 이게 중요한 이유: ESS 프로젝트는
+    모델 표에 판가·재료비 칸 자체가 없어서 저장할 때 늘 0 을 보낸다. 보낸
+    0 을 '판가를 0 으로 고쳤다' 로 읽으면, ESS 모델을 한 번 저장하는 것만으로
+    판가 이력이 통째로 0 이 된다. 그래서 '칸이 있었던' 항목만 비교한다.
 
     바뀐 게 없으면 아무것도 안 한다. 반환은 화면에 보여줄 요약.
     """
@@ -25193,10 +25243,24 @@ def _apply_price_change(entry: dict, old: dict, mode: str) -> dict:
         except Exception:
             return 0
 
+    def _has(k):
+        if sent is None:
+            return True
+        return k in sent and str(sent.get(k) if sent.get(k) is not None else "").strip() != ""
+
     new_p, new_c = _money(entry.get("price")), _money(entry.get("material_cost"))
     old_p, old_c = _money(old.get("price")), _money(old.get("material_cost"))
     if not old:                       # 새 모델은 이력이 필요 없다
         return {}
+    # 안 보낸 칸은 안 바뀐 것으로 본다
+    if not _has("price"):
+        new_p = old_p
+        entry["price"] = old.get("price") if old.get("price") is not None else entry.get("price")
+    if not _has("material_cost"):
+        new_c = old_c
+        entry["material_cost"] = (old.get("material_cost")
+                                  if old.get("material_cost") is not None
+                                  else entry.get("material_cost"))
     if abs(new_p - old_p) < 0.005 and abs(new_c - old_c) < 0.005:
         return {}
 
@@ -25205,6 +25269,10 @@ def _apply_price_change(entry: dict, old: dict, mode: str) -> dict:
     # 전환 뒤에도 개발 그대로라, entry 를 보면 양산 모델이 개발로 되돌아간다.
     _prev = ph[-1] if ph else None
     grp = (_prev or {}).get("group") or entry.get("group") or old.get("group") or "양산"
+    # '처음부터' 구간은 지금까지의 모습 그대로여야 한다. 개발품을 양산으로
+    # 돌리면서 판가를 넣는 순간, 지난달까지의 개발 실적이 양산 판가로
+    # 다시 계산되면 안 된다 — 그게 '지난 주차 매출은 그대로' 의 뜻이다.
+    grp_old = old.get("group") or entry.get("group") or "양산"
     now = _this_week_tag()
 
     if str(mode) == "retro":
@@ -25221,13 +25289,13 @@ def _apply_price_change(entry: dict, old: dict, mode: str) -> dict:
     # from_now — 이번 주부터
     if not ph:
         # 이력이 없던 모델: 옛 값을 '처음부터' 구간으로 박아 과거를 고정한다
-        ph = [{"from": _PHASE_EPOCH, "group": grp,
+        ph = [{"from": _PHASE_EPOCH, "group": grp_old,
                "price": old_p, "material_cost": old_c}]
-    # 안 바뀐 쪽은 직전 구간 값을 이어받는다 (판가만 고쳤는데 재료비가
-    # 0 으로 덮이면 재료비율이 통째로 날아간다)
+    # 칸이 없어서 안 온 값은 직전 구간 값을 이어받는다. 반대로 사람이
+    # 눈으로 보고 0 으로 지운 값은 0 으로 남는다.
     _keep = ph[-1] if ph else {}
-    _p = new_p or _keep.get("price") or 0
-    _c = new_c or _keep.get("material_cost") or 0
+    _p = new_p if _has("price") else (_keep.get("price") or old_p or 0)
+    _c = new_c if _has("material_cost") else (_keep.get("material_cost") or old_c or 0)
     if ph and ph[-1]["from"] == now:
         # 같은 주에 두 번 고쳐도 구간이 늘지 않는다
         ph[-1]["price"] = _p
@@ -25263,9 +25331,14 @@ def _phase_row_at(m: dict, month: str, week) -> dict:
             break
     # 첫 구간보다 앞선 주차는 첫 구간을 적용한다 (이력 이전 = 최초 상태)
     hit = hit or ph[0]
+    # 구간에 적힌 값이 0 이어도 그게 그 시절의 값이다. 모델의 지금 값으로
+    # 되돌리면 과거를 고정해 둔 의미가 없어진다 (개발 때 판가 0 이던 모델이
+    # 양산 판가로 소급된다). 키가 아예 없을 때만 지금 값을 쓴다.
+    _p = hit.get("price")
+    _c = hit.get("material_cost")
     return {"group": hit["group"],
-            "price": hit.get("price") or base["price"],
-            "material_cost": hit.get("material_cost") or base["material_cost"]}
+            "price": base["price"] if _p is None else _p,
+            "material_cost": base["material_cost"] if _c is None else _c}
 
 
 def _phase_cost_at(m: dict, month: str, week):

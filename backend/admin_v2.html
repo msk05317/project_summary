@@ -6025,7 +6025,10 @@ window.renderAdminV2ByDivision = function(){
       if (o === null) return null;
       return { from: Math.floor(o / 100) + '-W' + String(o % 100).padStart(2, '0'),
                group: (e.group === '개발' ? '개발' : '양산'),
-               price: _moneyOf(e && e.price) };
+               price: _moneyOf(e && e.price),
+               // 재료비를 빼고 돌려주면, 이력 편집창을 한 번 여는 것만으로
+               // 구간마다 쌓아 둔 재료비가 통째로 0 이 된다.
+               material_cost: _moneyOf(e && e.material_cost) };
     }).filter(Boolean).sort(function(a, b) { return _phaseOrd(a.from) - _phaseOrd(b.from); });
   }
 
@@ -6137,17 +6140,35 @@ window.renderAdminV2ByDivision = function(){
         var f = tr.querySelector('.ph-from').value.trim();
         if (!f) return;
         if (_phaseOrd(f) === null) { bad = f; return; }
+        var _was = (m.phases || []).filter(function(x) {
+          return _phaseOrd(x && x.from) === _phaseOrd(f);
+        })[0] || {};
         out.push({ from: f, group: tr.querySelector('.ph-group').value,
-                   price: parseInt(tr.querySelector('.ph-price').value || '0', 10) || 0 });
+                   price: parseInt(tr.querySelector('.ph-price').value || '0', 10) || 0,
+                   // 이 창에는 재료비 칸이 없다. 있던 값을 그대로 들고 간다.
+                   material_cost: _moneyOf(_was.material_cost) });
       });
       var err = back.querySelector('#ph-err');
       if (bad) { err.textContent = '주차 형식이 잘못됐습니다: ' + bad + ' (예: 2026-W36)'; return; }
       if (!out.length) { err.textContent = '구간을 최소 1개 입력하세요.'; return; }
       out = _phaseNorm(out);
       m.phases = out;
-      var last = out[out.length - 1];
-      m.group = last.group;
-      m.price = last.price;
+      // 모델의 group·price 는 '오늘' 유효한 구간을 따른다. 마지막 구간을
+      // 그대로 쓰면, 다음 달부터 적용하려고 만든 구간이 오늘 값이 되고
+      // 저장할 때 판가 변경으로 또 잡혀 이번 주부터 적용돼 버린다.
+      var _nowOrd = (function() {
+        var d = new Date(), t = new Date(d.valueOf());
+        t.setDate(t.getDate() + 3 - ((d.getDay() + 6) % 7));
+        var y = t.getFullYear();
+        var w = 1 + Math.round(((t - new Date(y, 0, 4)) / 86400000
+                 - 3 + ((new Date(y, 0, 4).getDay() + 6) % 7)) / 7);
+        return y * 100 + w;
+      })();
+      var cur = out[0];
+      out.forEach(function(e) { if (_phaseOrd(e.from) <= _nowOrd) cur = e; });
+      m.group = cur.group;
+      m.price = cur.price;
+      if (cur.material_cost) m.material_cost = cur.material_cost;
       close();
       var box = document.getElementById('mdl-table-box');
       if (box && window.renderTable) window.renderTable(box);
@@ -9311,7 +9332,7 @@ window._ovProjectKey = function() {
           '<td>' + _wbNum(r.remaining) + '</td>' +
           '<td>' + _wbNum(r.prev_month_actual) + '</td>' +
           wks.map(function(w) {
-            return _wbCell((r.weeks || {})[w], (w === now) ? 'nw nw' : '');
+            return _wbCell((r.weeks || {})[w], (w === now) ? 'nw nw' : '', w === now);
           }).join('') +
           '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
           (nextM ? '<td>' + _wbNum(r.next_month_plan) + '</td>' : '') +
@@ -9352,14 +9373,14 @@ window._ovProjectKey = function() {
   // 왜 못 채웠는지 적게 한다. 미달이 늘 문제는 아니다 — 엔클로저는
   // 매출을 맞추려고 일부러 덜 출하하기도 한다. 그런 주는 '참고' 로
   // 적어 두면 앱에서 문제로 세지 않는다.
-  function _wbCell(c, cls) {
-    c = c || {};
+  function _wbCell(c, cls, isNow) {
+    c = Object.assign({}, c || {}, { now: !!isNow });
     var short = (typeof c.short === 'number' && c.short > 0);
     var pc = cls ? ' class="' + cls + '-l"' : '';
     var ac = (cls ? cls + '-r ' : '') + (short ? 'wb-short' : '');
     ac = ac.trim() ? ' class="' + ac.trim() + '"' : '';
     // 아직 안 온 주의 실적 0 은 미달이 아니라 아직 안 온 것이다.
-    var av = (c.closed || (c.actual || 0) !== 0) ? _wbNum(c.actual) : '·';
+    var av = (c.closed || c.now || (c.actual || 0) !== 0) ? _wbNum(c.actual) : '·';
     return '<td' + pc + '>' + _wbNum(c.plan) + '</td>' +
            '<td' + ac + '>' + av + (short ? ' ▼' : '') + '</td>';
   }
@@ -9370,7 +9391,7 @@ window._ovProjectKey = function() {
     if (!shorts.length) {
       if (!closed.length) return '';
       return '<p class="mdl-hint" style="margin-top:10px;color:#059669;">' +
-             '마감된 ' + closed.length + '개 주차 모두 계획을 채턴습니다.</p>';
+             '마감된 ' + closed.length + '개 주차 모두 계획을 채웠습니다.</p>';
     }
     var byWeek = {};
     shorts.forEach(function(e) {
@@ -9384,7 +9405,6 @@ window._ovProjectKey = function() {
       var items = byWeek[w];
       var kind = items[0].kind || '문제';
       var reason = items[0].reason || '';
-      var id = 'wbr-' + w;
       var note = (kind === '참고');
       html += '<div style="border:1px solid ' + (note ? '#E5E7EB' : '#FCA5A5') +
         ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' +
@@ -9396,11 +9416,11 @@ window._ovProjectKey = function() {
             ' (' + e.short + '대 부족 · ' + e.rate + '%)</div>';
         }).join('');
       html += '<div style="display:flex;gap:6px;margin-top:8px;align-items:center;">' +
-        '<select id="' + id + '-k" style="font-size:12px;padding:4px 6px;">' +
+        '<select data-role="wbr-kind" style="font-size:12px;padding:4px 6px;">' +
         '<option value="문제"' + (note ? '' : ' selected') + '>문제</option>' +
         '<option value="참고"' + (note ? ' selected' : '') + '>참고 (일부러 덜 출하 등)</option>' +
         '</select>' +
-        '<input id="' + id + '-t" value="' + _esc(reason) + '" placeholder="사유" ' +
+        '<input data-role="wbr-text" value="' + _esc(reason) + '" placeholder="사유" ' +
         'style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #D1D5DB;border-radius:6px;">' +
         '<button class="btn" style="font-size:12px;padding:5px 12px;" ' +
         'onclick="saveWeekReason(this)" data-pk="' + _esc(pk) + '" ' +
@@ -9415,9 +9435,12 @@ window._ovProjectKey = function() {
     var pk = btn.getAttribute('data-pk');
     var month = btn.getAttribute('data-month');
     var week = btn.getAttribute('data-week');
-    var k = document.getElementById('wbr-' + week + '-k');
-    var t = document.getElementById('wbr-' + week + '-t');
-    if (!k || !t) return;
+    // 같은 칸을 id 로 찾으면, 보드가 다시 그려지는 사이 같은 id 가 둘이 되어
+    // 남의 칸 값을 엉뚱한 프로젝트에 적을 수 있다. 누른 버튼이 속한 칸에서만 찾는다.
+    var box = btn.parentNode && btn.parentNode.parentNode;
+    var k = box && box.querySelector('[data-role="wbr-kind"]');
+    var t = box && box.querySelector('[data-role="wbr-text"]');
+    if (!k || !t) { alert('사유 칸을 찾지 못했습니다'); return; }
     fetch('/admin/projects/' + encodeURIComponent(pk) + '/week-reason', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -9930,7 +9953,7 @@ window._ovProjectKey = function() {
             '<td>' + _wbNum(r.remaining) + '</td>' +
             '<td>' + _wbNum(r.prev_month_actual) + '</td>' +
             wks.map(function(w) {
-              return _wbCell(r.weeks[w], (w === now) ? 'nw nw' : '');
+              return _wbCell(r.weeks[w], (w === now) ? 'nw nw' : '', w === now);
             }).join('') +
             '<td>' + _wbNum(r.month_plan) + '</td><td>' + _wbNum(r.month_actual) + '</td>' +
             '<td>' + _wbNum(r.next_month_plan) + '</td>' +

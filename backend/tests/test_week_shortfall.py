@@ -115,9 +115,13 @@ assert 'col_mode != "week"' in SRC, '월 단위 보드(챔버)에도 주차 미�
 ok += 1
 
 # ── 홈: 주차 미달도 이슈. 단 '참고' 는 빼고 ──
-assert 'sh.get("kind") == "참고"' in SRC, "'참고' 를 문제로 세고 있다"
-assert '"stage": "주차 미달"' in SRC, '주차 미달이 alert 로 안 나간다'
+assert 'sh.get("kind") != "참고"' in SRC, "'참고' 를 문제로 세고 있다"
+assert '계획 미달' in SRC, '주차 미달이 alert 로 안 나간다'
 assert '사유 미입력' in SRC, '사유가 없을 때 아무 말도 안 한다'
+# 방금 끝난 주만. 마감 주차가 쌓일수록 목록이 주차 미달로만 가득 찬다
+assert 'closed_weeks") or [])[-1:]' in SRC, '지난 주차를 전부 올린다'
+# 한 주에 여러 행이 못 채워도 프로젝트당 한 줄
+assert '_rows[:3]' in SRC, '행마다 한 줄씩 올린다'
 ok += 1
 
 # ── admin: 미달 칸 색 + 사유 입력 ──
@@ -126,7 +130,7 @@ assert 'wb-short' in A and 'td.wb-short' in A, 'admin 표에 미달 칸 색이 �
 assert '_wbShortPanel' in A and 'saveWeekReason' in A, 'admin 에 사유 입력이 없다'
 assert "'/week-reason'" in A, 'admin 이 사유를 저장하지 않는다'
 # 아직 안 온 주의 실적 0 은 가운뎃점
-assert "c.closed || (c.actual || 0) !== 0" in A, '안 온 주의 0 을 그대로 그린다'
+assert "c.closed || c.now || (c.actual || 0) !== 0" in A, '안 온 주의 0 을 그대로 그린다'
 ok += 1
 
 # ── 앱: 표 칸 표시 + 표 밑 사유 ──

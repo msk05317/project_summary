@@ -55,18 +55,33 @@ assert len(e['phases']) == 2 and e['phases'][-1]['price'] == 8100
 assert at(e, '2026-08', 33) == ('양산', 7243), '과거는 계속 옛 판가'
 ok += 1
 
-# ── 재료비만 놔두고 판가만 고쳐도 재료비가 0 으로 날아가지 않는다 ──
+# ── 화면에 칸이 없어서 안 온 값은 안 바뀐 것으로 본다 ──
+#
+# ESS 프로젝트(SDI·FLUENCE·EPC POWER)는 모델 표에 판가·재료비 칸 자체가
+# 없다. 저장하면 늘 0 이 실려 온다. 그 0 을 '0 으로 고쳤다' 로 읽으면
+# 한 번 저장하는 것만으로 판가 이력이 통째로 0 이 된다.
 e2 = {'id': 'M2', 'group': '양산', 'price': 9000, 'material_cost': 0}
-apply_(e2, {'group': '양산', 'price': 8000, 'material_cost': 6100}, 'from_now')
+apply_(e2, {'group': '양산', 'price': 8000, 'material_cost': 6100}, 'from_now',
+       sent={'id': 'M2', 'price': 9000})          # 재료비 칸이 없었다
 assert e2['phases'][-1]['material_cost'] == 6100, '재료비가 0 으로 덮였다'
 assert e2['phases'][-1]['price'] == 9000
+assert e2['material_cost'] == 6100, '모델 값도 0 으로 덮였다'
 ok += 1
 
-# 재료비만 고친 경우도 판가를 이어받는다
+# 칸이 아예 없으면 판가가 바뀐 게 아니다 — 구간을 만들면 안 된다
+e2b = {'id': 'M2B', 'group': '양산', 'price': 0, 'material_cost': 0}
+assert apply_(e2b, {'group': '양산', 'price': 8000, 'material_cost': 6100},
+              'from_now', sent={'id': 'M2B'}) == {}, 'ESS 저장이 판가를 0 으로 만든다'
+assert 'phases' not in e2b and e2b['price'] == 8000
+ok += 1
+
+# 반대로, 칸을 보고 0 으로 지운 것은 0 이 맞다
 e3 = {'id': 'M3', 'group': '양산', 'price': 0, 'material_cost': 7000}
-apply_(e3, {'group': '양산', 'price': 8000, 'material_cost': 6100}, 'from_now')
-assert e3['phases'][-1]['price'] == 8000, '판가가 0 으로 덮였다'
+apply_(e3, {'group': '양산', 'price': 8000, 'material_cost': 6100}, 'from_now',
+       sent={'id': 'M3', 'price': 0, 'material_cost': 7000})
+assert e3['phases'][-1]['price'] == 0, '사람이 지운 판가가 되살아났다'
 assert e3['phases'][-1]['material_cost'] == 7000
+assert at(e3, '2026-08', 33) == ('양산', 8000), '과거는 옛 판가 그대로'
 ok += 1
 
 # ── 개발→양산 전환한 모델: 새 구간이 개발로 되돌아가면 안 된다 ──
@@ -139,6 +154,31 @@ ok += 1
 # 서버가 price_mode 를 읽는지
 assert 'price_mode' in SRC and '_price_changes' in SRC, '서버가 안 받는다'
 assert '"preview"' in SRC or "'preview'" in SRC, '미리보기가 저장해버린다'
+ok += 1
+
+# ── 개발 → 양산 전환: 지난달 개발 실적이 양산 판가로 다시 계산되면 안 된다 ──
+#
+# 이력이 없던 개발품(판가 0, 매출은 DEV_PRICE $3,400 으로 계산)을 양산으로
+# 돌리면서 판가를 넣는다. '이번 주부터' 를 고르면 지난달은 개발 그대로여야 한다.
+e10 = {'id': 'M10', 'group': '양산', 'price': 7243, 'material_cost': 5000}
+apply_(e10, {'group': '개발', 'price': 0, 'material_cost': 0}, 'from_now',
+       sent={'id': 'M10', 'price': 7243, 'material_cost': 5000})
+first = e10['phases'][0]
+assert first['group'] == '개발', f"지난달이 양산으로 바뀌었다: {first['group']}"
+assert first['price'] == 0, f"지난달에 양산 판가가 붙었다: {first['price']}"
+assert at(e10, '2026-08', 33) == ('개발', 0), at(e10, '2026-08', 33)
+assert at(e10, '2099-12', 50) == ('양산', 7243)
+ok += 1
+
+# ── 12월 보드의 W01 은 다음 해 1주다 ──
+_we = {}
+for _n in ast.parse(SRC).body:
+    if isinstance(_n, ast.FunctionDef) and _n.name == '_week_end_date':
+        exec(ast.get_source_segment(SRC, _n), _we)
+wend = _we['_week_end_date']
+assert wend('2025-12', 'W01') == datetime.date(2026, 1, 4), wend('2025-12', 'W01')
+assert wend('2025-12', 'W52') == datetime.date(2025, 12, 28)
+assert wend('2026-09', 'W37') == datetime.date(2026, 9, 13)
 ok += 1
 
 print(f'전부 통과 · {ok}개 항목')
