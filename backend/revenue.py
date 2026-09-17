@@ -12,6 +12,7 @@
 # 약속할 필요가 없다 — 9월 매출은 9월 날짜의 합이다.
 import datetime as _dt
 import io
+import threading as _threading
 import json
 import re
 
@@ -79,31 +80,77 @@ def blank() -> dict:
             "days": {}, "plans": {}, "sources": {}}
 
 
-def load(path) -> dict:
+class RevenueFileBroken(Exception):
+    """파일이 있는데 못 읽는다. 빈 값으로 갈아엎으면 안 된다."""
+
+
+def _merge_map(raw: dict) -> dict:
+    """기본 매핑 + 사람이 고친 것.
+
+    값이 비어 있으면 '일부러 끊었다' 는 뜻이라 기본 매핑에서도 지운다.
+    안 그러면 끊어도 새로고침하면 되살아난다.
+    """
+    m = dict(DEFAULT_MAP)
+    for k, v in (raw or {}).items():
+        k = norm(k)
+        if not k:
+            continue
+        if v:
+            m[k] = str(v)
+        else:
+            m.pop(k, None)
+    return m
+
+
+def load(path):
+    """없으면 빈 것, 깨졌으면 예외.
+
+    깨진 걸 빈 것으로 돌려주면 다음 저장이 멀쩡한 파일을 빈 값으로
+    덮어쓴다. 한 번 그러면 되돌릴 방법이 없다.
+    """
+    import os
+    if not os.path.exists(path):
+        return blank()
     try:
         with open(path, "r", encoding="utf-8") as f:
             d = json.load(f)
-        if not isinstance(d, dict):
-            return blank()
-    except Exception:
-        return blank()
+    except Exception as e:
+        raise RevenueFileBroken(str(e))
+    if not isinstance(d, dict):
+        raise RevenueFileBroken("최상위가 객체가 아니다")
     base = blank()
     for k, v in base.items():
         d.setdefault(k, v)
-    # 기본 매핑은 항상 깔고, 사람이 고친 값이 위에 온다
-    m = dict(DEFAULT_MAP)
-    m.update({norm(k): v for k, v in (d.get("map") or {}).items() if v})
-    d["map"] = m
+    # map_raw 가 정본. 예전 파일은 map 을 통째로 들고 있다.
+    raw = d.get("map_raw")
+    if not isinstance(raw, dict):
+        raw = d.get("map") or {}
+    d["map"] = _merge_map(raw)
     return d
 
 
+_SAVE_LOCK = _threading.Lock()
+
+
 def save(path, store: dict) -> None:
-    store["updated_at"] = _dt.datetime.now().isoformat(timespec="seconds")
-    tmp = str(path) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(store, f, ensure_ascii=False, indent=1)
+    """같은 이름의 임시 파일을 여럿이 동시에 쓰면 서로를 덮어쓴다."""
     import os
-    os.replace(tmp, path)
+    out = dict(store)
+    m = out.get("map") or {}
+    # 사람이 고친 것만 남긴다. 기본 매핑은 코드가 들고 있으면 된다.
+    raw = {k: v for k, v in m.items() if DEFAULT_MAP.get(k) != v}
+    for k in DEFAULT_MAP:
+        if k not in m:
+            raw[k] = ""                      # 일부러 끊은 것
+    out["map_raw"] = raw
+    out["updated_at"] = _dt.datetime.now().isoformat(timespec="seconds")
+    tmp = "%s.%d.%d.tmp" % (path, os.getpid(), _threading.get_ident())
+    with _SAVE_LOCK:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, path)
+    store["map_raw"] = raw
+    store["updated_at"] = out["updated_at"]
 
 
 def _num(v) -> float:
@@ -128,23 +175,26 @@ def _open(raw: bytes):
     return openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
 
 
-def _year_for(week: int, mm: int, dd: int, hint: int = None) -> int:
-    """W37 시트의 '09 / 07' 이 몇 년인지.
+def _year_for(week: int, mm: int, dd: int, hint: int = None):
+    """W37 시트의 '09 / 07' 이 몇 년인지. 못 세면 None.
 
     파일의 해를 그대로 쓴다. 주차로 되짚으면 안 된다 — W35 시트에 08/31
     이 들어 있는데 그 날의 ISO 주차는 36 이라, 35 에 맞는 해(2025)로
-    밀려난다. 연말연시만 예외다: 12월 보드의 W01 은 다음 해, 1월 보드의
-    W52 는 지난 해.
+    밀려난다.
+
+    연말연시만 예외다. 2026년 파일의 W01 시트는 2025-12-29 부터라
+    거기 적힌 12/29 는 '지난 해' 다. 반대로 W53 시트는 2027-01-03 까지
+    가므로 01/02 는 '다음 해' 다.
     """
     y = hint or _dt.date.today().year
     if mm == 12 and week <= 2:
-        y += 1
-    elif mm == 1 and week >= 52:
         y -= 1
+    elif mm == 1 and week >= 52:
+        y += 1
     try:
         _dt.date(y, mm, dd)
     except ValueError:
-        return hint or _dt.date.today().year
+        return None          # 2월 30일 같은 칸. 세지 않는다.
     return y
 
 
@@ -155,7 +205,8 @@ def parse_daily(raw: bytes, year_hint: int = None) -> dict:
     그 아래 Plan / Q'ty / Amount 세 칸이 붙는다.
     """
     wb = _open(raw)
-    days, rows, sheets = {}, [], []
+    days, rows, sheets, skipped = {}, [], [], []
+    covered = set()   # 날짜 칸이 있던 날 (값이 비어 있어도 파일이 맡은 날이다)
     for ws in wb.worksheets:
         m = re.fullmatch(r"W(\d{1,2})", str(ws.title).strip())
         if not m or ws.sheet_state != "visible":
@@ -174,24 +225,34 @@ def parse_daily(raw: bytes, year_hint: int = None) -> dict:
                 hi, cols = i, got
                 break
         if hi < 0:
+            # 날짜 머리글을 못 찾았다. 조용히 지나가면 그 주가 통째로
+            # 빠지는데 화면에는 아무 말도 안 나온다.
+            skipped.append(ws.title)
             continue
         sheets.append(ws.title)
         # 날짜 한 칸이 늘 Plan · Q'ty · Amount 세 칸인 건 아니다. W9 처럼
         # 'Plan ($) update' 가 끼어드는 주가 있어서, 아랫줄 이름으로 찾는다.
         sub = grid[hi + 1] if len(grid) > hi + 1 else ()
-        stop = len(sub)
-        for j, v in enumerate(grid[hi]):
-            if v and "total" in str(v).lower():
-                stop = min(stop, j) if j > (cols[-1][0] if cols else 0) else stop
+        # 'W37 Total' 묶음이 마지막 날짜 칸에 딸려 들어가면, 그 날 하루가
+        # 그 주 전체 합계로 잡힌다. 머리글이 날짜 줄 위/아래에 있을 수도
+        # 있어서 세 줄을 다 본다.
+        last = cols[-1][0] if cols else 0
+        stop = max(len(sub), len(grid[hi]))
+        for row in (grid[hi - 1] if hi > 0 else (), grid[hi],
+                    sub if sub else ()):
+            for j, v in enumerate(row):
+                if v and "total" in str(v).lower() and j > last:
+                    stop = min(stop, j)
         picks = []
         for n, (j, mm, dd) in enumerate(cols):
-            end = cols[n + 1][0] if n + 1 < len(cols) else stop
+            # 머리글을 못 찾아도 남의 칸까지 넘어가지 않게 네 칸으로 막는다
+            end = min(cols[n + 1][0] if n + 1 < len(cols) else stop, j + 4)
             pj = qj = aj = None
             for k in range(j, min(end, len(sub))):
-                lab = norm(sub[k]).lower()
+                lab = norm(sub[k]).lower().replace("'", "")
                 if aj is None and lab.startswith("amount"):
                     aj = k
-                elif qj is None and lab.startswith("q'ty"):
+                elif qj is None and lab.startswith("qty"):
                     qj = k
                 elif pj is None and lab.startswith("plan"):
                     pj = k
@@ -199,6 +260,9 @@ def parse_daily(raw: bytes, year_hint: int = None) -> dict:
                           j if pj is None else pj,
                           j + 1 if qj is None else qj,
                           j + 2 if aj is None else aj))
+            _y = _year_for(week, mm, dd, year_hint)
+            if _y is not None:
+                covered.add("%04d-%02d-%02d" % (_y, mm, dd))
         for r in grid[hi + 2:]:
             lab = norm(r[1] if len(r) > 1 else "")
             if not lab or lab.startswith("총합계"):
@@ -214,13 +278,16 @@ def parse_daily(raw: bytes, year_hint: int = None) -> dict:
                 if not (plan or qty or amt):
                     continue
                 y = _year_for(week, mm, dd, year_hint)
+                if y is None:
+                    continue
                 key = "%04d-%02d-%02d" % (y, mm, dd)
                 cell = days.setdefault(key, {}).setdefault(
                     lab, {"plan": 0.0, "qty": 0.0, "amount": 0.0})
                 cell["plan"] += plan
                 cell["qty"] += qty
                 cell["amount"] += amt
-    return {"days": days, "rows": rows, "sheets": sheets}
+    return {"days": days, "rows": rows, "sheets": sheets,
+            "skipped": skipped, "covered": sorted(covered)}
 
 
 def _month_from_text(*texts) -> str:
@@ -237,8 +304,15 @@ def _month_from_text(*texts) -> str:
                 break
     if not mm:
         return ""
-    y = _dt.date.today().year
-    return "%04d-%02d" % (y, mm)
+    # 해가 안 적혀 있으면 오늘에서 가장 가까운 해로 본다. 12월에 올리는
+    # 'Estimate Revenue in Jan' 은 올해 1월이 아니라 내년 1월이다.
+    today = _dt.date.today()
+    best, gap = today.year, 99
+    for y in (today.year - 1, today.year, today.year + 1):
+        d = abs((y - today.year) * 12 + mm - today.month)
+        if d < gap:
+            best, gap = y, d
+    return "%04d-%02d" % (best, mm)
 
 
 def parse_plan(raw: bytes, filename: str = "") -> dict:
@@ -256,10 +330,21 @@ def parse_plan(raw: bytes, filename: str = "") -> dict:
             continue
         if a.lower() in ("total", "합계", "sum"):
             continue
-        if not isinstance(b, (int, float)):
-            continue
-        items[a] = float(b)
-        order.append(a)
+        if isinstance(b, (int, float)):
+            v = float(b)
+        else:
+            # '2,400,000' 처럼 글자로 적힌 칸이 있다. 버리면 그 품목이
+            # 통째로 사라지고 '모르는 항목' 에도 안 뜬다.
+            t = norm(b)
+            if not t or not re.fullmatch(r"-?[\d,]+(\.\d+)?", t):
+                continue
+            v = _num(t)
+        # 같은 이름이 두 줄이면 더한다 (덮어쓰면 한 줄이 사라진다)
+        if a in items:
+            items[a] += v
+        else:
+            items[a] = v
+            order.append(a)
     if not month:
         month = _month_from_text(filename) or _dt.date.today().strftime("%Y-%m")
     return {"month": month, "items": items, "order": order}
@@ -298,19 +383,34 @@ def items_of(store: dict) -> list:
 
 
 def apply_daily(store: dict, parsed: dict, filename: str = "") -> dict:
-    """읽은 날짜만 갈아 끼운다. 같은 파일을 두 번 올려도 더해지지 않는다."""
+    """올린 파일이 맡은 기간을 통째로 갈아 끼운다.
+
+    날짜마다 덮어쓰기만 하면, 잘못 적었던 날을 지우고 다시 올려도 옛 값이
+    그대로 남는다 (빈 칸은 파일에 아예 안 나온다). 그래서 파일이 덮는
+    기간 안에서 이번에 안 나온 날짜는 지운다.
+    """
     days = store.setdefault("days", {})
     before = _sum_all(days)
-    for day, rowmap in (parsed.get("days") or {}).items():
+    got = parsed.get("days") or {}
+    # 파일이 맡은 날 = 날짜 칸이 있던 날. 값이 다 비어 있어도 그 날은
+    # 파일이 '0 이다' 라고 말한 것이다.
+    covered = set(parsed.get("covered") or got)
+    dropped = []
+    for day in list(days):
+        if day in covered and day not in got:
+            days.pop(day)
+            dropped.append(day)
+    for day, rowmap in got.items():
         days[day] = rowmap
     store.setdefault("sources", {})["daily"] = {
         "file": filename,
         "at": _dt.datetime.now().isoformat(timespec="seconds"),
         "sheets": parsed.get("sheets") or [],
-        "days": len(parsed.get("days") or {}),
+        "skipped": parsed.get("skipped") or [],
+        "days": len(got),
     }
     return {"before": before, "after": _sum_all(days),
-            "days": sorted(parsed.get("days") or {})}
+            "days": sorted(got), "dropped": sorted(dropped)}
 
 
 def apply_plan(store: dict, parsed: dict, filename: str = "",
@@ -383,10 +483,12 @@ def month_view(store: dict, month: str) -> dict:
 
     tp = sum(r["plan"] for r in rows)
     ta = sum(r["actual"] for r in rows)
+    # 누적은 '보고 있는 달까지' 다. 8월을 보는데 9월 실적이 누적에
+    # 들어가면 1~8월 합과 안 맞는다.
     year = month[:4]
     ytd = 0.0
     for day, rowmap in days.items():
-        if not str(day).startswith(year):
+        if not str(day).startswith(year) or str(day)[:7] > month:
             continue
         one = {}
         _fold(store, rowmap, one)

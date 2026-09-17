@@ -25834,8 +25834,24 @@ _stamp_holds_once()
 REVENUE_FILE = DATA_DIR / "revenue.json"
 
 
+_MONTH_RE = re.compile(r"20\d\d-\d{2}$")
+
+
+def _check_month(month: str) -> str:
+    """'2026' 이나 '2026-9' 가 들어오면 그 달이 통째로 0 으로 보인다."""
+    month = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    if not _MONTH_RE.match(month):
+        raise HTTPException(status_code=400, detail="month 는 YYYY-MM 형식입니다.")
+    return month
+
+
 def _load_revenue() -> dict:
-    return _rev.load(REVENUE_FILE)
+    try:
+        return _rev.load(REVENUE_FILE)
+    except _rev.RevenueFileBroken as e:
+        # 빈 값으로 돌려주면 다음 저장이 멀쩡한 파일을 덮어쓴다.
+        raise HTTPException(status_code=500,
+                            detail=f"매출 파일을 읽지 못했습니다: {e}")
 
 
 def _save_revenue(store: dict) -> None:
@@ -25850,17 +25866,14 @@ def _year_hint(name: str) -> int:
 @app.get("/revenue")
 def get_revenue(month: str = None):
     """그 달의 품목별 계획·실적. 앱 홈의 매출 카드가 이걸 쓴다."""
-    month = (month or "").strip() or datetime.now().strftime("%Y-%m")
-    if not re.fullmatch(r"20\d\d-\d{2}", month):
-        raise HTTPException(status_code=400, detail="month 는 YYYY-MM 형식입니다.")
-    return _rev.month_view(_load_revenue(), month)
+    return _rev.month_view(_load_revenue(), _check_month(month))
 
 
 @app.get("/admin/revenue/state")
 def admin_revenue_state(month: str = None,
                         _admin: int = Depends(get_admin_session)):
     """매출 관리 화면이 처음 켜질 때 받는 것."""
-    month = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    month = _check_month(month)
     store = _load_revenue()
     view = _rev.month_view(store, month)
     view["unmapped"] = _rev.unmapped_in_store(store)
@@ -25898,7 +25911,10 @@ async def admin_revenue_import(kind: str = Form(...),
         try:
             got = json.loads(mapping)
         except Exception:
-            got = {}
+            # 조용히 넘기면 방금 연결한 항목이 그대로 빠진 채 '저장됐다' 가 뜬다
+            raise HTTPException(status_code=400, detail="연결 정보를 읽지 못했습니다.")
+        if not isinstance(got, dict):
+            raise HTTPException(status_code=400, detail="연결 정보 형식이 잘못됐습니다.")
         for k, v in (got or {}).items():
             k = _rev.norm(k)
             if not k:
@@ -25948,13 +25964,17 @@ async def admin_revenue_import(kind: str = Form(...),
         _month = parsed.get("month") or (month or "").strip()
     else:
         _month = (month or "").strip()
+    if _month:
+        _month = _check_month(_month)
     out = {
         "kind": kind, "file": name, "mode": mode,
         "ask": ask, "skip": skip, "mapped_now": added,
+        "rows": len(labels),
         "items_all": _rev.items_of(store),
     }
     if kind == "daily":
         out["sheets"] = parsed.get("sheets") or []
+        out["skipped"] = parsed.get("skipped") or []
         out["days"] = len(parsed.get("days") or {})
         out["range"] = [min(parsed["days"]), max(parsed["days"])] if parsed.get("days") else []
     else:

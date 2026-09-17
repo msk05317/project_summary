@@ -10365,6 +10365,7 @@ window._ovProjectKey = function() {
 (function () {
   var _month = '';
   var _pick = null;          // 고른 파일 (미리보기 → 반영 사이에 들고 있는다)
+  var _busy = false;         // 보내는 중. 겹치면 미리 본 것과 다른 파일이 저장된다
 
   function _rvMoney(n) { return '$' + Math.round(n || 0).toLocaleString(); }
 
@@ -10411,7 +10412,10 @@ window._ovProjectKey = function() {
       .catch(function (e) {
         c.innerHTML = '<div class="placeholder"><div class="big">₩</div>' +
           '<div class="title">매출 관리</div><div class="sub">' + esc(e.message) +
-          '</div></div>';
+          '</div><div style="margin-top:14px;"><button type="button" class="ov-btn" ' +
+          'id="rv-again">다시 시도</button></div></div>';
+        var again = document.getElementById('rv-again');
+        if (again) again.onclick = function () { window.renderRevenuePage(_month); };
       });
   };
 
@@ -10520,6 +10524,7 @@ window._ovProjectKey = function() {
     var file = document.getElementById('rv-file');
     document.querySelectorAll('[data-rv-pick]').forEach(function (b) {
       b.onclick = function () {
+        if (_busy) return;
         _pick = { kind: b.getAttribute('data-rv-pick') };
         if (file) { file.value = ''; file.click(); }
       };
@@ -10533,7 +10538,7 @@ window._ovProjectKey = function() {
         openDlg('<div class="ph-hd"><h3>엑셀을 읽는 중…</h3>' +
                 '<p>' + esc(_pick.file.name) + '</p></div>' +
                 '<div class="ph-body" style="padding:18px 20px 22px;color:#64748B;' +
-                'font-size:12.5px;">시트가 많으면 20초쯤 걸립니다. 잠시만요.</div>');
+                'font-size:12.5px;">시트가 많으면 20초쯤 걸립니다. 잠시만요.</div>', true);
         send('preview', {});
       };
     }
@@ -10543,7 +10548,13 @@ window._ovProjectKey = function() {
 
   // ── 서버에 보낸다. mode=preview 면 읽기만 하고 무엇이 달라지는지 돌려준다.
   function send(mode, mapping) {
-    if (!_pick || !_pick.file) return;
+    if (!_pick || !_pick.file) {
+      alert('파일을 다시 골라 주세요.');
+      closeDlg();
+      return;
+    }
+    if (_busy) return;
+    _busy = true;
     var fd = new FormData();
     fd.append('kind', _pick.kind);
     fd.append('mode', mode);
@@ -10555,14 +10566,43 @@ window._ovProjectKey = function() {
     fetch('/admin/revenue/import', {
       method: 'POST', credentials: 'same-origin', body: fd,
     }).then(function (r) {
-      return r.json().then(function (j) {
-        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+      // 파일이 커서 게이트웨이가 413/502 를 HTML 로 돌려줄 때가 있다.
+      // r.json() 을 먼저 부르면 그때 상태 코드를 잃고 파서 오류만 뜬다.
+      return r.text().then(function (t) {
+        var j = {};
+        try { j = JSON.parse(t); } catch (e) { j = {}; }
+        if (!r.ok) {
+          var msg = (typeof j.detail === 'string') ? j.detail : null;
+          throw new Error(msg || ('HTTP ' + r.status));
+        }
         return j;
       });
     }).then(function (j) {
-      if (mode === 'commit') { closeDlg(); window.renderRevenuePage(_month); return; }
+      _busy = false;
+      if (mode === 'commit') {
+        closeDlg();
+        // 계획 파일은 제 달을 안다. 화면의 달로 돌아가면 방금 저장한 게
+        // 안 보여서 '안 됐나' 하고 또 올리게 된다.
+        window.renderRevenuePage(j.view_month || j.month || _month);
+        return;
+      }
       preview(j);
     }).catch(function (e) {
+      _busy = false;
+      // 반영하다 실패하면 방금 연결해 둔 것과 20초짜리 읽기가 통째로 날아간다.
+      var ft = document.getElementById('rv-dlg-ft');
+      if (mode === 'commit' && ft) {
+        ft.innerHTML =
+          '<span class="rv-hint" style="flex:1;color:#B91C1C;margin-left:0;">' +
+          esc(e.message) + '</span>' +
+          '<button type="button" class="ov-btn" id="rv-cancel">닫기</button>' +
+          '<button type="button" class="ov-btn ov-btn-primary" id="rv-retry">다시 시도</button>';
+        document.getElementById('rv-cancel').onclick = closeDlg;
+        document.getElementById('rv-retry').onclick = function () {
+          send('commit', mapping);
+        };
+        return;
+      }
       closeDlg();
       alert('올리지 못했습니다: ' + e.message);
     });
@@ -10573,13 +10613,18 @@ window._ovProjectKey = function() {
     if (b) b.remove();
   }
 
-  function openDlg(html) {
+  function openDlg(html, sticky) {
     closeDlg();
     var back = document.createElement('div');
     back.className = 'ph-back';
     back.id = 'rv-dlg';
     back.innerHTML = '<div class="ph-box">' + html + '</div>';
-    back.addEventListener('click', function (e) { if (e.target === back) closeDlg(); });
+    // 읽는 데 20초쯤 걸린다. 그 사이에 바깥을 눌러 닫아 버리면 페이지가
+    // 다시 살아나서 다른 파일을 고를 수 있고, 먼저 온 응답이 나중에 덮어
+    // 미리 본 것과 다른 파일이 저장된다.
+    if (!sticky) {
+      back.addEventListener('click', function (e) { if (e.target === back) closeDlg(); });
+    }
     document.body.appendChild(back);
   }
 
@@ -10589,8 +10634,13 @@ window._ovProjectKey = function() {
     var items = j.items_all || [];
     var head = (j.kind === 'daily')
       ? { t: '일일보고를 읽었습니다',
-          s: (j.file || '') + ' · 주차 시트 ' + (j.sheets || []).length + '개',
-          a: ['읽은 주차', (j.sheets || [])[0] + ' ~ ' + (j.sheets || [])[(j.sheets || []).length - 1]] }
+          s: (j.file || '') + ' · 주차 시트 ' + (j.sheets || []).length + '개' +
+             ((j.skipped || []).length
+               ? ' · 못 읽은 시트 ' + j.skipped.join(', ') : ''),
+          a: ['읽은 기간', (j.range && j.range.length === 2)
+                ? (j.range[0].slice(5) + ' ~ ' + j.range[1].slice(5))
+                : ((j.sheets || [])[0] + ' ~ ' +
+                   (j.sheets || [])[(j.sheets || []).length - 1])] }
       : { t: '월 계획을 읽었습니다',
           s: (j.file || '') + ' · 품목 ' + j.count + '개',
           a: ['적용 월', j.month || j.view_month] };
@@ -10621,9 +10671,8 @@ window._ovProjectKey = function() {
         '<div class="rv-sum">' +
           '<div><div class="k">' + esc(head.a[0]) + '</div><div class="v">' + esc(head.a[1]) + '</div></div>' +
           '<div><div class="k">연결된 항목</div><div class="v">' +
-            ((j.kind === 'daily' ? (j.sheets ? '' : '') : '') + '') +
-            (ask.length + (j.skip || []).length ?
-              ('전체 − ' + ask.length) : '전부') + '</div></div>' +
+            (j.rows ? ((j.rows - ask.length - (j.skip || []).length) +
+                       ' / ' + j.rows) : '전부') + '</div></div>' +
           '<div><div class="k">모르는 항목</div><div class="v' +
             (ask.length ? ' warn' : '') + '">' + ask.length + '</div></div>' +
         '</div>' +

@@ -70,17 +70,22 @@ class ExecRevenueCard extends StatelessWidget {
   }
 
   Widget _buildFromExcel(BuildContext context, RevenueMonth r) {
-    final rate = r.rate ?? 0;
-    final rows = r.byActual.where((e) => e.actual > 0).toList();
+    // 계획이 아직 없으면 rate 가 null 이다. 0 으로 바꾸면 '못 채웠다' 가
+    // 되는데, 실제로는 '아직 모른다' 다.
+    final rate = r.rate;
+    // 계획만 올리고 일일보고를 아직 안 올린 달도 있다. 그때 실적으로
+    // 거르면 목록이 통째로 '그 외 14개 품목 $0' 한 줄이 된다.
+    final hasActual = r.items.any((e) => e.actual > 0);
+    final rows = hasActual
+        ? r.byActual.where((e) => e.actual > 0).toList()
+        : (List<RevenueItem>.from(r.items)
+          ..sort((a, b) => b.plan.compareTo(a.plan)));
     final top = rows.take(6).toList();
     final restA = rows.skip(6).fold<int>(0, (a, b) => a + b.actual);
-    final restP = r.items
-        .where((e) => !top.any((t) => t.item == e.item))
-        .fold<int>(0, (a, b) => a + b.plan);
-    final restN = r.items.length - top.length;
-    final mx = top.isEmpty ? 1 : top.first.actual;
+    final restP = rows.skip(6).fold<int>(0, (a, b) => a + b.plan);
+    final restN = rows.length - top.length;
 
-    Widget line(String name, int actual, int plan, int width, Color bar) =>
+    Widget line(String name, int actual, int plan, Color bar) =>
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -116,7 +121,10 @@ class ExecRevenueCard extends StatelessWidget {
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Text('${Fmt.monthShort(r.month)} 매출', style: AppText.h2),
+          Flexible(
+            child: Text('${Fmt.monthShort(r.month)} 매출',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.h2),
+          ),
           const Spacer(),
           if (_asOf(r).isNotEmpty)
             Text(_asOf(r),
@@ -129,22 +137,30 @@ class ExecRevenueCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(Fmt.moneyShort(r.actual),
-                style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                    color: AppColors.textMain)),
+            Flexible(
+              child: Text(Fmt.moneyShort(r.actual),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                      color: AppColors.textMain)),
+            ),
             const SizedBox(width: 8),
-            Text('나갔습니다',
-                style: AppText.body.copyWith(color: AppColors.textMute)),
+            Flexible(
+              child: Text('나갔습니다',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.body.copyWith(color: AppColors.textMute)),
+            ),
           ],
         ),
         const SizedBox(height: 11),
         ClipRRect(
           borderRadius: BorderRadius.circular(999),
           child: LinearProgressIndicator(
-            value: (rate / 100).clamp(0.0, 1.0),
+            value: rate == null ? 0.0 : (rate / 100).clamp(0.0, 1.0),
             minHeight: 8,
             backgroundColor: AppColors.statusGraySoft,
             valueColor:
@@ -156,7 +172,7 @@ class ExecRevenueCard extends StatelessWidget {
           Text('${Fmt.monthShort(r.month)} 계획 ${Fmt.moneyShort(r.plan)}',
               style: AppText.caption.copyWith(color: AppColors.textMute)),
           const Spacer(),
-          Text('$rate%',
+          Text(rate == null ? '-' : '$rate%',
               style: AppText.bodyStrong.copyWith(fontSize: 13)),
         ]),
         const SizedBox(height: 12),
@@ -175,10 +191,16 @@ class ExecRevenueCard extends StatelessWidget {
                   label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
         ]),
         const Divider(height: 20, color: AppColors.borderSoft),
+        if (!hasActual)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text('아직 실적 보고가 올라오지 않았습니다',
+                style: AppText.caption.copyWith(color: AppColors.textHint)),
+          ),
         for (final e in top)
-          line(e.item, e.actual, e.plan, mx, AppColors.summaryInProgress),
+          line(e.item, e.actual, e.plan, AppColors.summaryInProgress),
         if (restN > 0)
-          line('그 외 $restN개 품목', restA, restP, mx, AppColors.statusGray),
+          line('그 외 $restN개 품목', restA, restP, AppColors.statusGray),
         const SizedBox(height: 6),
         Text('반도체사업부 전체 · ${r.items.length}개 품목',
             style: AppText.caption.copyWith(color: AppColors.textHint)),
