@@ -81,9 +81,12 @@ ITEM_ORDER = ["케이블 (사내)", "메탈 가공", "파워박스", "메이저 
 #   내부거래 (Internal)   구미/화성/미국/용인
 #   총합 (내부거래 포함) = 소계 + 내부거래
 #
-# 텍슨 사이트끼리 오간 것(구미 SM·MCT, 화성 가공·판금, 용인, UCT ·
-# CELESTICA · AVALON, 사내 케이블)은 내부거래 쪽에만 둔다. 반도체에도
-# 같이 넣으면 총합에서 두 번 세어져 일일보고 총합계와 안 맞는다.
+# 내부거래는 텍슨 사이트(구미 · 화성 · 용인 · 미국)끼리 오간 것이다 —
+# 구미 SM·MCT, 화성 가공·판금, 용인 가공, 그리고 네 곳의 케이블.
+# UCT · CELESTICA · AVALON 은 바깥 고객이라 반도체 쪽이다.
+#
+# 한 줄은 한 쪽에만 들어간다. 양쪽에 넣으면 총합에서 두 번 세어져
+# 일일보고 총합계와 안 맞는다.
 GROUPS = [("semi", "반도체 (SEMI)"),
           ("dc", "데이터 센터 (Data Center)"),
           ("space", "우주항공 (Space X)")]
@@ -93,11 +96,12 @@ ITEM_GROUP = {
     "메탈 가공": "semi", "플라스틱 가공": "semi", "케이블 (LAM)": "semi",
     "시트메탈 · 프레임": "semi", "메이저 모듈": "semi", "파워박스": "semi",
     "EMA": "semi", "세정": "semi", "표면처리": "semi",
+    "UCT": "semi", "CELESTICA": "semi", "AVALON": "semi",
     "데이터센터": "dc",
     "Space X": "space",
     "구미 시트메탈": "internal", "구미 MCT": "internal", "화성 MCT": "internal",
-    "화성 시트메탈": "internal", "용인 가공": "internal", "UCT": "internal",
-    "CELESTICA": "internal", "AVALON": "internal", "케이블 (사내)": "internal",
+    "화성 시트메탈": "internal", "용인 가공": "internal",
+    "케이블 (사내)": "internal",
 }
 
 

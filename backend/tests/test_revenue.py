@@ -261,10 +261,10 @@ mix = daily_book(37, ['09 / 07'], [
 R.apply_daily(st3, R.parse_daily(mix, 2026), 'm.xlsx')
 v3 = R.month_view(st3, '2026-09')
 box = {b['key']: b['actual'] for b in v3['groups']}
-assert box['semi'] == 1000, box
+assert box['semi'] == 1050, box                # 메이저 모듈 1000 + UCT 50
 assert box['dc'] == 400 and box['space'] == 90, box
-assert v3['internal']['actual'] == 550, v3['internal']   # 구미 SM 200 + 케이블 300 + UCT 50
-assert v3['subtotal']['actual'] == 1490, v3['subtotal']
+assert v3['internal']['actual'] == 500, v3['internal']   # 구미 SM 200 + 사내 케이블 300
+assert v3['subtotal']['actual'] == 1540, v3['subtotal']
 assert v3['grand']['actual'] == 2040, v3['grand']
 # 총합은 일일보고 총합계와 같아야 한다 — 두 번 세면 어긋난다
 assert v3['grand']['actual'] == v3['subtotal']['actual'] + v3['internal']['actual']
@@ -274,7 +274,10 @@ ok += 1
 
 # 사이트 행은 반도체에 없다
 assert not [r for r in v3['groups'][0]['items'] if r['item'] in
-            ('구미 시트메탈', '케이블 (사내)', 'UCT')], '사이트 행이 반도체에 들어갔다'
+            ('구미 시트메탈', '케이블 (사내)', '구미 MCT', '화성 MCT',
+             '화성 시트메탈', '용인 가공')], '내부거래 행이 반도체에 들어갔다'
+assert [r for r in v3['internal']['items'] if r['item'] == 'UCT'] == [], \
+    'UCT 는 바깥 고객이라 반도체 쪽이다'
 ok += 1
 
 # ── 이름은 줄바꿈·겹공백을 무시하고 붙는다 ──
