@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.22",
-  "latest_version_code": 45,
+  "latest_version": "2.3.23",
+  "latest_version_code": 46,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "앱이 훨씬 빨리 열립니다.\n\n· 지난번 본 내용을 먼저 그리고 새 값으로 바꿉니다\n· 흰 화면으로 서 있던 시간을 없앴습니다",
+  "release_notes": "늦은 이유를 화면에 적습니다.\n\n· 지연인데 사유를 안 적었으면 그렇다고 뜹니다\n· 관리자 모델 표에 '지연 N' 이 붙습니다",
   "force_update": false
 }
