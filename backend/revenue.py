@@ -1,17 +1,22 @@
-# 사업부 매출 — 주간보고 엑셀이 원본이다.
+# 사업부 매출 — 실적은 주간보고 엑셀, 예상은 따로 받는다.
 #
-# 모델 판가 × 수량으로 계산하던 것을 그만둔다. 판가는 추정이고, 실제로
-# 하바플레이트 55종 중 52종이 3,400 으로 일괄 입력돼 있어서 9월 매출이
-# 18만 달러 부풀어 있었다. 확정 금액은 이미 주간보고에 있다.
+# 처음엔 주간보고의 '실행계획' 을 그 달 계획으로 썼다. 그런데 그 열은
+# 작년에 짜 둔 숫자라 지금 예상과 맞지 않는다. 9월만 봐도 주간보고는
+# $1,964만, 실제 예상은 $2,422만이었다. 그래서 나눈다.
 #
-#   '1. 계획 대비 실적 (수정본) Actual FCST' 시트 한 장에
-#     · 줄마다 사업계획 / 실행계획 / Open PO / 실적
-#     · 열마다 W1 ~ W52
-#     · 맨 아래 [합 계] 블록에 보고서 묶음이 그대로
+#   실적  ← 주간보고 '1. 계획 대비 실적 (수정본) Actual FCST' 시트
+#           줄마다 '실적' 행, 열마다 W1~W52,
+#           맨 아래 [합 계] 블록에 보고서 묶음이 그대로
 #
-#         매출합계 (Revenue)   반도체 / 데이터 센터 / 우주항공 → 소계
-#         내부거래 (Internal)  구미/화성/미국
-#         총합 (내부거래 포함) = 소계 + 내부거래
+#               매출합계 (Revenue)   반도체 / 데이터 센터 / 우주항공 → 소계
+#               내부거래 (Internal)  구미/화성/미국
+#               총합 (내부거래 포함) = 소계 + 내부거래
+#
+#   예상  ← 사람이 넣는다. 금액 하나만 넣어도 되고, Estimate 파일을
+#           올리면 Commodity 별 내역까지 들어온다.
+#
+# 주간보고의 사업계획·실행계획·Open PO 열은 읽지 않는다. 읽어서 어딘가
+# 남겨 두면 언젠가 화면에 새어 나온다.
 #
 # 묶음 합계는 [합 계] 블록을 그대로 쓴다. 세부를 우리가 더해서 만들면
 # 파일이 말한 값과 어긋날 수 있고, 어긋나도 아무도 모른다. 세부는 따로
@@ -30,6 +35,8 @@ INTERNAL = ("internal", "구미/화성/미국 (Gumi/Hwaseong/USA/YONGIN)")
 GROUP_LABEL = dict(GROUPS + [INTERNAL])
 ORDER = ["semi", "dc", "space", "internal"]
 
+MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
 
 def norm(s) -> str:
     """줄바꿈·겹공백을 없앤 이름. 엑셀은 같은 줄을 파일마다 다르게 접는다."""
@@ -39,10 +46,12 @@ def norm(s) -> str:
 def _num(v) -> float:
     if v is None or v == "":
         return 0.0
+    if isinstance(v, bool):
+        return 0.0
     if isinstance(v, (int, float)):
         return float(v)
     try:
-        return float(str(v).replace(",", "").strip())
+        return float(str(v).replace(",", "").replace("$", "").strip())
     except Exception:
         return 0.0
 
@@ -73,8 +82,7 @@ def _group_of(div: str, cust: str) -> str:
     """세부 한 줄이 어느 묶음인지.
 
     엑셀은 사업부 칸을 한 번만 적고 아래로 이어 쓴다. 그래서 텍슨
-    사이트 줄들이 '우주항공' 아래에 붙어 있는데, 실제로는 내부거래다
-    (합계로 검산해 보면 425,502 + 32,062,096 = 32,487,598 로 맞는다).
+    사이트 줄들이 '우주항공' 아래에 붙어 있는데, 실제로는 내부거래다.
     """
     d, c = norm(div), norm(cust)
     if "Texon" in c or "Seojin" in c:
@@ -89,7 +97,7 @@ def _group_of(div: str, cust: str) -> str:
 
 
 def parse_weekly(raw: bytes, year_hint: int = None) -> dict:
-    """주간보고 시트 한 장에서 주차별 계획·실적을 꺼낸다."""
+    """주간보고 시트 한 장에서 주차별 '실적' 만 꺼낸다."""
     wb = _open(raw)
     ws = _sheet(wb)
     grid = list(ws.iter_rows(values_only=True))
@@ -136,16 +144,19 @@ def parse_weekly(raw: bytes, year_hint: int = None) -> dict:
         return out
 
     # ── 줄 읽기 ───────────────────────────────────────────
-    def take(i):
-        """i 줄부터 시작하는 한 덩이 (사업계획 / 실행계획 / 실적)."""
-        got = {}
+    def actual_row(i):
+        """i 줄에서 시작하는 한 덩이의 '실적' 행. 없으면 None.
+
+        덩이는 '사업계획' 에서 시작해 다음 '사업계획' 전까지다. 그 열은
+        읽지 않지만 덩이를 가르는 표시라서 찾기는 해야 한다.
+        """
         for k in range(i, min(i + 6, len(grid))):
             lab = norm(grid[k][5] if len(grid[k]) > 5 else "")
             if k > i and lab == "사업계획":
-                break
-            if lab in ("사업계획", "실행계획", "실적"):
-                got[lab] = grid[k]
-        return got
+                return None
+            if lab == "실적":
+                return grid[k]
+        return None
 
     def series(row):
         return {w: _num(row[wcol[w]]) if wcol[w] < len(row) else 0.0
@@ -167,16 +178,10 @@ def parse_weekly(raw: bytes, year_hint: int = None) -> dict:
             cust = c3
         if c5 != "사업계획":
             continue
-        blk = take(i)
-        if "실적" not in blk:
+        row = actual_row(i)
+        if row is None:
             continue
-        name = c4 or c3 or c2
-        vals = {k: series(blk[k]) for k in ("사업계획", "실행계획", "실적")
-                if k in blk}
-        rec = {"label": name,
-               "budget": vals.get("사업계획", {}),
-               "plan": vals.get("실행계획", {}),
-               "actual": vals.get("실적", {})}
+        rec = {"label": c4 or c3 or c2, "actual": series(row)}
         if head_at >= 0 and i > head_at:
             key = _total_key(c2, c3)
             if key:
@@ -211,9 +216,73 @@ def _total_key(c2: str, c3: str) -> str:
     return ""
 
 
+# ── 예상 매출 ─────────────────────────────────────────────
+def parse_estimate(raw: bytes) -> dict:
+    """Estimate 파일에서 그 달 예상 매출을 꺼낸다.
+
+    'Sum' 시트가 `Commodity | 금액` 두 칸이다. 이름이 빈 채로 숫자만
+    있는 마지막 줄은 그 시트가 스스로 낸 합계라서 항목으로 세지 않고,
+    우리가 더한 값과 맞는지 대조만 한다.
+    """
+    wb = _open(raw)
+    ws = None
+    for w in wb.worksheets:
+        if norm(w.title).lower() in ("sum", "합계", "총계"):
+            ws = w
+            break
+    if ws is None:
+        ws = wb.worksheets[0]
+
+    items, stated = [], None
+    for r in ws.iter_rows(values_only=True):
+        if not r:
+            continue
+        name = norm(r[0] if len(r) > 0 else "")
+        amt = None
+        for v in r[1:]:
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                amt = float(v)
+                break
+        if amt is None:
+            continue
+        if name:
+            items.append({"item": name, "amount": round(amt)})
+        else:
+            stated = round(amt)             # 시트가 적어 둔 합계
+    if not items:
+        raise ValueError("Commodity 와 금액이 있는 줄을 못 찾았습니다.")
+    total = sum(x["amount"] for x in items)
+    return {"items": items, "total": total, "stated": stated,
+            "gap": None if stated is None else stated - total}
+
+
+def set_estimate(store: dict, month: str, total, items=None, source: str = "") -> dict:
+    """그 달 예상 매출을 넣는다. 0 이나 None 이면 지운다."""
+    if not MONTH_RE.match(str(month or "")):
+        raise ValueError("달은 2026-09 모양이어야 합니다.")
+    est = store.setdefault("estimates", {})
+    amount = round(_num(total))
+    if amount <= 0:
+        est.pop(month, None)
+        return {"month": month, "total": 0, "removed": True}
+    rec = {"total": amount,
+           "items": [{"item": norm(x.get("item")), "amount": round(_num(x.get("amount")))}
+                     for x in (items or []) if norm(x.get("item"))],
+           "source": source or "직접 입력",
+           "at": _dt.datetime.now().isoformat(timespec="seconds")}
+    est[month] = rec
+    return {"month": month, "total": amount, "items": len(rec["items"]),
+            "removed": False}
+
+
+def _estimate_of(store: dict, month: str) -> dict:
+    return ((store.get("estimates") or {}).get(month) or {})
+
+
 # ── 저장 ──────────────────────────────────────────────────
 def blank() -> dict:
-    return {"version": 2, "updated_at": None, "years": {}, "sources": {}}
+    return {"version": 3, "updated_at": None, "years": {},
+            "estimates": {}, "sources": {}}
 
 
 class RevenueFileBroken(Exception):
@@ -239,7 +308,25 @@ def load(path) -> dict:
     base = blank()
     for k, v in base.items():
         d.setdefault(k, v)
+    _drop_plan_columns(d)
     return d
+
+
+def _drop_plan_columns(store: dict) -> None:
+    """version 2 까지는 사업계획·실행계획도 같이 담겨 있었다.
+
+    남겨 두면 언젠가 화면에 새어 나온다. 읽을 때 털어낸다.
+    """
+    if store.get("version") == 3:
+        return
+    for y in (store.get("years") or {}).values():
+        for rec in (y.get("totals") or {}).values():
+            rec.pop("plan", None)
+            rec.pop("budget", None)
+        for rec in (y.get("lines") or []):
+            rec.pop("plan", None)
+            rec.pop("budget", None)
+    store["version"] = 3
 
 
 _SAVE_LOCK = _threading.Lock()
@@ -257,7 +344,10 @@ def save(path, store: dict) -> None:
 
 
 def apply_weekly(store: dict, parsed: dict, filename: str = "") -> dict:
-    """그 해를 통째로 갈아 끼운다. 파일 한 장이 한 해 전체다."""
+    """그 해를 통째로 갈아 끼운다. 파일 한 장이 한 해 전체다.
+
+    예상은 이 파일에서 오지 않으므로 건드리지 않는다.
+    """
     y = str(parsed.get("year"))
     before = _grand(store, y)
     store.setdefault("years", {})[y] = {
@@ -292,7 +382,7 @@ def _sum(rec: dict, key: str, weeks) -> int:
 
 
 def month_view(store: dict, month: str) -> dict:
-    """그 달의 묶음별 계획·실적. 홈 카드 · 매출 상세 · admin 이 같이 쓴다."""
+    """그 달의 묶음별 실적 + 사람이 넣은 예상. 홈·상세·admin 이 같이 쓴다."""
     year = str(month)[:4]
     y = (store.get("years") or {}).get(year) or {}
     weeks = _months_of(y, month)
@@ -301,47 +391,39 @@ def month_view(store: dict, month: str) -> dict:
 
     def box(key, label):
         rec = totals.get(key) or {}
-        b = _sum(rec, "budget", weeks)
-        p = _sum(rec, "plan", weeks)
         a = _sum(rec, "actual", weeks)
         items = []
         for ln in lines:
             if ln.get("group") != key:
                 continue
-            la = _sum(ln, "actual", weeks)
-            lp = _sum(ln, "plan", weeks)
-            lb = _sum(ln, "budget", weeks)
-            items.append({"item": ln.get("label") or "", "cust": ln.get("cust") or "",
-                          "group": key, "budget": lb, "plan": lp, "actual": la,
-                          "rate": round(la * 100 / lp) if lp > 0 else None})
-        items.sort(key=lambda r: (-r["actual"], -r["plan"], r["item"]))
-        return {"key": key, "label": label, "budget": b, "plan": p, "actual": a,
-                "rate": round(a * 100 / p) if p > 0 else None,
-                "items": items,
+            items.append({"item": ln.get("label") or "",
+                          "cust": ln.get("cust") or "",
+                          "group": key,
+                          "actual": _sum(ln, "actual", weeks)})
+        items.sort(key=lambda r: (-r["actual"], r["item"]))
+        return {"key": key, "label": label, "actual": a, "items": items,
                 # 세부를 더한 값. 합계와 다르면 화면에서 말해 준다.
                 "items_actual": sum(r["actual"] for r in items)}
 
     boxes = [box(k, lb) for k, lb in GROUPS]
     internal = box(*INTERNAL)
-    sub = totals.get("subtotal") or {}
-    grand = totals.get("grand") or {}
 
     def pack(rec, label, fallback=None):
-        b = _sum(rec, "budget", weeks)
-        p = _sum(rec, "plan", weeks)
         a = _sum(rec, "actual", weeks)
-        if not (b or p or a) and fallback:
-            b, p, a = fallback
-        return {"label": label, "budget": b, "plan": p, "actual": a,
-                "rate": round(a * 100 / p) if p > 0 else None}
+        if not a and fallback:
+            a = fallback
+        return {"label": label, "actual": a}
 
-    sub_fb = (sum(x["budget"] for x in boxes), sum(x["plan"] for x in boxes),
-              sum(x["actual"] for x in boxes))
-    subtotal = pack(sub, "소계 (Sub-total)", sub_fb)
-    gr_fb = (subtotal["budget"] + internal["budget"],
-             subtotal["plan"] + internal["plan"],
-             subtotal["actual"] + internal["actual"])
-    grand_v = pack(grand, "총합 (내부거래 포함)", gr_fb)
+    subtotal = pack(totals.get("subtotal") or {}, "소계 (Sub-total)",
+                    sum(x["actual"] for x in boxes))
+    grand = totals.get("grand") or {}
+    grand_v = pack(grand, "총합 (내부거래 포함)",
+                   subtotal["actual"] + internal["actual"])
+    actual = grand_v["actual"]
+
+    est = _estimate_of(store, month)
+    estimate = round(_num(est.get("total")))
+    rate = round(actual * 100 / estimate) if estimate > 0 else None
 
     # 누적은 보고 있는 달까지 (뒤에 오는 달이 들어가면 1~8월 합과 안 맞는다)
     upto = []
@@ -349,7 +431,7 @@ def month_view(store: dict, month: str) -> dict:
         if m <= month:
             upto.extend(ws)
     ytd = _sum(grand, "actual", upto) or sum(
-        _sum(totals.get(k) or {}, "actual", upto) for k in ("semi", "dc", "space", "internal"))
+        _sum(totals.get(k) or {}, "actual", upto) for k in ORDER)
 
     last = ""
     for w in weeks:
@@ -359,10 +441,15 @@ def month_view(store: dict, month: str) -> dict:
         "month": month, "weeks": weeks,
         "groups": boxes, "internal": internal,
         "subtotal": subtotal, "grand": grand_v,
-        "plan": grand_v["plan"], "actual": grand_v["actual"],
-        "budget": grand_v["budget"], "rate": grand_v["rate"],
-        "left": max(0, grand_v["plan"] - grand_v["actual"]),
+        "actual": actual,
+        "estimate": estimate,
+        "estimate_items": est.get("items") or [],
+        "estimate_at": est.get("at") or "",
+        "estimate_source": est.get("source") or "",
+        "rate": rate,
+        "left": max(0, estimate - actual) if estimate > 0 else 0,
         "ytd": ytd, "as_of": last,
         "has_data": bool(weeks) and bool(totals),
+        "has_estimate": estimate > 0,
         "sources": store.get("sources") or {},
     }

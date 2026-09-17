@@ -25854,13 +25854,15 @@ _stamp_holds_once()
 
 
 # ─────────────────────────────────────────────────────────────
-# 매출 — 사업부 전체. 원본은 주간보고 엑셀이다.
+# 매출 — 사업부 전체. 실적과 예상은 출처가 다르다.
 #
-# 모델 판가 × 수량으로 계산하던 매출을 그만둔다. 판가는 추정이고 실제로
-# 하바플레이트 55종 중 52종이 3,400 으로 일괄 입력돼 있었다. 확정 금액은
-# 이미 주간보고 '1. 계획 대비 실적 (수정본) Actual FCST' 시트에 있다 —
-# 줄마다 사업계획/실행계획/실적, 열마다 W1~W52, 맨 아래 [합 계] 블록에
-# 보고서 묶음까지 그대로.
+# 실적은 주간보고 '1. 계획 대비 실적 (수정본) Actual FCST' 시트가 원본이다.
+# 줄마다 실적, 열마다 W1~W52, 맨 아래 [합 계] 블록에 보고서 묶음까지 그대로.
+#
+# 예상은 사람이 넣는다. 한동안 주간보고의 '실행계획' 열을 그 달 계획으로
+# 썼는데, 그 열은 작년에 짜 둔 숫자다. 9월만 봐도 주간보고 $1,964만 대
+# 실제 예상 $2,422만이었다. 금액 하나만 넣어도 되고 Estimate 파일을
+# 올려도 된다.
 # ─────────────────────────────────────────────────────────────
 REVENUE_FILE = DATA_DIR / "revenue.json"
 _MONTH_RE = re.compile(r"20\d\d-\d{2}$")
@@ -25894,7 +25896,7 @@ def _year_hint(name: str) -> int:
 
 @app.get("/revenue")
 def get_revenue(month: str = None):
-    """그 달의 묶음별 계획·실적. 앱 홈의 매출 카드가 이걸 쓴다."""
+    """그 달의 묶음별 실적 + 사람이 넣은 예상. 앱 홈의 매출 카드가 쓴다."""
     return _rev.month_view(_load_revenue(), _check_month(month))
 
 
@@ -25959,12 +25961,65 @@ async def admin_revenue_import(mode: str = Form("preview"),
         "months": months,
         "view_month": view_month,
         "gaps": gaps,
-        "before": {"actual": before["actual"], "plan": before["plan"]},
-        "after": {"actual": after["actual"], "plan": after["plan"]},
+        "before": {"actual": before["actual"]},
+        "after": {"actual": after["actual"]},
     }
     if mode != "commit":
         return out
     out["applied"] = _rev.apply_weekly(store, parsed, name)
     _save_revenue(store)
     out["saved"] = True
+    return out
+
+
+@app.post("/admin/revenue/estimate")
+def admin_revenue_estimate(month: str = Form(...),
+                           total: str = Form(...),
+                           _admin: int = Depends(get_admin_session)):
+    """그 달 예상 매출을 금액 하나로 넣는다. 0 이면 지운다."""
+    month = _check_month(month)
+    store = _load_revenue()
+    try:
+        res = _rev.set_estimate(store, month, total, [], "직접 입력")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _save_revenue(store)
+    res["view"] = _rev.month_view(store, month)
+    return res
+
+
+@app.post("/admin/revenue/estimate/import")
+async def admin_revenue_estimate_import(month: str = Form(...),
+                                        mode: str = Form("preview"),
+                                        file: UploadFile = File(...),
+                                        _admin: int = Depends(get_admin_session)):
+    """Estimate 파일을 받아 그 달 예상 매출로 넣는다.
+
+    주간보고와 달리 한 달짜리라서, 어느 달인지는 화면에서 받는다.
+    """
+    month = _check_month(month)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    name = file.filename or ""
+    try:
+        parsed = _rev.parse_estimate(raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 읽지 못했습니다: {e}")
+
+    store = _load_revenue()
+    before = _rev.month_view(store, month)
+    out = {"file": name, "mode": mode, "month": month,
+           "items": parsed["items"], "total": parsed["total"],
+           # 시트가 스스로 적어 둔 합계와 우리가 더한 값이 다르면 말해 준다
+           "stated": parsed.get("stated"), "gap": parsed.get("gap"),
+           "before": {"estimate": before["estimate"]},
+           "after": {"estimate": parsed["total"]}}
+    if mode != "commit":
+        return out
+    out["applied"] = _rev.set_estimate(store, month, parsed["total"],
+                                       parsed["items"], name)
+    _save_revenue(store)
+    out["saved"] = True
+    out["view"] = _rev.month_view(store, month)
     return out

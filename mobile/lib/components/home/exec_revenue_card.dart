@@ -65,6 +65,7 @@ class ExecRevenueCard extends StatelessWidget {
   /// '매출 상세' 에서 본다 — 카드에 묶음을 늘어놓으면 홈이 길어진다.
   Widget _buildFromExcel(BuildContext context, RevenueMonth r) {
     final rate = r.rate;
+    final est = r.hasEstimate;
     return _shell(
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -81,11 +82,9 @@ class ExecRevenueCard extends StatelessWidget {
           ],
         ]),
         const SizedBox(height: 8),
-        Text('실적 / 실행계획',
+        Text(est ? '실적 / 예상' : '실적',
             style: AppText.caption.copyWith(color: AppColors.textHint)),
         const SizedBox(height: 3),
-        // 실적과 실행계획을 한 줄에. 밑에 '9월 실행계획 …' 을 또 적으면
-        // 같은 숫자를 두 번 말하는 셈이다.
         // Spacer 는 flex 1 의 Expanded 다. 옆의 Flexible 도 flex 1 이라
         // 남은 폭이 셋으로 똑같이 나뉘었고, 카드가 넓은데도 실적이 1/3 만
         // 받아 '$67…' 로 잘렸다. 왼쪽 묶음을 Expanded 하나로 감싸고,
@@ -107,44 +106,52 @@ class ExecRevenueCard extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           height: 1.1,
                           color: AppColors.textMain)),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text('/ ${Fmt.moneyShort(r.plan)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.body.copyWith(
-                            fontSize: 16, color: AppColors.textMute)),
-                  ),
+                  if (est) ...[
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text('/ ${Fmt.moneyShort(r.estimate)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.body.copyWith(
+                              fontSize: 16, color: AppColors.textMute)),
+                    ),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Text(rate == null ? '-' : '$rate%',
-                style: AppText.bodyStrong.copyWith(fontSize: 15)),
+            // 예상을 아직 안 넣은 달은 달성률을 지어내지 않는다.
+            Text(est ? (rate == null ? '-' : '$rate%') : '예상 미등록',
+                style: est
+                    ? AppText.bodyStrong.copyWith(fontSize: 15)
+                    : AppText.caption.copyWith(color: AppColors.textHint)),
           ],
         ),
         const SizedBox(height: 11),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: LinearProgressIndicator(
-            value: rate == null ? 0.0 : (rate / 100).clamp(0.0, 1.0),
-            minHeight: 8,
-            backgroundColor: AppColors.statusGraySoft,
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(AppColors.summaryInProgress),
+        if (est)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: rate == null ? 0.0 : (rate / 100).clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: AppColors.statusGraySoft,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.summaryInProgress),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+        if (est) const SizedBox(height: 12),
         Row(children: [
-          Expanded(
-              child:
-                  _MiniStat(label: '남은 계획', value: Fmt.moneyShort(r.left))),
-          Container(
-            width: 1,
-            height: 26,
-            margin: const EdgeInsets.symmetric(horizontal: 14),
-            color: AppColors.borderSoft,
-          ),
+          if (est)
+            Expanded(
+                child:
+                    _MiniStat(label: '남은 예상', value: Fmt.moneyShort(r.left))),
+          if (est)
+            Container(
+              width: 1,
+              height: 26,
+              margin: const EdgeInsets.symmetric(horizontal: 14),
+              color: AppColors.borderSoft,
+            ),
           Expanded(
               child: _MiniStat(label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
         ]),

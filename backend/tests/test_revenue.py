@@ -1,16 +1,20 @@
-# 매출 — 주간보고 엑셀이 원본이다
+# 매출 — 실적은 주간보고, 예상은 사람이 넣는다
 #   python3 backend/tests/test_revenue.py
 #
-# "WEEKLY 엑셀에 다 있네"
+# "Weekly 작성된건 작년에 작성한 파일이라 불명확 할 수 있기에 월 예상
+#  매출은 내가 따로 뭐 알려주던가 아니면 파일을 업로드를 할게
+#  Weekly는 그냥 그 실적 채우면 되는거야"
 #
-# '1. 계획 대비 실적 (수정본) Actual FCST' 시트 한 장에 줄마다
-# 사업계획/실행계획/실적, 열마다 W1~W52, 맨 아래 [합 계] 블록에
-# 보고서 묶음(반도체 · 데이터 센터 · 우주항공 · 내부거래)까지 있다.
+# 9월만 봐도 주간보고 실행계획은 $1,964만, 실제 예상은 $2,422만이었다.
 #
-# 지키는 것 셋.
-#   1. 묶음 합계는 [합 계] 블록 그대로 쓴다. 우리가 더해서 만들지 않는다.
-#   2. 세부를 더한 값이 합계와 다르면 조용히 넘기지 않고 말해 준다.
-#   3. 같은 파일을 두 번 올려도 그 해를 갈아 끼울 뿐 더해지지 않는다.
+# 지키는 것 다섯.
+#   1. 주간보고에서 '실적' 말고는 읽지 않는다. 읽어서 어딘가 남겨 두면
+#      언젠가 화면에 새어 나온다.
+#   2. 묶음 합계는 [합 계] 블록 그대로 쓴다. 우리가 더해서 만들지 않는다.
+#   3. 세부를 더한 값이 합계와 다르면 조용히 넘기지 않고 말해 준다.
+#   4. 같은 파일을 두 번 올려도 그 해를 갈아 끼울 뿐 더해지지 않고,
+#      예상은 건드리지 않는다.
+#   5. 예상이 없는 달은 달성률을 지어내지 않는다.
 import io, pathlib, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -124,14 +128,71 @@ st = R.blank()
 R.apply_weekly(st, p, 'WEEKLY.xlsx')
 v = R.month_view(st, '2026-09')
 box = {b['key']: b for b in v['groups']}
-assert box['semi']['actual'] == 748 and box['semi']['plan'] == 820, box['semi']
-assert box['semi']['budget'] == 500
+assert box['semi']['actual'] == 748, box['semi']
 assert box['dc']['actual'] == 31 and box['space']['actual'] == 0
 assert v['internal']['actual'] == 180
 assert v['subtotal']['actual'] == 779, v['subtotal']
 assert v['grand']['actual'] == 959, v['grand']
-assert v['actual'] == 959 and v['plan'] == 1162, (v['actual'], v['plan'])
-assert v['rate'] == 83, v['rate']
+assert v['actual'] == 959, v['actual']
+ok += 1
+
+# 주간보고의 계획 열은 읽지도 않는다
+for _b in v['groups'] + [v['internal'], v['subtotal'], v['grand']]:
+    assert 'plan' not in _b and 'budget' not in _b, _b
+for _ln in (st['years']['2026']['lines'] + list(st['years']['2026']['totals'].values())):
+    assert set(_ln) <= {'label', 'actual', 'div', 'cust', 'group'}, _ln
+ok += 1
+
+# 예상을 안 넣은 달은 달성률을 지어내지 않는다
+assert v['estimate'] == 0 and v['rate'] is None and v['left'] == 0, v
+assert v['has_estimate'] is False
+ok += 1
+
+# ── 예상 매출 ──
+R.set_estimate(st, '2026-09', 2000, [{'item': 'Cable', 'amount': 1200},
+                                     {'item': 'PBX', 'amount': 800}], 'est.xlsx')
+v = R.month_view(st, '2026-09')
+assert v['estimate'] == 2000 and v['rate'] == 48, (v['estimate'], v['rate'])
+assert v['left'] == 2000 - 959
+assert v['has_estimate'] is True
+assert [x['item'] for x in v['estimate_items']] == ['Cable', 'PBX']
+assert v['estimate_source'] == 'est.xlsx'
+# 다른 달로 새지 않는다
+assert R.month_view(st, '2026-08')['estimate'] == 0
+# 0 이면 지운다
+R.set_estimate(st, '2026-09', 0)
+assert R.month_view(st, '2026-09')['has_estimate'] is False
+R.set_estimate(st, '2026-09', 2000, [], '직접 입력')
+try:
+    R.set_estimate(st, '2026-9', 100)
+    raise AssertionError('달 형식을 안 본다')
+except ValueError:
+    pass
+ok += 1
+
+# 주간보고를 다시 올려도 예상은 그대로다 — 출처가 다르다
+R.apply_weekly(st, p, 'WEEKLY.xlsx')
+assert R.month_view(st, '2026-09')['estimate'] == 2000, '주간보고가 예상을 지웠다'
+ok += 1
+
+# ── Estimate 파일 읽기 ──
+_ew = openpyxl.Workbook()
+_es = _ew.active
+_es.title = 'Sum'
+_es.append(['Commodity', 'Estimate Revenue in Sep'])
+for _n, _a in (('Plastic', 889433), ('Major Modules', 3136000), ('PBX', 3218743)):
+    _es.append([_n, _a])
+_es.append([None, 889433 + 3136000 + 3218743])          # 시트가 적어 둔 합계
+_buf = io.BytesIO(); _ew.save(_buf)
+_p = R.parse_estimate(_buf.getvalue())
+assert _p['total'] == 7244176, _p['total']
+assert len(_p['items']) == 3, _p['items']
+assert _p['gap'] == 0, _p
+# 시트 합계가 틀려 있으면 말해 준다 — 우리가 더한 값을 쓴다
+_es.cell(row=5, column=2, value=999)
+_buf2 = io.BytesIO(); _ew.save(_buf2)
+_p2 = R.parse_estimate(_buf2.getvalue())
+assert _p2['total'] == 7244176 and _p2['stated'] == 999 and _p2['gap'] != 0, _p2
 ok += 1
 
 # 세부가 묶음 안에 들어온다
@@ -162,6 +223,22 @@ ok += 1
 # ── 같은 파일을 두 번 올려도 더해지지 않는다 ──
 R.apply_weekly(st, p, 'WEEKLY.xlsx')
 assert R.month_view(st, '2026-09')['actual'] == 959, '두 번 올렸더니 늘었다'
+ok += 1
+
+# ── 예전 파일(version 2)에 남아 있던 계획 열은 읽을 때 털어낸다 ──
+_old = {'version': 2, 'years': {'2026': {
+    'weeks': ['W36'], 'months': {'2026-09': ['W36']},
+    'totals': {'grand': {'label': 'g', 'actual': {'W36': 10},
+                         'plan': {'W36': 99}, 'budget': {'W36': 88}}},
+    'lines': [{'label': 'x', 'group': 'semi', 'actual': {'W36': 10},
+               'plan': {'W36': 99}, 'budget': {'W36': 88}}]}}}
+with tempfile.TemporaryDirectory() as td:
+    f = pathlib.Path(td) / 'old.json'
+    f.write_text(__import__('json').dumps(_old), encoding='utf-8')
+    got = R.load(f)
+    assert got['version'] == 3
+    assert 'plan' not in got['years']['2026']['totals']['grand']
+    assert 'budget' not in got['years']['2026']['lines'][0]
 ok += 1
 
 # ── 누적은 보고 있는 달까지 ──
@@ -238,7 +315,9 @@ ok += 1
 
 # ── 서버가 받는 곳 ──
 for path in ('@app.get("/revenue")', '@app.post("/admin/revenue/import")',
-             '@app.get("/admin/revenue/state")'):
+             '@app.get("/admin/revenue/state")',
+             '@app.post("/admin/revenue/estimate")',
+             '@app.post("/admin/revenue/estimate/import")'):
     assert path in SRC, f'{path} 가 없다'
 assert 'import revenue as _rev' in SRC
 assert 'mode != "commit"' in SRC, '미리보기가 그냥 저장해버린다'
@@ -247,6 +326,10 @@ assert '_check_month' in SRC and SRC.count('_check_month(') >= 3, \
     '월 형식을 한 곳에서만 본다'
 assert 'RevenueFileBroken' in SRC, '깨진 파일을 그냥 넘긴다'
 assert '"gaps"' in SRC, '세부와 합계가 어긋나도 말을 안 한다'
+assert 'parse_estimate' in SRC and 'set_estimate' in SRC, '예상을 받을 데가 없다'
+assert '_rev.parse_weekly' in SRC and 'plan' not in SRC.split(
+    '@app.post("/admin/revenue/import")')[1].split('@app.post')[0], \
+    '주간보고 응답이 아직 계획을 말한다'
 ok += 1
 
 # ── 앱 ──
@@ -254,16 +337,21 @@ LIB = ROOT.parent / 'mobile' / 'lib'
 S = (LIB / 'services' / 'revenue_service.dart').read_text(encoding='utf-8')
 assert '/revenue' in S, '앱이 /revenue 를 안 본다'
 assert 'RevenueGroup' in S and 'internal' in S
+assert 'hasEstimate' in S and 'estimate' in S, '앱이 예상을 안 읽는다'
+assert '.plan' not in S and 'budget' not in S, '앱 모델에 계획이 남아 있다'
 C = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
 assert 'RevenueMonth' in C, '홈 카드가 아직 모델 계산값을 쓴다'
-# 실적과 실행계획을 한 줄로. 밑에 또 적으면 같은 숫자를 두 번 말한다.
-assert '실적 / 실행계획' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
+# 실적과 예상을 한 줄로. 주간보고의 '실행계획' 은 더 이상 안 쓴다.
+assert '실적 / 예상' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
+assert '실행계획' not in C, '홈 카드가 아직 주간보고 실행계획을 말한다'
 assert '사업부 총합' not in C, '매출을 사업부 하나로 못 박았다'
+assert '예상 미등록' in C, '예상이 없는 달에 달성률을 지어낸다'
+assert 'r.hasEstimate' in C, '예상이 있는지 안 보고 그린다'
 # 헤드라인 숫자가 잘리면 카드를 볼 이유가 없다.
 #
 # Spacer 는 flex 1 의 Expanded 다. 같은 Row 안의 Flexible 도 flex 1 이라
 # 남은 폭이 똑같이 나뉘고, 카드가 넓은데도 실적이 '$67…' 로 잘렸다.
-_num = C.split('실적 / 실행계획')[1].split('LinearProgressIndicator')[0]
+_num = C.split("'실적 / 예상'")[1].split('LinearProgressIndicator')[0]
 _num = '\n'.join(ln for ln in _num.split('\n') if not ln.strip().startswith('//'))
 assert 'Spacer' not in _num, '금액 줄에 Spacer 가 있어 폭이 쪼개진다'
 assert 'Fmt.moneyShort(r.actual)' in _num, '홈 카드에 실적 금액이 없다'
@@ -275,6 +363,7 @@ assert '_openDiv' in D and 'r.lines' in D, '매출 상세가 부서별로 안 �
 assert 'bool _openDiv = true;' in D, '매출 상세가 접힌 채로 열린다'
 # 값이 왼쪽에 몰리지 않게 라벨/값을 양끝으로 붙인다.
 assert 'Widget kv(String k, String v)' in D, '총합 카드가 값을 왼쪽에 몰아 놓는다'
+assert '실행계획' not in D, '매출 상세가 아직 주간보고 실행계획을 말한다'
 A2 = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
 assert '_projectRow' in A2, '정상 모두 보기가 아직 품번을 늘어놓는다'
 ok += 1
@@ -285,6 +374,11 @@ assert 'data-page="revenue"' in A, 'admin 메뉴에 매출 관리가 없다'
 assert '/admin/revenue/import' in A and "'preview'" in A
 assert 'data-rv-grp' in A, '큰 틀에서 세부로 펴지지 않는다'
 assert '세부 합' in A, '세부와 합계가 어긋나도 화면에 말이 없다'
+assert '/admin/revenue/estimate' in A, 'admin 에서 예상을 넣을 데가 없다'
+assert 'rv-est-save' in A and 'rv-est-pick' in A, '예상 넣는 단추가 없다'
+_rv = A.split('renderRevenuePage')[1]
+assert '실행계획' not in _rv and '사업계획' not in _rv, \
+    'admin 매출 화면에 아직 계획이 남아 있다'
 ok += 1
 
 print(f'전부 통과 · {ok}개 항목')

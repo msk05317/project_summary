@@ -140,6 +140,8 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
 
   /// 엑셀에서 받은 매출 — 보고서와 같은 큰 틀로.
   Widget _excelBody(RevenueMonth r) {
+    final est = r.hasEstimate;
+
     // 라벨은 왼쪽, 값은 오른쪽 끝. 셋으로 쪼개 놓으면 넓은 화면에서
     // 값이 죄다 왼쪽에 몰려 보인다.
     Widget kv(String k, String v) => Row(children: [
@@ -153,8 +155,11 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           Text(v, maxLines: 1, style: AppText.bodyStrong),
         ]);
 
-    // 부서 한 줄씩 (펴 봤을 때)
+    // 부서 한 줄씩 (펴 봤을 때). 예상은 사업부 하나로만 들어와서
+    // 부서별로는 실적과 비중만 본다.
     Widget deptRow(RevenueGroup g) {
+      final all = r.actual;
+      final share = all > 0 ? (g.actual * 100 / all).round() : null;
       final tint = g.key == 'internal'
           ? AppColors.statusGray
           : AppColors.summaryInProgress;
@@ -170,12 +175,12 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                       .copyWith(fontSize: 13.5, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 8),
-            Text('${Fmt.moneyShort(g.actual)} / ${Fmt.moneyShort(g.plan)}',
+            Text(Fmt.moneyShort(g.actual),
                 style: AppText.caption.copyWith(color: AppColors.textMute)),
             const SizedBox(width: 8),
             SizedBox(
               width: 38,
-              child: Text(g.rate == null ? '-' : '${g.rate}%',
+              child: Text(share == null ? '-' : '$share%',
                   textAlign: TextAlign.right,
                   style: AppText.bodyStrong.copyWith(fontSize: 12.5)),
             ),
@@ -184,7 +189,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
-              value: g.plan <= 0 ? 0 : (g.actual / g.plan).clamp(0.0, 1.0),
+              value: share == null ? 0 : (share / 100).clamp(0.0, 1.0),
               minHeight: 4,
               backgroundColor: AppColors.statusGraySoft,
               valueColor: AlwaysStoppedAnimation<Color>(tint),
@@ -223,11 +228,11 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                             style: AppText.bodyStrong.copyWith(fontSize: 15.5)),
                       ),
                       const SizedBox(width: 8),
-                      Text('${Fmt.moneyShort(r.actual)} / ${Fmt.moneyShort(r.plan)}',
+                      Text(Fmt.moneyShort(r.actual),
                           style: AppText.caption
                               .copyWith(color: AppColors.textMute)),
                       const SizedBox(width: 8),
-                      Text(r.rate == null ? '-' : '${r.rate}%',
+                      Text('100%',
                           style: AppText.bodyStrong.copyWith(fontSize: 13.5)),
                       Icon(_openDiv ? Icons.expand_less : Icons.expand_more,
                           size: 20, color: AppColors.textMute),
@@ -235,13 +240,11 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                     const SizedBox(height: 9),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: r.plan <= 0
-                            ? 0
-                            : (r.actual / r.plan).clamp(0.0, 1.0),
+                      child: const LinearProgressIndicator(
+                        value: 1,
                         minHeight: 5,
                         backgroundColor: AppColors.statusGraySoft,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
+                        valueColor: AlwaysStoppedAnimation<Color>(
                             AppColors.summaryInProgress),
                       ),
                     ),
@@ -283,7 +286,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                     style: AppText.caption.copyWith(color: AppColors.textHint)),
             ]),
             const SizedBox(height: 10),
-            Text('실적 / 실행계획',
+            Text(est ? '실적 / 예상' : '실적',
                 style: AppText.caption.copyWith(color: AppColors.textHint)),
             const SizedBox(height: 3),
             Row(
@@ -301,33 +304,42 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                               fontSize: 28,
                               fontWeight: FontWeight.w800,
                               height: 1.1)),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text('/ ${Fmt.moneyShort(r.plan)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppText.body.copyWith(
-                                fontSize: 15, color: AppColors.textMute)),
-                      ),
+                      if (est) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text('/ ${Fmt.moneyShort(r.estimate)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.body.copyWith(
+                                  fontSize: 15, color: AppColors.textMute)),
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(r.rate == null ? '-' : '${r.rate}%',
-                    style: AppText.bodyStrong.copyWith(fontSize: 15)),
+                Text(est ? (r.rate == null ? '-' : '${r.rate}%') : '예상 미등록',
+                    style: est
+                        ? AppText.bodyStrong.copyWith(fontSize: 15)
+                        : AppText.caption
+                            .copyWith(color: AppColors.textHint)),
               ],
             ),
-            const SizedBox(height: 11),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: r.plan <= 0 ? 0 : (r.actual / r.plan).clamp(0.0, 1.0),
-                minHeight: 7,
-                backgroundColor: AppColors.statusGraySoft,
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                    AppColors.summaryInProgress),
+            if (est) ...[
+              const SizedBox(height: 11),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: r.rate == null
+                      ? 0
+                      : (r.rate! / 100).clamp(0.0, 1.0),
+                  minHeight: 7,
+                  backgroundColor: AppColors.statusGraySoft,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppColors.summaryInProgress),
+                ),
               ),
-            ),
+            ],
             const Divider(height: 20, color: AppColors.borderSoft),
             kv('소계 (내부거래 제외)',
                 Fmt.moneyShort(r.actual - (r.internal?.actual ?? 0))),
