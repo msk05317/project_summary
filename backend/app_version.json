@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.20",
-  "latest_version_code": 43,
+  "latest_version": "2.3.21",
+  "latest_version_code": 44,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "전체 현황을 옆으로 밀어 넘깁니다.\n\n· 왼쪽으로 밀면 다음, 오른쪽으로 밀면 이전\n· 타일을 누르는 것도 그대로 됩니다",
+  "release_notes": "넘길 때 미끄러지듯 바뀝니다.\n\n· 민 쪽에서 내용이 들어옵니다\n· 줄 수가 달라도 카드가 안 튑니다",
   "force_update": false
 }
