@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.19",
-  "latest_version_code": 42,
+  "latest_version": "2.3.20",
+  "latest_version_code": 43,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "예상을 Commodity 별로 넣습니다.\n\n· 합계는 적는 게 아니라 항목을 더해서 나옵니다\n· 부서마다 제 예상과 달성률이 생겼습니다\n· 관리자 화면에서 15줄을 직접 적거나 파일로 넣습니다",
+  "release_notes": "전체 현황을 옆으로 밀어 넘깁니다.\n\n· 왼쪽으로 밀면 다음, 오른쪽으로 밀면 이전\n· 타일을 누르는 것도 그대로 됩니다",
   "force_update": false
 }
