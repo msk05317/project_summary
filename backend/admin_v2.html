@@ -205,6 +205,7 @@
     <nav class="nav">
       <div class="nav-item" data-page="home"><span class="icon"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg></span><span>홈 대시보드</span></div>
       <div class="nav-item active" data-page="models"><span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span><span>모델 관리</span></div>
+      <div class="nav-item" data-page="revenue"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg></span><span>매출 관리</span></div>
     </nav>
 
     <div class="spacer"></div>
@@ -877,6 +878,7 @@ window._attachAutoListBehavior = function(el){
 (function(){
   const PAGE_LABEL = {
     home: '홈 대시보드',
+    revenue: '매출 관리',
     report: '보고',
     production: '생산',
     inbound: '입고',
@@ -909,6 +911,8 @@ window._attachAutoListBehavior = function(el){
     const c = document.getElementById('v2-content');
     if (pg === 'home' || pg === 'report') {
       window.renderHomeDashboard();
+    } else if (pg === 'revenue') {
+      window.renderRevenuePage();
     } else {
       const icons = { home:'🏠', production:'🏭', inbound:'📥', outbound:'📤' };
       c.innerHTML = '<div class="placeholder"><div class="big">'+(icons[pg]||'✦')+'</div><div class="title">'+(PAGE_LABEL[pg]||pg)+'</div><div class="sub">개발 중 — 곧 오픈됩니다</div></div>';
@@ -5601,6 +5605,33 @@ window.renderAdminV2ByDivision = function(){
     '.ov-search input { height:36px; width:230px; padding:0 12px 0 32px; border:1px solid #D8DEE7; border-radius:8px; font-size:13px; background:#fff; box-sizing:border-box; }',
     '.ov-search input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
     '.ov-search .ico { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:13px; pointer-events:none; }',
+    /* ── 매출 관리 ── */
+    '.rv-slots { display:grid; grid-template-columns:1fr 1fr; gap:12px; }',
+    '@media (max-width:820px){ .rv-slots { grid-template-columns:1fr; } }',
+    '.rv-slot { border:1.5px dashed #C7D2E0; border-radius:11px; padding:14px 16px; background:#FBFCFE; }',
+    '.rv-slot.on { border-style:solid; border-color:#BBF7D0; background:#F5FCF8; }',
+    '.rv-slot .st { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:800; }',
+    '.rv-badge { font-size:10px; font-weight:800; padding:1.5px 7px; border-radius:99px; background:#DBEAFE; color:#1D4ED8; }',
+    '.rv-badge.g { background:#D1FAE5; color:#047857; }',
+    '.rv-slot .who { font-size:11.5px; color:#64748B; margin:6px 0 2px; font-weight:600; }',
+    '.rv-slot .fn { font-size:11.5px; color:#334155; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
+    '.rv-slot .when { font-size:11px; color:#94A3B8; margin-top:2px; }',
+    '.rv-slot .row { display:flex; gap:8px; margin-top:11px; align-items:center; }',
+    '.rv-hint { font-size:11.5px; color:#94A3B8; margin-left:auto; }',
+    '.rv-src { display:block; font-size:10.5px; color:#94A3B8; font-weight:500; margin-top:2px; }',
+    '.rv-map { display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid #FDE68A; background:#FFFBEB; border-radius:9px; margin-bottom:7px; }',
+    '.rv-map .x { font-size:12.5px; font-weight:700; flex:1; }',
+    '.rv-map .x small { display:block; color:#92400E; font-weight:600; font-size:11px; margin-top:1px; }',
+    '.rv-map select { padding:6px 9px; border:1px solid #D1D5DB; border-radius:8px; font-size:12.5px; background:#fff; min-width:170px; }',
+    '.rv-sum { display:flex; gap:10px; margin-bottom:14px; }',
+    '.rv-sum > div { flex:1; background:#F8FAFC; border:1px solid #E4E7EC; border-radius:9px; padding:9px 11px; }',
+    '.rv-sum .k { font-size:10.5px; color:#94A3B8; font-weight:700; }',
+    '.rv-sum .v { font-size:16px; font-weight:800; margin-top:2px; }',
+    '.rv-sum .v.warn { color:#D97706; }',
+    '.rv-diff { width:100%; border-collapse:collapse; font-size:12px; }',
+    '.rv-diff td { padding:5px 0; border-bottom:1px solid #F1F5F9; color:#475569; }',
+    '.rv-diff td:last-child { text-align:right; font-weight:800; color:#0F172A; }',
+    '.rv-diff tr:last-child td { border-bottom:0; }',
     '.wb-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }',
     '.wb-tbl th { background:#0F2C59; color:#fff; font-weight:700; padding:7px 8px; '
       + 'text-align:center; white-space:nowrap; border:1px solid #1E3A63; }',
@@ -10318,6 +10349,345 @@ window._ovProjectKey = function() {
       }
     }
   });
+})();
+</script>
+
+<script>
+// ── 매출 관리 ──────────────────────────────────────────────
+//
+// 매출은 프로젝트가 아니라 사업부 단위라 '모델 관리' 안에 넣을 수 없다.
+// 거긴 프로젝트를 하나 고른 상태여서, 어느 프로젝트에서 올리든 결과가
+// 같아지는 설명하기 어려운 버튼이 된다.
+//
+// 원본은 엑셀이다. 실적은 일일보고(DAILY), 계획은 월 매출 계획.
+// 엑셀 행 이름은 언제든 바뀌므로 모르는 행은 조용히 빠뜨리지 않고
+// 세워서 한 번만 물어본다.
+(function () {
+  var _month = '';
+  var _pick = null;          // 고른 파일 (미리보기 → 반영 사이에 들고 있는다)
+
+  function _rvMoney(n) { return '$' + Math.round(n || 0).toLocaleString(); }
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function thisMonth() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function monthOptions(sel) {
+    var now = new Date(), out = '';
+    for (var i = -6; i <= 1; i++) {
+      var d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      var v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      out += '<option value="' + v + '"' + (v === sel ? ' selected' : '') + '>' +
+             d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월</option>';
+    }
+    return out;
+  }
+
+  function when(src) {
+    if (!src || !src.at) return '';
+    return String(src.at).replace('T', ' ').slice(5, 16);
+  }
+
+  window.renderRevenuePage = function (month) {
+    _month = month || _month || thisMonth();
+    var c = document.getElementById('v2-content');
+    if (!c) return;
+    c.innerHTML = '<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
+    fetch('/admin/revenue/state?month=' + encodeURIComponent(_month),
+          { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.status === 401) throw new Error('로그인이 필요합니다');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) { c.innerHTML = view(d); wire(d); })
+      .catch(function (e) {
+        c.innerHTML = '<div class="placeholder"><div class="big">₩</div>' +
+          '<div class="title">매출 관리</div><div class="sub">' + esc(e.message) +
+          '</div></div>';
+      });
+  };
+
+  function view(d) {
+    var src = d.sources || {};
+    var rows = (d.items || []).map(function (r) {
+      var pct = (r.rate === null || r.rate === undefined) ? '-' : r.rate + '%';
+      var w = Math.max(0, Math.min(100, r.rate || 0));
+      return '<tr>' +
+        '<td class="lbl">' + esc(r.item) +
+          '<span class="rv-src">' + (r.qty ? r.qty.toLocaleString() + '대' : '&nbsp;') + '</span></td>' +
+        '<td style="text-align:right">' + _rvMoney(r.plan) + '</td>' +
+        '<td style="text-align:right">' + _rvMoney(r.actual) + '</td>' +
+        '<td>' + pct + '</td>' +
+        '<td style="min-width:130px"><div class="ov-bar"><i style="width:' + w + '%"></i></div></td>' +
+      '</tr>';
+    }).join('');
+    var foot = '<tr class="wb-total">' +
+      '<td class="lbl" style="background:#0F2C59;color:#fff">합계</td>' +
+      '<td style="text-align:right">' + _rvMoney(d.plan) + '</td>' +
+      '<td style="text-align:right">' + _rvMoney(d.actual) + '</td>' +
+      '<td>' + (d.rate === null || d.rate === undefined ? '-' : d.rate + '%') + '</td>' +
+      '<td></td></tr>';
+
+    var unmapped = (d.unmapped || []).filter(function (u) { return u.amount > 0; });
+    var warn = unmapped.length
+      ? '<div class="rv-map" style="margin-top:12px;"><div class="x">연결 안 된 항목 ' +
+        unmapped.length + '개' +
+        '<small>합계에서 빠져 있습니다 — ' +
+        unmapped.slice(0, 3).map(function (u) {
+          return esc(u.label) + ' ' + _rvMoney(u.amount);
+        }).join(' · ') + (unmapped.length > 3 ? ' 외' : '') + '</small></div>' +
+        '<button type="button" class="ov-btn" id="rv-fix">연결하기</button></div>'
+      : '';
+
+    return '' +
+    '<div class="ov-page-head" style="display:flex;align-items:flex-end;gap:12px;">' +
+      '<div><p class="ttl">매출 관리</p>' +
+      '<p class="desc">앱 홈의 매출 카드가 이 값을 그대로 씁니다.</p></div>' +
+      '<div style="margin-left:auto;">' +
+        '<select id="rv-month" class="ov-btn" style="padding:0 10px;">' +
+        monthOptions(d.month) + '</select></div>' +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 20px;">' +
+      kpi('이번 달 실적', _rvMoney(d.actual),
+          d.as_of ? d.as_of.slice(5).replace('-', '/') + ' 보고 기준' : '아직 없음', 'accent') +
+      kpi('이번 달 계획', _rvMoney(d.plan), src.plan ? (src.plan.file || '') : '아직 없음') +
+      kpi('달성률', (d.rate === null || d.rate === undefined ? '-' : d.rate + '%'),
+          '<div class="ov-bar"><i style="width:' +
+          Math.max(0, Math.min(100, d.rate || 0)) + '%"></i></div>', '', true) +
+      kpi('연간 누적', _rvMoney(d.ytd), (d.month || '').slice(0, 4) + '년') +
+    '</div>' +
+
+    '<div class="ov-card" style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;margin-bottom:16px;">' +
+      '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">자료 올리기</h3>' +
+      '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">쓰던 엑셀을 그대로 올리면 됩니다. 새로 만들 것은 없습니다.</p>' +
+      '<div class="rv-slots">' +
+        slot('daily', '실적', '주 1회 · 매일 가능', '일일보고 (DAILY)',
+             src.daily, 'W## 시트를 전부 읽습니다') +
+        slot('plan', '계획', '월 1회', '월 매출 계획',
+             src.plan, 'Sum 시트를 읽습니다') +
+      '</div>' +
+      '<input type="file" id="rv-file" accept=".xlsx,.xlsm,.xls" style="display:none;">' +
+    '</div>' +
+
+    '<div class="ov-card" style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;">' +
+      '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">품목별</h3>' +
+      '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">' +
+        '계획은 월 파일, 실적은 일일보고. 두 파일이 같은 품목 이름으로 붙습니다.</p>' +
+      (rows
+        ? '<div class="ov-wrap-x" style="overflow-x:auto;"><table class="wb-tbl">' +
+          '<thead><tr><th style="text-align:left">품목</th><th>계획</th><th>실적</th>' +
+          '<th>달성</th><th>　</th></tr></thead><tbody>' + rows + foot + '</tbody></table></div>'
+        : '<p class="mdl-hint">아직 올린 자료가 없습니다. 위에서 엑셀을 올려 주세요.</p>') +
+      (d.left ? '<p class="mdl-hint" style="margin-top:10px;">남은 계획 ' + _rvMoney(d.left) + '.</p>' : '') +
+      warn +
+    '</div>';
+  }
+
+  function kpi(k, v, sub, cls, raw) {
+    return '<div class="ov-kpi ' + (cls || '') + '">' +
+      '<div class="k-label">' + esc(k) + '</div>' +
+      '<div class="k-value">' + esc(v) + '</div>' +
+      (raw ? sub : '<div class="k-sub">' + esc(sub) + '</div>') + '</div>';
+  }
+
+  function slot(kind, title, badge, who, src, hint) {
+    var on = !!(src && src.file);
+    return '<div class="rv-slot' + (on ? ' on' : '') + '">' +
+      '<div class="st">' + esc(title) +
+        '<span class="rv-badge' + (on ? ' g' : '') + '">' + esc(badge) + '</span></div>' +
+      '<div class="who">' + esc(who) + '</div>' +
+      '<div class="fn">' + (on ? esc(src.file) : '아직 올린 파일이 없습니다') + '</div>' +
+      '<div class="when">' + (on ? esc(when(src)) +
+        (src.days ? ' · 날짜 ' + src.days + '개 반영됨'
+                  : (src.month ? ' · ' + esc(src.month) + ' 반영됨' : '')) : '') + '</div>' +
+      '<div class="row"><button type="button" class="ov-btn" data-rv-pick="' + kind + '">' +
+        '📁 파일 선택</button><span class="rv-hint">' + esc(hint) + '</span></div>' +
+    '</div>';
+  }
+
+  function wire(d) {
+    var sel = document.getElementById('rv-month');
+    if (sel) sel.onchange = function () { window.renderRevenuePage(sel.value); };
+    var file = document.getElementById('rv-file');
+    document.querySelectorAll('[data-rv-pick]').forEach(function (b) {
+      b.onclick = function () {
+        _pick = { kind: b.getAttribute('data-rv-pick') };
+        if (file) { file.value = ''; file.click(); }
+      };
+    });
+    if (file) {
+      file.onchange = function () {
+        if (!file.files || !file.files[0] || !_pick) return;
+        _pick.file = file.files[0];
+        // 일일보고는 시트가 34장이라 읽는 데 20초쯤 걸린다.
+        // 아무 반응이 없으면 눌린 줄 모르고 또 누른다.
+        openDlg('<div class="ph-hd"><h3>엑셀을 읽는 중…</h3>' +
+                '<p>' + esc(_pick.file.name) + '</p></div>' +
+                '<div class="ph-body" style="padding:18px 20px 22px;color:#64748B;' +
+                'font-size:12.5px;">시트가 많으면 20초쯤 걸립니다. 잠시만요.</div>');
+        send('preview', {});
+      };
+    }
+    var fix = document.getElementById('rv-fix');
+    if (fix) fix.onclick = function () { mapDialog(d.unmapped || [], d.items_all || []); };
+  }
+
+  // ── 서버에 보낸다. mode=preview 면 읽기만 하고 무엇이 달라지는지 돌려준다.
+  function send(mode, mapping) {
+    if (!_pick || !_pick.file) return;
+    var fd = new FormData();
+    fd.append('kind', _pick.kind);
+    fd.append('mode', mode);
+    fd.append('month', _month);
+    fd.append('mapping', JSON.stringify(mapping || {}));
+    fd.append('file', _pick.file);
+    var box = document.getElementById('rv-dlg-ft');
+    if (box) box.innerHTML = '<span class="rv-hint">보내는 중…</span>';
+    fetch('/admin/revenue/import', {
+      method: 'POST', credentials: 'same-origin', body: fd,
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        return j;
+      });
+    }).then(function (j) {
+      if (mode === 'commit') { closeDlg(); window.renderRevenuePage(_month); return; }
+      preview(j);
+    }).catch(function (e) {
+      closeDlg();
+      alert('올리지 못했습니다: ' + e.message);
+    });
+  }
+
+  function closeDlg() {
+    var b = document.getElementById('rv-dlg');
+    if (b) b.remove();
+  }
+
+  function openDlg(html) {
+    closeDlg();
+    var back = document.createElement('div');
+    back.className = 'ph-back';
+    back.id = 'rv-dlg';
+    back.innerHTML = '<div class="ph-box">' + html + '</div>';
+    back.addEventListener('click', function (e) { if (e.target === back) closeDlg(); });
+    document.body.appendChild(back);
+  }
+
+  // 반영하기 전에 한 번 보여준다. 엑셀 행 이름은 언제든 바뀐다.
+  function preview(j) {
+    var ask = j.ask || [];
+    var items = j.items_all || [];
+    var head = (j.kind === 'daily')
+      ? { t: '일일보고를 읽었습니다',
+          s: (j.file || '') + ' · 주차 시트 ' + (j.sheets || []).length + '개',
+          a: ['읽은 주차', (j.sheets || [])[0] + ' ~ ' + (j.sheets || [])[(j.sheets || []).length - 1]] }
+      : { t: '월 계획을 읽었습니다',
+          s: (j.file || '') + ' · 품목 ' + j.count + '개',
+          a: ['적용 월', j.month || j.view_month] };
+
+    var maps = ask.map(function (u, i) {
+      return '<div class="rv-map"><div class="x">' + esc(u.label) +
+        '<small>' + _rvMoney(u.amount) + ' · 어느 품목인지 모르겠습니다</small></div>' +
+        '<select data-rv-unk="' + esc(u.label) + '">' +
+        '<option value="">— 연결 안 함 —</option>' +
+        items.map(function (n) {
+          return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+        }).join('') + '</select></div>';
+    }).join('');
+
+    var dActual = (j.after || {}).actual - (j.before || {}).actual;
+    var dPlan = (j.after || {}).plan - (j.before || {}).plan;
+    var diff = (j.kind === 'daily')
+      ? [['지금 저장된 실적', _rvMoney((j.before || {}).actual)],
+         ['이번 파일로 바뀌는 값', _rvMoney((j.after || {}).actual)],
+         ['차이', (dActual >= 0 ? '+' : '−') + _rvMoney(Math.abs(dActual))]]
+      : [['지금 저장된 계획', _rvMoney((j.before || {}).plan)],
+         ['이번 파일로 바뀌는 값', _rvMoney((j.after || {}).plan)],
+         ['차이', (dPlan >= 0 ? '+' : '−') + _rvMoney(Math.abs(dPlan))]];
+
+    openDlg(
+      '<div class="ph-hd"><h3>' + esc(head.t) + '</h3><p>' + esc(head.s) + '</p></div>' +
+      '<div class="ph-body">' +
+        '<div class="rv-sum">' +
+          '<div><div class="k">' + esc(head.a[0]) + '</div><div class="v">' + esc(head.a[1]) + '</div></div>' +
+          '<div><div class="k">연결된 항목</div><div class="v">' +
+            ((j.kind === 'daily' ? (j.sheets ? '' : '') : '') + '') +
+            (ask.length + (j.skip || []).length ?
+              ('전체 − ' + ask.length) : '전부') + '</div></div>' +
+          '<div><div class="k">모르는 항목</div><div class="v' +
+            (ask.length ? ' warn' : '') + '">' + ask.length + '</div></div>' +
+        '</div>' +
+        maps +
+        (ask.length
+          ? '<p style="font-size:11.5px;color:#64748B;line-height:1.6;margin:12px 0 10px">' +
+            '한 번 연결해 두면 다음부터는 안 묻습니다. 연결 안 한 항목의 금액은 합계에서 빠집니다.</p>'
+          : '') +
+        '<table class="rv-diff">' + diff.map(function (r) {
+          return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td></tr>';
+        }).join('') + '</table>' +
+      '</div>' +
+      '<div class="ph-ft" id="rv-dlg-ft"><span style="flex:1"></span>' +
+        '<button type="button" class="ov-btn" id="rv-cancel">취소</button>' +
+        '<button type="button" class="ov-btn ov-btn-primary" id="rv-commit">반영</button>' +
+      '</div>');
+
+    document.getElementById('rv-cancel').onclick = closeDlg;
+    document.getElementById('rv-commit').onclick = function () {
+      var m = {};
+      document.querySelectorAll('[data-rv-unk]').forEach(function (el) {
+        if (el.value) m[el.getAttribute('data-rv-unk')] = el.value;
+      });
+      send('commit', m);
+    };
+  }
+
+  // 이미 저장된 자료 중 연결 안 된 행을 나중에 붙일 때
+  function mapDialog(unmapped, items) {
+    var ask = (unmapped || []).filter(function (u) { return u.amount > 0; });
+    var maps = ask.map(function (u) {
+      return '<div class="rv-map"><div class="x">' + esc(u.label) +
+        '<small>' + _rvMoney(u.amount) + ' · 합계에서 빠져 있습니다</small></div>' +
+        '<select data-rv-unk="' + esc(u.label) + '">' +
+        '<option value="">— 연결 안 함 —</option>' +
+        (items || []).map(function (n) {
+          return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+        }).join('') + '</select></div>';
+    }).join('');
+    openDlg(
+      '<div class="ph-hd"><h3>연결 안 된 항목</h3>' +
+      '<p>엑셀 행 이름이 바뀌면 여기에 뜹니다. 한 번 연결하면 다음부터는 안 묻습니다.</p></div>' +
+      '<div class="ph-body">' + maps + '</div>' +
+      '<div class="ph-ft" id="rv-dlg-ft"><span style="flex:1"></span>' +
+      '<button type="button" class="ov-btn" id="rv-cancel">취소</button>' +
+      '<button type="button" class="ov-btn ov-btn-primary" id="rv-save">저장</button></div>');
+    document.getElementById('rv-cancel').onclick = closeDlg;
+    document.getElementById('rv-save').onclick = function () {
+      var m = {};
+      document.querySelectorAll('[data-rv-unk]').forEach(function (el) {
+        if (el.value) m[el.getAttribute('data-rv-unk')] = el.value;
+      });
+      fetch('/admin/revenue/map', {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ map: m }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function () {
+        closeDlg(); window.renderRevenuePage(_month);
+      }).catch(function (e) { alert('저장 실패: ' + e.message); });
+    };
+  }
 })();
 </script>
 </body>

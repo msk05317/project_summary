@@ -26,6 +26,7 @@ import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/overview_service.dart';
+import '../services/revenue_service.dart';
 import '../services/home_alerts_service.dart';
 import '../services/offline_store.dart';
 import '../services/automotive_service.dart';
@@ -83,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 경영 요약(이번 달 매출/출하) — 홈 최상단 카드용
   late Future<OverviewSummary> _overviewFuture;
+  late Future<RevenueMonth> _revenueFuture;
 
   /// 홈 한 눈 요약. 프로젝트 안에서 보는 값과 같은 모델 alert 를 받는다.
   late Future<HomeAlerts> _alertsFuture;
@@ -231,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _dashboardFuture = DashboardService.fetchCards();
     _progressFuture = ProgressService.fetch();
     _overviewFuture = OverviewService.fetch();
+    _revenueFuture = RevenueService.fetch();
     _alertsFuture = HomeAlertsService.fetch();
     _rememberBloom();
     _loadFavDivisions();
@@ -291,6 +294,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _dashboardFuture = DashboardService.fetchCards();
         _progressFuture = ProgressService.fetch();
         _overviewFuture = OverviewService.fetch();
+        _revenueFuture = RevenueService.fetch();
         _alertsFuture = HomeAlertsService.fetch();
         _rememberBloom();
         _loadAuto(force: true);
@@ -298,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadFavDivisions(); // 사업부 즐겨찾기 Set 로딩
     await Future.wait([
       _divisionsFuture, _dashboardFuture, _progressFuture,
-      _overviewFuture, _alertsFuture,
+      _overviewFuture, _revenueFuture, _alertsFuture,
     ]);
   }
 
@@ -820,15 +824,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         AppSpacing.x4,
                         AppSpacing.x3,
                       ),
-                      child: FutureBuilder<OverviewSummary>(
-                        future: _overviewFuture,
-                        builder: (context, snap) {
-                          return ExecRevenueCard(
-                            summary: snap.data ?? OverviewSummary.empty,
-                            loading:
-                                snap.connectionState == ConnectionState.waiting,
-                            onTap: () =>
-                                _openRevenueDetail(snap.data?.month ?? ''),
+                      // 매출은 엑셀이 원본이다. 아직 한 번도 안 올렸으면
+                      // 예전처럼 모델에서 계산한 값으로 그린다.
+                      child: FutureBuilder<RevenueMonth>(
+                        future: _revenueFuture,
+                        builder: (context, rev) {
+                          return FutureBuilder<OverviewSummary>(
+                            future: _overviewFuture,
+                            builder: (context, snap) {
+                              return ExecRevenueCard(
+                                summary: snap.data ?? OverviewSummary.empty,
+                                revenue: rev.data,
+                                loading: snap.connectionState ==
+                                        ConnectionState.waiting ||
+                                    rev.connectionState ==
+                                        ConnectionState.waiting,
+                                onTap: () => _openRevenueDetail(
+                                    rev.data?.month ?? snap.data?.month ?? ''),
+                              );
+                            },
                           );
                         },
                       ),

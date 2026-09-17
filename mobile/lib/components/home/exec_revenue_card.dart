@@ -12,16 +12,26 @@ import 'package:flutter/material.dart';
 
 import '../../design/design.dart';
 import '../../services/overview_service.dart';
+import '../../services/revenue_service.dart';
 import '../../utils/format.dart';
 
 class ExecRevenueCard extends StatelessWidget {
   final OverviewSummary summary;
+
+  /// 엑셀에서 받은 사업부 매출. 올린 적이 있으면 이걸 그린다.
+  ///
+  /// 모델 판가 × 수량은 추정이다 — 하바플레이트 55종 중 52종이 3,400 으로
+  /// 일괄 입력돼 있어서 9월이 18만 달러 부풀어 있었다. 확정 금액은 일일보고
+  /// 에 있다. 아직 한 번도 안 올렸으면 예전처럼 모델에서 계산한다.
+  final RevenueMonth? revenue;
+
   final bool loading;
   final VoidCallback? onTap;
 
   const ExecRevenueCard({
     super.key,
     required this.summary,
+    this.revenue,
     this.loading = false,
     this.onTap,
   });
@@ -51,9 +61,140 @@ class ExecRevenueCard extends StatelessWidget {
     return '${inn.join(' · ')} $n개 프로젝트';
   }
 
+  /// 실적이 들어온 마지막 날. '9/12 보고 기준' — 달성률이 낮아 보이는
+  /// 이유가 여기 있다. 못 채운 게 아니라 아직 안 온 날이다.
+  String _asOf(RevenueMonth r) {
+    final p = r.asOf.split('-');
+    if (p.length != 3) return '';
+    return '${int.tryParse(p[1]) ?? p[1]}/${int.tryParse(p[2]) ?? p[2]} 보고 기준';
+  }
+
+  Widget _buildFromExcel(BuildContext context, RevenueMonth r) {
+    final rate = r.rate ?? 0;
+    final rows = r.byActual.where((e) => e.actual > 0).toList();
+    final top = rows.take(6).toList();
+    final restA = rows.skip(6).fold<int>(0, (a, b) => a + b.actual);
+    final restP = r.items
+        .where((e) => !top.any((t) => t.item == e.item))
+        .fold<int>(0, (a, b) => a + b.plan);
+    final restN = r.items.length - top.length;
+    final mx = top.isEmpty ? 1 : top.first.actual;
+
+    Widget line(String name, int actual, int plan, int width, Color bar) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.bodyStrong.copyWith(fontSize: 13)),
+              ),
+              const SizedBox(width: 8),
+              Text(Fmt.moneyShort(actual),
+                  style: AppText.bodyStrong
+                      .copyWith(fontSize: 13, color: AppColors.textMain)),
+            ]),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: plan <= 0 ? 0 : (actual / plan).clamp(0.0, 1.0),
+                minHeight: 4,
+                backgroundColor: AppColors.statusGraySoft,
+                valueColor: AlwaysStoppedAnimation<Color>(bar),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text('계획 ${Fmt.moneyShort(plan)}',
+                style: AppText.caption.copyWith(color: AppColors.textHint)),
+          ]),
+        );
+
+    return _shell(
+      onTap: onTap,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('${Fmt.monthShort(r.month)} 매출', style: AppText.h2),
+          const Spacer(),
+          if (_asOf(r).isNotEmpty)
+            Text(_asOf(r),
+                style: AppText.caption.copyWith(color: AppColors.textHint)),
+          if (onTap != null)
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMute),
+        ]),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(Fmt.moneyShort(r.actual),
+                style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
+                    color: AppColors.textMain)),
+            const SizedBox(width: 8),
+            Text('나갔습니다',
+                style: AppText.body.copyWith(color: AppColors.textMute)),
+          ],
+        ),
+        const SizedBox(height: 11),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: (rate / 100).clamp(0.0, 1.0),
+            minHeight: 8,
+            backgroundColor: AppColors.statusGraySoft,
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(AppColors.summaryInProgress),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          Text('${Fmt.monthShort(r.month)} 계획 ${Fmt.moneyShort(r.plan)}',
+              style: AppText.caption.copyWith(color: AppColors.textMute)),
+          const Spacer(),
+          Text('$rate%',
+              style: AppText.bodyStrong.copyWith(fontSize: 13)),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+              child: _MiniStat(
+                  label: '남은 계획', value: Fmt.moneyShort(r.left))),
+          Container(
+            width: 1,
+            height: 26,
+            margin: const EdgeInsets.symmetric(horizontal: 14),
+            color: AppColors.borderSoft,
+          ),
+          Expanded(
+              child: _MiniStat(
+                  label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
+        ]),
+        const Divider(height: 20, color: AppColors.borderSoft),
+        for (final e in top)
+          line(e.item, e.actual, e.plan, mx, AppColors.summaryInProgress),
+        if (restN > 0)
+          line('그 외 $restN개 품목', restA, restP, mx, AppColors.statusGray),
+        const SizedBox(height: 6),
+        Text('반도체사업부 전체 · ${r.items.length}개 품목',
+            style: AppText.caption.copyWith(color: AppColors.textHint)),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const _ExecSkeleton();
+
+    // 엑셀을 한 번이라도 올렸으면 그 값이 맞다.
+    final r = revenue;
+    if (r != null && r.loaded && r.hasData) {
+      return _buildFromExcel(context, r);
+    }
 
     if (!summary.loaded) {
       return _shell(

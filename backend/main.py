@@ -43,6 +43,7 @@ from project_templates import (
 # ============================================================
 import config_loader as _cl
 import week_calendar as _wcal
+import revenue as _rev
 
 
 def _safe_text_for_card(card: dict) -> str:
@@ -25818,3 +25819,187 @@ _cleanup_auto_notes()
 _cleanup_plan_originals()
 _restore_curie_busbar()
 _stamp_holds_once()
+
+
+# ─────────────────────────────────────────────────────────────
+# 매출 — 사업부 전체. 원본은 엑셀이다.
+#
+# 모델 판가 × 수량으로 계산하던 매출을 그만둔다. 판가는 추정이고 실제로
+# 하바플레이트 55종 중 52종이 3,400 으로 일괄 입력돼 있었다. 확정 금액은
+# 이미 일일보고와 월 계획 엑셀에 있다. 여기서는 그걸 받아 두기만 한다.
+#
+#   실적  일일보고 (DAILY) · W## 시트 · 날짜별
+#   계획  월 매출 계획 (Estimate Revenue in Sep) · Sum 시트
+# ─────────────────────────────────────────────────────────────
+REVENUE_FILE = DATA_DIR / "revenue.json"
+
+
+def _load_revenue() -> dict:
+    return _rev.load(REVENUE_FILE)
+
+
+def _save_revenue(store: dict) -> None:
+    _rev.save(REVENUE_FILE, store)
+
+
+def _year_hint(name: str) -> int:
+    m = re.search(r"(20\d\d)", str(name or ""))
+    return int(m.group(1)) if m else datetime.now().year
+
+
+@app.get("/revenue")
+def get_revenue(month: str = None):
+    """그 달의 품목별 계획·실적. 앱 홈의 매출 카드가 이걸 쓴다."""
+    month = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    if not re.fullmatch(r"20\d\d-\d{2}", month):
+        raise HTTPException(status_code=400, detail="month 는 YYYY-MM 형식입니다.")
+    return _rev.month_view(_load_revenue(), month)
+
+
+@app.get("/admin/revenue/state")
+def admin_revenue_state(month: str = None,
+                        _admin: int = Depends(get_admin_session)):
+    """매출 관리 화면이 처음 켜질 때 받는 것."""
+    month = (month or "").strip() or datetime.now().strftime("%Y-%m")
+    store = _load_revenue()
+    view = _rev.month_view(store, month)
+    view["unmapped"] = _rev.unmapped_in_store(store)
+    view["items_all"] = _rev.items_of(store)
+    view["map"] = store.get("map") or {}
+    return view
+
+
+@app.post("/admin/revenue/import")
+async def admin_revenue_import(kind: str = Form(...),
+                               mode: str = Form("preview"),
+                               month: str = Form(""),
+                               mapping: str = Form(""),
+                               file: UploadFile = File(...),
+                               _admin: int = Depends(get_admin_session)):
+    """일일보고(실적) · 월 계획 엑셀을 받는다.
+
+    mode=preview 면 읽기만 하고 무엇이 달라지는지 돌려준다. 엑셀 행 이름은
+    언제든 바뀌므로 모르는 행은 조용히 빠뜨리지 않고 세워서 물어본다.
+    mode=commit 이어야 저장한다. 실적은 '날짜' 단위로 갈아 끼우므로 같은
+    파일을 두 번 올려도 더해지지 않는다.
+    """
+    kind = (kind or "").strip()
+    if kind not in ("daily", "plan"):
+        raise HTTPException(status_code=400, detail="kind 는 daily 또는 plan 입니다.")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    name = file.filename or ""
+    store = _load_revenue()
+
+    # 화면에서 연결해 준 것이 있으면 먼저 반영한다 (commit 일 때만 저장)
+    added = {}
+    if mapping:
+        try:
+            got = json.loads(mapping)
+        except Exception:
+            got = {}
+        for k, v in (got or {}).items():
+            k = _rev.norm(k)
+            if not k:
+                continue
+            if v:
+                store["map"][k] = str(v)
+                added[k] = str(v)
+            else:
+                store["map"].pop(k, None)
+
+    try:
+        if kind == "daily":
+            parsed = _rev.parse_daily(raw, _year_hint(name))
+            labels = parsed.get("rows") or []
+        else:
+            parsed = _rev.parse_plan(raw, name)
+            labels = parsed.get("order") or []
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 읽지 못했습니다: {e}")
+
+    if kind == "daily" and not parsed.get("days"):
+        raise HTTPException(status_code=400,
+                            detail="W## 시트에서 날짜를 못 찾았습니다.")
+    if kind == "plan" and not parsed.get("items"):
+        raise HTTPException(status_code=400,
+                            detail="Sum 시트에서 품목을 못 찾았습니다.")
+
+    # 모르는 행 — 금액이 있는 것만 물어본다
+    amt = {}
+    if kind == "daily":
+        for rowmap in (parsed.get("days") or {}).values():
+            for lab, cell in (rowmap or {}).items():
+                amt[_rev.norm(lab)] = amt.get(_rev.norm(lab), 0.0) + float(
+                    (cell or {}).get("amount") or 0)
+    else:
+        for lab, v in (parsed.get("items") or {}).items():
+            amt[_rev.norm(lab)] = float(v or 0)
+    unknown = [{"label": k, "amount": round(amt.get(k, 0))}
+               for k in _rev.unknown_rows(store, labels)]
+    unknown.sort(key=lambda x: -x["amount"])
+    ask = [u for u in unknown if u["amount"] > 0]
+    skip = [u for u in unknown if u["amount"] <= 0]
+
+    # 계획 파일은 제 달을 알고 있다 ('Estimate Revenue in Sep'). 화면에서 8월을
+    # 보다가 9월 파일을 올려도 8월에 덮어쓰면 안 된다 — 파일이 먼저다.
+    if kind == "plan":
+        _month = parsed.get("month") or (month or "").strip()
+    else:
+        _month = (month or "").strip()
+    out = {
+        "kind": kind, "file": name, "mode": mode,
+        "ask": ask, "skip": skip, "mapped_now": added,
+        "items_all": _rev.items_of(store),
+    }
+    if kind == "daily":
+        out["sheets"] = parsed.get("sheets") or []
+        out["days"] = len(parsed.get("days") or {})
+        out["range"] = [min(parsed["days"]), max(parsed["days"])] if parsed.get("days") else []
+    else:
+        out["month"] = _month
+        out["count"] = len(parsed.get("items") or {})
+
+    # 반영하면 금액이 얼마나 달라지는지 — 누르기 전에 보여준다
+    view_month = _month or datetime.now().strftime("%Y-%m")
+    before = _rev.month_view(store, view_month)
+    trial = json.loads(json.dumps(store))
+    if kind == "daily":
+        _rev.apply_daily(trial, parsed, name)
+    else:
+        _rev.apply_plan(trial, parsed, name, _month)
+    after = _rev.month_view(trial, view_month)
+    out["view_month"] = view_month
+    out["before"] = {"actual": before["actual"], "plan": before["plan"]}
+    out["after"] = {"actual": after["actual"], "plan": after["plan"]}
+
+    if mode != "commit":
+        return out
+
+    if kind == "daily":
+        out["applied"] = _rev.apply_daily(store, parsed, name)
+    else:
+        out["applied"] = _rev.apply_plan(store, parsed, name, _month)
+    _save_revenue(store)
+    out["saved"] = True
+    return out
+
+
+@app.put("/admin/revenue/map")
+def admin_revenue_map(payload: dict, _admin: int = Depends(get_admin_session)):
+    """엑셀 행 이름 ↔ 품목 연결. 빈 값이면 연결을 끊는다."""
+    got = (payload or {}).get("map")
+    if not isinstance(got, dict):
+        raise HTTPException(status_code=400, detail="map 이 없습니다.")
+    store = _load_revenue()
+    for k, v in got.items():
+        k = _rev.norm(k)
+        if not k:
+            continue
+        if v:
+            store["map"][k] = str(v)
+        else:
+            store["map"].pop(k, None)
+    _save_revenue(store)
+    return {"ok": True, "count": len(store.get("map") or {})}

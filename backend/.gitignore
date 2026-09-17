@@ -23,3 +23,6 @@ main.py.bak_*
 # Firebase 서비스 계정 키 (절대 커밋 금지)
 *firebase-adminsdk*.json
 firebase-service-account.json
+# 매출 실적·계획 (운영 데이터). 볼륨(/data)에 쌓인다.
+revenue.json
+revenue.json.tmp
