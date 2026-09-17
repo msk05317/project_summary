@@ -103,6 +103,28 @@ DF = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
 assert 'COPY CHANGELOG.md' in DF, '이미지에 CHANGELOG 가 안 들어간다'
 ok += 1
 
+# ── 짧게 쓴다 ──
+#
+# "새 버전 업데이트 할 때마다 내용들이 너무 길어, 다음번부터는 짧게"
+#
+# 팝업에 그대로 뜨는 글이다. 길면 안 읽는다. 이미 나간 항목까지 고치면
+# 배포된 노트와 달라지니까, 이 규칙을 정한 뒤 버전부터 본다.
+_SHORT_FROM = (2, 3, 16)
+_MAX_LINES, _MAX_CHARS = 4, 40
+for e in items:
+    if not _re.fullmatch(r'\d+\.\d+\.\d+', e['version']):
+        continue
+    if _key(e['version']) < _SHORT_FROM:
+        continue
+    _lines = [ln.rstrip() for ln in e['body'].split('\n') if ln.strip()]
+    assert len(_lines) <= _MAX_LINES, (
+        f"{e['version']}: 본문이 {len(_lines)}줄이다. "
+        f"한 줄 요약 + 불릿 {_MAX_LINES - 1}개까지만 쓴다")
+    for ln in _lines:
+        assert len(ln) <= _MAX_CHARS, (
+            f"{e['version']}: {_MAX_CHARS}자가 넘는 줄이 있다 ({len(ln)}자)\n    {ln}")
+ok += 1
+
 # ── 앱: 설정 → 변경 내역 ──
 LIB = REPO / 'mobile' / 'lib'
 CS = (LIB / 'screens' / 'changelog_screen.dart').read_text(encoding='utf-8')
