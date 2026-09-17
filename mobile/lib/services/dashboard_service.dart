@@ -19,18 +19,21 @@ class DashboardService {
   // 응답에는 cards / grouped_cards 가 함께 있는데,
   // 홈 KPI 용도로는 cards 만 사용합니다.
   // - 비정상 응답(200 외) / 잘못된 JSON: Exception 으로 상위에 전달
-  static Future<List<DashboardCard>> fetchCards() async {
-    final got = await OfflineStore.fetch('$_baseUrl/dashboard', 'dashboard');
-    final decoded = got.data;
+  /// [onFresh] 를 주면 저장된 값부터 돌려주고 새 값은 뒤에서 알려 준다.
+  static Future<List<DashboardCard>> fetchCards(
+      {void Function(List<DashboardCard>)? onFresh}) async {
+    final got = await OfflineStore.fetch('$_baseUrl/dashboard', 'dashboard',
+        onFresh: onFresh == null ? null : (c) => onFresh(_parse(c.data)));
+    return _parse(got.data);
+  }
+
+  static List<DashboardCard> _parse(dynamic decoded) {
     if (decoded is! Map) {
       throw Exception('DashboardService: unexpected JSON shape');
     }
-
-    final cards = (decoded['cards'] as List? ?? const [])
+    return (decoded['cards'] as List? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(DashboardCard.fromJson)
         .toList();
-
-    return cards;
   }
 }

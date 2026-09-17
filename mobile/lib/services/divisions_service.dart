@@ -18,20 +18,23 @@ class DivisionsService {
   // - 정상 응답: divisions 배열을 Division 모델 리스트로 변환
   // - 비정상 응답(200 외)/잘못된 JSON: Exception 으로 상위에 전달
   // 결과는 order 기준으로 오름차순 정렬됩니다.
-  static Future<List<Division>> fetchAll() async {
+  /// [onFresh] 를 주면 저장된 값부터 돌려주고 새 값은 뒤에서 알려 준다.
+  static Future<List<Division>> fetchAll(
+      {void Function(List<Division>)? onFresh}) async {
     // 못 받아오면 마지막으로 받아둔 걸 쓴다 (OfflineStore).
-    final got = await OfflineStore.fetch('$_baseUrl/divisions', 'divisions');
-    final decoded = got.data;
+    final got = await OfflineStore.fetch('$_baseUrl/divisions', 'divisions',
+        onFresh: onFresh == null ? null : (c) => onFresh(_parse(c.data)));
+    return _parse(got.data);
+  }
+
+  static List<Division> _parse(dynamic decoded) {
     if (decoded is! Map) {
       throw Exception('DivisionsService: unexpected JSON shape');
     }
-
-    final list = (decoded['divisions'] as List? ?? const [])
+    return (decoded['divisions'] as List? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(Division.fromJson)
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
-
-    return list;
   }
 }

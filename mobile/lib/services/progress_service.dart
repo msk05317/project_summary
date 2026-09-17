@@ -98,17 +98,20 @@ class ProgressSummary {
 
 class ProgressService {
   /// 실패해도 화면은 떠야 하므로 예외 대신 empty 를 돌려준다.
-  static Future<ProgressSummary> fetch() async {
+  static Future<ProgressSummary> fetch(
+      {void Function(ProgressSummary)? onFresh}) async {
     try {
       final got = await OfflineStore.fetch(
-          '$kApiBaseUrl/projects-progress-summary', 'progress');
-      final decoded = got.data;
-      if (decoded is! Map) return ProgressSummary.empty;
-      return ProgressSummary.fromJson(decoded);
+          '$kApiBaseUrl/projects-progress-summary', 'progress',
+          onFresh: onFresh == null ? null : (c) => onFresh(_parse(c.data)));
+      return _parse(got.data);
     } catch (_) {
       return ProgressSummary.empty;
     }
   }
+
+  static ProgressSummary _parse(dynamic decoded) =>
+      decoded is Map ? ProgressSummary.fromJson(decoded) : ProgressSummary.empty;
 }
 
 // ── 진행률 추이 (/progress-trend) ──────────────────────────────

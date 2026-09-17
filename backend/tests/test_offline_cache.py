@@ -22,9 +22,37 @@ ok += 1
 f = S[S.index('static Future<Cached<dynamic>> fetch('):]
 f = f[f.index('}) async {'):]
 f = f[:f.index('\n  }')]
-assert 'await save(key, data)' in f, '받아온 걸 저장하지 않는다'
-assert 'OfflineStatus.online()' in f and 'OfflineStatus.offline(' in f
-assert 'rethrow' in f, '저장본도 없는데 조용히 빈 값을 돌려준다'
+n = S[S.index('static Future<Cached<dynamic>?> _network('):]
+n = n[:n.index('\n  }')]
+assert 'await save(key, data)' in n, '받아온 걸 저장하지 않는다'
+assert 'OfflineStatus.online()' in n, '받아왔는데 배너가 안 내려간다'
+assert 'OfflineStatus.offline(' in f, '저장본을 보여주면서 말을 안 한다'
+assert 'throw' in f, '저장본도 없는데 조용히 빈 값을 돌려준다'
+ok += 1
+
+# ── 저장된 값부터 그린다 ──
+#
+# "처음 껐다 킬 때 앱 로딩속도가 너무 느려"
+#
+# 열 때마다 네트워크를 먼저 기다렸다. 저장된 값이 멀쩡히 있어도 홈이
+# 빈 채로 있었고, /home/alerts 하나만으로 20초까지 갔다.
+assert 'void Function(Cached<dynamic>)? onFresh' in S, '저장본 먼저 그릴 길이 없다'
+assert 'if (onFresh != null)' in f, '저장본을 먼저 안 돌려준다'
+H = (LIB / 'screens' / 'home_screen.dart').read_text(encoding='utf-8')
+assert H.count('onFresh:') >= 6, '홈이 아직 여섯 개를 다 기다린다'
+assert 'void _swap(' in H and 'if (!mounted) return;' in H, \
+    '뒤에서 온 값으로 갈아 끼울 때 화면이 살아 있는지 안 본다'
+ok += 1
+
+# ── 첫 프레임을 막는 것을 줄인다 ──
+#
+# WorkManager 등록은 안드로이드 작업 DB 를 건드려서 콜드 스타트에
+# 수백 ms 가 걸린다. 30분마다 도는 백그라운드 새로고침이라 첫 화면과는
+# 상관이 없는데 그동안 앱이 흰 화면으로 서 있었다.
+M = (LIB / 'main.dart').read_text(encoding='utf-8')
+_pre = M[M.index('Future<void> main()'):M.index('runApp(')]
+assert 'BackgroundService' not in _pre, 'runApp 전에 WorkManager 를 기다린다'
+assert 'BackgroundService' in M, '백그라운드 새로고침을 아예 안 건다'
 ok += 1
 
 # 저장이 안 되는 기기에서도 앱은 돌아야 한다

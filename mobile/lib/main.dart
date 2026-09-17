@@ -17,13 +17,30 @@ import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SettingsService.instance.load();
-  await BackgroundService.instance.init();
-  await BackgroundService.instance.registerPeriodic(SettingsService.instance.backgroundRefreshMinutes.value);
-  FcmService.initialize();
-  // 사용자 설정(폰트 스케일 등)을 디스크에서 로드.
-  await AppSettings.instance.load();
+
+  // 첫 프레임을 막아도 되는 건 설정 두 개뿐이다. 둘 다 SharedPreferences
+  // 라서 같이 기다린다 (폰트 배율을 모르고 그리면 글자 크기가 한 번 튄다).
+  await Future.wait([
+    SettingsService.instance.load(),
+    AppSettings.instance.load(),
+  ]);
   runApp(const BriefingApp());
+
+  // 나머지는 화면이 뜬 뒤에 한다.
+  //
+  // WorkManager 등록은 안드로이드 작업 DB 를 건드려서 콜드 스타트에
+  // 수백 ms 가 걸린다. 30분마다 도는 백그라운드 새로고침이라 첫 화면과는
+  // 아무 상관이 없는데, 그동안 앱이 흰 화면으로 서 있었다.
+  unawaited(Future(() async {
+    try {
+      await BackgroundService.instance.init();
+      await BackgroundService.instance.registerPeriodic(
+          SettingsService.instance.backgroundRefreshMinutes.value);
+    } catch (_) {
+      // 백그라운드 새로고침이 안 걸려도 앱은 돌아가야 한다
+    }
+  }));
+  FcmService.initialize();
 }
 
 class BriefingApp extends StatefulWidget {

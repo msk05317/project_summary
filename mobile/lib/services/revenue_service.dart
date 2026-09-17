@@ -191,18 +191,24 @@ class RevenueMonth {
 class RevenueService {
   /// 실패하면 예외 대신 empty. 아직 엑셀을 한 번도 안 올렸으면 hasData=false
   /// 라서, 카드가 예전 방식(모델 계산)으로 그린다.
-  static Future<RevenueMonth> fetch({String month = ''}) async {
+  static Future<RevenueMonth> fetch(
+      {String month = '', void Function(RevenueMonth)? onFresh}) async {
     final q = month.isEmpty ? '' : '?month=$month';
     try {
       final got = await OfflineStore.fetch(
           '$kApiBaseUrl/revenue$q', 'revenue${month.isEmpty ? '' : '_$month'}',
-          timeout: const Duration(seconds: 20));
-      final decoded = got.data;
-      if (decoded is! Map) return RevenueMonth.empty;
-      return RevenueMonth.fromJson(decoded)
-          .copyWith(fromCache: got.fromCache, savedAt: got.savedAt);
+          timeout: const Duration(seconds: 20),
+          onFresh: onFresh == null ? null : (c) => onFresh(_parse(c)));
+      return _parse(got);
     } catch (_) {
       return RevenueMonth.empty;
     }
+  }
+
+  static RevenueMonth _parse(Cached<dynamic> got) {
+    final decoded = got.data;
+    if (decoded is! Map) return RevenueMonth.empty;
+    return RevenueMonth.fromJson(decoded)
+        .copyWith(fromCache: got.fromCache, savedAt: got.savedAt);
   }
 }

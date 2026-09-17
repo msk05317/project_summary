@@ -260,17 +260,23 @@ class HomeAlerts {
 class HomeAlertsService {
   /// 실패하면 예외 대신 empty 를 돌려준다 — 홈이 통째로 깨지면 안 된다.
   /// 대신 loaded=false 라서 화면이 '지연 없음' 과 구분해서 말할 수 있다.
-  static Future<HomeAlerts> fetch({int limit = 300}) async {
+  static Future<HomeAlerts> fetch(
+      {int limit = 300, void Function(HomeAlerts)? onFresh}) async {
     try {
       final got = await OfflineStore.fetch(
           '$kApiBaseUrl/home/alerts?limit=$limit', 'home_alerts',
-          timeout: const Duration(seconds: 20));
-      final decoded = got.data;
-      if (decoded is! Map) return HomeAlerts.empty;
-      return HomeAlerts.fromJson(decoded)
-          .copyWith(fromCache: got.fromCache, savedAt: got.savedAt);
+          timeout: const Duration(seconds: 20),
+          onFresh: onFresh == null ? null : (c) => onFresh(_parse(c)));
+      return _parse(got);
     } catch (_) {
       return HomeAlerts.empty;
     }
+  }
+
+  static HomeAlerts _parse(Cached<dynamic> got) {
+    final decoded = got.data;
+    if (decoded is! Map) return HomeAlerts.empty;
+    return HomeAlerts.fromJson(decoded)
+        .copyWith(fromCache: got.fromCache, savedAt: got.savedAt);
   }
 }

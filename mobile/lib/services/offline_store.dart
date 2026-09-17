@@ -94,11 +94,46 @@ class OfflineStore {
 
   /// 받아오고 저장한다. 실패하면 저장해 둔 걸 돌려준다.
   /// 둘 다 없으면 예외를 던진다 (화면이 '불러오지 못했습니다' 를 띄울 수 있게).
+  ///
+  /// [onFresh] 를 주면 **저장된 값을 먼저 돌려주고** 새 값은 뒤에서 받아
+  /// 알려 준다. 지금까지는 앱을 열 때마다 fly.io 응답을 먼저 기다렸다.
+  /// 저장된 값이 멀쩡히 있어도 홈이 빈 채로 있었고, 신호가 나쁘면 그게
+  /// 8초, 20초까지 갔다. 어제 본 숫자라도 0.1초에 보이는 편이 낫다.
   static Future<Cached<dynamic>> fetch(
     String url,
     String key, {
     Duration timeout = const Duration(seconds: 8),
+    void Function(Cached<dynamic>)? onFresh,
   }) async {
+    if (onFresh != null) {
+      final c = await load(key);
+      if (c != null) {
+        // 저장된 게 있으면 그걸 먼저 준다. 새 값은 따라온다.
+        unawaited(_network(url, key, timeout).then((f) {
+          if (f != null) {
+            onFresh(f);
+          } else {
+            // 뒤에서 받아오다 실패했으면 배너가 그 사실을 말해야 한다.
+            OfflineStatus.offline(c.savedAt);
+          }
+        }));
+        return c;
+      }
+    }
+    final fresh = await _network(url, key, timeout);
+    if (fresh != null) return fresh;
+    final c = await load(key);
+    if (c != null) {
+      OfflineStatus.offline(c.savedAt);
+      return c;
+    }
+    throw const SocketException('받아오지 못했고 저장된 것도 없습니다');
+  }
+
+  /// 네트워크에서만 받아 저장한다. 실패하면 null — 여기서는 저장본을
+  /// 보지 않는다. 저장본으로 떨어질지는 부르는 쪽이 정한다.
+  static Future<Cached<dynamic>?> _network(
+      String url, String key, Duration timeout) async {
     try {
       final res = await http.get(Uri.parse(url)).timeout(timeout);
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
@@ -107,12 +142,7 @@ class OfflineStore {
       OfflineStatus.online();
       return Cached<dynamic>(data, savedAt: DateTime.now());
     } catch (_) {
-      final c = await load(key);
-      if (c != null) {
-        OfflineStatus.offline(c.savedAt);
-        return c;
-      }
-      rethrow;
+      return null;
     }
   }
 

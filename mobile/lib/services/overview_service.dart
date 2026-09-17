@@ -201,7 +201,10 @@ class OverviewSummary {
 }
 
 class OverviewService {
-  static Future<OverviewSummary> fetch({String? month, String? divisionId}) async {
+  static Future<OverviewSummary> fetch(
+      {String? month,
+      String? divisionId,
+      void Function(OverviewSummary)? onFresh}) async {
     try {
       final q = <String, String>{};
       if (month != null && month.isNotEmpty) q['month'] = month;
@@ -209,12 +212,14 @@ class OverviewService {
       final uri = Uri.parse('$kApiBaseUrl/overview').replace(queryParameters: q.isEmpty ? null : q);
       final got = await OfflineStore.fetch(uri.toString(),
           'overview_${month ?? 'now'}_${divisionId ?? 'all'}',
-          timeout: const Duration(seconds: 10));
-      final decoded = got.data;
-      if (decoded is! Map) return OverviewSummary.empty;
-      return OverviewSummary.fromJson(decoded);
+          timeout: const Duration(seconds: 10),
+          onFresh: onFresh == null ? null : (c) => onFresh(_parse(c.data)));
+      return _parse(got.data);
     } catch (_) {
       return OverviewSummary.empty;
     }
   }
+
+  static OverviewSummary _parse(dynamic decoded) =>
+      decoded is Map ? OverviewSummary.fromJson(decoded) : OverviewSummary.empty;
 }

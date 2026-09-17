@@ -228,16 +228,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _setupAutoRefresh();
     SettingsService.instance.autoRefreshMinutes.addListener(_setupAutoRefresh);
-    // 화면 진입 시 즉시 모든 데이터를 받아옵니다.
-    _divisionsFuture = DivisionsService.fetchAll();
-    _dashboardFuture = DashboardService.fetchCards();
-    _progressFuture = ProgressService.fetch();
-    _overviewFuture = OverviewService.fetch();
-    _revenueFuture = RevenueService.fetch();
-    _alertsFuture = HomeAlertsService.fetch();
+    // 저장된 값으로 먼저 그리고, 새 값이 오면 그때 바꿔 끼운다.
+    //
+    // 예전에는 여섯 개를 전부 받아올 때까지 홈이 빈 채로 있었다. 신호가
+    // 나쁘면 /home/alerts 하나만으로 20초를 기다렸다. 어제 본 숫자라도
+    // 바로 보이는 편이 낫다 — 새 값은 잠시 뒤 조용히 갈아 끼운다.
+    _divisionsFuture = DivisionsService.fetchAll(onFresh: (v) => _swap(() {
+          _divisionsFuture = Future.value(v);
+        }));
+    _dashboardFuture = DashboardService.fetchCards(onFresh: (v) => _swap(() {
+          _dashboardFuture = Future.value(v);
+        }));
+    _progressFuture = ProgressService.fetch(onFresh: (v) => _swap(() {
+          _progressFuture = Future.value(v);
+        }));
+    _overviewFuture = OverviewService.fetch(onFresh: (v) => _swap(() {
+          _overviewFuture = Future.value(v);
+        }));
+    _revenueFuture = RevenueService.fetch(onFresh: (v) => _swap(() {
+          _revenueFuture = Future.value(v);
+        }));
+    _alertsFuture = HomeAlertsService.fetch(onFresh: (v) => _swap(() {
+          _alertsFuture = Future.value(v);
+          _bloom = v.bloom;
+        }));
     _rememberBloom();
     _loadFavDivisions();
     _loadAuto();
+  }
+
+  /// 뒤에서 받아온 값으로 갈아 끼운다. 화면이 이미 없어졌으면 아무것도
+  /// 하지 않는다 — 홈을 닫고 나간 뒤 setState 를 부르면 터진다.
+  void _swap(VoidCallback apply) {
+    if (!mounted) return;
+    setState(apply);
   }
 
   /// 자동차사업부는 주차 보고가 없어 /dashboard 카드가 안 잡힌다.
