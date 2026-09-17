@@ -54,6 +54,14 @@ DEFAULT_MAP = {
     "Texon 화성 전체 - Hwaseong cable": "케이블 (사내)",
     "Texon 미국 전체 - USA Cable": "케이블 (사내)",
     "Texon - YONGIN Cable": "케이블 (사내)",
+    "Texon - YONGIN (Machining)": "용인 가공",
+    "Texon - YONGIN (SM/Machining)": "용인 가공",
+    "UCT (SM)": "UCT",
+    "CELESTICA (SM/Frame)": "CELESTICA",
+    "AVALON (SM)": "AVALON",
+    "AVALON (SM/Machining)": "AVALON",
+    "Cleaning": "세정",
+    "Surface Treatment": "표면처리",
     # 연초에 쓰던 옛 이름들. 같은 줄인데 이름만 바뀌었다.
     "케이블 (Cable Direct)": "케이블 (LAM)",
     "Texon 구미 전체 - Gumi SM / Machining": "구미 시트메탈",
@@ -64,7 +72,38 @@ DEFAULT_MAP = {
 ITEM_ORDER = ["케이블 (사내)", "메탈 가공", "파워박스", "메이저 모듈",
               "시트메탈 · 프레임", "데이터센터", "플라스틱 가공", "케이블 (LAM)",
               "화성 시트메탈", "구미 시트메탈", "EMA", "화성 MCT",
-              "Space X", "구미 MCT"]
+              "Space X", "구미 MCT", "용인 가공", "UCT", "CELESTICA",
+              "AVALON", "세정", "표면처리"]
+
+# 보고서 묶음.
+#
+#   매출합계 (Revenue)    반도체 / 데이터 센터 / 우주항공  → 소계
+#   내부거래 (Internal)   구미/화성/미국/용인
+#   총합 (내부거래 포함) = 소계 + 내부거래
+#
+# 텍슨 사이트끼리 오간 것(구미 SM·MCT, 화성 가공·판금, 용인, UCT ·
+# CELESTICA · AVALON, 사내 케이블)은 내부거래 쪽에만 둔다. 반도체에도
+# 같이 넣으면 총합에서 두 번 세어져 일일보고 총합계와 안 맞는다.
+GROUPS = [("semi", "반도체 (SEMI)"),
+          ("dc", "데이터 센터 (Data Center)"),
+          ("space", "우주항공 (Space X)")]
+INTERNAL = ("internal", "구미/화성/미국 (Gumi/Hwaseong/USA/YONGIN)")
+
+ITEM_GROUP = {
+    "메탈 가공": "semi", "플라스틱 가공": "semi", "케이블 (LAM)": "semi",
+    "시트메탈 · 프레임": "semi", "메이저 모듈": "semi", "파워박스": "semi",
+    "EMA": "semi", "세정": "semi", "표면처리": "semi",
+    "데이터센터": "dc",
+    "Space X": "space",
+    "구미 시트메탈": "internal", "구미 MCT": "internal", "화성 MCT": "internal",
+    "화성 시트메탈": "internal", "용인 가공": "internal", "UCT": "internal",
+    "CELESTICA": "internal", "AVALON": "internal", "케이블 (사내)": "internal",
+}
+
+
+def group_of(item: str) -> str:
+    """모르는 품목은 반도체로 본다 — 총합에서 빠지는 것보단 낫다."""
+    return ITEM_GROUP.get(item, "semi")
 
 _MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
@@ -481,8 +520,24 @@ def month_view(store: dict, month: str) -> dict:
                      "rate": round(a * 100 / p) if p > 0 else None})
     rows.sort(key=lambda r: (-r["plan"], -r["actual"], r["item"]))
 
+    for r in rows:
+        r["group"] = group_of(r["item"])
     tp = sum(r["plan"] for r in rows)
     ta = sum(r["actual"] for r in rows)
+
+    # 보고서 묶음 — 매출합계(반도체·데이터센터·우주항공) / 내부거래 / 총합
+    def _box(key, label):
+        got = [r for r in rows if r["group"] == key]
+        p_ = sum(r["plan"] for r in got)
+        a_ = sum(r["actual"] for r in got)
+        return {"key": key, "label": label, "plan": p_, "actual": a_,
+                "rate": round(a_ * 100 / p_) if p_ > 0 else None,
+                "items": got}
+
+    boxes = [_box(k, lb) for k, lb in GROUPS]
+    internal = _box(INTERNAL[0], INTERNAL[1])
+    sub_p = sum(b["plan"] for b in boxes)
+    sub_a = sum(b["actual"] for b in boxes)
     # 누적은 '보고 있는 달까지' 다. 8월을 보는데 9월 실적이 누적에
     # 들어가면 1~8월 합과 안 맞는다.
     year = month[:4]
@@ -495,6 +550,12 @@ def month_view(store: dict, month: str) -> dict:
         ytd += sum(v["amount"] for v in one.values())
     return {
         "month": month, "items": rows,
+        "groups": boxes,
+        "internal": internal,
+        "subtotal": {"label": "소계 (Sub-total)", "plan": sub_p, "actual": sub_a,
+                     "rate": round(sub_a * 100 / sub_p) if sub_p > 0 else None},
+        "grand": {"label": "총합 (내부거래 포함)", "plan": tp, "actual": ta,
+                  "rate": round(ta * 100 / tp) if tp > 0 else None},
         "plan": tp, "actual": ta,
         "rate": round(ta * 100 / tp) if tp > 0 else None,
         "left": max(0, tp - ta),

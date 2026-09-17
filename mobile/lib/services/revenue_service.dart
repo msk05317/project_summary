@@ -34,6 +34,37 @@ class RevenueItem {
       );
 }
 
+/// 보고서 묶음 한 줄 (반도체 · 데이터 센터 · 우주항공 · 내부거래)
+class RevenueGroup {
+  final String key;
+  final String label;
+  final int plan;
+  final int actual;
+  final int? rate;
+
+  const RevenueGroup({
+    required this.key,
+    required this.label,
+    required this.plan,
+    required this.actual,
+    this.rate,
+  });
+
+  factory RevenueGroup.fromJson(Map j) => RevenueGroup(
+        key: (j['key'] ?? '').toString(),
+        label: (j['label'] ?? '').toString(),
+        plan: (j['plan'] as num?)?.toInt() ?? 0,
+        actual: (j['actual'] as num?)?.toInt() ?? 0,
+        rate: (j['rate'] as num?)?.toInt(),
+      );
+
+  /// 화면에 쓸 짧은 이름. '반도체 (SEMI)' 를 그대로 쓰면 줄이 넘친다.
+  String get short {
+    final i = label.indexOf(' (');
+    return i > 0 ? label.substring(0, i) : label;
+  }
+}
+
 class RevenueMonth {
   final String month;
   final List<RevenueItem> items;
@@ -45,6 +76,10 @@ class RevenueMonth {
   final int ytd;
   /// 실적이 들어온 마지막 날 (YYYY-MM-DD). 달성률이 낮아 보이는 이유가 여기 있다.
   final String asOf;
+  /// 매출합계 쪽 묶음 (반도체 · 데이터 센터 · 우주항공)
+  final List<RevenueGroup> groups;
+  /// 내부거래 — 텍슨 사이트끼리 오간 것
+  final RevenueGroup? internal;
   final bool hasData;
   final bool loaded;
   final bool fromCache;
@@ -58,6 +93,8 @@ class RevenueMonth {
     required this.left,
     required this.ytd,
     required this.asOf,
+    this.groups = const [],
+    this.internal,
     this.rate,
     this.hasData = false,
     this.loaded = true,
@@ -67,8 +104,16 @@ class RevenueMonth {
 
   static const RevenueMonth empty = RevenueMonth(
     month: '', items: [], plan: 0, actual: 0, left: 0, ytd: 0, asOf: '',
-    hasData: false, loaded: false,
+    groups: [], hasData: false, loaded: false,
   );
+
+  /// 카드에 그릴 줄. 보고서와 같은 묶음이다 —
+  /// 반도체 · 데이터 센터 · 우주항공 · 내부거래.
+  List<RevenueGroup> get lines {
+    final out = <RevenueGroup>[...groups];
+    if (internal != null) out.add(internal!);
+    return out.where((g) => g.plan > 0 || g.actual > 0).toList();
+  }
 
   /// 실적 큰 것부터. 홈 카드는 이 순서로 보여준다.
   List<RevenueItem> get byActual {
@@ -80,6 +125,7 @@ class RevenueMonth {
   RevenueMonth copyWith({bool? fromCache, DateTime? savedAt}) => RevenueMonth(
         month: month, items: items, plan: plan, actual: actual, left: left,
         ytd: ytd, asOf: asOf, rate: rate, hasData: hasData, loaded: loaded,
+        groups: groups, internal: internal,
         fromCache: fromCache ?? this.fromCache,
         savedAt: savedAt ?? this.savedAt,
       );
@@ -98,6 +144,13 @@ class RevenueMonth {
       left: (j['left'] as num?)?.toInt() ?? 0,
       ytd: (j['ytd'] as num?)?.toInt() ?? 0,
       asOf: (j['as_of'] ?? '').toString(),
+      groups: ((j['groups'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(RevenueGroup.fromJson)
+          .toList(),
+      internal: (j['internal'] is Map)
+          ? RevenueGroup.fromJson(j['internal'] as Map)
+          : null,
       hasData: j['has_data'] == true && items.isNotEmpty,
     );
   }

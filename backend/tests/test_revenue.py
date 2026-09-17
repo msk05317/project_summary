@@ -230,19 +230,51 @@ assert R.month_view(st, '2026-09')['ytd'] == 370
 ok += 1
 
 # ── 모르는 행은 합계에서 빠지고, 물어볼 목록에 오른다 ──
-raw5 = daily_book(37, ['09 / 07'], [('UCT (SM)', [(0.0, 9, 4706.0)])])
+raw5 = daily_book(37, ['09 / 07'], [('새로 생긴 줄 (Unknown)', [(0.0, 9, 4706.0)])])
 st2 = R.blank()
 R.apply_daily(st2, R.parse_daily(raw5, 2026), 'c.xlsx')
 assert R.month_view(st2, '2026-09')['actual'] == 0, '연결 안 한 행이 합계에 들어갔다'
 un = R.unmapped_in_store(st2)
-assert un and un[0]['label'] == 'UCT (SM)' and un[0]['amount'] == 4706, un
-assert R.unknown_rows(st2, ['UCT (SM)', '파워박스 (Powerbox)']) == ['UCT (SM)']
+assert un and un[0]['label'] == '새로 생긴 줄 (Unknown)' and un[0]['amount'] == 4706, un
+assert R.unknown_rows(st2, ['새로 생긴 줄 (Unknown)', '파워박스 (Powerbox)']) \
+    == ['새로 생긴 줄 (Unknown)']
 ok += 1
 
 # 연결해 주면 바로 합계에 들어온다
-st2['map']['UCT (SM)'] = '시트메탈 · 프레임'
+st2['map']['새로 생긴 줄 (Unknown)'] = '시트메탈 · 프레임'
 assert R.month_view(st2, '2026-09')['actual'] == 4706
 assert R.unmapped_in_store(st2) == []
+ok += 1
+
+# ── 보고서 묶음: 매출합계 / 내부거래 / 총합 ──
+#
+# 텍슨 사이트끼리 오간 것을 반도체에도 넣으면 총합에서 두 번 세어진다.
+st3 = R.blank()
+mix = daily_book(37, ['09 / 07'], [
+    ('메이저 모듈 (Major Module)', [(0.0, 1, 1000.0)]),
+    ('Texon 구미 전체 - Gumi SM', [(0.0, 2, 200.0)]),
+    ('Texon 구미 전체 - Gumi Cable', [(0.0, 3, 300.0)]),
+    ('UCT (SM)', [(0.0, 1, 50.0)]),
+    ('Data Center', [(0.0, 1, 400.0)]),
+    ('Space X', [(0.0, 1, 90.0)]),
+])
+R.apply_daily(st3, R.parse_daily(mix, 2026), 'm.xlsx')
+v3 = R.month_view(st3, '2026-09')
+box = {b['key']: b['actual'] for b in v3['groups']}
+assert box['semi'] == 1000, box
+assert box['dc'] == 400 and box['space'] == 90, box
+assert v3['internal']['actual'] == 550, v3['internal']   # 구미 SM 200 + 케이블 300 + UCT 50
+assert v3['subtotal']['actual'] == 1490, v3['subtotal']
+assert v3['grand']['actual'] == 2040, v3['grand']
+# 총합은 일일보고 총합계와 같아야 한다 — 두 번 세면 어긋난다
+assert v3['grand']['actual'] == v3['subtotal']['actual'] + v3['internal']['actual']
+assert v3['grand']['actual'] == v3['actual']
+assert all(r.get('group') for r in v3['items']), '품목에 묶음이 안 붙었다'
+ok += 1
+
+# 사이트 행은 반도체에 없다
+assert not [r for r in v3['groups'][0]['items'] if r['item'] in
+            ('구미 시트메탈', '케이블 (사내)', 'UCT')], '사이트 행이 반도체에 들어갔다'
 ok += 1
 
 # ── 이름은 줄바꿈·겹공백을 무시하고 붙는다 ──

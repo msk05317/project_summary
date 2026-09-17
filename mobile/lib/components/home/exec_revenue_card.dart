@@ -73,13 +73,23 @@ class ExecRevenueCard extends StatelessWidget {
     // 계획이 아직 없으면 rate 가 null 이다. 0 으로 바꾸면 '못 채웠다' 가
     // 되는데, 실제로는 '아직 모른다' 다.
     final rate = r.rate;
-    // 계획만 올리고 일일보고를 아직 안 올린 달도 있다. 그때 실적으로
-    // 거르면 목록이 통째로 '그 외 14개 품목 $0' 한 줄이 된다.
     final hasActual = r.items.any((e) => e.actual > 0);
-    final rows = hasActual
-        ? r.byActual.where((e) => e.actual > 0).toList()
-        : (List<RevenueItem>.from(r.items)
-          ..sort((a, b) => b.plan.compareTo(a.plan)));
+    // 보고서와 같은 묶음으로 보여준다 — 반도체 · 데이터 센터 · 우주항공 ·
+    // 내부거래. 품목 스무 줄을 홈에 늘어놓으면 아무도 안 읽는다.
+    // 묶음이 안 오는 옛 서버면 품목으로 떨어진다.
+    final groups = r.lines;
+    final List<_Line> rows = groups.isNotEmpty
+        ? [
+            for (final g in groups)
+              _Line(g.short, g.actual, g.plan, g.key == 'internal')
+          ]
+        : () {
+            final it = hasActual
+                ? r.byActual.where((e) => e.actual > 0).toList()
+                : (List<RevenueItem>.from(r.items)
+                  ..sort((a, b) => b.plan.compareTo(a.plan)));
+            return [for (final e in it) _Line(e.item, e.actual, e.plan, false)];
+          }();
     final top = rows.take(6).toList();
     final restA = rows.skip(6).fold<int>(0, (a, b) => a + b.actual);
     final restP = rows.skip(6).fold<int>(0, (a, b) => a + b.plan);
@@ -198,11 +208,15 @@ class ExecRevenueCard extends StatelessWidget {
                 style: AppText.caption.copyWith(color: AppColors.textHint)),
           ),
         for (final e in top)
-          line(e.item, e.actual, e.plan, AppColors.summaryInProgress),
+          line(e.name, e.actual, e.plan,
+              e.dim ? AppColors.statusGray : AppColors.summaryInProgress),
         if (restN > 0)
-          line('그 외 $restN개 품목', restA, restP, AppColors.statusGray),
+          line('그 외 $restN개', restA, restP, AppColors.statusGray),
         const SizedBox(height: 6),
-        Text('반도체사업부 전체 · ${r.items.length}개 품목',
+        Text(
+            groups.isNotEmpty
+                ? '총합 (내부거래 포함) · 품목 ${r.items.length}개'
+                : '반도체사업부 전체 · ${r.items.length}개 품목',
             style: AppText.caption.copyWith(color: AppColors.textHint)),
       ]),
     );
@@ -404,6 +418,17 @@ class ExecRevenueCard extends StatelessWidget {
       child: box,
     );
   }
+}
+
+/// 카드에 그릴 한 줄. 묶음이든 품목이든 모양은 같다.
+class _Line {
+  final String name;
+  final int actual;
+  final int plan;
+  /// 내부거래처럼 '매출합계에 안 들어가는' 줄은 흐리게
+  final bool dim;
+
+  const _Line(this.name, this.actual, this.plan, this.dim);
 }
 
 class _MiniStat extends StatelessWidget {
