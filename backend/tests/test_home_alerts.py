@@ -166,6 +166,11 @@ assert '_sel = k' in B, '타일을 눌러도 목록이 안 바뀐다'
 assert 'onHorizontalDragEnd' in B, '옆으로 밀어도 안 넘어간다'
 assert 'primaryVelocity' in B and '_Kind.values[next]' in B
 assert 'next < 0 || next >= _Kind.values.length' in B, '끝에서 감아 돈다'
+# 내용이 툭 바뀌면 넘어간 건지 화면이 잘못 그려진 건지 헷갈린다.
+assert 'AnimatedSwitcher' in B and 'SlideTransition' in B, '넘어갈 때 안 미끄러진다'
+assert 'AnimatedSize' in B, '종류마다 줄 수가 달라 카드가 튄다'
+# 민 방향과 글이 움직이는 방향이 어긋나면 앞뒤를 알 수 없다
+assert 'int _dir' in B and '_select(' in B, '넘어간 방향을 안 본다'
 # 타일은 네 가지. '보류' 는 뺐다 — 멈춰 세운 것은 오늘 볼 일이 아니다.
 # 맨 오른쪽은 '정상' — 문제만 늘어놓으면 제대로 가는 게 안 보인다.
 for _k in ('지연', '이슈', '임박', '정상'):

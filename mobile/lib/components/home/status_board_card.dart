@@ -96,6 +96,19 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
   List<AlertProject> _rowsOf(_Kind k) =>
       widget.alerts.byKind[_key[k]] ?? const <AlertProject>[];
 
+  /// 마지막으로 넘어간 방향. 1이면 오른쪽에서 들어오고 -1이면 왼쪽에서
+  /// 들어온다. 민 방향과 글이 움직이는 방향이 어긋나면 뒤로 간 건지
+  /// 앞으로 간 건지 알 수가 없다.
+  int _dir = 1;
+
+  void _select(_Kind k) {
+    if (k == _sel) return;
+    setState(() {
+      _dir = k.index > _sel.index ? 1 : -1;
+      _sel = k;
+    });
+  }
+
   // 타일을 눌러도 되고, 옆으로 밀어도 넘어간다.
   //
   // 왼쪽으로 밀면 다음 (정상 → 일정 지연), 오른쪽으로 밀면 이전
@@ -106,7 +119,7 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     if (v.abs() < 120) return;      // 세로로 스크롤하다 생기는 흔들림은 무시
     final next = _sel.index + (v < 0 ? 1 : -1);
     if (next < 0 || next >= _Kind.values.length) return;
-    setState(() => _sel = _Kind.values[next]);
+    _select(_Kind.values[next]);
   }
 
   Widget _shell(Widget child) => Container(
@@ -165,39 +178,76 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
       ]),
 
       const SizedBox(height: 14),
-      Text('${_long[_sel] ?? _label[_sel]} ${_countOf(_sel)}건 · ${rows.length}곳',
-          style: const TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w700,
-              color: AppColors.textMute)),
-
-      if (rows.isEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
-              _sel == _Kind.delayed
-                  ? '일정 밀린 모델이 없습니다'
-                  : (_sel == _Kind.issue
-                      ? '적어 둔 특이사항이 없습니다'
-                      : '해당하는 항목이 없습니다'),
-              style: const TextStyle(fontSize: 13, color: AppColors.textHint)),
-        )
-      else
-        for (int i = 0; i < rows.length && i < 5; i++) _row(rows[i]),
-
-      if (rows.length > 5)
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: widget.onTapAll == null
-                ? null
-                : () => widget.onTapAll!(_key[_sel]!),
-            child: Text('모두 보기 (${rows.length}곳)',
-                style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.summaryInProgress)),
+      // 내용이 툭 바뀌면 넘어간 건지 화면이 잘못 그려진 건지 헷갈린다.
+      // 민 방향에서 미끄러져 들어오게 한다. 종류마다 줄 수가 달라서
+      // 높이도 같이 늘였다 줄인다 — 안 그러면 카드가 튄다.
+      AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          // 기본 레이아웃은 들고 나는 것을 가운데로 쌓아서 글이 위아래로
+          // 흔들린다. 왼쪽 위에 맞춰 둔다.
+          layoutBuilder: (cur, prev) => Stack(
+            alignment: Alignment.topLeft,
+            children: [...prev, ?cur],
+          ),
+          transitionBuilder: (child, anim) {
+            final incoming = child.key == ValueKey(_sel);
+            final dx = (incoming ? _dir : -_dir) * 0.16;
+            return FadeTransition(
+              opacity: anim,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                    begin: Offset(dx, 0), end: Offset.zero).animate(anim),
+                child: child,
+              ),
+            );
+          },
+          child: Column(
+            key: ValueKey(_sel),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  '${_long[_sel] ?? _label[_sel]} ${_countOf(_sel)}건 · ${rows.length}곳',
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700,
+                      color: AppColors.textMute)),
+              if (rows.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                      _sel == _Kind.delayed
+                          ? '일정 밀린 모델이 없습니다'
+                          : (_sel == _Kind.issue
+                              ? '적어 둔 특이사항이 없습니다'
+                              : '해당하는 항목이 없습니다'),
+                      style: const TextStyle(
+                          fontSize: 13, color: AppColors.textHint)),
+                )
+              else
+                for (int i = 0; i < rows.length && i < 5; i++) _row(rows[i]),
+              if (rows.length > 5)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: widget.onTapAll == null
+                        ? null
+                        : () => widget.onTapAll!(_key[_sel]!),
+                    child: Text('모두 보기 (${rows.length}곳)',
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.summaryInProgress)),
+                  ),
+                ),
+            ],
           ),
         ),
+      ),
 
       const Divider(height: 19, color: AppColors.borderSoft),
       // '진행 중' 은 정상 타일과 같은 것을 다르게 센 숫자라 빼 버렸다.
@@ -215,8 +265,10 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => setState(() => _sel = k),
-        child: Container(
+        onTap: () => _select(k),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.fromLTRB(2, 7, 2, 8),
           decoration: BoxDecoration(
             color: on ? AppColors.statusGraySoft : Colors.transparent,
