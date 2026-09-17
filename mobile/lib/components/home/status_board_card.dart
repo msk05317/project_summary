@@ -14,10 +14,12 @@ import '../../design/design.dart';
 import '../../services/home_alerts_service.dart';
 import '../../utils/status_words.dart';
 
-// 맨 오른쪽은 '정상' 이다. 문제만 네 칸 늘어놓으면 260종 중 250종이
+// 맨 앞이 '정상' 이다. 문제만 네 칸 늘어놓으면 260종 중 250종이
 // 제대로 가고 있다는 사실이 화면 어디에도 안 나온다. '보류' 는 뺐다 —
 // 멈춰 세운 것은 오늘 볼 일이 아니라서 밑줄 한 줄로 충분하다.
-enum _Kind { delayed, issue, soon, normal }
+//
+// 값 순서가 곧 타일 순서다 (정상 · 일정 지연 · 특이사항 · 집중관리).
+enum _Kind { normal, delayed, issue, soon }
 
 class StatusBoardCard extends StatefulWidget {
   final HomeAlerts alerts;
@@ -47,18 +49,18 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
 
   /// 서버가 쓰는 값. by_kind 의 키이자 alert 의 kind 다. 바꾸면 안 된다.
   static const _key = {
+    _Kind.normal: '정상',
     _Kind.delayed: '지연',
     _Kind.issue: '이슈',
     _Kind.soon: '임박',
-    _Kind.normal: '정상',
   };
 
   /// 화면에 보이는 말 (utils/status_words.dart).
   static const _label = {
+    _Kind.normal: StatusWords.normal,
     _Kind.delayed: StatusWords.delayed,
     _Kind.issue: StatusWords.issue,
     _Kind.soon: StatusWords.soon,
-    _Kind.normal: StatusWords.normal,
   };
 
   /// 목록 머리처럼 자리가 있는 곳에서는 긴 말을 쓴다.
@@ -66,26 +68,26 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     _Kind.soon: StatusWords.soonFull,
   };
 
-  // 일정 지연 → 특이사항 → 집중관리 순으로 색이 옅어지고, 정상은 초록이다.
-  // 급한 순서가 곧 색 순서다.
+  // 정상은 초록, 나머지는 일정 지연 → 특이사항 → 집중관리 순으로
+  // 색이 옅어진다. 급한 순서가 곧 색 순서다.
   static const _color = {
+    _Kind.normal: AppColors.summaryNormal,
     _Kind.delayed: Color(0xFFDC2626),
     _Kind.issue: Color(0xFFEA580C),
     _Kind.soon: Color(0xFFD97706),
-    _Kind.normal: AppColors.summaryNormal,
   };
 
   int _countOf(_Kind k) {
     final a = widget.alerts;
     switch (k) {
+      case _Kind.normal:
+        return a.normal;
       case _Kind.delayed:
         return a.delayed;
       case _Kind.issue:
         return a.issue;
       case _Kind.soon:
         return a.soon;
-      case _Kind.normal:
-        return a.normal;
     }
   }
 
