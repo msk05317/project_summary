@@ -347,6 +347,9 @@ assert '실행계획' not in C, '홈 카드가 아직 주간보고 실행계획�
 assert '사업부 총합' not in C, '매출을 사업부 하나로 못 박았다'
 assert '예상 미등록' in C, '예상이 없는 달에 달성률을 지어낸다'
 assert 'r.hasEstimate' in C, '예상이 있는지 안 보고 그린다'
+# 예상이 없다고 막대를 빼면 카드가 접혔다 펴졌다 한다.
+assert 'if (est)\n          ClipRRect' not in C, '예상이 없으면 막대가 사라진다'
+assert C.count('LinearProgressIndicator') >= 1, '홈 카드에 막대가 없다'
 # 헤드라인 숫자가 잘리면 카드를 볼 이유가 없다.
 #
 # Spacer 는 flex 1 의 Expanded 다. 같은 Row 안의 Flexible 도 flex 1 이라
@@ -364,6 +367,12 @@ assert 'bool _openDiv = true;' in D, '매출 상세가 접힌 채로 열린다'
 # 값이 왼쪽에 몰리지 않게 라벨/값을 양끝으로 붙인다.
 assert 'Widget kv(String k, String v)' in D, '총합 카드가 값을 왼쪽에 몰아 놓는다'
 assert '실행계획' not in D, '매출 상세가 아직 주간보고 실행계획을 말한다'
+# 사업부가 하나뿐이라 비중이 100 인 것뿐인데 '100%' 라고 적으면
+# 달성률로 읽힌다. 아래 부서 줄은 68·5·28 이라 앞뒤가 안 맞아 보인다.
+_hd = D.split('Widget divisionCard()')[1].split('if (_openDiv)')[0]
+_hd = '\n'.join(ln for ln in _hd.split('\n') if not ln.strip().startswith('//'))
+assert "'100%'" not in _hd, '사업부 줄에 100% 가 다시 붙었다'
+assert '부서별 실적 · 비중' in D, '부서 줄의 숫자가 무엇인지 안 적혀 있다'
 A2 = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
 assert '_projectRow' in A2, '정상 모두 보기가 아직 품번을 늘어놓는다'
 ok += 1

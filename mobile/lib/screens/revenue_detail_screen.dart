@@ -231,31 +231,24 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                       Text(Fmt.moneyShort(r.actual),
                           style: AppText.caption
                               .copyWith(color: AppColors.textMute)),
-                      const SizedBox(width: 8),
-                      Text('100%',
-                          style: AppText.bodyStrong.copyWith(fontSize: 13.5)),
+                      // 여기 '100%' 를 적으면 달성률로 읽힌다. 사업부가
+                      // 하나뿐이라 비중이 100 인 것뿐인데, 아래 부서 줄은
+                      // 68·5·28 이라 앞뒤가 안 맞아 보인다. 아예 뺀다.
                       Icon(_openDiv ? Icons.expand_less : Icons.expand_more,
                           size: 20, color: AppColors.textMute),
                     ]),
-                    const SizedBox(height: 9),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: const LinearProgressIndicator(
-                        value: 1,
-                        minHeight: 5,
-                        backgroundColor: AppColors.statusGraySoft,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.summaryInProgress),
-                      ),
-                    ),
                   ]),
             ),
           ),
           if (_openDiv)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: Column(children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 const Divider(height: 8, color: AppColors.borderSoft),
+                const SizedBox(height: 4),
+                Text('부서별 실적 · 비중',
+                    style: AppText.caption.copyWith(color: AppColors.textHint)),
                 for (final g in r.lines) deptRow(g),
               ]),
             ),

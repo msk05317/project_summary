@@ -128,30 +128,30 @@ class ExecRevenueCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 11),
-        if (est)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: rate == null ? 0.0 : (rate / 100).clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: AppColors.statusGraySoft,
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                  AppColors.summaryInProgress),
-            ),
+        // 예상이 없다고 막대를 빼면 카드가 접혔다 펴졌다 한다.
+        // 빈 막대로 두면 '아직 안 넣었다' 가 그대로 보인다.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: (!est || rate == null) ? 0.0 : (rate / 100).clamp(0.0, 1.0),
+            minHeight: 8,
+            backgroundColor: AppColors.statusGraySoft,
+            valueColor: const AlwaysStoppedAnimation<Color>(
+                AppColors.summaryInProgress),
           ),
-        if (est) const SizedBox(height: 12),
+        ),
+        const SizedBox(height: 12),
         Row(children: [
-          if (est)
-            Expanded(
-                child:
-                    _MiniStat(label: '남은 예상', value: Fmt.moneyShort(r.left))),
-          if (est)
-            Container(
-              width: 1,
-              height: 26,
-              margin: const EdgeInsets.symmetric(horizontal: 14),
-              color: AppColors.borderSoft,
-            ),
+          Expanded(
+              child: _MiniStat(
+                  label: '남은 예상',
+                  value: est ? Fmt.moneyShort(r.left) : '—')),
+          Container(
+            width: 1,
+            height: 26,
+            margin: const EdgeInsets.symmetric(horizontal: 14),
+            color: AppColors.borderSoft,
+          ),
           Expanded(
               child: _MiniStat(label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
         ]),
