@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.21",
-  "latest_version_code": 44,
+  "latest_version": "2.3.22",
+  "latest_version_code": 45,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "넘길 때 미끄러지듯 바뀝니다.\n\n· 민 쪽에서 내용이 들어옵니다\n· 줄 수가 달라도 카드가 안 튑니다",
+  "release_notes": "앱이 훨씬 빨리 열립니다.\n\n· 지난번 본 내용을 먼저 그리고 새 값으로 바꿉니다\n· 흰 화면으로 서 있던 시간을 없앴습니다",
   "force_update": false
 }
