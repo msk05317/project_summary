@@ -67,6 +67,24 @@ assert len(items) >= 2, '날짜 없는 항목이 앞 버전에 먹혔다'
 assert '블룸' not in items[0]['body'], '2.3.10 본문에 옛 노트가 섞였다'
 ok += 1
 
+# ── 이미 나간 버전의 항목은 건드리지 않는다 ──
+#
+# 같은 실수를 네 번 했다 (2.3.14 · 2.3.16 · 2.3.20 · 2.3.22). 릴리스가
+# 사이에 끼면 다음 작업을 새 항목이 아니라 이미 나간 항목에 덧붙인다.
+# 그러면 그 버전 사용자 폰에 없는 기능이 변경 내역으로 뜬다.
+#
+# release.sh 가 배포하면서 그때 문구를 app_version.json 에 박아 둔다.
+# 지금 CHANGELOG 와 다르면 나간 뒤에 고쳤다는 뜻이다.
+_sent = str(_av.get('release_notes') or '').strip()
+if _sent:
+    _now = g['_changelog_for'](_cur).strip()
+    assert _now == _sent, (
+        f"{_cur} 는 이미 나갔는데 항목이 바뀌었다.\n"
+        f"  나간 문구:\n{_sent}\n"
+        f"  지금 문구:\n{_now}\n"
+        f"  → 새 작업은 다음 버전 항목을 새로 만들어서 적는다.")
+ok += 1
+
 # ── 없는 버전은 빈 문자열 (release.sh 가 이걸로 배포를 막는다) ──
 assert g['_changelog_for']('9.9.9') == ''
 assert g['_changelog_for']('v2.3.10') == g['_changelog_for']('2.3.10') != ''
