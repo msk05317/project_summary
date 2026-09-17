@@ -256,10 +256,15 @@ assert '/revenue' in S, '앱이 /revenue 를 안 본다'
 assert 'RevenueGroup' in S and 'internal' in S
 C = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
 assert 'RevenueMonth' in C, '홈 카드가 아직 모델 계산값을 쓴다'
-assert '총합' in C, '홈이 통 매출이라고 말하지 않는다'
+# 실적과 실행계획을 한 줄로. 밑에 또 적으면 같은 숫자를 두 번 말한다.
+assert '실적 / 실행계획' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
+assert '사업부 총합' not in C, '매출을 사업부 하나로 못 박았다'
 D = (LIB / 'screens' / 'revenue_detail_screen.dart').read_text(encoding='utf-8')
 assert 'RevenueService' in D, '매출 상세가 홈과 다른 값을 본다'
-assert 'r.lines' in D, '매출 상세가 큰 틀로 안 나온다'
+# 사업부 한 줄 → 누르면 부서별
+assert '_openDiv' in D and 'r.lines' in D, '매출 상세가 부서별로 안 펴진다'
+A2 = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
+assert '_projectRow' in A2, '정상 모두 보기가 아직 품번을 늘어놓는다'
 ok += 1
 
 # ── admin ──
