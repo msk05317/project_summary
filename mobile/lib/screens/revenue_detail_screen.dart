@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../design/design.dart';
 import '../services/overview_service.dart';
+import '../services/revenue_service.dart';
 import '../utils/format.dart';
 import 'project_overview_screen.dart';
 
@@ -37,6 +38,9 @@ enum _Sort { actual, plan }
 class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
   late String _month;
   late Future<OverviewSummary> _future;
+  // 매출은 엑셀이 원본이다. 홈 카드와 같은 값을 봐야 한다 — 전에는
+  // 여기만 모델 판가로 계산해서 홈과 숫자가 달랐다.
+  late Future<RevenueMonth> _revFuture;
   _Sort _sort = _Sort.actual;
 
   @override
@@ -49,6 +53,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
         : cur;
     _future = OverviewService.fetch(
         month: _month, divisionId: widget.divisionId);
+    _revFuture = RevenueService.fetch(month: _month);
   }
 
   void _load(String month) {
@@ -56,6 +61,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
       _month = month;
       _future = OverviewService.fetch(
           month: month, divisionId: widget.divisionId);
+      _revFuture = RevenueService.fetch(month: month);
     });
   }
 
@@ -105,7 +111,171 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async => _load(_month),
-                child: FutureBuilder<OverviewSummary>(
+                child: FutureBuilder<RevenueMonth>(
+                  future: _revFuture,
+                  builder: (context, rev) {
+                    final r = rev.data;
+                    // 사업부를 좁혀 보는 경우는 예전 방식(프로젝트별)만 있다.
+                    final wide = (widget.divisionId ?? '').trim().isEmpty;
+                    if (wide && r != null && r.loaded && r.hasData) {
+                      return _excelBody(r);
+                    }
+                    if (wide && rev.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    return _overviewBody();
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 엑셀에서 받은 매출 — 보고서와 같은 묶음으로.
+  Widget _excelBody(RevenueMonth r) {
+    Widget money(String k, int v, {Color? c, bool big = false}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(k, style: AppText.caption.copyWith(color: AppColors.textMute)),
+            const SizedBox(height: 2),
+            Text(Fmt.moneyShort(v),
+                style: big
+                    ? const TextStyle(
+                        fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)
+                    : AppText.bodyStrong.copyWith(color: c)),
+          ],
+        );
+
+    Widget itemRow(RevenueItem it) {
+      final covers = it.covers;
+      final quiet = it.plan == 0 && it.actual == 0;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(it.item,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.body.copyWith(
+                      fontSize: 13,
+                      color: quiet ? AppColors.textHint : AppColors.textMain,
+                      fontWeight: FontWeight.w600)),
+              if (covers.isNotEmpty)
+                Text('계획은 ${covers.join(' · ')} 까지 묶인 값입니다',
+                    style: AppText.caption.copyWith(
+                        fontSize: 10.5, color: AppColors.textHint)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 78,
+            child: Text(it.plan == 0 ? '—' : Fmt.moneyShort(it.plan),
+                textAlign: TextAlign.right,
+                style: AppText.caption.copyWith(color: AppColors.textMute)),
+          ),
+          SizedBox(
+            width: 82,
+            child: Text(Fmt.moneyShort(it.actual),
+                textAlign: TextAlign.right,
+                style: AppText.bodyStrong.copyWith(
+                    fontSize: 13,
+                    color: quiet ? AppColors.textHint : AppColors.textMain)),
+          ),
+        ]),
+      );
+    }
+
+    Widget box(RevenueGroup g, List<RevenueItem> items) => Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          decoration: BoxDecoration(
+            color: AppColors.bgCard,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.borderDefault),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(g.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.bodyStrong.copyWith(fontSize: 14)),
+              ),
+              Text('${Fmt.moneyShort(g.actual)} / ${Fmt.moneyShort(g.plan)}',
+                  style: AppText.caption.copyWith(color: AppColors.textMute)),
+            ]),
+            const Divider(height: 16, color: AppColors.borderSoft),
+            for (final it in items) itemRow(it),
+          ]),
+        );
+
+    final byGroup = <String, List<RevenueItem>>{};
+    for (final it in r.items) {
+      byGroup.putIfAbsent(it.group, () => []).add(it);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.bgCard,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.borderDefault),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text('${Fmt.monthShort(r.month)} 총합', style: AppText.h2),
+              const Spacer(),
+              if (r.asOf.isNotEmpty)
+                Text('${r.asOf.substring(5).replaceAll('-', '/')} 보고 기준',
+                    style: AppText.caption.copyWith(color: AppColors.textHint)),
+            ]),
+            const SizedBox(height: 10),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(child: money('실적', r.actual, big: true)),
+              Expanded(child: money('계획', r.plan)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('달성',
+                        style:
+                            AppText.caption.copyWith(color: AppColors.textMute)),
+                    const SizedBox(height: 2),
+                    Text(r.rate == null ? '-' : '${r.rate}%',
+                        style: AppText.bodyStrong),
+                  ],
+                ),
+              ),
+            ]),
+            const Divider(height: 20, color: AppColors.borderSoft),
+            Row(children: [
+              Expanded(
+                  child: money('소계 (내부거래 제외)',
+                      r.actual - (r.internal?.actual ?? 0))),
+              Expanded(
+                  child: money('내부거래', r.internal?.actual ?? 0,
+                      c: AppColors.textMute)),
+              Expanded(child: money('연간 누적', r.ytd)),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        for (final g in r.lines)
+          box(g, byGroup[g.key] ?? const <RevenueItem>[]),
+      ],
+    );
+  }
+
+  /// 엑셀을 아직 안 올렸을 때 — 예전처럼 모델에서 계산한 값
+  Widget _overviewBody() {
+    return FutureBuilder<OverviewSummary>(
                   future: _future,
                   builder: (context, snap) {
                     if (snap.connectionState == ConnectionState.waiting) {
@@ -127,12 +297,6 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                       ],
                     );
                   },
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

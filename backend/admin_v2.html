@@ -10431,14 +10431,21 @@ window._ovProjectKey = function() {
     }
     function itemRows(list) {
       return (list || []).map(function (r) {
-        return '<tr>' +
-          '<td class="lbl" style="padding-left:22px;font-weight:600;">' + esc(r.item) +
-            '<span class="rv-src">' +
-            (r.qty ? r.qty.toLocaleString() + '대' : '&nbsp;') + '</span></td>' +
-          '<td style="text-align:right">' + _rvMoney(r.plan) + '</td>' +
+        // 계획 파일이 일일보고보다 굵어서, 한 줄이 여러 품목을 덮는다.
+        // 덮인 쪽은 계획이 0 으로 보이므로 어디에 묶였는지 적어 준다.
+        var note = (r.covers && r.covers.length)
+          ? '계획은 ' + r.covers.map(esc).join(' · ') + ' 까지 묶인 값'
+          : (r.qty ? r.qty.toLocaleString() + '대' : '&nbsp;');
+        var quiet = (!r.plan && !r.actual) ? ' style="color:#B6BECB;"' : '';
+        return '<tr' + quiet + '>' +
+          '<td class="lbl" style="padding-left:22px;font-weight:600;' +
+            (quiet ? 'color:#B6BECB;' : '') + '">' + esc(r.item) +
+            '<span class="rv-src">' + note + '</span></td>' +
+          '<td style="text-align:right">' +
+            (r.plan ? _rvMoney(r.plan) : '—') + '</td>' +
           '<td style="text-align:right">' + _rvMoney(r.actual) + '</td>' +
           '<td>' + pct(r.rate) + '</td>' +
-          '<td style="min-width:130px">' + bar(r.rate) + '</td></tr>';
+          '<td style="min-width:130px">' + (r.plan ? bar(r.rate) : '') + '</td></tr>';
       }).join('');
     }
     function sumRow(x, cls, style) {

@@ -16,6 +16,11 @@ class RevenueItem {
   final int actual;
   final int qty;
   final int? rate;
+  /// 어느 묶음인지 (semi · dc · space · internal)
+  final String group;
+  /// 계획 한 줄이 이 품목 말고 또 덮는 품목들.
+  /// 계획 파일이 일일보고보다 굵어서, 덮인 쪽은 계획이 0 으로 보인다.
+  final List<String> covers;
 
   const RevenueItem({
     required this.item,
@@ -23,6 +28,8 @@ class RevenueItem {
     required this.actual,
     this.qty = 0,
     this.rate,
+    this.group = 'semi',
+    this.covers = const [],
   });
 
   factory RevenueItem.fromJson(Map j) => RevenueItem(
@@ -31,6 +38,10 @@ class RevenueItem {
         actual: (j['actual'] as num?)?.toInt() ?? 0,
         qty: (j['qty'] as num?)?.toInt() ?? 0,
         rate: (j['rate'] as num?)?.toInt(),
+        group: (j['group'] ?? 'semi').toString(),
+        covers: ((j['covers'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
       );
 }
 

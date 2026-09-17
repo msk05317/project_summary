@@ -19,61 +19,73 @@ import re
 # 엑셀 행 이름 → 품목. 이름이 바뀌면 '모르는 항목' 으로 올라와서
 # 사람이 한 번 연결해 준다. 조용히 빠뜨리지 않는다.
 DEFAULT_MAP = {
-    # ── 월 계획 (Sum 시트)
-    "Cable Internal": "케이블 (사내)",
-    "Metal": "메탈 가공",
-    "PBX": "파워박스",
-    "Major Modules": "메이저 모듈",
-    "Sheet metal": "시트메탈 · 프레임",
-    "Frame": "시트메탈 · 프레임",
-    "Data Center": "데이터센터",
-    "Plastic": "플라스틱 가공",
-    "Cable LAM": "케이블 (LAM)",
-    "Hwaseong Sheet metal": "화성 시트메탈",
-    "Gumi Sheet Metal": "구미 시트메탈",
-    "EMA": "EMA",
-    "Hwaseong MCT": "화성 MCT",
-    "Space X": "Space X",
-    "Gumi MCT": "구미 MCT",
-    # ── 일일보고 (W## 시트)
-    #    엔클로저는 계획 파일에 따로 없고 Metal 안에 들어 있다.
+    # ── 일일보고 (W## 시트) — 한 줄이 한 품목이다
     "메탈 가공 (Metal Machining)": "메탈 가공",
-    "엔클로져 (Encloser)": "메탈 가공",
-    "캐스팅 (Casting)": "메탈 가공",
+    "엔클로져 (Encloser)": "엔클로져",
     "플라스틱 가공 (Plastic Machining)": "플라스틱 가공",
-    "Lam + others (Cable Direct)": "케이블 (LAM)",
-    "LAM PCB": "케이블 (LAM)",
-    "시트메탈 (Sheetmetal Direct) / 프레임 (Frame Direct)": "시트메탈 · 프레임",
-    "메이저 모듈 (Major Module)": "메이저 모듈",
+    "캐스팅 (Casting)": "캐스팅",
+    "Lam + others (Cable Direct)": "Lam + others",
+    "케이블 (Cable Direct)": "Lam + others",              # 연초 이름
+    "LAM PCB": "LAM PCB",
+    "시트메탈 (Sheetmetal Direct) / 프레임 (Frame Direct)": "시트메탈 / 프레임",
+    "메이저 모듈 (Major Module)": "메이저모듈",
     "파워박스 (Powerbox)": "파워박스",
-    "Texon 구미 전체 - Gumi SM": "구미 시트메탈",
-    "Texon 구미 전체 - Gumi MCT": "구미 MCT",
-    "Texon 화성 전체 - Hwaseong ( Machining)": "화성 MCT",
-    "Texon 화성 전체 - Hwaseong (SM / FR)": "화성 시트메탈",
-    "Texon 구미 전체 - Gumi Cable": "케이블 (사내)",
-    "Texon 화성 전체 - Hwaseong cable": "케이블 (사내)",
-    "Texon 미국 전체 - USA Cable": "케이블 (사내)",
-    "Texon - YONGIN Cable": "케이블 (사내)",
-    "Texon - YONGIN (Machining)": "용인 가공",
-    "Texon - YONGIN (SM/Machining)": "용인 가공",
+    "EMA": "EMA",
     "UCT (SM)": "UCT",
     "CELESTICA (SM/Frame)": "CELESTICA",
     "AVALON (SM)": "AVALON",
-    "AVALON (SM/Machining)": "AVALON",
-    "Cleaning": "세정",
+    "AVALON (SM/Machining)": "AVALON",                    # 연초 이름
+    "Cleaning": "Cleaning",
     "Surface Treatment": "표면처리",
-    # 연초에 쓰던 옛 이름들. 같은 줄인데 이름만 바뀌었다.
-    "케이블 (Cable Direct)": "케이블 (LAM)",
-    "Texon 구미 전체 - Gumi SM / Machining": "구미 시트메탈",
-    "Texon 화성 전체 - Hwaseong (SM / Machining/ FR)": "화성 시트메탈",
+    "Data Center": "Data Center",
+    "Space X": "Space X",
+    "Texon 구미 전체 - Gumi SM": "구미 시트메탈",
+    "Texon 구미 전체 - Gumi SM / Machining": "구미 시트메탈",   # 연초 이름
+    "Texon 구미 전체 - Gumi MCT": "구미 MCT",
+    "Texon 화성 전체 - Hwaseong ( Machining)": "화성 머시닝",
+    "Texon - YONGIN (Machining)": "용인 머시닝",
+    "Texon - YONGIN (SM/Machining)": "용인 머시닝",            # 연초 이름
+    "Texon 화성 전체 - Hwaseong (SM / FR)": "화성 시트메탈 / 프레임",
+    "Texon 화성 전체 - Hwaseong (SM / Machining/ FR)": "화성 시트메탈 / 프레임",
+    "Texon 구미 전체 - Gumi Cable": "구미 케이블",
+    "Texon 화성 전체 - Hwaseong cable": "화성 케이블",
+    "Texon 미국 전체 - USA Cable": "USA 케이블",
+    "Texon - YONGIN Cable": "용인 케이블",
+
+    # ── 월 계획 (Sum 시트). 계획은 일일보고보다 굵어서 한 줄이 여러
+    #    품목을 덮는다. 대표 품목에 붙이고 어디까지 덮는지 적어 둔다.
+    "Metal": "메탈 가공",
+    "Plastic": "플라스틱 가공",
+    "Cable LAM": "Lam + others",
+    "Sheet metal": "시트메탈 / 프레임",
+    "Frame": "시트메탈 / 프레임",
+    "Major Modules": "메이저모듈",
+    "PBX": "파워박스",
+    "Gumi Sheet Metal": "구미 시트메탈",
+    "Gumi MCT": "구미 MCT",
+    "Hwaseong MCT": "화성 머시닝",
+    "Hwaseong Sheet metal": "화성 시트메탈 / 프레임",
+    "Cable Internal": "구미 케이블",
 }
 
-# 계획 파일에 나오는 순서. 표는 계획 큰 것부터 그리므로 참고용이다.
-ITEM_ORDER = ["케이블 (사내)", "메탈 가공", "파워박스", "메이저 모듈",
-              "시트메탈 · 프레임", "데이터센터", "플라스틱 가공", "케이블 (LAM)",
-              "화성 시트메탈", "구미 시트메탈", "EMA", "화성 MCT",
-              "Space X", "구미 MCT", "용인 가공", "UCT", "CELESTICA",
-              "AVALON", "세정", "표면처리"]
+# 계획 한 줄이 덮는 다른 품목들. 표에서 '계획 $0' 으로 보이는 이유다.
+PLAN_COVERS = {
+    "메탈 가공": ["엔클로져", "캐스팅"],
+    "Lam + others": ["LAM PCB"],
+    "구미 케이블": ["화성 케이블", "USA 케이블", "용인 케이블"],
+}
+
+# 보고서에 적히는 순서. 표도 이 순서로 그린다.
+ITEM_ORDER = [
+    "메탈 가공", "엔클로져", "플라스틱 가공", "캐스팅", "Lam + others",
+    "LAM PCB", "시트메탈 / 프레임", "메이저모듈", "파워박스", "EMA",
+    "UCT", "CELESTICA", "AVALON", "Cleaning", "표면처리",
+    "Data Center",
+    "Space X",
+    "구미 시트메탈", "구미 MCT", "화성 머시닝", "용인 머시닝",
+    "화성 시트메탈 / 프레임", "구미 케이블", "화성 케이블", "USA 케이블",
+    "용인 케이블",
+]
 
 # 보고서 묶음.
 #
@@ -81,8 +93,7 @@ ITEM_ORDER = ["케이블 (사내)", "메탈 가공", "파워박스", "메이저 
 #   내부거래 (Internal)   구미/화성/미국/용인
 #   총합 (내부거래 포함) = 소계 + 내부거래
 #
-# 내부거래는 텍슨 사이트(구미 · 화성 · 용인 · 미국)끼리 오간 것이다 —
-# 구미 SM·MCT, 화성 가공·판금, 용인 가공, 그리고 네 곳의 케이블.
+# 내부거래는 텍슨 사이트(구미 · 화성 · 용인 · 미국)끼리 오간 것이다.
 # UCT · CELESTICA · AVALON 은 바깥 고객이라 반도체 쪽이다.
 #
 # 한 줄은 한 쪽에만 들어간다. 양쪽에 넣으면 총합에서 두 번 세어져
@@ -92,22 +103,22 @@ GROUPS = [("semi", "반도체 (SEMI)"),
           ("space", "우주항공 (Space X)")]
 INTERNAL = ("internal", "구미/화성/미국 (Gumi/Hwaseong/USA/YONGIN)")
 
-ITEM_GROUP = {
-    "메탈 가공": "semi", "플라스틱 가공": "semi", "케이블 (LAM)": "semi",
-    "시트메탈 · 프레임": "semi", "메이저 모듈": "semi", "파워박스": "semi",
-    "EMA": "semi", "세정": "semi", "표면처리": "semi",
-    "UCT": "semi", "CELESTICA": "semi", "AVALON": "semi",
-    "데이터센터": "dc",
-    "Space X": "space",
-    "구미 시트메탈": "internal", "구미 MCT": "internal", "화성 MCT": "internal",
-    "화성 시트메탈": "internal", "용인 가공": "internal",
-    "케이블 (사내)": "internal",
-}
+_INTERNAL_ITEMS = ("구미 시트메탈", "구미 MCT", "화성 머시닝", "용인 머시닝",
+                   "화성 시트메탈 / 프레임", "구미 케이블", "화성 케이블",
+                   "USA 케이블", "용인 케이블")
+
+ITEM_GROUP = {}
+for _it in ITEM_ORDER:
+    ITEM_GROUP[_it] = ("internal" if _it in _INTERNAL_ITEMS
+                       else "dc" if _it == "Data Center"
+                       else "space" if _it == "Space X"
+                       else "semi")
 
 
 def group_of(item: str) -> str:
     """모르는 품목은 반도체로 본다 — 총합에서 빠지는 것보단 낫다."""
     return ITEM_GROUP.get(item, "semi")
+
 
 _MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
@@ -514,15 +525,22 @@ def month_view(store: dict, month: str) -> dict:
             continue
         plan_item[item] = plan_item.get(item, 0.0) + float(amt or 0)
 
-    names = set(plan_item) | set(act)
+    # 계획도 실적도 0 인 줄도 자리를 지킨다. 보고서에 있는 줄이
+    # 그 달만 조용하다고 사라지면, 빠진 건지 0 인 건지 알 수가 없다.
+    names = set(ITEM_ORDER) | set(plan_item) | set(act)
     rows = []
     for it in names:
         p = round(plan_item.get(it, 0.0))
         a = round((act.get(it) or {}).get("amount", 0.0))
         rows.append({"item": it, "plan": p, "actual": a,
                      "qty": round((act.get(it) or {}).get("qty", 0.0)),
-                     "rate": round(a * 100 / p) if p > 0 else None})
-    rows.sort(key=lambda r: (-r["plan"], -r["actual"], r["item"]))
+                     "rate": round(a * 100 / p) if p > 0 else None,
+                     # 계획 한 줄이 여러 품목을 덮는다. 표에서 '계획 0'
+                     # 으로 보이는 줄이 어디에 묶여 있는지 알려 준다.
+                     "covers": PLAN_COVERS.get(it) or []})
+    # 보고서에 적히는 순서대로. 계획 큰 순으로 그리면 매주 줄이 움직인다.
+    _ord = {name: n for n, name in enumerate(ITEM_ORDER)}
+    rows.sort(key=lambda r: (_ord.get(r["item"], 900), -r["plan"], r["item"]))
 
     for r in rows:
         r["group"] = group_of(r["item"])

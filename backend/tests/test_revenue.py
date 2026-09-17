@@ -207,12 +207,16 @@ R.apply_daily(st, R.parse_daily(raw, 2026), 'a.xlsx')
 R.apply_plan(st, R.parse_plan(pb, 'x.xlsx'), 'p.xlsx', '2026-09')
 v = R.month_view(st, '2026-09')
 by = {r['item']: r for r in v['items']}
-assert by['메탈 가공']['actual'] == 330, by['메탈 가공']       # 엔클로져 120+210
-assert by['메탈 가공']['plan'] == 300
+# 일일보고 한 줄이 한 품목이다. 엔클로져는 메탈 가공에 섞이지 않는다.
+assert by['엔클로져']['actual'] == 330, by['엔클로져']         # 120 + 210
+assert by['메탈 가공']['plan'] == 300, by['메탈 가공']
+assert by['메탈 가공']['covers'] == ['엔클로져', '캐스팅'], by['메탈 가공']
 assert by['파워박스']['actual'] == 40 and by['파워박스']['plan'] == 200
 assert v['actual'] == 370 and v['plan'] == 500, (v['actual'], v['plan'])
 assert v['rate'] == 74
-assert v['items'][0]['item'] == '메탈 가공', '계획 큰 것부터가 아니다'
+# 보고서 순서대로 그린다 (계획 큰 순이 아니라)
+assert [r['item'] for r in v['items']][:2] == ['메탈 가공', '엔클로져'], \
+    [r['item'] for r in v['items']]
 ok += 1
 
 # 기준일은 실적이 들어온 마지막 날. 계획만 적힌 앞날이 아니다.
@@ -241,7 +245,7 @@ assert R.unknown_rows(st2, ['새로 생긴 줄 (Unknown)', '파워박스 (Powerb
 ok += 1
 
 # 연결해 주면 바로 합계에 들어온다
-st2['map']['새로 생긴 줄 (Unknown)'] = '시트메탈 · 프레임'
+st2['map']['새로 생긴 줄 (Unknown)'] = '시트메탈 / 프레임'
 assert R.month_view(st2, '2026-09')['actual'] == 4706
 assert R.unmapped_in_store(st2) == []
 ok += 1
@@ -261,9 +265,9 @@ mix = daily_book(37, ['09 / 07'], [
 R.apply_daily(st3, R.parse_daily(mix, 2026), 'm.xlsx')
 v3 = R.month_view(st3, '2026-09')
 box = {b['key']: b['actual'] for b in v3['groups']}
-assert box['semi'] == 1050, box                # 메이저 모듈 1000 + UCT 50
+assert box['semi'] == 1050, box                # 메이저모듈 1000 + UCT 50
 assert box['dc'] == 400 and box['space'] == 90, box
-assert v3['internal']['actual'] == 500, v3['internal']   # 구미 SM 200 + 사내 케이블 300
+assert v3['internal']['actual'] == 500, v3['internal']   # 구미 SM 200 + 구미 케이블 300
 assert v3['subtotal']['actual'] == 1540, v3['subtotal']
 assert v3['grand']['actual'] == 2040, v3['grand']
 # 총합은 일일보고 총합계와 같아야 한다 — 두 번 세면 어긋난다
@@ -274,8 +278,9 @@ ok += 1
 
 # 사이트 행은 반도체에 없다
 assert not [r for r in v3['groups'][0]['items'] if r['item'] in
-            ('구미 시트메탈', '케이블 (사내)', '구미 MCT', '화성 MCT',
-             '화성 시트메탈', '용인 가공')], '내부거래 행이 반도체에 들어갔다'
+            ('구미 시트메탈', '구미 케이블', '구미 MCT', '화성 머시닝',
+             '화성 시트메탈 / 프레임', '용인 머시닝')], \
+    '내부거래 행이 반도체에 들어갔다'
 assert [r for r in v3['internal']['items'] if r['item'] == 'UCT'] == [], \
     'UCT 는 바깥 고객이라 반도체 쪽이다'
 ok += 1
