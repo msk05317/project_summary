@@ -5526,6 +5526,15 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-group-mass { background: #EFF6FF; color: #1E40AF; }',
     '.mdl-group-dev { background: #FEF3C7; color: #92400E; }',
     '.mdl-group-cnt { margin-left: 8px; font-size: 12px; color: #64748B; font-weight: 600; }',
+    // 개발품이 늦고 있으면 표를 훑지 않아도 여기서 보인다.
+    '.mdl-late-badge, .mdl-soon-badge { margin-left:8px; padding:1.5px 8px; border-radius:99px;',
+    '  font-size:11px; font-weight:800; cursor:default; }',
+    '.mdl-late-badge { background:#FEE2E2; color:#991B1B; }',
+    '.mdl-soon-badge { background:#FFEDD5; color:#9A3412; }',
+    '.mdl-why-late, .mdl-why-soon { font-size:10.5px; font-weight:700; margin-top:2px;',
+    '  line-height:1.35; }',
+    '.mdl-why-late { color:#B91C1C; }',
+    '.mdl-why-soon { color:#C2410C; }',
     '.mdl-input { width: 110px; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 13px; text-align: right; background: #FFFFFF; }',
     '.mdl-input:focus { outline: none; border-color: #2563EB; }',
     '.mdl-table select[data-field="group"] { padding: 6px 10px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; background: #EFF6FF; color: #2563EB; cursor: pointer; }',
@@ -6741,9 +6750,26 @@ window.renderAdminV2ByDivision = function(){
     ['양산', '개발'].forEach(function(g) {
       const list = byGroup[g];
       if (!list.length) return;
+      // 개발품이 늦고 있으면 줄마다 찾아보지 않아도 여기서 보인다.
+      var _al = window._mdlAlerts || {};
+      var _late = list.filter(function(x) {
+        return (_al[x.id] || {}).kind === '지연';
+      });
+      var _soon = list.filter(function(x) {
+        return (_al[x.id] || {}).kind === '주의';
+      });
       html += '<tr class="mdl-group-row"><td colspan="18">' +
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
-        '<span class="mdl-group-cnt">' + list.length + '개</span></td></tr>';
+        '<span class="mdl-group-cnt">' + list.length + '개</span>' +
+        (_late.length
+          ? '<span class="mdl-late-badge" title="' +
+            _late.slice(0, 8).map(function(x) {
+              return String(x.name || x.id) + ' — ' + ((_al[x.id] || {}).why || '사유 미기재');
+            }).join('&#10;').replace(/"/g, '&quot;') +
+            '">지연 ' + _late.length + '</span>' : '') +
+        (_soon.length
+          ? '<span class="mdl-soon-badge">집중관리 ' + _soon.length + '</span>' : '') +
+        '</td></tr>';
       list.forEach(function(m) {
         const price = _shownPrice(m);
         const mcost = _moneyOf(m.material_cost);
@@ -6760,6 +6786,15 @@ window.renderAdminV2ByDivision = function(){
             '<input data-field="name" class="mdl-input mdl-input-name" placeholder="모델명" value="' +
               String(m.name || '').replace(/"/g, '&quot;') + '">' +
             _phaseBadge(m) +
+            (function() {
+              // 왜 늦었다고 보는지 적어 준다. 개수만 보여주면 어느 줄인지
+              // 찾느라 표를 처음부터 훑게 된다.
+              var a = (window._mdlAlerts || {})[m.id];
+              if (!a) return '';
+              var cls = a.kind === '지연' ? 'mdl-why-late' : 'mdl-why-soon';
+              return '<div class="' + cls + '">' + _aE(a.kind) + ' · ' +
+                _aE(a.why || '사유 미기재') + '</div>';
+            })() +
           '</td>' +
           // 전환 주차가 지났으면 양산으로 골라둔다. 저장하면 그대로 저장돼
           // 취합이 맞는다. 집계는 저장 전에도 이 값을 본다(_display_group).
@@ -7378,11 +7413,15 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     }).then(function(r) { return r.json(); })
       .then(function(d) {
         window._modelsData = (d && d.models) || [];
+        // 지연 여부는 서버가 앱과 같은 규칙으로 계산해 따로 준다.
+        // 모델 안에 섞여 있으면 저장할 때 models.json 에 눌러앉는다.
+        window._mdlAlerts = (d && d.alerts) || {};
         renderTable(container);
       })
       .catch(function() { 
         _projIsEss = false;
-        window._modelsData = []; 
+        window._modelsData = [];
+        window._mdlAlerts = {};
         renderTable(container); 
       });
   }

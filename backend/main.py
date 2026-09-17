@@ -13967,12 +13967,66 @@ def _sync_report_to_notes(it: dict) -> None:
 
 @app.get("/admin/projects/{project_key}/models")
 def admin_get_project_models(project_key: str, _admin: int = Depends(get_admin_session)):
-    """admin용 모델 목록 조회"""
+    """admin용 모델 목록 조회.
+
+    지연 여부는 모델 안에 넣지 않고 따로 내려준다. 이 화면이 고친 모델을
+    그대로 PUT 으로 돌려보내기 때문에, 계산해서 얹은 값이 models.json 에
+    눌러앉는다. 한 번 저장되면 날짜가 지나도 안 바뀌는 가짜 지연이 된다.
+    """
     models = _get_project_models(project_key)
     return {
         "project_key": project_key,
         "models": models,
+        "alerts": _admin_model_alerts(models),
     }
+
+
+def _admin_model_alerts(models) -> dict:
+    """모델 id → {kind, why}. 앱과 같은 규칙(_model_alert)을 쓴다."""
+    out = {}
+    for m in (models or []):
+        mid = str((m or {}).get("id") or "")
+        if not mid:
+            continue
+        disp = _display_group(m)
+        expected = ""
+        progress = None
+        if disp == "개발":
+            proc = _ensure_process(m)
+            _stage, expected = _process_current(proc)
+            progress = _process_progress(proc)
+        kind = _model_alert(m, disp, expected, progress)
+        if kind not in ("지연", "주의"):
+            continue
+        out[mid] = {"kind": kind, "group": disp,
+                    "why": _alert_why(m, disp, expected, kind)}
+    return out
+
+
+def _alert_why(m: dict, disp: str, expected: str, kind: str) -> str:
+    """왜 그렇게 봤는지 한 줄. 빈칸으로 두면 화면에서 따질 근거가 없다."""
+    manual = str((m or {}).get("status") or "").strip()
+    if manual in ("지연", "주의"):
+        return "상태를 %s 으로 지정" % manual
+    txt = " ".join(str((m or {}).get("issues") or "").split())
+    if _issue_says_delay(txt):
+        return txt[:60]
+    if disp != "개발" or not expected:
+        return ""
+    d = _parse_any_date(expected)
+    if not d:
+        return ""
+    import datetime as _dt
+    left = (d - _dt.date.today()).days
+    stage = str((m or {}).get("current_stage") or "").strip()
+    if not stage:
+        try:
+            stage = _process_current(_ensure_process(m))[0] or ""
+        except Exception:
+            stage = ""
+    head = ("%s " % stage) if stage else ""
+    return ("%s완료예정 %s · %d일 지남" % (head, expected, -left)) if left < 0 \
+        else ("%s완료예정 %s · %d일 남음" % (head, expected, left))
 
 
 @app.post("/admin/projects/{project_key}/models")

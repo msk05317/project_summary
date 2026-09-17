@@ -668,6 +668,19 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                       style: const TextStyle(
                           fontSize: 12.5, height: 1.4, color: Color(0xFF374151))),
                 ),
+              // 늦었는데 아무도 이유를 안 적어 두면 그 사실을 말한다.
+              // 빈칸으로 두면 사유가 없는 건지 화면이 안 보여주는 건지
+              // 알 수가 없어서, 결국 사람한테 다시 물어봐야 한다.
+              if (r.lines.isEmpty && r.kind == StatusWords.delayed)
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Text('지연 사유 미기재',
+                      style: TextStyle(
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFB45309))),
+                ),
             ]),
           ),
         ]),
