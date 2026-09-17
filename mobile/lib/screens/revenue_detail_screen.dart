@@ -151,43 +151,15 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           ],
         );
 
-    Widget itemRow(RevenueItem it) {
-      final quiet = it.plan == 0 && it.actual == 0;
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(children: [
-          Expanded(
-            child: Text(it.item,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.body.copyWith(
-                    fontSize: 12.5,
-                    color: quiet ? AppColors.textHint : AppColors.textMain)),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 76,
-            child: Text(Fmt.moneyShort(it.plan),
-                textAlign: TextAlign.right,
-                style: AppText.caption.copyWith(color: AppColors.textMute)),
-          ),
-          SizedBox(
-            width: 80,
-            child: Text(Fmt.moneyShort(it.actual),
-                textAlign: TextAlign.right,
-                style: AppText.bodyStrong.copyWith(
-                    fontSize: 12.5,
-                    color: quiet ? AppColors.textHint : AppColors.textMain)),
-          ),
-        ]),
-      );
-    }
-
-    Widget box(RevenueGroup g) {
-      final rows = g.items.where((e) => e.plan > 0 || e.actual > 0).toList();
+    // 부서 한 줄씩. 품목까지 펴 놓으면 스무 줄이 넘어가서, 정작
+    // '어느 부서가 얼마' 가 안 보인다.
+    Widget row(RevenueGroup g) {
+      final tint = g.key == 'internal'
+          ? AppColors.statusGray
+          : AppColors.summaryInProgress;
       return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.fromLTRB(16, 13, 16, 9),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
         decoration: BoxDecoration(
           color: AppColors.bgCard,
           borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -196,21 +168,29 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-              child: Text(g.label,
+              child: Text(g.short,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.bodyStrong.copyWith(fontSize: 14.5)),
+                  style: AppText.bodyStrong.copyWith(fontSize: 15)),
             ),
+            const SizedBox(width: 8),
             Text(g.rate == null ? '-' : '${g.rate}%',
-                style: AppText.caption.copyWith(color: AppColors.textMute)),
+                style: AppText.bodyStrong
+                    .copyWith(fontSize: 13.5, color: AppColors.textMute)),
           ]),
-          const SizedBox(height: 8),
-          // 앱에서는 실행계획과 실적만 본다. 사업계획(연초 목표)은
-          // 지금 잘 가고 있나와는 다른 이야기라 admin 에서만 본다.
-          Row(children: [
-            Expanded(child: stat('실행계획', Fmt.moneyShort(g.plan))),
-            Expanded(child: stat('실적', Fmt.moneyShort(g.actual))),
-          ]),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(Fmt.moneyShort(g.actual),
+                  style: const TextStyle(
+                      fontSize: 21, fontWeight: FontWeight.w800, height: 1.1)),
+              const SizedBox(width: 6),
+              Text('/ ${Fmt.moneyShort(g.plan)}',
+                  style: AppText.caption.copyWith(color: AppColors.textMute)),
+            ],
+          ),
           const SizedBox(height: 9),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
@@ -218,15 +198,9 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
               value: g.plan <= 0 ? 0 : (g.actual / g.plan).clamp(0.0, 1.0),
               minHeight: 5,
               backgroundColor: AppColors.statusGraySoft,
-              valueColor: AlwaysStoppedAnimation<Color>(g.key == 'internal'
-                  ? AppColors.statusGray
-                  : AppColors.summaryInProgress),
+              valueColor: AlwaysStoppedAnimation<Color>(tint),
             ),
           ),
-          if (rows.isNotEmpty) ...[
-            const Divider(height: 16, color: AppColors.borderSoft),
-            for (final it in rows) itemRow(it),
-          ],
         ]),
       );
     }
@@ -271,7 +245,12 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           ]),
         ),
         const SizedBox(height: 12),
-        for (final g in r.lines) box(g),
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 8),
+          child: Text('부서별',
+              style: AppText.caption.copyWith(color: AppColors.textMute)),
+        ),
+        for (final g in r.lines) row(g),
       ],
     );
   }

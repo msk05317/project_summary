@@ -61,13 +61,6 @@ class ExecRevenueCard extends StatelessWidget {
     return '${inn.join(' · ')} $n개 프로젝트';
   }
 
-  /// 실적이 들어온 마지막 주차. 달성률이 낮아 보이는 이유가 여기 있다 —
-  /// 못 채운 게 아니라 아직 안 온 주다.
-  String _asOf(RevenueMonth r) {
-    if (r.asOf.isEmpty) return '';
-    return '${r.asOf} 까지';
-  }
-
   /// 홈에서는 사업부 통 매출 하나만 본다. 어디서 나왔는지는 눌러서
   /// '매출 상세' 에서 본다 — 카드에 묶음을 늘어놓으면 홈이 길어진다.
   Widget _buildFromExcel(BuildContext context, RevenueMonth r) {
@@ -81,13 +74,19 @@ class ExecRevenueCard extends StatelessWidget {
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.h2),
           ),
           const Spacer(),
-          if (_asOf(r).isNotEmpty)
-            Text(_asOf(r),
-                style: AppText.caption.copyWith(color: AppColors.textHint)),
-          if (onTap != null)
+          if (onTap != null) ...[
+            Text('상세 보기',
+                textAlign: TextAlign.right,
+                style: AppText.caption.copyWith(color: AppColors.textMute)),
             const Icon(Icons.chevron_right, size: 18, color: AppColors.textMute),
+          ],
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
+        Text('실적 / 실행계획',
+            style: AppText.caption.copyWith(color: AppColors.textHint)),
+        const SizedBox(height: 3),
+        // 실적과 실행계획을 한 줄에. 밑에 '9월 실행계획 …' 을 또 적으면
+        // 같은 숫자를 두 번 말하는 셈이다.
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
@@ -102,13 +101,17 @@ class ExecRevenueCard extends StatelessWidget {
                       height: 1.1,
                       color: AppColors.textMain)),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Flexible(
-              child: Text('나갔습니다',
+              child: Text('/ ${Fmt.moneyShort(r.plan)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.body.copyWith(color: AppColors.textMute)),
+                  style: AppText.body.copyWith(
+                      fontSize: 16, color: AppColors.textMute)),
             ),
+            const Spacer(),
+            Text(rate == null ? '-' : '$rate%',
+                style: AppText.bodyStrong.copyWith(fontSize: 15)),
           ],
         ),
         const SizedBox(height: 11),
@@ -122,14 +125,6 @@ class ExecRevenueCard extends StatelessWidget {
                 const AlwaysStoppedAnimation<Color>(AppColors.summaryInProgress),
           ),
         ),
-        const SizedBox(height: 6),
-        Row(children: [
-          Text('${Fmt.monthShort(r.month)} 실행계획 ${Fmt.moneyShort(r.plan)}',
-              style: AppText.caption.copyWith(color: AppColors.textMute)),
-          const Spacer(),
-          Text(rate == null ? '-' : '$rate%',
-              style: AppText.bodyStrong.copyWith(fontSize: 13)),
-        ]),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(

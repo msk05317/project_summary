@@ -197,6 +197,48 @@ class _AlertListScreenState extends State<AlertListScreen> {
     );
   }
 
+  /// 정상은 프로젝트 한 줄씩 건수만.
+  ///
+  /// 품번을 192줄 늘어놓아도 읽을 사람이 없다. '어디가 몇 건' 만 보고,
+  /// 자세한 건 프로젝트로 들어가서 본다.
+  Widget _projectRow(AlertProject p, Color tint) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ProjectOverviewScreen(
+          projectKey: p.key,
+          projectName: p.label,
+        ),
+      )),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Row(children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(p.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.bodyStrong.copyWith(fontSize: 14.5)),
+          ),
+          Text('${p.count}건',
+              style: TextStyle(
+                  fontSize: 13.5, fontWeight: FontWeight.w800, color: tint)),
+          const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -222,6 +264,9 @@ class _AlertListScreenState extends State<AlertListScreen> {
                     style: TextStyle(color: Color(0xFFDC2626))));
           }
           final list = _listFor(a);
+          final byProject = (_filter == '정상')
+              ? (a.byKind['정상'] ?? const <AlertProject>[])
+              : const <AlertProject>[];
           return Column(children: [
             Container(
               width: double.infinity,
@@ -258,7 +303,14 @@ class _AlertListScreenState extends State<AlertListScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refresh,
-                child: list.isEmpty
+                child: byProject.isNotEmpty
+                    ? ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        itemCount: byProject.length,
+                        itemBuilder: (_, i) =>
+                            _projectRow(byProject[i], _tintOf(_filter)),
+                      )
+                    : list.isEmpty
                     ? ListView(children: const [
                         SizedBox(height: 80),
                         Center(
