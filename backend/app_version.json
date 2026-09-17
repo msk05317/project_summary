@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.18",
-  "latest_version_code": 41,
+  "latest_version": "2.3.19",
+  "latest_version_code": 42,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "매출 카드 두 군데 손봤습니다.\n\n· 예상을 안 넣은 달도 막대가 그대로 있습니다\n· 사업부 줄의 '100%' 를 뺐습니다 — 달성률로 읽혔습니다\n· 부서 줄이 '실적 · 비중' 이라고 적힙니다",
+  "release_notes": "예상을 Commodity 별로 넣습니다.\n\n· 합계는 적는 게 아니라 항목을 더해서 나옵니다\n· 부서마다 제 예상과 달성률이 생겼습니다\n· 관리자 화면에서 15줄을 직접 적거나 파일로 넣습니다",
   "force_update": false
 }
