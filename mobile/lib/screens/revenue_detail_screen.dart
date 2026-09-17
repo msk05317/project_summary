@@ -43,7 +43,8 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
   late Future<RevenueMonth> _revFuture;
   // 사업부를 펴 놓았는지. 지금은 반도체 하나지만, 다른 사업부 파일이
   // 들어오면 줄이 늘어난다.
-  bool _openDiv = false;
+  // 접어 두면 화면이 통째로 빈다. 세부를 보려고 들어온 화면이다.
+  bool _openDiv = true;
   _Sort _sort = _Sort.actual;
 
   @override
@@ -139,20 +140,18 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
 
   /// 엑셀에서 받은 매출 — 보고서와 같은 큰 틀로.
   Widget _excelBody(RevenueMonth r) {
-    Widget stat(String k, String v, {bool big = false}) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(k, style: AppText.caption.copyWith(color: AppColors.textMute)),
-            const SizedBox(height: 2),
-            Text(v,
+    // 라벨은 왼쪽, 값은 오른쪽 끝. 셋으로 쪼개 놓으면 넓은 화면에서
+    // 값이 죄다 왼쪽에 몰려 보인다.
+    Widget kv(String k, String v) => Row(children: [
+          Expanded(
+            child: Text(k,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: big
-                    ? const TextStyle(
-                        fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)
-                    : AppText.bodyStrong),
-          ],
-        );
+                style: AppText.caption.copyWith(color: AppColors.textMute)),
+          ),
+          const SizedBox(width: 10),
+          Text(v, maxLines: 1, style: AppText.bodyStrong),
+        ]);
 
     // 부서 한 줄씩 (펴 봤을 때)
     Widget deptRow(RevenueGroup g) {
@@ -214,33 +213,25 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 위 카드에 이미 크게 나온 숫자다. 여기서 또 크게 쌓으면
+                    // 같은 말을 두 번 하면서 오른쪽만 비운다. 한 줄에 붙인다.
                     Row(children: [
                       Expanded(
                         child: Text('반도체',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: AppText.bodyStrong.copyWith(fontSize: 15.5)),
                       ),
+                      const SizedBox(width: 8),
+                      Text('${Fmt.moneyShort(r.actual)} / ${Fmt.moneyShort(r.plan)}',
+                          style: AppText.caption
+                              .copyWith(color: AppColors.textMute)),
+                      const SizedBox(width: 8),
                       Text(r.rate == null ? '-' : '${r.rate}%',
-                          style: AppText.bodyStrong.copyWith(
-                              fontSize: 13.5, color: AppColors.textMute)),
+                          style: AppText.bodyStrong.copyWith(fontSize: 13.5)),
                       Icon(_openDiv ? Icons.expand_less : Icons.expand_more,
                           size: 20, color: AppColors.textMute),
                     ]),
-                    const SizedBox(height: 6),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(Fmt.moneyShort(r.actual),
-                            style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                height: 1.1)),
-                        const SizedBox(width: 6),
-                        Text('/ ${Fmt.moneyShort(r.plan)}',
-                            style: AppText.caption
-                                .copyWith(color: AppColors.textMute)),
-                      ],
-                    ),
                     const SizedBox(height: 9),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(999),
@@ -281,31 +272,67 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Flexible(
+              Expanded(
                 child: Text('${Fmt.monthShort(r.month)} 총합',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppText.h2),
               ),
-              const Spacer(),
               if (r.asOf.isNotEmpty)
                 Text('${r.asOf} 까지',
                     style: AppText.caption.copyWith(color: AppColors.textHint)),
             ]),
             const SizedBox(height: 10),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: stat('실적', Fmt.moneyShort(r.actual), big: true)),
-              Expanded(child: stat('실행계획', Fmt.moneyShort(r.plan))),
-              Expanded(
-                  child: stat('달성', r.rate == null ? '-' : '${r.rate}%')),
-            ]),
+            Text('실적 / 실행계획',
+                style: AppText.caption.copyWith(color: AppColors.textHint)),
+            const SizedBox(height: 3),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(Fmt.moneyShort(r.actual),
+                          maxLines: 1,
+                          style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              height: 1.1)),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text('/ ${Fmt.moneyShort(r.plan)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.body.copyWith(
+                                fontSize: 15, color: AppColors.textMute)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(r.rate == null ? '-' : '${r.rate}%',
+                    style: AppText.bodyStrong.copyWith(fontSize: 15)),
+              ],
+            ),
+            const SizedBox(height: 11),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: r.plan <= 0 ? 0 : (r.actual / r.plan).clamp(0.0, 1.0),
+                minHeight: 7,
+                backgroundColor: AppColors.statusGraySoft,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                    AppColors.summaryInProgress),
+              ),
+            ),
             const Divider(height: 20, color: AppColors.borderSoft),
-            Row(children: [
-              Expanded(
-                  child: stat('소계 (내부거래 제외)',
-                      Fmt.moneyShort(r.actual - (r.internal?.actual ?? 0)))),
-              Expanded(child: stat('연간 누적', Fmt.moneyShort(r.ytd))),
-            ]),
+            kv('소계 (내부거래 제외)',
+                Fmt.moneyShort(r.actual - (r.internal?.actual ?? 0))),
+            const SizedBox(height: 7),
+            kv('연간 누적', Fmt.moneyShort(r.ytd)),
           ]),
         ),
         const SizedBox(height: 12),

@@ -163,3 +163,6 @@ backups/
 
 models_prod_backup.json
 Claude outputs/
+
+# 지울 수 없는 환경에서 임시로 치워 둔 것
+_to_delete/
