@@ -139,9 +139,6 @@ class ExecRevenueCard extends StatelessWidget {
           Expanded(
               child: _MiniStat(label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
         ]),
-        const SizedBox(height: 10),
-        Text('반도체사업부 총합 (내부거래 포함)',
-            style: AppText.caption.copyWith(color: AppColors.textHint)),
       ]),
     );
   }

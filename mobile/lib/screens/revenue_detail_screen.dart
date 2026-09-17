@@ -41,6 +41,9 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
   // 매출은 엑셀이 원본이다. 홈 카드와 같은 값을 봐야 한다 — 전에는
   // 여기만 모델 판가로 계산해서 홈과 숫자가 달랐다.
   late Future<RevenueMonth> _revFuture;
+  // 사업부를 펴 놓았는지. 지금은 반도체 하나지만, 다른 사업부 파일이
+  // 들어오면 줄이 늘어난다.
+  bool _openDiv = false;
   _Sort _sort = _Sort.actual;
 
   @override
@@ -151,56 +154,117 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           ],
         );
 
-    // 부서 한 줄씩. 품목까지 펴 놓으면 스무 줄이 넘어가서, 정작
-    // '어느 부서가 얼마' 가 안 보인다.
-    Widget row(RevenueGroup g) {
+    // 부서 한 줄씩 (펴 봤을 때)
+    Widget deptRow(RevenueGroup g) {
       final tint = g.key == 'internal'
           ? AppColors.statusGray
           : AppColors.summaryInProgress;
-      return Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: AppColors.borderDefault),
-        ),
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
               child: Text(g.short,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.bodyStrong.copyWith(fontSize: 15)),
+                  style: AppText.body
+                      .copyWith(fontSize: 13.5, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 8),
-            Text(g.rate == null ? '-' : '${g.rate}%',
-                style: AppText.bodyStrong
-                    .copyWith(fontSize: 13.5, color: AppColors.textMute)),
+            Text('${Fmt.moneyShort(g.actual)} / ${Fmt.moneyShort(g.plan)}',
+                style: AppText.caption.copyWith(color: AppColors.textMute)),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 38,
+              child: Text(g.rate == null ? '-' : '${g.rate}%',
+                  textAlign: TextAlign.right,
+                  style: AppText.bodyStrong.copyWith(fontSize: 12.5)),
+            ),
           ]),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(Fmt.moneyShort(g.actual),
-                  style: const TextStyle(
-                      fontSize: 21, fontWeight: FontWeight.w800, height: 1.1)),
-              const SizedBox(width: 6),
-              Text('/ ${Fmt.moneyShort(g.plan)}',
-                  style: AppText.caption.copyWith(color: AppColors.textMute)),
-            ],
-          ),
-          const SizedBox(height: 9),
+          const SizedBox(height: 5),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: g.plan <= 0 ? 0 : (g.actual / g.plan).clamp(0.0, 1.0),
-              minHeight: 5,
+              minHeight: 4,
               backgroundColor: AppColors.statusGraySoft,
               valueColor: AlwaysStoppedAnimation<Color>(tint),
             ),
           ),
+        ]),
+      );
+    }
+
+    // 사업부 한 줄. 누르면 그 안의 부서가 펴진다 — 데이터 센터도
+    // 우주항공도 구미·화성도 결국 반도체 하나 안의 이야기다.
+    Widget divisionCard() {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.borderDefault),
+        ),
+        child: Column(children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            onTap: () => setState(() => _openDiv = !_openDiv),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text('반도체',
+                            style: AppText.bodyStrong.copyWith(fontSize: 15.5)),
+                      ),
+                      Text(r.rate == null ? '-' : '${r.rate}%',
+                          style: AppText.bodyStrong.copyWith(
+                              fontSize: 13.5, color: AppColors.textMute)),
+                      Icon(_openDiv ? Icons.expand_less : Icons.expand_more,
+                          size: 20, color: AppColors.textMute),
+                    ]),
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(Fmt.moneyShort(r.actual),
+                            style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                height: 1.1)),
+                        const SizedBox(width: 6),
+                        Text('/ ${Fmt.moneyShort(r.plan)}',
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textMute)),
+                      ],
+                    ),
+                    const SizedBox(height: 9),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: r.plan <= 0
+                            ? 0
+                            : (r.actual / r.plan).clamp(0.0, 1.0),
+                        minHeight: 5,
+                        backgroundColor: AppColors.statusGraySoft,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppColors.summaryInProgress),
+                      ),
+                    ),
+                  ]),
+            ),
+          ),
+          if (_openDiv)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Column(children: [
+                const Divider(height: 8, color: AppColors.borderSoft),
+                for (final g in r.lines) deptRow(g),
+              ]),
+            ),
         ]),
       );
     }
@@ -247,10 +311,10 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.only(left: 2, bottom: 8),
-          child: Text('부서별',
+          child: Text('사업부',
               style: AppText.caption.copyWith(color: AppColors.textMute)),
         ),
-        for (final g in r.lines) row(g),
+        divisionCard(),
       ],
     );
   }
