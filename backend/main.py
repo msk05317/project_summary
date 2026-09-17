@@ -25852,18 +25852,15 @@ _stamp_holds_once()
 
 
 # ─────────────────────────────────────────────────────────────
-# 매출 — 사업부 전체. 원본은 엑셀이다.
+# 매출 — 사업부 전체. 원본은 주간보고 엑셀이다.
 #
 # 모델 판가 × 수량으로 계산하던 매출을 그만둔다. 판가는 추정이고 실제로
 # 하바플레이트 55종 중 52종이 3,400 으로 일괄 입력돼 있었다. 확정 금액은
-# 이미 일일보고와 월 계획 엑셀에 있다. 여기서는 그걸 받아 두기만 한다.
-#
-#   실적  일일보고 (DAILY) · W## 시트 · 날짜별
-#   계획  월 매출 계획 (Estimate Revenue in Sep) · Sum 시트
+# 이미 주간보고 '1. 계획 대비 실적 (수정본) Actual FCST' 시트에 있다 —
+# 줄마다 사업계획/실행계획/실적, 열마다 W1~W52, 맨 아래 [합 계] 블록에
+# 보고서 묶음까지 그대로.
 # ─────────────────────────────────────────────────────────────
 REVENUE_FILE = DATA_DIR / "revenue.json"
-
-
 _MONTH_RE = re.compile(r"20\d\d-\d{2}$")
 
 
@@ -25895,7 +25892,7 @@ def _year_hint(name: str) -> int:
 
 @app.get("/revenue")
 def get_revenue(month: str = None):
-    """그 달의 품목별 계획·실적. 앱 홈의 매출 카드가 이걸 쓴다."""
+    """그 달의 묶음별 계획·실적. 앱 홈의 매출 카드가 이걸 쓴다."""
     return _rev.month_view(_load_revenue(), _check_month(month))
 
 
@@ -25906,150 +25903,66 @@ def admin_revenue_state(month: str = None,
     month = _check_month(month)
     store = _load_revenue()
     view = _rev.month_view(store, month)
-    view["unmapped"] = _rev.unmapped_in_store(store)
-    view["items_all"] = _rev.items_of(store)
-    view["map"] = store.get("map") or {}
+    y = (store.get("years") or {}).get(month[:4]) or {}
+    view["months_all"] = sorted((y.get("months") or {}).keys())
     return view
 
 
 @app.post("/admin/revenue/import")
-async def admin_revenue_import(kind: str = Form(...),
-                               mode: str = Form("preview"),
-                               month: str = Form(""),
-                               mapping: str = Form(""),
+async def admin_revenue_import(mode: str = Form("preview"),
                                file: UploadFile = File(...),
                                _admin: int = Depends(get_admin_session)):
-    """일일보고(실적) · 월 계획 엑셀을 받는다.
+    """주간보고 엑셀을 받는다.
 
-    mode=preview 면 읽기만 하고 무엇이 달라지는지 돌려준다. 엑셀 행 이름은
-    언제든 바뀌므로 모르는 행은 조용히 빠뜨리지 않고 세워서 물어본다.
-    mode=commit 이어야 저장한다. 실적은 '날짜' 단위로 갈아 끼우므로 같은
-    파일을 두 번 올려도 더해지지 않는다.
+    mode=preview 면 읽기만 하고 무엇이 달라지는지 돌려준다. mode=commit
+    이어야 저장한다. 파일 한 장이 한 해 전체라 그 해를 통째로 갈아 끼운다.
     """
-    kind = (kind or "").strip()
-    if kind not in ("daily", "plan"):
-        raise HTTPException(status_code=400, detail="kind 는 daily 또는 plan 입니다.")
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="빈 파일입니다.")
     name = file.filename or ""
     store = _load_revenue()
-
-    # 화면에서 연결해 준 것이 있으면 먼저 반영한다 (commit 일 때만 저장)
-    added = {}
-    if mapping:
-        try:
-            got = json.loads(mapping)
-        except Exception:
-            # 조용히 넘기면 방금 연결한 항목이 그대로 빠진 채 '저장됐다' 가 뜬다
-            raise HTTPException(status_code=400, detail="연결 정보를 읽지 못했습니다.")
-        if not isinstance(got, dict):
-            raise HTTPException(status_code=400, detail="연결 정보 형식이 잘못됐습니다.")
-        for k, v in (got or {}).items():
-            k = _rev.norm(k)
-            if not k:
-                continue
-            if v:
-                store["map"][k] = str(v)
-                added[k] = str(v)
-            else:
-                store["map"].pop(k, None)
-
     try:
-        if kind == "daily":
-            parsed = _rev.parse_daily(raw, _year_hint(name))
-            labels = parsed.get("rows") or []
-        else:
-            parsed = _rev.parse_plan(raw, name)
-            labels = parsed.get("order") or []
+        parsed = _rev.parse_weekly(raw, _year_hint(name))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"엑셀을 읽지 못했습니다: {e}")
 
-    if kind == "daily" and not parsed.get("days"):
-        raise HTTPException(status_code=400,
-                            detail="W## 시트에서 날짜를 못 찾았습니다.")
-    if kind == "plan" and not parsed.get("items"):
-        raise HTTPException(status_code=400,
-                            detail="Sum 시트에서 품목을 못 찾았습니다.")
+    months = sorted((parsed.get("months") or {}).keys())
+    view_month = months[-1] if months else datetime.now().strftime("%Y-%m")
+    for m in reversed(months):
+        # 실적이 들어와 있는 마지막 달을 보여준다
+        trial0 = {"years": {str(parsed["year"]): {
+            "weeks": parsed["weeks"], "months": parsed["months"],
+            "totals": parsed["totals"], "lines": parsed["lines"]}}}
+        if _rev.month_view(trial0, m)["actual"] > 0:
+            view_month = m
+            break
 
-    # 모르는 행 — 금액이 있는 것만 물어본다
-    amt = {}
-    if kind == "daily":
-        for rowmap in (parsed.get("days") or {}).values():
-            for lab, cell in (rowmap or {}).items():
-                amt[_rev.norm(lab)] = amt.get(_rev.norm(lab), 0.0) + float(
-                    (cell or {}).get("amount") or 0)
-    else:
-        for lab, v in (parsed.get("items") or {}).items():
-            amt[_rev.norm(lab)] = float(v or 0)
-    unknown = [{"label": k, "amount": round(amt.get(k, 0))}
-               for k in _rev.unknown_rows(store, labels)]
-    unknown.sort(key=lambda x: -x["amount"])
-    ask = [u for u in unknown if u["amount"] > 0]
-    skip = [u for u in unknown if u["amount"] <= 0]
-
-    # 계획 파일은 제 달을 알고 있다 ('Estimate Revenue in Sep'). 화면에서 8월을
-    # 보다가 9월 파일을 올려도 8월에 덮어쓰면 안 된다 — 파일이 먼저다.
-    if kind == "plan":
-        _month = parsed.get("month") or (month or "").strip()
-    else:
-        _month = (month or "").strip()
-    if _month:
-        _month = _check_month(_month)
-    out = {
-        "kind": kind, "file": name, "mode": mode,
-        "ask": ask, "skip": skip, "mapped_now": added,
-        "rows": len(labels),
-        "items_all": _rev.items_of(store),
-    }
-    if kind == "daily":
-        out["sheets"] = parsed.get("sheets") or []
-        out["skipped"] = parsed.get("skipped") or []
-        out["days"] = len(parsed.get("days") or {})
-        out["range"] = [min(parsed["days"]), max(parsed["days"])] if parsed.get("days") else []
-    else:
-        out["month"] = _month
-        out["count"] = len(parsed.get("items") or {})
-
-    # 반영하면 금액이 얼마나 달라지는지 — 누르기 전에 보여준다
-    view_month = _month or datetime.now().strftime("%Y-%m")
     before = _rev.month_view(store, view_month)
     trial = json.loads(json.dumps(store))
-    if kind == "daily":
-        _rev.apply_daily(trial, parsed, name)
-    else:
-        _rev.apply_plan(trial, parsed, name, _month)
+    _rev.apply_weekly(trial, parsed, name)
     after = _rev.month_view(trial, view_month)
-    out["view_month"] = view_month
-    out["before"] = {"actual": before["actual"], "plan": before["plan"]}
-    out["after"] = {"actual": after["actual"], "plan": after["plan"]}
 
+    # 세부를 더한 값이 [합 계] 블록과 다르면 조용히 넘기지 않는다
+    gaps = []
+    for b in after["groups"] + [after["internal"]]:
+        if b["items_actual"] != b["actual"]:
+            gaps.append({"label": b["label"], "items": b["items_actual"],
+                         "total": b["actual"]})
+
+    out = {
+        "file": name, "mode": mode, "year": parsed.get("year"),
+        "weeks": len(parsed.get("weeks") or []),
+        "lines": len(parsed.get("lines") or []),
+        "months": months,
+        "view_month": view_month,
+        "gaps": gaps,
+        "before": {"actual": before["actual"], "plan": before["plan"]},
+        "after": {"actual": after["actual"], "plan": after["plan"]},
+    }
     if mode != "commit":
         return out
-
-    if kind == "daily":
-        out["applied"] = _rev.apply_daily(store, parsed, name)
-    else:
-        out["applied"] = _rev.apply_plan(store, parsed, name, _month)
+    out["applied"] = _rev.apply_weekly(store, parsed, name)
     _save_revenue(store)
     out["saved"] = True
     return out
-
-
-@app.put("/admin/revenue/map")
-def admin_revenue_map(payload: dict, _admin: int = Depends(get_admin_session)):
-    """엑셀 행 이름 ↔ 품목 연결. 빈 값이면 연결을 끊는다."""
-    got = (payload or {}).get("map")
-    if not isinstance(got, dict):
-        raise HTTPException(status_code=400, detail="map 이 없습니다.")
-    store = _load_revenue()
-    for k, v in got.items():
-        k = _rev.norm(k)
-        if not k:
-            continue
-        if v:
-            store["map"][k] = str(v)
-        else:
-            store["map"].pop(k, None)
-    _save_revenue(store)
-    return {"ok": True, "count": len(store.get("map") or {})}

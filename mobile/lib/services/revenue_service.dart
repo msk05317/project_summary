@@ -16,11 +16,12 @@ class RevenueItem {
   final int actual;
   final int qty;
   final int? rate;
+  /// 연초에 세운 목표 (사업계획). 실행계획과 다르다.
+  final int budget;
   /// 어느 묶음인지 (semi · dc · space · internal)
   final String group;
-  /// 계획 한 줄이 이 품목 말고 또 덮는 품목들.
-  /// 계획 파일이 일일보고보다 굵어서, 덮인 쪽은 계획이 0 으로 보인다.
-  final List<String> covers;
+  /// 엑셀에서 이 줄이 붙어 있던 고객·사이트 이름
+  final String cust;
 
   const RevenueItem({
     required this.item,
@@ -28,8 +29,9 @@ class RevenueItem {
     required this.actual,
     this.qty = 0,
     this.rate,
+    this.budget = 0,
     this.group = 'semi',
-    this.covers = const [],
+    this.cust = '',
   });
 
   factory RevenueItem.fromJson(Map j) => RevenueItem(
@@ -38,10 +40,9 @@ class RevenueItem {
         actual: (j['actual'] as num?)?.toInt() ?? 0,
         qty: (j['qty'] as num?)?.toInt() ?? 0,
         rate: (j['rate'] as num?)?.toInt(),
+        budget: (j['budget'] as num?)?.toInt() ?? 0,
         group: (j['group'] ?? 'semi').toString(),
-        covers: ((j['covers'] as List?) ?? const [])
-            .map((e) => e.toString())
-            .toList(),
+        cust: (j['cust'] ?? '').toString(),
       );
 }
 
@@ -52,6 +53,10 @@ class RevenueGroup {
   final int plan;
   final int actual;
   final int? rate;
+  /// 연초 목표 (사업계획)
+  final int budget;
+  /// 그 묶음 안의 세부 줄
+  final List<RevenueItem> items;
 
   const RevenueGroup({
     required this.key,
@@ -59,6 +64,8 @@ class RevenueGroup {
     required this.plan,
     required this.actual,
     this.rate,
+    this.budget = 0,
+    this.items = const [],
   });
 
   factory RevenueGroup.fromJson(Map j) => RevenueGroup(
@@ -67,6 +74,11 @@ class RevenueGroup {
         plan: (j['plan'] as num?)?.toInt() ?? 0,
         actual: (j['actual'] as num?)?.toInt() ?? 0,
         rate: (j['rate'] as num?)?.toInt(),
+        budget: (j['budget'] as num?)?.toInt() ?? 0,
+        items: ((j['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map(RevenueItem.fromJson)
+            .toList(),
       );
 
   /// 화면에 쓸 짧은 이름. '반도체 (SEMI)' 를 그대로 쓰면 줄이 넘친다.
@@ -83,6 +95,8 @@ class RevenueMonth {
   final int actual;
   final int? rate;
   final int left;
+  /// 연초 목표 (사업계획)
+  final int budget;
   /// 올해 누적 실적
   final int ytd;
   /// 실적이 들어온 마지막 날 (YYYY-MM-DD). 달성률이 낮아 보이는 이유가 여기 있다.
@@ -106,6 +120,7 @@ class RevenueMonth {
     required this.asOf,
     this.groups = const [],
     this.internal,
+    this.budget = 0,
     this.rate,
     this.hasData = false,
     this.loaded = true,
@@ -115,7 +130,7 @@ class RevenueMonth {
 
   static const RevenueMonth empty = RevenueMonth(
     month: '', items: [], plan: 0, actual: 0, left: 0, ytd: 0, asOf: '',
-    groups: [], hasData: false, loaded: false,
+    groups: [], budget: 0, hasData: false, loaded: false,
   );
 
   /// 카드에 그릴 줄. 보고서와 같은 묶음이다 —
@@ -136,16 +151,23 @@ class RevenueMonth {
   RevenueMonth copyWith({bool? fromCache, DateTime? savedAt}) => RevenueMonth(
         month: month, items: items, plan: plan, actual: actual, left: left,
         ytd: ytd, asOf: asOf, rate: rate, hasData: hasData, loaded: loaded,
-        groups: groups, internal: internal,
+        groups: groups, internal: internal, budget: budget,
         fromCache: fromCache ?? this.fromCache,
         savedAt: savedAt ?? this.savedAt,
       );
 
   factory RevenueMonth.fromJson(Map j) {
-    final items = ((j['items'] as List?) ?? const [])
+    final groups = ((j['groups'] as List?) ?? const [])
         .whereType<Map>()
-        .map(RevenueItem.fromJson)
+        .map(RevenueGroup.fromJson)
         .toList();
+    final internal = (j['internal'] is Map)
+        ? RevenueGroup.fromJson(j['internal'] as Map)
+        : null;
+    final items = [
+      for (final g in groups) ...g.items,
+      if (internal != null) ...internal.items,
+    ];
     return RevenueMonth(
       month: (j['month'] ?? '').toString(),
       items: items,
@@ -155,14 +177,10 @@ class RevenueMonth {
       left: (j['left'] as num?)?.toInt() ?? 0,
       ytd: (j['ytd'] as num?)?.toInt() ?? 0,
       asOf: (j['as_of'] ?? '').toString(),
-      groups: ((j['groups'] as List?) ?? const [])
-          .whereType<Map>()
-          .map(RevenueGroup.fromJson)
-          .toList(),
-      internal: (j['internal'] is Map)
-          ? RevenueGroup.fromJson(j['internal'] as Map)
-          : null,
-      hasData: j['has_data'] == true && items.isNotEmpty,
+      groups: groups,
+      internal: internal,
+      budget: (j['budget'] as num?)?.toInt() ?? 0,
+      hasData: j['has_data'] == true && groups.isNotEmpty,
     );
   }
 }

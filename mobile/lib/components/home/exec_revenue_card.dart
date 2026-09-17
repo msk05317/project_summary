@@ -61,72 +61,17 @@ class ExecRevenueCard extends StatelessWidget {
     return '${inn.join(' · ')} $n개 프로젝트';
   }
 
-  /// 실적이 들어온 마지막 날. '9/12 보고 기준' — 달성률이 낮아 보이는
-  /// 이유가 여기 있다. 못 채운 게 아니라 아직 안 온 날이다.
+  /// 실적이 들어온 마지막 주차. 달성률이 낮아 보이는 이유가 여기 있다 —
+  /// 못 채운 게 아니라 아직 안 온 주다.
   String _asOf(RevenueMonth r) {
-    final p = r.asOf.split('-');
-    if (p.length != 3) return '';
-    return '${int.tryParse(p[1]) ?? p[1]}/${int.tryParse(p[2]) ?? p[2]} 보고 기준';
+    if (r.asOf.isEmpty) return '';
+    return '${r.asOf} 까지';
   }
 
+  /// 홈에서는 사업부 통 매출 하나만 본다. 어디서 나왔는지는 눌러서
+  /// '매출 상세' 에서 본다 — 카드에 묶음을 늘어놓으면 홈이 길어진다.
   Widget _buildFromExcel(BuildContext context, RevenueMonth r) {
-    // 계획이 아직 없으면 rate 가 null 이다. 0 으로 바꾸면 '못 채웠다' 가
-    // 되는데, 실제로는 '아직 모른다' 다.
     final rate = r.rate;
-    final hasActual = r.items.any((e) => e.actual > 0);
-    // 보고서와 같은 묶음으로 보여준다 — 반도체 · 데이터 센터 · 우주항공 ·
-    // 내부거래. 품목 스무 줄을 홈에 늘어놓으면 아무도 안 읽는다.
-    // 묶음이 안 오는 옛 서버면 품목으로 떨어진다.
-    final groups = r.lines;
-    final List<_Line> rows = groups.isNotEmpty
-        ? [
-            for (final g in groups)
-              _Line(g.short, g.actual, g.plan, g.key == 'internal')
-          ]
-        : () {
-            final it = hasActual
-                ? r.byActual.where((e) => e.actual > 0).toList()
-                : (List<RevenueItem>.from(r.items)
-                  ..sort((a, b) => b.plan.compareTo(a.plan)));
-            return [for (final e in it) _Line(e.item, e.actual, e.plan, false)];
-          }();
-    final top = rows.take(6).toList();
-    final restA = rows.skip(6).fold<int>(0, (a, b) => a + b.actual);
-    final restP = rows.skip(6).fold<int>(0, (a, b) => a + b.plan);
-    final restN = rows.length - top.length;
-
-    Widget line(String name, int actual, int plan, Color bar) =>
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.bodyStrong.copyWith(fontSize: 13)),
-              ),
-              const SizedBox(width: 8),
-              Text(Fmt.moneyShort(actual),
-                  style: AppText.bodyStrong
-                      .copyWith(fontSize: 13, color: AppColors.textMain)),
-            ]),
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: plan <= 0 ? 0 : (actual / plan).clamp(0.0, 1.0),
-                minHeight: 4,
-                backgroundColor: AppColors.statusGraySoft,
-                valueColor: AlwaysStoppedAnimation<Color>(bar),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text('계획 ${Fmt.moneyShort(plan)}',
-                style: AppText.caption.copyWith(color: AppColors.textHint)),
-          ]),
-        );
-
     return _shell(
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -152,7 +97,7 @@ class ExecRevenueCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 32,
+                      fontSize: 34,
                       fontWeight: FontWeight.w800,
                       height: 1.1,
                       color: AppColors.textMain)),
@@ -188,8 +133,7 @@ class ExecRevenueCard extends StatelessWidget {
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
-              child: _MiniStat(
-                  label: '남은 계획', value: Fmt.moneyShort(r.left))),
+              child: _MiniStat(label: '남은 계획', value: Fmt.moneyShort(r.left))),
           Container(
             width: 1,
             height: 26,
@@ -197,26 +141,10 @@ class ExecRevenueCard extends StatelessWidget {
             color: AppColors.borderSoft,
           ),
           Expanded(
-              child: _MiniStat(
-                  label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
+              child: _MiniStat(label: '연간 누적', value: Fmt.moneyShort(r.ytd))),
         ]),
-        const Divider(height: 20, color: AppColors.borderSoft),
-        if (!hasActual)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text('아직 실적 보고가 올라오지 않았습니다',
-                style: AppText.caption.copyWith(color: AppColors.textHint)),
-          ),
-        for (final e in top)
-          line(e.name, e.actual, e.plan,
-              e.dim ? AppColors.statusGray : AppColors.summaryInProgress),
-        if (restN > 0)
-          line('그 외 $restN개', restA, restP, AppColors.statusGray),
-        const SizedBox(height: 6),
-        Text(
-            groups.isNotEmpty
-                ? '총합 (내부거래 포함) · 품목 ${r.items.length}개'
-                : '반도체사업부 전체 · ${r.items.length}개 품목',
+        const SizedBox(height: 10),
+        Text('반도체사업부 총합 (내부거래 포함)',
             style: AppText.caption.copyWith(color: AppColors.textHint)),
       ]),
     );
@@ -418,17 +346,6 @@ class ExecRevenueCard extends StatelessWidget {
       child: box,
     );
   }
-}
-
-/// 카드에 그릴 한 줄. 묶음이든 품목이든 모양은 같다.
-class _Line {
-  final String name;
-  final int actual;
-  final int plan;
-  /// 내부거래처럼 '매출합계에 안 들어가는' 줄은 흐리게
-  final bool dim;
-
-  const _Line(this.name, this.actual, this.plan, this.dim);
 }
 
 class _MiniStat extends StatelessWidget {

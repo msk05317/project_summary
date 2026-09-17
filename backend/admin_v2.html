@@ -10359,13 +10359,13 @@ window._ovProjectKey = function() {
 // 거긴 프로젝트를 하나 고른 상태여서, 어느 프로젝트에서 올리든 결과가
 // 같아지는 설명하기 어려운 버튼이 된다.
 //
-// 원본은 엑셀이다. 실적은 일일보고(DAILY), 계획은 월 매출 계획.
-// 엑셀 행 이름은 언제든 바뀌므로 모르는 행은 조용히 빠뜨리지 않고
-// 세워서 한 번만 물어본다.
+// 원본은 주간보고 엑셀 한 장이다. 큰 틀([합 계] 블록)을 먼저 보여주고,
+// 누르면 그 안의 세부 줄이 펴진다.
 (function () {
   var _month = '';
   var _pick = null;          // 고른 파일 (미리보기 → 반영 사이에 들고 있는다)
   var _busy = false;         // 보내는 중. 겹치면 미리 본 것과 다른 파일이 저장된다
+  var _open = {};            // 펴 놓은 묶음
 
   function _rvMoney(n) { return '$' + Math.round(n || 0).toLocaleString(); }
 
@@ -10380,9 +10380,18 @@ window._ovProjectKey = function() {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
 
-  function monthOptions(sel) {
-    var now = new Date(), out = '';
-    for (var i = -6; i <= 1; i++) {
+  function monthOptions(sel, all) {
+    var out = '', i;
+    if (all && all.length) {
+      for (i = 0; i < all.length; i++) {
+        out += '<option value="' + all[i] + '"' +
+               (all[i] === sel ? ' selected' : '') + '>' +
+               all[i].slice(0, 4) + '년 ' + Number(all[i].slice(5)) + '월</option>';
+      }
+      return out;
+    }
+    var now = new Date();
+    for (i = -6; i <= 1; i++) {
       var d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       var v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
       out += '<option value="' + v + '"' + (v === sel ? ' selected' : '') + '>' +
@@ -10419,112 +10428,108 @@ window._ovProjectKey = function() {
       });
   };
 
-  function view(d) {
-    var src = d.sources || {};
-    // 보고서와 같은 모양으로 — 매출합계(반도체·데이터센터·우주항공) →
-    // 소계 → 내부거래 → 총합. 사이트끼리 오간 것을 반도체에도 넣으면
-    // 총합에서 두 번 세어진다.
-    function pct(v) { return (v === null || v === undefined) ? '-' : v + '%'; }
-    function bar(v) {
-      return '<div class="ov-bar"><i style="width:' +
-             Math.max(0, Math.min(100, v || 0)) + '%"></i></div>';
-    }
-    function itemRows(list) {
-      return (list || []).map(function (r) {
-        // 계획 파일이 일일보고보다 굵어서, 한 줄이 여러 품목을 덮는다.
-        // 덮인 쪽은 계획이 0 으로 보이므로 어디에 묶였는지 적어 준다.
-        var note = (r.covers && r.covers.length)
-          ? '계획은 ' + r.covers.map(esc).join(' · ') + ' 까지 묶인 값'
-          : (r.qty ? r.qty.toLocaleString() + '대' : '&nbsp;');
-        var quiet = (!r.plan && !r.actual) ? ' style="color:#B6BECB;"' : '';
-        return '<tr' + quiet + '>' +
-          '<td class="lbl" style="padding-left:22px;font-weight:600;' +
-            (quiet ? 'color:#B6BECB;' : '') + '">' + esc(r.item) +
-            '<span class="rv-src">' + note + '</span></td>' +
-          '<td style="text-align:right">' +
-            (r.plan ? _rvMoney(r.plan) : '—') + '</td>' +
-          '<td style="text-align:right">' + _rvMoney(r.actual) + '</td>' +
-          '<td>' + pct(r.rate) + '</td>' +
-          '<td style="min-width:130px">' + (r.plan ? bar(r.rate) : '') + '</td></tr>';
-      }).join('');
-    }
-    function sumRow(x, cls, style) {
-      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' +
-        '<td class="lbl"' + (style || '') + '>' + esc(x.label) + '</td>' +
-        '<td style="text-align:right">' + _rvMoney(x.plan) + '</td>' +
-        '<td style="text-align:right">' + _rvMoney(x.actual) + '</td>' +
-        '<td>' + pct(x.rate) + '</td><td>' + (cls ? '' : bar(x.rate)) + '</td></tr>';
-    }
-    var rows = '';
-    (d.groups || []).forEach(function (g) {
-      rows += sumRow(g, '', ' style="background:#EEF2F7;font-weight:800;"') +
-              itemRows(g.items);
-    });
-    if (d.subtotal) {
-      rows += sumRow(d.subtotal, '',
-                     ' style="background:#DDE5EF;font-weight:800;"');
-    }
-    if (d.internal) {
-      rows += sumRow(d.internal, '', ' style="background:#EEF2F7;font-weight:800;"') +
-              itemRows(d.internal.items);
-    }
-    var foot = d.grand ? sumRow(d.grand, 'wb-total',
-                                ' style="background:#0F2C59;color:#fff"') : '';
+  function pct(v) { return (v === null || v === undefined) ? '-' : v + '%'; }
+  function bar(v) {
+    return '<div class="ov-bar"><i style="width:' +
+           Math.max(0, Math.min(100, v || 0)) + '%"></i></div>';
+  }
 
-    var unmapped = (d.unmapped || []).filter(function (u) { return u.amount > 0; });
-    var warn = unmapped.length
-      ? '<div class="rv-map" style="margin-top:12px;"><div class="x">연결 안 된 항목 ' +
-        unmapped.length + '개' +
-        '<small>합계에서 빠져 있습니다 — ' +
-        unmapped.slice(0, 3).map(function (u) {
-          return esc(u.label) + ' ' + _rvMoney(u.amount);
-        }).join(' · ') + (unmapped.length > 3 ? ' 외' : '') + '</small></div>' +
-        '<button type="button" class="ov-btn" id="rv-fix">연결하기</button></div>'
-      : '';
+  function groupRow(g) {
+    var on = !!_open[g.key];
+    var warn = (g.items_actual !== g.actual)
+      ? '<span class="rv-badge" style="background:#FEE2E2;color:#991B1B;margin-left:6px;">' +
+        '세부 합 ' + _rvMoney(g.items_actual) + '</span>' : '';
+    var head = '<tr class="rv-grp" data-rv-grp="' + esc(g.key) + '">' +
+      '<td class="lbl" style="background:#EEF2F7;font-weight:800;cursor:pointer;">' +
+        '<span style="color:#64748B;">' + (on ? '▾' : '▸') + '</span> ' +
+        esc(g.label) + warn + '</td>' +
+      '<td style="text-align:right;background:#EEF2F7;color:#64748B;">' + _rvMoney(g.budget) + '</td>' +
+      '<td style="text-align:right;background:#EEF2F7;font-weight:800;">' + _rvMoney(g.plan) + '</td>' +
+      '<td style="text-align:right;background:#EEF2F7;font-weight:800;">' + _rvMoney(g.actual) + '</td>' +
+      '<td style="background:#EEF2F7;">' + pct(g.rate) + '</td>' +
+      '<td style="background:#EEF2F7;min-width:120px;">' + bar(g.rate) + '</td></tr>';
+    if (!on) return head;
+    return head + (g.items || []).map(function (r) {
+      var quiet = (!r.plan && !r.actual) ? 'color:#B6BECB;' : '';
+      return '<tr><td class="lbl" style="padding-left:26px;font-weight:600;' + quiet + '">' +
+        esc(r.item) +
+        (r.cust && r.cust !== r.item
+          ? '<span class="rv-src">' + esc(r.cust) + '</span>' : '') + '</td>' +
+        '<td style="text-align:right;color:#94A3B8;' + quiet + '">' +
+          (r.budget ? _rvMoney(r.budget) : '—') + '</td>' +
+        '<td style="text-align:right;' + quiet + '">' + _rvMoney(r.plan) + '</td>' +
+        '<td style="text-align:right;' + quiet + '">' + _rvMoney(r.actual) + '</td>' +
+        '<td style="' + quiet + '">' + pct(r.rate) + '</td>' +
+        '<td>' + (r.plan ? bar(r.rate) : '') + '</td></tr>';
+    }).join('');
+  }
+
+  function sumRow(x, cls, style) {
+    return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' +
+      '<td class="lbl"' + (style || '') + '>' + esc(x.label) + '</td>' +
+      '<td style="text-align:right' + (cls ? ';color:#C7D2DE' : ';color:#64748B') + '">' +
+        _rvMoney(x.budget) + '</td>' +
+      '<td style="text-align:right">' + _rvMoney(x.plan) + '</td>' +
+      '<td style="text-align:right">' + _rvMoney(x.actual) + '</td>' +
+      '<td>' + pct(x.rate) + '</td><td>' + (cls ? '' : bar(x.rate)) + '</td></tr>';
+  }
+
+  function view(d) {
+    var src = (d.sources || {}).weekly;
+    var rows = (d.groups || []).map(groupRow).join('');
+    if (d.subtotal) {
+      rows += sumRow(d.subtotal, '', ' style="background:#DDE5EF;font-weight:800;"');
+    }
+    if (d.internal) rows += groupRow(d.internal);
+    var foot = d.grand
+      ? sumRow(d.grand, 'wb-total', ' style="background:#0F2C59;color:#fff"') : '';
 
     return '' +
     '<div class="ov-page-head" style="display:flex;align-items:flex-end;gap:12px;">' +
       '<div><p class="ttl">매출 관리</p>' +
-      '<p class="desc">앱 홈의 매출 카드가 이 값을 그대로 씁니다.</p></div>' +
+      '<p class="desc">앱 홈의 매출 카드와 매출 상세가 이 값을 그대로 씁니다.</p></div>' +
       '<div style="margin-left:auto;">' +
         '<select id="rv-month" class="ov-btn" style="padding:0 10px;">' +
-        monthOptions(d.month) + '</select></div>' +
+        monthOptions(d.month, d.months_all) + '</select></div>' +
     '</div>' +
 
     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 20px;">' +
       kpi('이번 달 실적', _rvMoney(d.actual),
-          d.as_of ? d.as_of.slice(5).replace('-', '/') + ' 보고 기준' : '아직 없음', 'accent') +
-      kpi('이번 달 계획', _rvMoney(d.plan), src.plan ? (src.plan.file || '') : '아직 없음') +
-      kpi('달성률', (d.rate === null || d.rate === undefined ? '-' : d.rate + '%'),
-          '<div class="ov-bar"><i style="width:' +
-          Math.max(0, Math.min(100, d.rate || 0)) + '%"></i></div>', '', true) +
-      kpi('연간 누적', _rvMoney(d.ytd), (d.month || '').slice(0, 4) + '년') +
+          d.as_of ? d.as_of + ' 까지' : '아직 없음', 'accent') +
+      kpi('이번 달 실행계획', _rvMoney(d.plan), '사업계획 ' + _rvMoney(d.budget)) +
+      kpi('달성률', pct(d.rate), bar(d.rate), '', true) +
+      kpi('연간 누적', _rvMoney(d.ytd), (d.month || '').slice(0, 4) + '년 · 이 달까지') +
     '</div>' +
 
-    '<div class="ov-card" style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;margin-bottom:16px;">' +
+    '<div style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;margin-bottom:16px;">' +
       '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">자료 올리기</h3>' +
-      '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">쓰던 엑셀을 그대로 올리면 됩니다. 새로 만들 것은 없습니다.</p>' +
-      '<div class="rv-slots">' +
-        slot('daily', '실적', '주 1회 · 매일 가능', '일일보고 (DAILY)',
-             src.daily, 'W## 시트를 전부 읽습니다') +
-        slot('plan', '계획', '월 1회', '월 매출 계획',
-             src.plan, 'Sum 시트를 읽습니다') +
+      '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">' +
+        '주간보고 엑셀을 그대로 올리면 됩니다. ' +
+        '‘1. 계획 대비 실적 (수정본) Actual FCST’ 시트 한 장에 한 해가 다 들어 있습니다.</p>' +
+      '<div class="rv-slot' + (src ? ' on' : '') + '">' +
+        '<div class="st">주간보고 <span class="rv-badge' + (src ? ' g' : '') + '">주 1회</span></div>' +
+        '<div class="fn">' + (src ? esc(src.file) : '아직 올린 파일이 없습니다') + '</div>' +
+        '<div class="when">' + (src
+          ? esc(when(src)) + ' · ' + esc(src.year) + '년 · 주차 ' + src.weeks +
+            '개 · 세부 ' + src.lines + '줄'
+          : '') + '</div>' +
+        '<div class="row"><button type="button" class="ov-btn" id="rv-pick">📁 파일 선택</button>' +
+        '<span class="rv-hint">한 해를 통째로 갈아 끼웁니다</span></div>' +
       '</div>' +
       '<input type="file" id="rv-file" accept=".xlsx,.xlsm,.xls" style="display:none;">' +
     '</div>' +
 
-    '<div class="ov-card" style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;">' +
+    '<div style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;">' +
       '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">매출 정리</h3>' +
       '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">' +
-        '계획은 월 파일, 실적은 일일보고. 텍슨 사이트끼리 오간 것은 ' +
-        '<b>내부거래</b>로 따로 셉니다 — 반도체에도 넣으면 총합에서 두 번 세어집니다.</p>' +
+        '묶음을 누르면 세부가 펴집니다. 묶음 합계는 엑셀 [합 계] 블록 그대로이고, ' +
+        '세부를 더한 값이 다르면 빨갛게 표시합니다.</p>' +
       (rows
         ? '<div class="ov-wrap-x" style="overflow-x:auto;"><table class="wb-tbl">' +
-          '<thead><tr><th style="text-align:left">품목</th><th>계획</th><th>실적</th>' +
-          '<th>달성</th><th>　</th></tr></thead><tbody>' + rows + foot + '</tbody></table></div>'
+          '<thead><tr><th style="text-align:left">구분</th><th>사업계획</th>' +
+          '<th>실행계획</th><th>실적</th><th>달성</th><th>　</th></tr></thead>' +
+          '<tbody>' + rows + foot + '</tbody></table></div>'
         : '<p class="mdl-hint">아직 올린 자료가 없습니다. 위에서 엑셀을 올려 주세요.</p>') +
-      (d.left ? '<p class="mdl-hint" style="margin-top:10px;">남은 계획 ' + _rvMoney(d.left) + '.</p>' : '') +
-      warn +
     '</div>';
   }
 
@@ -10535,51 +10540,40 @@ window._ovProjectKey = function() {
       (raw ? sub : '<div class="k-sub">' + esc(sub) + '</div>') + '</div>';
   }
 
-  function slot(kind, title, badge, who, src, hint) {
-    var on = !!(src && src.file);
-    return '<div class="rv-slot' + (on ? ' on' : '') + '">' +
-      '<div class="st">' + esc(title) +
-        '<span class="rv-badge' + (on ? ' g' : '') + '">' + esc(badge) + '</span></div>' +
-      '<div class="who">' + esc(who) + '</div>' +
-      '<div class="fn">' + (on ? esc(src.file) : '아직 올린 파일이 없습니다') + '</div>' +
-      '<div class="when">' + (on ? esc(when(src)) +
-        (src.days ? ' · 날짜 ' + src.days + '개 반영됨'
-                  : (src.month ? ' · ' + esc(src.month) + ' 반영됨' : '')) : '') + '</div>' +
-      '<div class="row"><button type="button" class="ov-btn" data-rv-pick="' + kind + '">' +
-        '📁 파일 선택</button><span class="rv-hint">' + esc(hint) + '</span></div>' +
-    '</div>';
-  }
-
   function wire(d) {
     var sel = document.getElementById('rv-month');
     if (sel) sel.onchange = function () { window.renderRevenuePage(sel.value); };
     var file = document.getElementById('rv-file');
-    document.querySelectorAll('[data-rv-pick]').forEach(function (b) {
-      b.onclick = function () {
+    var pick = document.getElementById('rv-pick');
+    if (pick) {
+      pick.onclick = function () {
         if (_busy) return;
-        _pick = { kind: b.getAttribute('data-rv-pick') };
+        _pick = {};
         if (file) { file.value = ''; file.click(); }
       };
-    });
+    }
     if (file) {
       file.onchange = function () {
         if (!file.files || !file.files[0] || !_pick) return;
         _pick.file = file.files[0];
-        // 일일보고는 시트가 34장이라 읽는 데 20초쯤 걸린다.
-        // 아무 반응이 없으면 눌린 줄 모르고 또 누른다.
-        openDlg('<div class="ph-hd"><h3>엑셀을 읽는 중…</h3>' +
-                '<p>' + esc(_pick.file.name) + '</p></div>' +
+        openDlg('<div class="ph-hd"><h3>엑셀을 읽는 중…</h3><p>' +
+                esc(_pick.file.name) + '</p></div>' +
                 '<div class="ph-body" style="padding:18px 20px 22px;color:#64748B;' +
-                'font-size:12.5px;">시트가 많으면 20초쯤 걸립니다. 잠시만요.</div>', true);
-        send('preview', {});
+                'font-size:12.5px;">잠시만요.</div>', true);
+        send('preview');
       };
     }
-    var fix = document.getElementById('rv-fix');
-    if (fix) fix.onclick = function () { mapDialog(d.unmapped || [], d.items_all || []); };
+    document.querySelectorAll('[data-rv-grp]').forEach(function (el) {
+      el.onclick = function () {
+        var k = el.getAttribute('data-rv-grp');
+        _open[k] = !_open[k];
+        var c = document.getElementById('v2-content');
+        if (c) { c.innerHTML = view(d); wire(d); }
+      };
+    });
   }
 
-  // ── 서버에 보낸다. mode=preview 면 읽기만 하고 무엇이 달라지는지 돌려준다.
-  function send(mode, mapping) {
+  function send(mode) {
     if (!_pick || !_pick.file) {
       alert('파일을 다시 골라 주세요.');
       closeDlg();
@@ -10588,10 +10582,7 @@ window._ovProjectKey = function() {
     if (_busy) return;
     _busy = true;
     var fd = new FormData();
-    fd.append('kind', _pick.kind);
     fd.append('mode', mode);
-    fd.append('month', _month);
-    fd.append('mapping', JSON.stringify(mapping || {}));
     fd.append('file', _pick.file);
     var box = document.getElementById('rv-dlg-ft');
     if (box) box.innerHTML = '<span class="rv-hint">보내는 중…</span>';
@@ -10613,15 +10604,12 @@ window._ovProjectKey = function() {
       _busy = false;
       if (mode === 'commit') {
         closeDlg();
-        // 계획 파일은 제 달을 안다. 화면의 달로 돌아가면 방금 저장한 게
-        // 안 보여서 '안 됐나' 하고 또 올리게 된다.
-        window.renderRevenuePage(j.view_month || j.month || _month);
+        window.renderRevenuePage(j.view_month || _month);
         return;
       }
       preview(j);
     }).catch(function (e) {
       _busy = false;
-      // 반영하다 실패하면 방금 연결해 둔 것과 20초짜리 읽기가 통째로 날아간다.
       var ft = document.getElementById('rv-dlg-ft');
       if (mode === 'commit' && ft) {
         ft.innerHTML =
@@ -10630,9 +10618,7 @@ window._ovProjectKey = function() {
           '<button type="button" class="ov-btn" id="rv-cancel">닫기</button>' +
           '<button type="button" class="ov-btn ov-btn-primary" id="rv-retry">다시 시도</button>';
         document.getElementById('rv-cancel').onclick = closeDlg;
-        document.getElementById('rv-retry').onclick = function () {
-          send('commit', mapping);
-        };
+        document.getElementById('rv-retry').onclick = function () { send('commit'); };
         return;
       }
       closeDlg();
@@ -10651,123 +10637,53 @@ window._ovProjectKey = function() {
     back.className = 'ph-back';
     back.id = 'rv-dlg';
     back.innerHTML = '<div class="ph-box">' + html + '</div>';
-    // 읽는 데 20초쯤 걸린다. 그 사이에 바깥을 눌러 닫아 버리면 페이지가
-    // 다시 살아나서 다른 파일을 고를 수 있고, 먼저 온 응답이 나중에 덮어
-    // 미리 본 것과 다른 파일이 저장된다.
     if (!sticky) {
       back.addEventListener('click', function (e) { if (e.target === back) closeDlg(); });
     }
     document.body.appendChild(back);
   }
 
-  // 반영하기 전에 한 번 보여준다. 엑셀 행 이름은 언제든 바뀐다.
+  // 반영하기 전에 한 번 보여준다.
   function preview(j) {
-    var ask = j.ask || [];
-    var items = j.items_all || [];
-    var head = (j.kind === 'daily')
-      ? { t: '일일보고를 읽었습니다',
-          s: (j.file || '') + ' · 주차 시트 ' + (j.sheets || []).length + '개' +
-             ((j.skipped || []).length
-               ? ' · 못 읽은 시트 ' + j.skipped.join(', ') : ''),
-          a: ['읽은 기간', (j.range && j.range.length === 2)
-                ? (j.range[0].slice(5) + ' ~ ' + j.range[1].slice(5))
-                : ((j.sheets || [])[0] + ' ~ ' +
-                   (j.sheets || [])[(j.sheets || []).length - 1])] }
-      : { t: '월 계획을 읽었습니다',
-          s: (j.file || '') + ' · 품목 ' + j.count + '개',
-          a: ['적용 월', j.month || j.view_month] };
-
-    var maps = ask.map(function (u, i) {
-      return '<div class="rv-map"><div class="x">' + esc(u.label) +
-        '<small>' + _rvMoney(u.amount) + ' · 어느 품목인지 모르겠습니다</small></div>' +
-        '<select data-rv-unk="' + esc(u.label) + '">' +
-        '<option value="">— 연결 안 함 —</option>' +
-        items.map(function (n) {
-          return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
-        }).join('') + '</select></div>';
-    }).join('');
-
-    var dActual = (j.after || {}).actual - (j.before || {}).actual;
-    var dPlan = (j.after || {}).plan - (j.before || {}).plan;
-    var diff = (j.kind === 'daily')
-      ? [['지금 저장된 실적', _rvMoney((j.before || {}).actual)],
-         ['이번 파일로 바뀌는 값', _rvMoney((j.after || {}).actual)],
-         ['차이', (dActual >= 0 ? '+' : '−') + _rvMoney(Math.abs(dActual))]]
-      : [['지금 저장된 계획', _rvMoney((j.before || {}).plan)],
-         ['이번 파일로 바뀌는 값', _rvMoney((j.after || {}).plan)],
-         ['차이', (dPlan >= 0 ? '+' : '−') + _rvMoney(Math.abs(dPlan))]];
-
+    var gaps = j.gaps || [];
+    var d = (j.after || {}).actual - (j.before || {}).actual;
+    var rows = [
+      ['지금 저장된 실적 (' + (j.view_month || '') + ')', _rvMoney((j.before || {}).actual)],
+      ['이번 파일로 바뀌는 값', _rvMoney((j.after || {}).actual)],
+      ['차이', (d >= 0 ? '+' : '−') + _rvMoney(Math.abs(d))],
+    ];
     openDlg(
-      '<div class="ph-hd"><h3>' + esc(head.t) + '</h3><p>' + esc(head.s) + '</p></div>' +
+      '<div class="ph-hd"><h3>주간보고를 읽었습니다</h3><p>' +
+        esc(j.file || '') + ' · ' + esc(j.year) + '년</p></div>' +
       '<div class="ph-body">' +
         '<div class="rv-sum">' +
-          '<div><div class="k">' + esc(head.a[0]) + '</div><div class="v">' + esc(head.a[1]) + '</div></div>' +
-          '<div><div class="k">연결된 항목</div><div class="v">' +
-            (j.rows ? ((j.rows - ask.length - (j.skip || []).length) +
-                       ' / ' + j.rows) : '전부') + '</div></div>' +
-          '<div><div class="k">모르는 항목</div><div class="v' +
-            (ask.length ? ' warn' : '') + '">' + ask.length + '</div></div>' +
+          '<div><div class="k">주차</div><div class="v">' + j.weeks + '개</div></div>' +
+          '<div><div class="k">세부 줄</div><div class="v">' + j.lines + '줄</div></div>' +
+          '<div><div class="k">합계와 어긋남</div><div class="v' +
+            (gaps.length ? ' warn' : '') + '">' + gaps.length + '</div></div>' +
         '</div>' +
-        maps +
-        (ask.length
+        gaps.map(function (g) {
+          return '<div class="rv-map"><div class="x">' + esc(g.label) +
+            '<small>세부 합 ' + _rvMoney(g.items) + ' · [합 계] ' +
+            _rvMoney(g.total) + '</small></div></div>';
+        }).join('') +
+        (gaps.length
           ? '<p style="font-size:11.5px;color:#64748B;line-height:1.6;margin:12px 0 10px">' +
-            '한 번 연결해 두면 다음부터는 안 묻습니다. 연결 안 한 항목의 금액은 합계에서 빠집니다.</p>'
-          : '') +
-        '<table class="rv-diff">' + diff.map(function (r) {
+            '화면에는 [합 계] 블록 값을 씁니다. 세부는 참고로 펴 봅니다.</p>' : '') +
+        '<table class="rv-diff">' + rows.map(function (r) {
           return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td></tr>';
         }).join('') + '</table>' +
+        '<p style="font-size:11.5px;color:#64748B;line-height:1.6;margin:10px 0 0">' +
+          esc(j.year) + '년을 통째로 갈아 끼웁니다 (' +
+          ((j.months || [])[0] || '') + ' ~ ' +
+          ((j.months || [])[(j.months || []).length - 1] || '') + ').</p>' +
       '</div>' +
       '<div class="ph-ft" id="rv-dlg-ft"><span style="flex:1"></span>' +
         '<button type="button" class="ov-btn" id="rv-cancel">취소</button>' +
         '<button type="button" class="ov-btn ov-btn-primary" id="rv-commit">반영</button>' +
       '</div>');
-
     document.getElementById('rv-cancel').onclick = closeDlg;
-    document.getElementById('rv-commit').onclick = function () {
-      var m = {};
-      document.querySelectorAll('[data-rv-unk]').forEach(function (el) {
-        if (el.value) m[el.getAttribute('data-rv-unk')] = el.value;
-      });
-      send('commit', m);
-    };
-  }
-
-  // 이미 저장된 자료 중 연결 안 된 행을 나중에 붙일 때
-  function mapDialog(unmapped, items) {
-    var ask = (unmapped || []).filter(function (u) { return u.amount > 0; });
-    var maps = ask.map(function (u) {
-      return '<div class="rv-map"><div class="x">' + esc(u.label) +
-        '<small>' + _rvMoney(u.amount) + ' · 합계에서 빠져 있습니다</small></div>' +
-        '<select data-rv-unk="' + esc(u.label) + '">' +
-        '<option value="">— 연결 안 함 —</option>' +
-        (items || []).map(function (n) {
-          return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
-        }).join('') + '</select></div>';
-    }).join('');
-    openDlg(
-      '<div class="ph-hd"><h3>연결 안 된 항목</h3>' +
-      '<p>엑셀 행 이름이 바뀌면 여기에 뜹니다. 한 번 연결하면 다음부터는 안 묻습니다.</p></div>' +
-      '<div class="ph-body">' + maps + '</div>' +
-      '<div class="ph-ft" id="rv-dlg-ft"><span style="flex:1"></span>' +
-      '<button type="button" class="ov-btn" id="rv-cancel">취소</button>' +
-      '<button type="button" class="ov-btn ov-btn-primary" id="rv-save">저장</button></div>');
-    document.getElementById('rv-cancel').onclick = closeDlg;
-    document.getElementById('rv-save').onclick = function () {
-      var m = {};
-      document.querySelectorAll('[data-rv-unk]').forEach(function (el) {
-        if (el.value) m[el.getAttribute('data-rv-unk')] = el.value;
-      });
-      fetch('/admin/revenue/map', {
-        method: 'PUT', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ map: m }),
-      }).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).then(function () {
-        closeDlg(); window.renderRevenuePage(_month);
-      }).catch(function (e) { alert('저장 실패: ' + e.message); });
-    };
+    document.getElementById('rv-commit').onclick = function () { send('commit'); };
   }
 })();
 </script>
