@@ -155,11 +155,17 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           Text(v, maxLines: 1, style: AppText.bodyStrong),
         ]);
 
-    // 부서 한 줄씩 (펴 봤을 때). 예상은 사업부 하나로만 들어와서
-    // 부서별로는 실적과 비중만 본다.
+    // 부서 한 줄씩 (펴 봤을 때).
+    //
+    // 예상을 Commodity 별로 넣은 달은 부서마다 제 달성률이 있다.
+    // 금액만 넣은 달은 나눌 근거가 없어서 총합 대비 비중만 본다 —
+    // 없는 달성률을 지어내지 않는다.
+    final byGroup = r.hasEstimateGroups;
     Widget deptRow(RevenueGroup g) {
       final all = r.actual;
-      final share = all > 0 ? (g.actual * 100 / all).round() : null;
+      final pc = byGroup
+          ? g.rate
+          : (all > 0 ? (g.actual * 100 / all).round() : null);
       final tint = g.key == 'internal'
           ? AppColors.statusGray
           : AppColors.summaryInProgress;
@@ -175,12 +181,15 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                       .copyWith(fontSize: 13.5, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 8),
-            Text(Fmt.moneyShort(g.actual),
+            Text(
+                byGroup && g.estimate > 0
+                    ? '${Fmt.moneyShort(g.actual)} / ${Fmt.moneyShort(g.estimate)}'
+                    : Fmt.moneyShort(g.actual),
                 style: AppText.caption.copyWith(color: AppColors.textMute)),
             const SizedBox(width: 8),
             SizedBox(
               width: 38,
-              child: Text(share == null ? '-' : '$share%',
+              child: Text(pc == null ? '-' : '$pc%',
                   textAlign: TextAlign.right,
                   style: AppText.bodyStrong.copyWith(fontSize: 12.5)),
             ),
@@ -189,7 +198,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
-              value: share == null ? 0 : (share / 100).clamp(0.0, 1.0),
+              value: pc == null ? 0 : (pc / 100).clamp(0.0, 1.0),
               minHeight: 4,
               backgroundColor: AppColors.statusGraySoft,
               valueColor: AlwaysStoppedAnimation<Color>(tint),
@@ -231,9 +240,15 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                       Text(Fmt.moneyShort(r.actual),
                           style: AppText.caption
                               .copyWith(color: AppColors.textMute)),
-                      // 여기 '100%' 를 적으면 달성률로 읽힌다. 사업부가
-                      // 하나뿐이라 비중이 100 인 것뿐인데, 아래 부서 줄은
-                      // 68·5·28 이라 앞뒤가 안 맞아 보인다. 아예 뺀다.
+                      // 한동안 여기에 '100%' 가 적혀 있었다. 사업부가
+                      // 하나뿐이라 비중이 100 인 것뿐인데 달성률로 읽혔다.
+                      // 예상이 들어온 뒤로는 진짜 달성률을 적는다.
+                      if (est) ...[
+                        const SizedBox(width: 8),
+                        Text(r.rate == null ? '-' : '${r.rate}%',
+                            style:
+                                AppText.bodyStrong.copyWith(fontSize: 13.5)),
+                      ],
                       Icon(_openDiv ? Icons.expand_less : Icons.expand_more,
                           size: 20, color: AppColors.textMute),
                     ]),
@@ -247,7 +262,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                   children: [
                 const Divider(height: 8, color: AppColors.borderSoft),
                 const SizedBox(height: 4),
-                Text('부서별 실적 · 비중',
+                Text(byGroup ? '부서별 실적 / 예상 · 달성' : '부서별 실적 · 비중',
                     style: AppText.caption.copyWith(color: AppColors.textHint)),
                 for (final g in r.lines) deptRow(g),
               ]),

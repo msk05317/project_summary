@@ -37,6 +37,14 @@ ORDER = ["semi", "dc", "space", "internal"]
 
 MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
+# 예상을 적을 때 기본으로 깔리는 줄. Estimate 파일 Sum 시트 순서 그대로다.
+# 매달 이름을 다시 치게 하면 오타로 같은 항목이 둘로 갈라진다.
+DEFAULT_COMMODITIES = [
+    "Plastic", "Major Modules", "Sheet metal", "Frame", "Data Center",
+    "Metal", "Hwaseong Sheet metal", "Gumi Sheet Metal", "Cable LAM",
+    "Cable Internal", "Gumi MCT", "EMA", "Hwaseong MCT", "PBX", "Space X",
+]
+
 
 def norm(s) -> str:
     """줄바꿈·겹공백을 없앤 이름. 엑셀은 같은 줄을 파일마다 다르게 접는다."""
@@ -217,6 +225,28 @@ def _total_key(c2: str, c3: str) -> str:
 
 
 # ── 예상 매출 ─────────────────────────────────────────────
+#
+# Estimate 파일은 Commodity 로 적혀 있고 보고서 묶음은 사업부로 나뉜다.
+# 이름으로 이어 붙인다. 사이트 이름(구미·화성·용인·USA)이나 Internal 이
+# 들어간 것은 내부거래다 — 주간보고에서 텍슨 줄을 내부거래로 보내는 것과
+# 같은 규칙이다.
+_EST_RULES = (
+    ("internal", ("internal", "gumi", "구미", "hwaseong", "화성",
+                  "yongin", "용인", "usa", "texon", "텍슨")),
+    ("dc", ("data center", "datacenter", "데이터")),
+    ("space", ("space x", "spacex", "starlink", "starship", "우주", "스페이스")),
+)
+
+
+def estimate_group(name: str) -> str:
+    """Commodity 이름이 어느 묶음인지. 모르면 반도체로 본다."""
+    t = norm(name).lower()
+    for key, words in _EST_RULES:
+        if any(w in t for w in words):
+            return key
+    return "semi"
+
+
 def parse_estimate(raw: bytes) -> dict:
     """Estimate 파일에서 그 달 예상 매출을 꺼낸다.
 
@@ -246,33 +276,57 @@ def parse_estimate(raw: bytes) -> dict:
         if amt is None:
             continue
         if name:
-            items.append({"item": name, "amount": round(amt)})
+            items.append({"item": name, "amount": round(amt),
+                          "group": estimate_group(name)})
         else:
             stated = round(amt)             # 시트가 적어 둔 합계
     if not items:
         raise ValueError("Commodity 와 금액이 있는 줄을 못 찾았습니다.")
     total = sum(x["amount"] for x in items)
     return {"items": items, "total": total, "stated": stated,
+            "groups": _by_group(items),
             "gap": None if stated is None else stated - total}
 
 
-def set_estimate(store: dict, month: str, total, items=None, source: str = "") -> dict:
-    """그 달 예상 매출을 넣는다. 0 이나 None 이면 지운다."""
+def _by_group(items) -> dict:
+    out = {k: 0 for k in ORDER}
+    for x in (items or []):
+        g = x.get("group") or "semi"
+        out[g] = out.get(g, 0) + round(_num(x.get("amount")))
+    return out
+
+
+def set_estimate(store: dict, month: str, items=None, source: str = "",
+                 total=None) -> dict:
+    """그 달 예상 매출을 넣는다. 다 더한 값이 0 이면 그 달을 지운다.
+
+    합계는 항목을 더해서 낸다 — 따로 받으면 둘이 어긋났을 때 어느 쪽이
+    맞는지 알 수 없다. 항목이 아예 없을 때만 total 을 쓴다 (묶음별
+    예상이 없는 달이 되고, 그때는 부서별 달성률을 지어내지 않는다).
+    """
     if not MONTH_RE.match(str(month or "")):
         raise ValueError("달은 2026-09 모양이어야 합니다.")
     est = store.setdefault("estimates", {})
-    amount = round(_num(total))
+    rows = []
+    for x in (items or []):
+        name = norm(x.get("item"))
+        amt = round(_num(x.get("amount")))
+        if not name or amt <= 0:
+            continue                       # 이름만 있고 안 채운 줄은 버린다
+        rows.append({"item": name, "amount": amt,
+                     "group": x.get("group") or estimate_group(name)})
+    amount = sum(r["amount"] for r in rows) if rows else round(_num(total))
     if amount <= 0:
         est.pop(month, None)
-        return {"month": month, "total": 0, "removed": True}
+        return {"month": month, "total": 0, "items": 0, "removed": True}
     rec = {"total": amount,
-           "items": [{"item": norm(x.get("item")), "amount": round(_num(x.get("amount")))}
-                     for x in (items or []) if norm(x.get("item"))],
+           "items": rows,
+           "groups": _by_group(rows) if rows else {},
            "source": source or "직접 입력",
            "at": _dt.datetime.now().isoformat(timespec="seconds")}
     est[month] = rec
-    return {"month": month, "total": amount, "items": len(rec["items"]),
-            "removed": False}
+    return {"month": month, "total": amount, "items": len(rows),
+            "groups": rec["groups"], "removed": False}
 
 
 def _estimate_of(store: dict, month: str) -> dict:
@@ -389,9 +443,13 @@ def month_view(store: dict, month: str) -> dict:
     totals = y.get("totals") or {}
     lines = y.get("lines") or []
 
+    est = _estimate_of(store, month)
+    est_g = est.get("groups") or {}
+
     def box(key, label):
         rec = totals.get(key) or {}
         a = _sum(rec, "actual", weeks)
+        e = round(_num(est_g.get(key)))
         items = []
         for ln in lines:
             if ln.get("group") != key:
@@ -401,29 +459,37 @@ def month_view(store: dict, month: str) -> dict:
                           "group": key,
                           "actual": _sum(ln, "actual", weeks)})
         items.sort(key=lambda r: (-r["actual"], r["item"]))
-        return {"key": key, "label": label, "actual": a, "items": items,
+        return {"key": key, "label": label, "actual": a,
+                "estimate": e,
+                "rate": round(a * 100 / e) if e > 0 else None,
+                "items": items,
                 # 세부를 더한 값. 합계와 다르면 화면에서 말해 준다.
                 "items_actual": sum(r["actual"] for r in items)}
 
     boxes = [box(k, lb) for k, lb in GROUPS]
     internal = box(*INTERNAL)
 
-    def pack(rec, label, fallback=None):
+    def pack(rec, label, fallback, est_keys):
         a = _sum(rec, "actual", weeks)
         if not a and fallback:
             a = fallback
-        return {"label": label, "actual": a}
+        e = sum(round(_num(est_g.get(k))) for k in est_keys)
+        return {"label": label, "actual": a, "estimate": e,
+                "rate": round(a * 100 / e) if e > 0 else None}
 
     subtotal = pack(totals.get("subtotal") or {}, "소계 (Sub-total)",
-                    sum(x["actual"] for x in boxes))
+                    sum(x["actual"] for x in boxes),
+                    ("semi", "dc", "space"))
     grand = totals.get("grand") or {}
     grand_v = pack(grand, "총합 (내부거래 포함)",
-                   subtotal["actual"] + internal["actual"])
+                   subtotal["actual"] + internal["actual"], ORDER)
     actual = grand_v["actual"]
 
-    est = _estimate_of(store, month)
+    # 총합 예상은 사람이 넣은 값이 정본이다. 묶음별은 그 안을 나눈 것뿐.
     estimate = round(_num(est.get("total")))
-    rate = round(actual * 100 / estimate) if estimate > 0 else None
+    grand_v["estimate"] = estimate
+    grand_v["rate"] = round(actual * 100 / estimate) if estimate > 0 else None
+    rate = grand_v["rate"]
 
     # 누적은 보고 있는 달까지 (뒤에 오는 달이 들어가면 1~8월 합과 안 맞는다)
     upto = []
@@ -444,6 +510,11 @@ def month_view(store: dict, month: str) -> dict:
         "actual": actual,
         "estimate": estimate,
         "estimate_items": est.get("items") or [],
+        # 아직 안 넣은 달이면 화면이 이 이름들로 빈 줄을 깔아 준다
+        "commodities": DEFAULT_COMMODITIES,
+        "estimate_groups": est_g,
+        # 묶음별로 나뉘어 들어왔는지. 금액만 넣은 달은 꺼진다.
+        "has_estimate_groups": bool(est_g),
         "estimate_at": est.get("at") or "",
         "estimate_source": est.get("source") or "",
         "rate": rate,

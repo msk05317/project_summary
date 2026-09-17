@@ -42,6 +42,11 @@ class RevenueGroup {
   final String label;
   final int actual;
 
+  /// 이 묶음 몫의 예상. Estimate 파일의 Commodity 를 이어 붙인 값이다.
+  /// 금액만 넣은 달은 0 이고, 그때는 달성률을 지어내지 않는다.
+  final int estimate;
+  final int? rate;
+
   /// 그 묶음 안의 세부 줄
   final List<RevenueItem> items;
 
@@ -49,6 +54,8 @@ class RevenueGroup {
     required this.key,
     required this.label,
     required this.actual,
+    this.estimate = 0,
+    this.rate,
     this.items = const [],
   });
 
@@ -56,6 +63,8 @@ class RevenueGroup {
         key: (j['key'] ?? '').toString(),
         label: (j['label'] ?? '').toString(),
         actual: (j['actual'] as num?)?.toInt() ?? 0,
+        estimate: (j['estimate'] as num?)?.toInt() ?? 0,
+        rate: (j['rate'] as num?)?.toInt(),
         items: ((j['items'] as List?) ?? const [])
             .whereType<Map>()
             .map(RevenueItem.fromJson)
@@ -94,6 +103,9 @@ class RevenueMonth {
 
   /// 예상이 아직 안 들어온 달이면 false. 실적만 보여준다.
   final bool hasEstimate;
+
+  /// 예상이 묶음별로 나뉘어 들어왔는지. 금액만 넣은 달은 false.
+  final bool hasEstimateGroups;
   final bool loaded;
   final bool fromCache;
   final DateTime? savedAt;
@@ -111,6 +123,7 @@ class RevenueMonth {
     this.rate,
     this.hasData = false,
     this.hasEstimate = false,
+    this.hasEstimateGroups = false,
     this.loaded = true,
     this.fromCache = false,
     this.savedAt,
@@ -140,7 +153,7 @@ class RevenueMonth {
         month: month, items: items, actual: actual, left: left,
         ytd: ytd, asOf: asOf, rate: rate, hasData: hasData, loaded: loaded,
         groups: groups, internal: internal, estimate: estimate,
-        hasEstimate: hasEstimate,
+        hasEstimate: hasEstimate, hasEstimateGroups: hasEstimateGroups,
         fromCache: fromCache ?? this.fromCache,
         savedAt: savedAt ?? this.savedAt,
       );
@@ -170,6 +183,7 @@ class RevenueMonth {
       internal: internal,
       hasData: j['has_data'] == true && groups.isNotEmpty,
       hasEstimate: j['has_estimate'] == true,
+      hasEstimateGroups: j['has_estimate_groups'] == true,
     );
   }
 }

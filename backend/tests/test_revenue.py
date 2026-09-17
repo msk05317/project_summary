@@ -149,25 +149,73 @@ assert v['has_estimate'] is False
 ok += 1
 
 # ── 예상 매출 ──
-R.set_estimate(st, '2026-09', 2000, [{'item': 'Cable', 'amount': 1200},
-                                     {'item': 'PBX', 'amount': 800}], 'est.xlsx')
+#
+# 합계는 항목을 더해서 낸다. 따로 받으면 둘이 어긋났을 때 어느 쪽이
+# 맞는지 알 수 없다.
+res = R.set_estimate(st, '2026-09', [{'item': 'Cable LAM', 'amount': 1200},
+                                     {'item': 'PBX', 'amount': 800},
+                                     {'item': '안 채운 줄', 'amount': 0},
+                                     {'item': '', 'amount': 999}], 'est.xlsx')
+assert res['total'] == 2000 and res['items'] == 2, res
 v = R.month_view(st, '2026-09')
 assert v['estimate'] == 2000 and v['rate'] == 48, (v['estimate'], v['rate'])
 assert v['left'] == 2000 - 959
-assert v['has_estimate'] is True
-assert [x['item'] for x in v['estimate_items']] == ['Cable', 'PBX']
+assert v['has_estimate'] is True and v['has_estimate_groups'] is True
+assert [x['item'] for x in v['estimate_items']] == ['Cable LAM', 'PBX'], \
+    '이름만 있고 안 채운 줄이 남았다'
+assert sum(x['amount'] for x in v['estimate_items']) == v['estimate'], \
+    '합계가 항목 합과 다르다'
 assert v['estimate_source'] == 'est.xlsx'
+assert len(v['commodities']) == 15, '기본 Commodity 줄이 안 내려온다'
 # 다른 달로 새지 않는다
 assert R.month_view(st, '2026-08')['estimate'] == 0
-# 0 이면 지운다
-R.set_estimate(st, '2026-09', 0)
+# 다 비우면 지운다
+R.set_estimate(st, '2026-09', [])
 assert R.month_view(st, '2026-09')['has_estimate'] is False
-R.set_estimate(st, '2026-09', 2000, [], '직접 입력')
 try:
-    R.set_estimate(st, '2026-9', 100)
+    R.set_estimate(st, '2026-9', [])
     raise AssertionError('달 형식을 안 본다')
 except ValueError:
     pass
+ok += 1
+
+# ── Commodity 를 묶음으로 잇는다 ──
+#
+# Estimate 파일은 Commodity 로 적혀 있고 보고서는 사업부로 나뉜다.
+# 사이트 이름이나 Internal 이 들어가면 내부거래다.
+for _name, _want in (('Cable Internal', 'internal'),
+                     ('Gumi Sheet Metal', 'internal'),
+                     ('Hwaseong MCT', 'internal'),
+                     ('Data Center', 'dc'),
+                     ('Space X', 'space'),
+                     ('PBX', 'semi'),
+                     ('Major Modules', 'semi')):
+    assert R.estimate_group(_name) == _want, (_name, R.estimate_group(_name))
+ok += 1
+
+# ── 묶음마다 제 예상과 달성률 ──
+R.set_estimate(st, '2026-09', [
+    {'item': 'PBX', 'amount': 1000},            # semi
+    {'item': 'Data Center', 'amount': 100},     # dc
+    {'item': 'Gumi Cable', 'amount': 400},      # internal
+], 'est.xlsx')
+v = R.month_view(st, '2026-09')
+_b = {b['key']: b for b in v['groups']}
+assert _b['semi']['estimate'] == 1000 and _b['semi']['rate'] == 75, _b['semi']
+assert _b['dc']['estimate'] == 100 and _b['dc']['rate'] == 31, _b['dc']
+assert _b['space']['estimate'] == 0 and _b['space']['rate'] is None, _b['space']
+assert v['internal']['estimate'] == 400 and v['internal']['rate'] == 45
+assert v['subtotal']['estimate'] == 1100, v['subtotal']
+assert v['grand']['estimate'] == 1500 and v['estimate'] == 1500
+assert sum(v['estimate_groups'].values()) == v['estimate'], '묶음 합이 총합과 다르다'
+ok += 1
+
+# 금액만 넣은 달은 묶음별 달성률을 지어내지 않는다
+R.set_estimate(st, '2026-09', [], '직접 입력', total=2000)
+v = R.month_view(st, '2026-09')
+assert v['estimate'] == 2000 and v['has_estimate_groups'] is False
+assert all(b['estimate'] == 0 and b['rate'] is None for b in v['groups'])
+R.set_estimate(st, '2026-09', [{'item': 'PBX', 'amount': 2000}], '직접 입력')
 ok += 1
 
 # 주간보고를 다시 올려도 예상은 그대로다 — 출처가 다르다
@@ -188,6 +236,8 @@ _p = R.parse_estimate(_buf.getvalue())
 assert _p['total'] == 7244176, _p['total']
 assert len(_p['items']) == 3, _p['items']
 assert _p['gap'] == 0, _p
+assert all('group' in x for x in _p['items']), '항목에 묶음이 안 붙었다'
+assert sum(_p['groups'].values()) == _p['total'], _p['groups']
 # 시트 합계가 틀려 있으면 말해 준다 — 우리가 더한 값을 쓴다
 _es.cell(row=5, column=2, value=999)
 _buf2 = io.BytesIO(); _ew.save(_buf2)
@@ -327,6 +377,10 @@ assert '_check_month' in SRC and SRC.count('_check_month(') >= 3, \
 assert 'RevenueFileBroken' in SRC, '깨진 파일을 그냥 넘긴다'
 assert '"gaps"' in SRC, '세부와 합계가 어긋나도 말을 안 한다'
 assert 'parse_estimate' in SRC and 'set_estimate' in SRC, '예상을 받을 데가 없다'
+# 합계는 서버가 더한다 — 화면이 보낸 합계를 믿으면 어긋나도 모른다
+_est_ep = SRC.split('@app.post("/admin/revenue/estimate")')[1].split('@app.post')[0]
+assert 'items: str = Form' in _est_ep, '예상을 항목으로 안 받는다'
+assert 'total' not in _est_ep, '화면이 보낸 합계를 그대로 쓴다'
 assert '_rev.parse_weekly' in SRC and 'plan' not in SRC.split(
     '@app.post("/admin/revenue/import")')[1].split('@app.post')[0], \
     '주간보고 응답이 아직 계획을 말한다'
@@ -338,6 +392,7 @@ S = (LIB / 'services' / 'revenue_service.dart').read_text(encoding='utf-8')
 assert '/revenue' in S, '앱이 /revenue 를 안 본다'
 assert 'RevenueGroup' in S and 'internal' in S
 assert 'hasEstimate' in S and 'estimate' in S, '앱이 예상을 안 읽는다'
+assert 'hasEstimateGroups' in S, '앱이 묶음별 예상을 안 읽는다'
 assert '.plan' not in S and 'budget' not in S, '앱 모델에 계획이 남아 있다'
 C = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
 assert 'RevenueMonth' in C, '홈 카드가 아직 모델 계산값을 쓴다'
@@ -372,7 +427,11 @@ assert '실행계획' not in D, '매출 상세가 아직 주간보고 실행계�
 _hd = D.split('Widget divisionCard()')[1].split('if (_openDiv)')[0]
 _hd = '\n'.join(ln for ln in _hd.split('\n') if not ln.strip().startswith('//'))
 assert "'100%'" not in _hd, '사업부 줄에 100% 가 다시 붙었다'
-assert '부서별 실적 · 비중' in D, '부서 줄의 숫자가 무엇인지 안 적혀 있다'
+assert '부서별 실적 · 비중' in D and '부서별 실적 / 예상 · 달성' in D, \
+    '부서 줄의 숫자가 무엇인지 안 적혀 있다'
+# 예상이 Commodity 별로 들어온 달은 부서마다 제 달성률이 있다
+assert 'r.hasEstimateGroups' in D, '부서별 달성률을 안 본다'
+assert 'g.estimate' in D and 'g.rate' in D, '부서 줄이 제 예상을 안 본다'
 A2 = (LIB / 'screens' / 'alert_list_screen.dart').read_text(encoding='utf-8')
 assert '_projectRow' in A2, '정상 모두 보기가 아직 품번을 늘어놓는다'
 ok += 1
@@ -385,6 +444,11 @@ assert 'data-rv-grp' in A, '큰 틀에서 세부로 펴지지 않는다'
 assert '세부 합' in A, '세부와 합계가 어긋나도 화면에 말이 없다'
 assert '/admin/revenue/estimate' in A, 'admin 에서 예상을 넣을 데가 없다'
 assert 'rv-est-save' in A and 'rv-est-pick' in A, '예상 넣는 단추가 없다'
+assert 'function estTable' in A, 'Commodity 별로 적을 표가 없다'
+assert 'rv-est-add' in A and 'rv-est-amt' in A, '줄을 더하거나 금액을 적을 데가 없다'
+assert 'rv-est-total' in A, '적는 동안 합계가 안 보인다'
+assert "fd.append('items'" in A, '화면이 항목을 안 보낸다'
+assert "fd.append('total'" not in A, '화면이 아직 합계를 보낸다'
 _rv = A.split('renderRevenuePage')[1]
 assert '실행계획' not in _rv and '사업계획' not in _rv, \
     'admin 매출 화면에 아직 계획이 남아 있다'

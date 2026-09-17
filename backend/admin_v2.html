@@ -5632,6 +5632,13 @@ window.renderAdminV2ByDivision = function(){
     '.rv-diff td { padding:5px 0; border-bottom:1px solid #F1F5F9; color:#475569; }',
     '.rv-diff td:last-child { text-align:right; font-weight:800; color:#0F172A; }',
     '.rv-diff tr:last-child td { border-bottom:0; }',
+    '.rv-est-name, .rv-est-amt { width:100%; box-sizing:border-box; padding:5px 8px;',
+    '  border:1px solid #D1D5DB; border-radius:7px; font-size:12.5px; font-family:inherit; }',
+    '.rv-est-amt { text-align:right; }',
+    '.rv-est-name:focus, .rv-est-amt:focus { outline:none; border-color:#156082; }',
+    '.rv-est-del { border:0; background:none; color:#94A3B8; cursor:pointer;',
+    '  font-size:13px; padding:2px 6px; border-radius:6px; }',
+    '.rv-est-del:hover { background:#FEE2E2; color:#B91C1C; }',
     '.wb-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }',
     '.wb-tbl th { background:#0F2C59; color:#fff; font-weight:700; padding:7px 8px; '
       + 'text-align:center; white-space:nowrap; border:1px solid #1E3A63; }',
@@ -10366,8 +10373,35 @@ window._ovProjectKey = function() {
   var _pick = null;          // 고른 파일 (미리보기 → 반영 사이에 들고 있는다)
   var _busy = false;         // 보내는 중. 겹치면 미리 본 것과 다른 파일이 저장된다
   var _open = {};            // 펴 놓은 묶음
+  var _estRows = null;       // 적고 있는 예상 줄 (저장 전까지 들고 있는다)
+  var _estMonth = '';        // 그 줄이 어느 달 것인지
 
   function _rvMoney(n) { return '$' + Math.round(n || 0).toLocaleString(); }
+
+  // 서버 revenue.estimate_group 과 같은 규칙. 여기서는 적는 동안
+  // 어느 묶음으로 갈지 바로 보여주기만 한다 — 정하는 건 서버다.
+  var _EST_RULES = [
+    ['internal', ['internal', 'gumi', '구미', 'hwaseong', '화성',
+                  'yongin', '용인', 'usa', 'texon', '텍슨']],
+    ['dc', ['data center', 'datacenter', '데이터']],
+    ['space', ['space x', 'spacex', 'starlink', 'starship', '우주', '스페이스']],
+  ];
+
+  function estGroup(name) {
+    var t = String(name || '').toLowerCase();
+    for (var i = 0; i < _EST_RULES.length; i++) {
+      var words = _EST_RULES[i][1];
+      for (var j = 0; j < words.length; j++) {
+        if (t.indexOf(words[j]) >= 0) return _EST_RULES[i][0];
+      }
+    }
+    return 'semi';
+  }
+
+  var GRP = {
+    semi: '반도체', dc: '데이터 센터', space: '우주항공',
+    internal: '구미/화성/미국',
+  };
 
   function esc(v) {
     return String(v === null || v === undefined ? '' : v)
@@ -10434,45 +10468,48 @@ window._ovProjectKey = function() {
            Math.max(0, Math.min(100, v || 0)) + '%"></i></div>';
   }
 
-  // 이 표는 실적만 본다. 주간보고의 사업계획·실행계획 열은 작년 숫자라
-  // 읽지도 않는다. 예상은 사람이 따로 넣고 위 칸에서 본다.
-  function share(v, all) {
-    return (all > 0) ? Math.round((v || 0) * 100 / all) : null;
-  }
-
+  // 실적은 주간보고, 예상은 Estimate 파일에서 온다. 주간보고의
+  // 사업계획·실행계획 열은 작년 숫자라 읽지도 않는다.
+  //
+  // 예상을 금액 하나로만 넣은 달은 묶음별 예상이 없다. 그때 비중을
+  // 달성률 자리에 넣으면 달성률로 읽히니까 그냥 '—' 로 둔다.
   function groupRow(g, all) {
     var on = !!_open[g.key];
-    var sh = share(g.actual, all);
     var warn = (g.items_actual !== g.actual)
       ? '<span class="rv-badge" style="background:#FEE2E2;color:#991B1B;margin-left:6px;">' +
         '세부 합 ' + _rvMoney(g.items_actual) + '</span>' : '';
+    var bg = 'background:#EEF2F7;';
     var head = '<tr class="rv-grp" data-rv-grp="' + esc(g.key) + '">' +
-      '<td class="lbl" style="background:#EEF2F7;font-weight:800;cursor:pointer;">' +
+      '<td class="lbl" style="' + bg + 'font-weight:800;cursor:pointer;">' +
         '<span style="color:#64748B;">' + (on ? '▾' : '▸') + '</span> ' +
         esc(g.label) + warn + '</td>' +
-      '<td style="text-align:right;background:#EEF2F7;font-weight:800;">' + _rvMoney(g.actual) + '</td>' +
-      '<td style="background:#EEF2F7;">' + pct(sh) + '</td>' +
-      '<td style="background:#EEF2F7;min-width:160px;">' + bar(sh) + '</td></tr>';
+      '<td style="text-align:right;' + bg + 'font-weight:800;">' + _rvMoney(g.actual) + '</td>' +
+      '<td style="text-align:right;' + bg + 'color:#64748B;">' +
+        (g.estimate ? _rvMoney(g.estimate) : '—') + '</td>' +
+      '<td style="' + bg + '">' + pct(g.rate) + '</td>' +
+      '<td style="' + bg + 'min-width:150px;">' + (g.estimate ? bar(g.rate) : '') + '</td></tr>';
     if (!on) return head;
     return head + (g.items || []).map(function (r) {
       var quiet = r.actual ? '' : 'color:#B6BECB;';
-      var rs = share(r.actual, all);
       return '<tr><td class="lbl" style="padding-left:26px;font-weight:600;' + quiet + '">' +
         esc(r.item) +
         (r.cust && r.cust !== r.item
           ? '<span class="rv-src">' + esc(r.cust) + '</span>' : '') + '</td>' +
         '<td style="text-align:right;' + quiet + '">' + _rvMoney(r.actual) + '</td>' +
-        '<td style="' + quiet + '">' + pct(rs) + '</td>' +
-        '<td>' + (r.actual ? bar(rs) : '') + '</td></tr>';
+        // 예상은 Commodity 단위라 세부 줄에는 붙일 것이 없다
+        '<td style="text-align:right;color:#C7D2DE;">—</td>' +
+        '<td style="' + quiet + '">—</td><td>　</td></tr>';
     }).join('');
   }
 
-  function sumRow(x, all, cls, style) {
-    var sh = share(x.actual, all);
+  function sumRow(x, cls, style) {
     return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' +
       '<td class="lbl"' + (style || '') + '>' + esc(x.label) + '</td>' +
       '<td style="text-align:right">' + _rvMoney(x.actual) + '</td>' +
-      '<td>' + pct(sh) + '</td><td>' + (cls ? '' : bar(sh)) + '</td></tr>';
+      '<td style="text-align:right' + (cls ? ';color:#C7D2DE' : ';color:#64748B') + '">' +
+        (x.estimate ? _rvMoney(x.estimate) : '—') + '</td>' +
+      '<td>' + pct(x.rate) + '</td>' +
+      '<td>' + (cls || !x.estimate ? '' : bar(x.rate)) + '</td></tr>';
   }
 
   function view(d) {
@@ -10480,11 +10517,11 @@ window._ovProjectKey = function() {
     var all = (d.grand || {}).actual || 0;
     var rows = (d.groups || []).map(function (g) { return groupRow(g, all); }).join('');
     if (d.subtotal) {
-      rows += sumRow(d.subtotal, all, '', ' style="background:#DDE5EF;font-weight:800;"');
+      rows += sumRow(d.subtotal, '', ' style="background:#DDE5EF;font-weight:800;"');
     }
     if (d.internal) rows += groupRow(d.internal, all);
     var foot = d.grand
-      ? sumRow(d.grand, all, 'wb-total', ' style="background:#0F2C59;color:#fff"') : '';
+      ? sumRow(d.grand, 'wb-total', ' style="background:#0F2C59;color:#fff"') : '';
 
     return '' +
     '<div class="ov-page-head" style="display:flex;align-items:flex-end;gap:12px;">' +
@@ -10531,14 +10568,10 @@ window._ovProjectKey = function() {
             ' · ' + esc(d.estimate_source || '') +
             ((d.estimate_items || []).length
               ? ' · 항목 ' + d.estimate_items.length + '개' : '')
-          : '금액만 넣어도 되고, Estimate 파일을 올려도 됩니다') + '</div>' +
+          : '아래 표에 Commodity 별로 적거나, Estimate 파일을 올리면 됩니다') + '</div>' +
         '<div class="row">' +
-          '<input type="text" id="rv-est" class="ov-btn" inputmode="numeric" ' +
-            'style="padding:0 10px;width:130px;text-align:right;" ' +
-            'placeholder="24223598" value="' +
-            (d.has_estimate ? esc(d.estimate) : '') + '">' +
-          '<button type="button" class="ov-btn ov-btn-primary" id="rv-est-save">저장</button>' +
-          '<button type="button" class="ov-btn" id="rv-est-pick">📁 파일</button>' +
+          '<button type="button" class="ov-btn" id="rv-est-pick">📁 파일로 넣기</button>' +
+          '<span class="rv-hint">아래 표에서 직접 적어도 됩니다</span>' +
         '</div>' +
       '</div>' +
       '</div>' +
@@ -10546,40 +10579,90 @@ window._ovProjectKey = function() {
       '<input type="file" id="rv-est-file" accept=".xlsx,.xlsm,.xls" style="display:none;">' +
     '</div>' +
 
+    estTable(d) +
+
     '<div style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:16px 18px;">' +
-      '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">실적 정리</h3>' +
+      '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">매출 정리</h3>' +
       '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">' +
         '묶음을 누르면 세부가 펴집니다. 묶음 합계는 엑셀 [합 계] 블록 그대로이고, ' +
-        '세부를 더한 값이 다르면 빨갛게 표시합니다. 비중은 총합 대비입니다.</p>' +
+        '세부를 더한 값이 다르면 빨갛게 표시합니다. ' +
+        '예상은 Commodity 를 묶음으로 이어 붙인 값입니다.</p>' +
       (rows
         ? '<div class="ov-wrap-x" style="overflow-x:auto;"><table class="wb-tbl">' +
           '<thead><tr><th style="text-align:left">구분</th><th>실적</th>' +
-          '<th>비중</th><th>　</th></tr></thead>' +
+          '<th>예상</th><th>달성</th><th>　</th></tr></thead>' +
           '<tbody>' + rows + foot + '</tbody></table></div>'
         : '<p class="mdl-hint">아직 올린 자료가 없습니다. 위에서 엑셀을 올려 주세요.</p>') +
-    '</div>' +
+    '</div>';
+  }
 
-    ((d.estimate_items || []).length
-      ? '<div style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;' +
-        'padding:16px 18px;margin-top:16px;">' +
-        '<h3 style="margin:0 0 3px;font-size:15px;font-weight:800;">예상 내역</h3>' +
-        '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">' +
-          esc(d.estimate_source || '') + ' 에서 읽은 Commodity 별 금액입니다. ' +
-          '앱에는 합계만 나갑니다.</p>' +
-        '<div class="ov-wrap-x" style="overflow-x:auto;"><table class="wb-tbl">' +
-        '<thead><tr><th style="text-align:left">Commodity</th><th>예상</th>' +
-        '<th>비중</th><th>　</th></tr></thead><tbody>' +
-        d.estimate_items.map(function (r) {
-          var sh = share(r.amount, d.estimate);
-          return '<tr><td class="lbl">' + esc(r.item) + '</td>' +
-            '<td style="text-align:right">' + _rvMoney(r.amount) + '</td>' +
-            '<td>' + pct(sh) + '</td><td style="min-width:160px;">' + bar(sh) + '</td></tr>';
-        }).join('') +
-        '<tr class="wb-total"><td class="lbl" style="background:#0F2C59;color:#fff">합계</td>' +
-        '<td style="text-align:right">' + _rvMoney(d.estimate) + '</td>' +
-        '<td>100%</td><td>　</td></tr>' +
-        '</tbody></table></div></div>'
-      : '');
+  // 예상은 Commodity 별로 적는다. 합계는 적는 게 아니라 더해서 나온다 —
+  // 따로 받으면 둘이 어긋났을 때 어느 쪽이 맞는지 알 수 없다.
+  //
+  // 아직 안 넣은 달은 서버가 준 기본 이름으로 빈 줄을 깔아 둔다. 매달
+  // 이름을 다시 치게 하면 오타로 같은 항목이 둘로 갈라진다.
+  function estRows(d) {
+    if (_estRows && _estMonth === d.month) return _estRows;
+    _estMonth = d.month;
+    var got = d.estimate_items || [];
+    if (got.length) {
+      _estRows = got.map(function (r) {
+        return { item: r.item, amount: r.amount };
+      });
+    } else {
+      _estRows = (d.commodities || []).map(function (n) {
+        return { item: n, amount: 0 };
+      });
+    }
+    return _estRows;
+  }
+
+  function estTotal() {
+    return (_estRows || []).reduce(function (a, r) {
+      return a + (Number(r.amount) || 0);
+    }, 0);
+  }
+
+  function estTable(d) {
+    var rs = estRows(d);
+    return '' +
+    '<div style="background:#fff;border:1px solid #E4E7EC;border-radius:12px;' +
+    'padding:16px 18px;margin-bottom:16px;">' +
+      '<div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:3px;">' +
+        '<h3 style="margin:0;font-size:15px;font-weight:800;">' +
+          esc((d.month || '').slice(0, 4)) + '년 ' +
+          Number((d.month || '-0').slice(5)) + '월 예상 매출</h3>' +
+        '<span style="margin-left:auto;font-size:12px;color:#64748B;font-weight:700;">합계</span>' +
+        '<span id="rv-est-total" style="font-size:18px;font-weight:800;">' +
+          _rvMoney(estTotal()) + '</span>' +
+      '</div>' +
+      '<p style="margin:0 0 14px;font-size:12.5px;color:#64748B;">' +
+        'Commodity 별로 적으면 합계가 따라 나옵니다. 사이트 이름' +
+        '(구미·화성·용인·USA)이나 Internal 이 들어가면 내부거래로 봅니다. ' +
+        '비운 줄은 저장할 때 버립니다.</p>' +
+      '<div class="ov-wrap-x" style="overflow-x:auto;"><table class="wb-tbl">' +
+      '<thead><tr><th style="text-align:left">Commodity</th><th>묶음</th>' +
+      '<th>예상 금액</th><th>　</th></tr></thead><tbody>' +
+      rs.map(function (r, i) {
+        return '<tr>' +
+          '<td class="lbl"><input type="text" class="rv-est-name" data-i="' + i + '" ' +
+            'value="' + esc(r.item) + '" placeholder="항목 이름"></td>' +
+          '<td style="text-align:center;color:#64748B;font-weight:700;" ' +
+            'data-est-grp="' + i + '">' + esc(GRP[estGroup(r.item)]) + '</td>' +
+          '<td style="text-align:right;"><input type="text" class="rv-est-amt" ' +
+            'data-i="' + i + '" inputmode="numeric" value="' +
+            (r.amount ? esc(r.amount) : '') + '" placeholder="0"></td>' +
+          '<td style="text-align:center;"><button type="button" class="rv-est-del" ' +
+            'data-i="' + i + '" title="줄 지우기">✕</button></td></tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:12px;">' +
+        '<button type="button" class="ov-btn" id="rv-est-add">+ 줄 추가</button>' +
+        '<span style="flex:1"></span>' +
+        '<button type="button" class="ov-btn" id="rv-est-reset">되돌리기</button>' +
+        '<button type="button" class="ov-btn ov-btn-primary" id="rv-est-save">저장</button>' +
+      '</div>' +
+    '</div>';
   }
 
   function kpi(k, v, sub, cls, raw) {
@@ -10591,7 +10674,12 @@ window._ovProjectKey = function() {
 
   function wire(d) {
     var sel = document.getElementById('rv-month');
-    if (sel) sel.onchange = function () { window.renderRevenuePage(sel.value); };
+    if (sel) {
+      sel.onchange = function () {
+        _estRows = null;                  // 다른 달 값을 끌고 가면 안 된다
+        window.renderRevenuePage(sel.value);
+      };
+    }
     var file = document.getElementById('rv-file');
     var pick = document.getElementById('rv-pick');
     if (pick) {
@@ -10612,24 +10700,72 @@ window._ovProjectKey = function() {
         send('preview');
       };
     }
-    // ── 예상 매출: 금액 직접 넣기 ──
-    var est = document.getElementById('rv-est');
+    // ── 예상 매출: Commodity 별로 적는다 ──
+    //
+    // 한 글자 칠 때마다 화면을 다시 그리면 커서가 튄다. 값만 고치고
+    // 합계 글자와 묶음 칸만 바꿔 준다.
+    function paintTotal() {
+      var el = document.getElementById('rv-est-total');
+      if (el) el.textContent = _rvMoney(estTotal());
+    }
+
+    document.querySelectorAll('.rv-est-amt').forEach(function (el) {
+      el.oninput = function () {
+        var i = Number(el.getAttribute('data-i'));
+        var v = String(el.value || '').replace(/[^0-9.]/g, '');
+        _estRows[i].amount = v === '' ? 0 : Number(v);
+        paintTotal();
+      };
+    });
+    document.querySelectorAll('.rv-est-name').forEach(function (el) {
+      el.oninput = function () {
+        var i = Number(el.getAttribute('data-i'));
+        _estRows[i].item = el.value;
+        var g = document.querySelector('[data-est-grp="' + i + '"]');
+        if (g) g.textContent = GRP[estGroup(el.value)];
+      };
+    });
+    document.querySelectorAll('.rv-est-del').forEach(function (el) {
+      el.onclick = function () {
+        _estRows.splice(Number(el.getAttribute('data-i')), 1);
+        var c = document.getElementById('v2-content');
+        if (c) { c.innerHTML = view(d); wire(d); }
+      };
+    });
+    var add = document.getElementById('rv-est-add');
+    if (add) {
+      add.onclick = function () {
+        _estRows.push({ item: '', amount: 0 });
+        var c = document.getElementById('v2-content');
+        if (c) { c.innerHTML = view(d); wire(d); }
+      };
+    }
+    var reset = document.getElementById('rv-est-reset');
+    if (reset) {
+      reset.onclick = function () {
+        _estRows = null;                  // 저장된 값으로 되돌린다
+        window.renderRevenuePage(_month);
+      };
+    }
     var save = document.getElementById('rv-est-save');
     if (save) {
       save.onclick = function () {
         if (_busy) return;
-        var raw = String((est && est.value) || '').replace(/[^0-9.]/g, '');
-        if (raw === '') {
-          alert('금액을 넣어 주세요. 0 을 넣으면 지웁니다.');
-          return;
-        }
+        var rows = (_estRows || []).filter(function (r) {
+          return String(r.item || '').trim() && Number(r.amount) > 0;
+        });
+        if (!rows.length &&
+            !confirm(_month + ' 예상을 지웁니다. 계속할까요?')) return;
         _busy = true;
         save.disabled = true;
         var fd = new FormData();
         fd.append('month', _month);
-        fd.append('total', raw);
+        fd.append('items', JSON.stringify(rows.map(function (r) {
+          return { item: String(r.item).trim(), amount: Number(r.amount) };
+        })));
         post('/admin/revenue/estimate', fd).then(function () {
           _busy = false;
+          _estRows = null;                // 서버가 정리한 값을 다시 받는다
           window.renderRevenuePage(_month);
         }).catch(function (e) {
           _busy = false;
@@ -10706,6 +10842,7 @@ window._ovProjectKey = function() {
       _busy = false;
       if (mode === 'commit') {
         closeDlg();
+        _estRows = null;                  // 파일 값이 표에 그대로 올라온다
         window.renderRevenuePage(j.month || _month);
         return;
       }

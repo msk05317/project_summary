@@ -25974,13 +25974,23 @@ async def admin_revenue_import(mode: str = Form("preview"),
 
 @app.post("/admin/revenue/estimate")
 def admin_revenue_estimate(month: str = Form(...),
-                           total: str = Form(...),
+                           items: str = Form("[]"),
                            _admin: int = Depends(get_admin_session)):
-    """그 달 예상 매출을 금액 하나로 넣는다. 0 이면 지운다."""
+    """그 달 예상 매출을 Commodity 별로 넣는다.
+
+    합계는 서버가 더한다. 화면이 보낸 합계를 믿으면 둘이 어긋났을 때
+    어느 쪽이 맞는지 알 수 없다. 다 비우면 그 달 예상을 지운다.
+    """
     month = _check_month(month)
+    try:
+        rows = json.loads(items or "[]")
+    except Exception:
+        raise HTTPException(status_code=400, detail="항목을 읽지 못했습니다.")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="항목은 목록이어야 합니다.")
     store = _load_revenue()
     try:
-        res = _rev.set_estimate(store, month, total, [], "직접 입력")
+        res = _rev.set_estimate(store, month, rows, "직접 입력")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _save_revenue(store)
@@ -26017,8 +26027,7 @@ async def admin_revenue_estimate_import(month: str = Form(...),
            "after": {"estimate": parsed["total"]}}
     if mode != "commit":
         return out
-    out["applied"] = _rev.set_estimate(store, month, parsed["total"],
-                                       parsed["items"], name)
+    out["applied"] = _rev.set_estimate(store, month, parsed["items"], name)
     _save_revenue(store)
     out["saved"] = True
     out["view"] = _rev.month_view(store, month)
