@@ -205,10 +205,11 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                 style: AppText.caption.copyWith(color: AppColors.textMute)),
           ]),
           const SizedBox(height: 8),
+          // 앱에서는 실행계획과 실적만 본다. 사업계획(연초 목표)은
+          // 지금 잘 가고 있나와는 다른 이야기라 admin 에서만 본다.
           Row(children: [
-            Expanded(child: stat('계획', Fmt.moneyShort(g.plan))),
+            Expanded(child: stat('실행계획', Fmt.moneyShort(g.plan))),
             Expanded(child: stat('실적', Fmt.moneyShort(g.actual))),
-            Expanded(child: stat('사업계획', Fmt.moneyShort(g.budget))),
           ]),
           const SizedBox(height: 9),
           ClipRRect(
@@ -256,7 +257,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
             const SizedBox(height: 10),
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(child: stat('실적', Fmt.moneyShort(r.actual), big: true)),
-              Expanded(child: stat('계획', Fmt.moneyShort(r.plan))),
+              Expanded(child: stat('실행계획', Fmt.moneyShort(r.plan))),
               Expanded(
                   child: stat('달성', r.rate == null ? '-' : '${r.rate}%')),
             ]),
@@ -265,8 +266,6 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
               Expanded(
                   child: stat('소계 (내부거래 제외)',
                       Fmt.moneyShort(r.actual - (r.internal?.actual ?? 0)))),
-              Expanded(
-                  child: stat('사업계획', Fmt.moneyShort(r.budget))),
               Expanded(child: stat('연간 누적', Fmt.moneyShort(r.ytd))),
             ]),
           ]),

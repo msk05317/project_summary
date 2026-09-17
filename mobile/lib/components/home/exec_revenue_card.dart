@@ -124,7 +124,7 @@ class ExecRevenueCard extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Row(children: [
-          Text('${Fmt.monthShort(r.month)} 계획 ${Fmt.moneyShort(r.plan)}',
+          Text('${Fmt.monthShort(r.month)} 실행계획 ${Fmt.moneyShort(r.plan)}',
               style: AppText.caption.copyWith(color: AppColors.textMute)),
           const Spacer(),
           Text(rate == null ? '-' : '$rate%',
@@ -133,7 +133,8 @@ class ExecRevenueCard extends StatelessWidget {
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
-              child: _MiniStat(label: '남은 계획', value: Fmt.moneyShort(r.left))),
+              child:
+                  _MiniStat(label: '남은 계획', value: Fmt.moneyShort(r.left))),
           Container(
             width: 1,
             height: 26,
