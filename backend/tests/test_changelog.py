@@ -103,6 +103,20 @@ DF = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
 assert 'COPY CHANGELOG.md' in DF, '이미지에 CHANGELOG 가 안 들어간다'
 ok += 1
 
+# ── 머리말의 형식 예시는 항목이 아니다 ──
+#
+# 예시를 들여써 적었더니 파서가 머리로 잡아서 있지도 않은 버전이 생겼다.
+# 머리는 줄 맨 앞의 '## ' 만이다.
+_ex = {ln.strip().split()[1] for ln in TXT.split('\n')
+       if ln[:1] in (' ', '\t') and ln.strip().startswith('## ')}
+assert _ex, '머리말에 형식 예시가 없다 — 있어야 쓸 때 보고 쓴다'
+_real = set(_re.findall(r'(?m)^## +(\S+)', TXT))
+assert not (_ex & _real), f'예시 버전이 진짜 항목과 겹친다: {_ex & _real}'
+for _v in _ex:
+    assert g['_changelog_for'](_v) == '', f'머리말 예시 {_v} 가 항목으로 읽힌다'
+    assert _tc.notes_for(_v, path=CL) == '', f'release.sh 도 예시 {_v} 를 항목으로 본다'
+ok += 1
+
 # ── 짧게 쓴다 ──
 #
 # "새 버전 업데이트 할 때마다 내용들이 너무 길어, 다음번부터는 짧게"

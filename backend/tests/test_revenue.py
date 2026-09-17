@@ -259,6 +259,14 @@ assert 'RevenueMonth' in C, '홈 카드가 아직 모델 계산값을 쓴다'
 # 실적과 실행계획을 한 줄로. 밑에 또 적으면 같은 숫자를 두 번 말한다.
 assert '실적 / 실행계획' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
 assert '사업부 총합' not in C, '매출을 사업부 하나로 못 박았다'
+# 헤드라인 숫자가 잘리면 카드를 볼 이유가 없다.
+#
+# Spacer 는 flex 1 의 Expanded 다. 같은 Row 안의 Flexible 도 flex 1 이라
+# 남은 폭이 똑같이 나뉘고, 카드가 넓은데도 실적이 '$67…' 로 잘렸다.
+_num = C.split('실적 / 실행계획')[1].split('LinearProgressIndicator')[0]
+_num = '\n'.join(ln for ln in _num.split('\n') if not ln.strip().startswith('//'))
+assert 'Spacer' not in _num, '금액 줄에 Spacer 가 있어 폭이 쪼개진다'
+assert 'Fmt.moneyShort(r.actual)' in _num, '홈 카드에 실적 금액이 없다'
 D = (LIB / 'screens' / 'revenue_detail_screen.dart').read_text(encoding='utf-8')
 assert 'RevenueService' in D, '매출 상세가 홈과 다른 값을 본다'
 # 사업부 한 줄 → 누르면 부서별

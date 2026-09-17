@@ -24,7 +24,7 @@ def notes_for(version: str, path=None) -> str:
     want = str(version or "").strip().lstrip("vV")
     cur, body = None, []
     for line in p.read_text(encoding="utf-8").split("\n"):
-        m = re.match(r"^##\s+(\S+)", line.strip())
+        m = re.match(r"^##\s+(\S+)", line.rstrip())
         if m:
             if cur == want:          # 다음 버전 머리를 만났다 — 여기까지
                 break

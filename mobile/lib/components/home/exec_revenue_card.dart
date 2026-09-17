@@ -69,11 +69,10 @@ class ExecRevenueCard extends StatelessWidget {
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Flexible(
+          Expanded(
             child: Text('${Fmt.monthShort(r.month)} 매출',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.h2),
           ),
-          const Spacer(),
           if (onTap != null) ...[
             Text('상세 보기',
                 textAlign: TextAlign.right,
@@ -87,29 +86,39 @@ class ExecRevenueCard extends StatelessWidget {
         const SizedBox(height: 3),
         // 실적과 실행계획을 한 줄에. 밑에 '9월 실행계획 …' 을 또 적으면
         // 같은 숫자를 두 번 말하는 셈이다.
+        // Spacer 는 flex 1 의 Expanded 다. 옆의 Flexible 도 flex 1 이라
+        // 남은 폭이 셋으로 똑같이 나뉘었고, 카드가 넓은데도 실적이 1/3 만
+        // 받아 '$67…' 로 잘렸다. 왼쪽 묶음을 Expanded 하나로 감싸고,
+        // 그 안에서는 실적이 제 폭을 먼저 가져간다 — 헤드라인 숫자가
+        // 잘리면 카드를 볼 이유가 없다.
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Flexible(
-              child: Text(Fmt.moneyShort(r.actual),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
-                      color: AppColors.textMain)),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(Fmt.moneyShort(r.actual),
+                      maxLines: 1,
+                      style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          height: 1.1,
+                          color: AppColors.textMain)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text('/ ${Fmt.moneyShort(r.plan)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body.copyWith(
+                            fontSize: 16, color: AppColors.textMute)),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text('/ ${Fmt.moneyShort(r.plan)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.body.copyWith(
-                      fontSize: 16, color: AppColors.textMute)),
-            ),
-            const Spacer(),
+            const SizedBox(width: 8),
             Text(rate == null ? '-' : '$rate%',
                 style: AppText.bodyStrong.copyWith(fontSize: 15)),
           ],
