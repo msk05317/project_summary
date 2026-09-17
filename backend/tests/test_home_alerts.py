@@ -160,6 +160,12 @@ B = (LIB / 'components' / 'home' / 'status_board_card.dart').read_text(encoding=
 assert '!widget.alerts.loaded' in B and '현황을 불러오지 못했습니다' in B
 assert 'byKind[_key[k]]' in B, '타일과 목록이 이어져 있지 않다'
 assert '_sel = k' in B, '타일을 눌러도 목록이 안 바뀐다'
+# 타일을 눌러도 되고 옆으로 밀어도 넘어간다.
+# 왼쪽으로 밀면 다음, 오른쪽으로 밀면 이전. 끝에서는 안 넘어간다 —
+# 정상에서 왼쪽으로 밀었는데 집중관리가 나오면 어디로 간 건지 모른다.
+assert 'onHorizontalDragEnd' in B, '옆으로 밀어도 안 넘어간다'
+assert 'primaryVelocity' in B and '_Kind.values[next]' in B
+assert 'next < 0 || next >= _Kind.values.length' in B, '끝에서 감아 돈다'
 # 타일은 네 가지. '보류' 는 뺐다 — 멈춰 세운 것은 오늘 볼 일이 아니다.
 # 맨 오른쪽은 '정상' — 문제만 늘어놓으면 제대로 가는 게 안 보인다.
 for _k in ('지연', '이슈', '임박', '정상'):

@@ -96,6 +96,19 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
   List<AlertProject> _rowsOf(_Kind k) =>
       widget.alerts.byKind[_key[k]] ?? const <AlertProject>[];
 
+  // 타일을 눌러도 되고, 옆으로 밀어도 넘어간다.
+  //
+  // 왼쪽으로 밀면 다음 (정상 → 일정 지연), 오른쪽으로 밀면 이전
+  // (집중관리 → 특이사항). 끝에서는 더 안 넘어간다 — 정상에서 왼쪽으로
+  // 밀었는데 집중관리가 나오면 어디로 간 건지 알 수 없다.
+  void _swipe(DragEndDetails d) {
+    final v = d.primaryVelocity ?? 0;
+    if (v.abs() < 120) return;      // 세로로 스크롤하다 생기는 흔들림은 무시
+    final next = _sel.index + (v < 0 ? 1 : -1);
+    if (next < 0 || next >= _Kind.values.length) return;
+    setState(() => _sel = _Kind.values[next]);
+  }
+
   Widget _shell(Widget child) => Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -131,7 +144,11 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     final a = widget.alerts;
     final rows = _rowsOf(_sel);
 
-    return _shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return _shell(GestureDetector(
+      // 세로 스크롤과 타일 누르기는 그대로 둔다 — 가로 끌기만 가져간다.
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _swipe,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Text('전체 현황',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
@@ -188,7 +205,7 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
       Text(
           '모델 ${a.total}종 · 완료 ${a.done} · 보류 ${a.hold} · PO 대기 ${a.poWait}',
           style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
-    ]));
+    ])));
   }
 
   Widget _tile(_Kind k) {
