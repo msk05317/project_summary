@@ -22320,6 +22320,27 @@ def _model_po_wait(m: dict, disp_group: str = "") -> bool:
 SOON_DAYS = 3
 
 
+# '지연 없음' 처럼 아니라고 적은 문장. 낱말만 보면 이런 것도 지연이 된다.
+_DELAY_NEG = ("지연 없", "지연없", "지연 해소", "지연해소", "지연 해제",
+              "지연해제", "지연 아님", "지연아님", "지연 없이", "지연 방지",
+              "지연 취소", "지연 우려 없")
+
+
+def _issue_says_delay(text) -> bool:
+    """이슈 칸에 사람이 '지연' 이라고 적었으면 일정 문제로 본다.
+
+    양산품은 개발품과 달리 공정 완료예정일이 없어서, 늦었는지 따질
+    근거가 손으로 적는 status 밖에 없다. 그래서 메이저모듈 EFEM 은
+    '2대 고객 사급자재 지연 (ETA: 9/20)' 이라고 적혀 있는데도 화면에는
+    특이사항으로만 떴다. 사람이 이미 판단해서 적어 둔 것을 안 읽을
+    이유가 없다.
+    """
+    t = " ".join(str(text or "").split())
+    if "지연" not in t:
+        return False
+    return not any(neg in t for neg in _DELAY_NEG)
+
+
 def _model_alert(m: dict, disp_group: str = "", expected: str = "",
                  progress=None) -> str:
     """'지연' · '주의' · '정상'.
@@ -22349,6 +22370,10 @@ def _model_alert(m: dict, disp_group: str = "", expected: str = "",
     _proc = (m or {}).get("process")
     if isinstance(_proc, list) and _proc and _process_step_done(_proc[-1]):
         return "정상"          # 최종 승인이 끝났으면 늦고 말고가 없다
+    # 사람이 이슈 칸에 '지연' 이라고 적었으면 그것도 판정이다.
+    # 양산품은 이것 말고 늦었는지 볼 근거가 없다.
+    if _issue_says_delay((m or {}).get("issues")):
+        return "지연"
     g = disp_group or _display_group(m)
     if g != "개발":
         return "정상"
@@ -22481,6 +22506,7 @@ def get_home_alerts(limit: int = 12):
                 counts["delayed"] += 1
             elif kind == "주의":
                 counts["soon"] += 1
+            _iss0 = str(e.get("issues") or "").strip()
             if kind in ("지연", "주의"):
                 exp = str(e.get("current_expected") or "")
                 d = _parse_any_date(exp)
@@ -22494,15 +22520,19 @@ def get_home_alerts(limit: int = 12):
                     "days": (today - d).days if d else None,
                     "stage": str(e.get("current_stage") or ""),
                     "note": str(e.get("note") or "").strip().replace("\n", " · "),
-                    "issue": "",
+                    # 지연 판정이 이슈 칸에서 나온 경우가 있다. 그때는
+                    # 적어 둔 내용이 곧 이유다.
+                    "issue": _iss0.replace("\n", " · ") if kind == "지연" else "",
                 })
                 hit_projects.add(pk)
 
             # 이슈 — 적어 둔 문제. 지연과 겹치지 않는다: 지연은 개발품 공정이
             # 밀린 것이고, 이슈는 주로 양산품에 사람이 적어 넣은 것이다.
             # 경영진에게는 '일정이 늦었나' 와 '문제가 있나' 둘 다 문제다.
-            _iss = str(e.get("issues") or "").strip()
-            if _iss and not hold and not done:
+            # 한 모델은 한 줄이다. 위에서 지연으로 센 것을 여기서 또
+            # 이슈로 세면 같은 모델이 두 번 올라온다.
+            _iss = _iss0
+            if _iss and not hold and not done and kind != "지연":
                 counts["issue"] += 1
                 alerts.append({
                     "project_key": pk,
@@ -22522,7 +22552,7 @@ def get_home_alerts(limit: int = 12):
             #
             # 화면에 지연·이슈·임박만 늘어놓으면 제대로 가는 게 훨씬
             # 많다는 사실이 어디에도 안 나온다. 260종 중 문제는 열 몇 건이다.
-            if (not hold and not done and not _iss
+            if (not hold and not done and not _iss0
                     and kind not in ("지연", "주의")):
                 counts["normal"] += 1
                 normals.append(_row("정상"))

@@ -8,17 +8,19 @@ import ast, datetime, pathlib
 SRC = (pathlib.Path(__file__).resolve().parents[1] / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 WANT = {'_model_alert', '_display_group', '_norm_phases', '_phase_ord',
-        '_as_money', '_parse_any_date', '_process_step_done', '_model_hold'}
+        '_as_money', '_parse_any_date', '_process_step_done', '_model_hold',
+        '_issue_says_delay'}
 srcs = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name in WANT}
 assert set(srcs) == WANT, f'못 찾은 함수: {WANT - set(srcs)}'
 g = {}
-for n in ('_HOLD_WORDS', '_HOLD_NEGATIONS', 'SOON_DAYS'):
+for n in ('_HOLD_WORDS', '_HOLD_NEGATIONS', 'SOON_DAYS', '_DELAY_NEG'):
     for x in tree.body:
         if isinstance(x, ast.Assign) and getattr(x.targets[0], 'id', '') == n:
             exec(ast.get_source_segment(SRC, x), g)
 for n in ('_phase_ord', '_as_money', '_norm_phases', '_display_group',
-          '_parse_any_date', '_process_step_done', '_model_hold', '_model_alert'):
+          '_parse_any_date', '_process_step_done', '_model_hold',
+          '_issue_says_delay', '_model_alert'):
     exec(srcs[n], g)
 f = g['_model_alert']
 
@@ -102,4 +104,27 @@ assert "_alertOf(m) == '지연'" in DART and "m['status'] == '지연'" not in DA
 assert "m['alert']" in DART, '앱이 서버 alert 를 안 읽는다'
 ok += 1
 
-print(f'전부 통과 ({ok}/13)')
+
+# ── 이슈 칸에 '지연' 이라고 적었으면 그것도 판정이다 ──
+#
+# 양산품은 공정 완료예정일이 없어서 늦었는지 볼 근거가 status 밖에 없다.
+# 메이저모듈 EFEM 은 '2대 고객 사급자재 지연' 이라고 적혀 있는데도
+# 화면에는 특이사항으로만 떴다.
+EFEM = {'group': '양산', 'status': '정상',
+        'issues': '2대 고객 사급자재 지연 (ETA: 9/20) → W39 (9/23) 출하예정'}
+assert f(EFEM) == '지연', f(EFEM)
+assert f({'group': '양산', 'issues': '자재 입고 완료'}) == '정상'
+# 아니라고 적은 문장까지 지연으로 세면 안 된다
+for neg in ('지연 없음', '지연 해소됨', '지연 아님', '지연 우려 없음', '출하 지연 방지'):
+    assert f({'group': '양산', 'issues': neg}) == '정상', neg
+# 드롭·보류·완료는 이슈에 뭐라 적혀 있든 늦은 게 아니다
+assert f({'group': '양산', 'status': '드롭예정', 'issues': '생산 지연'}) == '정상'
+assert f({'group': '양산', 'progress': 100, 'issues': '생산 지연'}) == '정상'
+ok += 1
+
+# 홈: 한 모델이 지연이면서 이슈로 두 번 올라가지 않는다
+assert 'kind != "지연"' in SRC, '지연으로 센 모델을 이슈로 또 센다'
+assert '_issue_says_delay' in SRC
+ok += 1
+
+print(f'전부 통과 · {ok}개 항목')

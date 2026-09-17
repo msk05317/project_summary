@@ -12,11 +12,11 @@ tree = ast.parse(SRC)
 WANT = {'_model_hold', '_model_po_wait', '_model_alert', '_display_group',
         '_norm_phases', '_phase_ord', '_as_money', '_process_step_done',
         '_parse_any_date', '_project_hold', '_project_hold_reason',
-        '_hold_from_note', '_stamp_project_hold'}
+        '_hold_from_note', '_stamp_project_hold', '_issue_says_delay'}
 g = {}
 for n in tree.body:
     if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') in (
-            'MODEL_STATUSES', '_HOLD_WORDS', '_HOLD_NEGATIONS'):
+            'MODEL_STATUSES', '_HOLD_WORDS', '_HOLD_NEGATIONS', '_DELAY_NEG'):
         exec(ast.get_source_segment(SRC, n), g)
     if isinstance(n, ast.FunctionDef) and n.name in WANT:
         exec(ast.get_source_segment(SRC, n), g)

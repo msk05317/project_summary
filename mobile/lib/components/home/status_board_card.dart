@@ -45,7 +45,9 @@ class StatusBoardCard extends StatefulWidget {
 }
 
 class _StatusBoardCardState extends State<StatusBoardCard> {
-  _Kind _sel = _Kind.delayed;
+  // 열자마자 보이는 것은 '정상' 이다. 문제부터 펴 놓으면 앱을 열 때마다
+  // 나쁜 소식으로 시작한다 — 265종 중 190종은 제대로 가고 있다.
+  _Kind _sel = _Kind.normal;
 
   /// 서버가 쓰는 값. by_kind 의 키이자 alert 의 kind 다. 바꾸면 안 된다.
   static const _key = {
