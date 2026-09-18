@@ -732,52 +732,84 @@ def _issue_answer(project_key: str) -> str:
     return "\n".join(lines)
 
 
-def _issue_answer_all(limit_per_project: int = 3) -> str:
-    """프로젝트를 안 짚고 '일정 지연' 만 물었을 때. 전 프로젝트를 훑는다.
+_ALERT_WORD = {"지연": "일정 지연", "이슈": "특이사항", "임박": "집중관리"}
 
-    예전에는 세션에 남아 있던 마지막 프로젝트로 좁혀서 답했다. 홈에는
-    '일정 지연 8건 · 3곳' 이라고 떠 있는데 챗은 메이저모듈 1건만 말하니
-    둘 중 무엇이 맞는지 알 수가 없었다.
+
+def _alert_short_date(v) -> str:
+    """'2026-09-14' → '9/14'. 연도는 화면에서 이미 아는 값이다."""
+    t = str(v or "").strip()
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    return f"{int(m.group(2))}/{int(m.group(3))}" if m else t
+
+
+def _alert_brief(a: dict, width: int = 34) -> str:
+    """한 줄 사유.
+
+    적어 둔 이슈가 있으면 앞머리만 쓴다. '2대 고객 사급자재 지연
+    (ETA: 9/20) → W39 (9/23) 출하예정' 을 통째로 들고 오면 화면에서
+    잘려서 오히려 무슨 말인지 모르게 된다.
     """
-    data = _load_models().get("projects") or {}
-    blocks, total, places = [], 0, 0
-    for key in sorted(data):
-        if str(key).startswith("bloom"):
-            continue                       # 블룸은 일 보드라 따로 답한다
-        proj = data.get(key) or {}
-        models = proj.get("models") or []
-        if not models:
-            continue
-        rows = []
-        for m in models:
-            try:
-                if _model_hold(m):
-                    continue               # 드롭·보류는 지연이 아니다
-            except Exception:
-                pass
-            name = m.get("name") or m.get("id") or ""
-            txt = " ".join(str(m.get("issues") or "").split())
-            try:
-                late = _model_alert(m) == "지연"
-            except Exception:
-                late = False
-            if txt:
-                rows.append(f"· {name}: {txt[:40]}" + ("…" if len(txt) > 40 else ""))
-            elif late:
-                exp = m.get("current_expected") or m.get("due_text") or "미정"
-                rows.append(f"· {name}: 완료예정 {exp} 경과 (사유 미기재)")
-        if not rows:
-            continue
-        places += 1
-        total += len(rows)
-        label = _display_project_label(key)
-        blocks.append(f"[{label}] {len(rows)}건")
-        blocks.extend(rows[:limit_per_project])
-        if len(rows) > limit_per_project:
-            blocks.append(f"· 외 {len(rows) - limit_per_project}건")
-    if not blocks:
-        return "지연이나 이슈로 잡힌 모델이 없습니다."
-    return f"일정 지연·이슈 {total}건 · {places}곳.\n" + "\n".join(blocks)
+    txt = " ".join(str(a.get("issue") or "").split())
+    if txt:
+        # 괄호 부연과 뒤에 이어 붙인 줄만 떼어낸다.
+        #
+        # 화살표에서 자르면 안 된다. '계획 77 → 실적 66' 처럼 화살표
+        # 자체가 뜻을 가진 문장이 있어서 '계획 77' 로 끊긴다. 괄호만
+        # 잘라도 '2대 고객 사급자재 지연 (ETA: 9/20) → W39 …' 은
+        # '2대 고객 사급자재 지연' 으로 정리된다.
+        for sep in ("(", " · "):
+            i = txt.find(sep)
+            if i > 4:
+                txt = txt[:i]
+        txt = txt.strip(" -·,:")
+        return txt[:width] + "…" if len(txt) > width else txt
+    exp = _alert_short_date(a.get("expected"))
+    d = a.get("days")
+    if exp and isinstance(d, int) and d > 0:
+        return f"완료예정 {exp} · {d}일 지남"
+    if exp:
+        return f"완료예정 {exp}"
+    return str(a.get("stage") or "").strip()
+
+
+def _alert_answer_all(kinds, per_project: int = 5) -> str:
+    """프로젝트를 안 짚고 '일정 지연' 만 물었을 때.
+
+    홈 카드와 같은 계산(get_home_alerts)을 그대로 쓴다. 예전에는 챗이
+    따로 세서, 홈은 '일정 지연 8건 · 3곳' 인데 챗은 2건 2곳이라고 했다.
+    이슈 칸에 견적 협의 메모를 적어 둔 모델까지 지연으로 끌어왔었다.
+    """
+    try:
+        res = get_home_alerts(limit=500)
+    except Exception as e:
+        print(f"[chat] 홈 알림 계산 실패: {e}")
+        return ""
+    rows = [a for a in (res.get("alerts") or []) if a.get("kind") in kinds]
+    word = " · ".join(_ALERT_WORD.get(k, k) for k in kinds
+                      if any(a.get("kind") == k for a in rows)) or \
+        " · ".join(_ALERT_WORD.get(k, k) for k in kinds)
+    if not rows:
+        return f"{word}으로 잡힌 모델이 없습니다."
+
+    order, grouped = [], {}
+    for a in rows:
+        pk = a.get("project_key") or ""
+        if pk not in grouped:
+            order.append(pk)
+            grouped[pk] = []
+        grouped[pk].append(a)
+
+    lines = [f"{word} {len(rows)}건 · {len(order)}곳."]
+    for pk in order:
+        got = grouped[pk]
+        lines.append(f"[{got[0].get('project') or pk}] {len(got)}건")
+        for a in got[:per_project]:
+            name = a.get("model") or a.get("id") or ""
+            why = _alert_brief(a)
+            lines.append(f"· {name}: {why}" if why else f"· {name}")
+        if len(got) > per_project:
+            lines.append(f"· 외 {len(got) - per_project}건")
+    return "\n".join(lines)
 
 
 def _chat_project_keywords() -> dict:
@@ -18838,8 +18870,17 @@ async def chat(payload: dict):
             and not any(k in _user_text for k in ('매출', '금액', '얼마'))):
         _one = (_proj_in_msg and _proj_in_msg != 'all'
                 and not str(_proj_in_msg).startswith('bloom'))
+        # 물어본 것만 답한다. '일정 지연' 에 견적 협의 메모까지 끌어오면
+        # 홈 카드의 숫자와 어긋난다.
+        _kinds = []
+        if any(k in _user_text for k in ('지연', '밀린', '지체', '늦')):
+            _kinds.append('지연')
+        if any(k in _user_text for k in ('이슈', '문제', '리스크', '막힌', '특이사항')):
+            _kinds.append('이슈')
+        if not _kinds:
+            _kinds = ['지연', '이슈']
         try:
-            _ans_i = _issue_answer(_proj_in_msg) if _one else _issue_answer_all()
+            _ans_i = _issue_answer(_proj_in_msg) if _one else _alert_answer_all(_kinds)
         except Exception as _e_i:
             _ans_i = ""
             print(f"[chat] 이슈 즉답 실패(무시): {_e_i}")
