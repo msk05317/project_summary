@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design/typography.dart';
 import '../utils/format.dart';
+import '../utils/material_ratio.dart';
 
 class ModelCostDetailScreen extends StatelessWidget {
   final Map<String, dynamic> model;
@@ -91,10 +92,34 @@ class ModelCostDetailScreen extends StatelessWidget {
               children: [
                 const Text('재료비율', style: TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
                 const SizedBox(height: 8),
-                Text(
-                  ratio != null ? '${ratio.toStringAsFixed(1)}%' : '-',
-                  style: const TextStyle(
-                      fontSize: 34, fontWeight: FontWeight.w800, color: Color(0xFF0F2C59)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      ratio != null ? '${ratio.toStringAsFixed(1)}%' : '-',
+                      style: TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          color: ratioColor(ratio)),
+                    ),
+                    if (ratio != null && bandOf(ratio) != RatioBand.low) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: ratioColor(ratio).withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(kRatioBandLabel[bandOf(ratio)] ?? '',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: ratioColor(ratio))),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 10),
                 ClipRRect(
@@ -103,11 +128,8 @@ class ModelCostDetailScreen extends StatelessWidget {
                     value: ratio != null ? (ratio / 100).clamp(0.0, 1.0) : 0,
                     minHeight: 8,
                     backgroundColor: const Color(0xFFF3F4F6),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      ratio != null && ratio >= 80
-                          ? const Color(0xFFDC2626)
-                          : const Color(0xFF0F2C59),
-                    ),
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(ratioColor(ratio)),
                   ),
                 ),
                 const SizedBox(height: 8),
