@@ -206,7 +206,9 @@ def resolve(text, project_key, ctx):
     bare = re.sub(r"\s+", "", t)
     is_bare_name = len(bare) <= 12 and not any(c.isdigit() for c in bare)
     if is_bare_name or any(k in t for k in summary_words):
-        return _answer_project(label, proj, models, mass, dev, process_progress)
+        return _answer_project(label, proj, models, mass, dev, process_progress,
+                               ctx.get('now_week') or '',
+                               ctx.get('now_month') or '')
 
     return None
 
@@ -253,7 +255,64 @@ def _answer_model(m, process_progress, process_current):
     return line
 
 
-def _answer_project(label, proj, models, mass, dev, process_progress):
+def _weeks_by_month(models):
+    """'2026-09' → {'W36','W37',...}.
+
+    주차가 몇 월인지는 모델의 weekly_plan 에만 적혀 있다. 그룹 합계
+    (weekly_summary) 는 주차만 들고 월을 모른다.
+    """
+    out = {}
+    for m in models:
+        for mon, wk in ((m or {}).get("weekly_plan") or {}).items():
+            for w in (wk or {}):
+                out.setdefault(_s(mon), set()).add(_s(w))
+    return out
+
+
+def _week_cells(proj, models):
+    """'W37' → {'plan': n, 'actual': n}.
+
+    수량은 주차마다 weekly_summary 가 정본이다 (주간보고 엑셀에서 그대로
+    온 값). 그 주차가 summary 에 없을 때만 모델별 weekly_plan 을 쓴다.
+
+    한 주차를 양쪽에서 더하면 안 된다 — 엑셀에는 개별 모델 행과 그것을
+    합한 집계 행이 같이 있어서 두 배가 된다. 반대로 summary 가 있다고
+    통째로 끝내도 안 된다: 주간보고는 지난주까지만 올라오고 이번 달
+    남은 주차는 모델 쪽에만 있다.
+    """
+    out = {}
+    ws = (proj or {}).get("weekly_summary") or {}
+    for g in ("양산", "개발"):
+        for w, c in (((ws.get(g) or {}).get("weeks")) or {}).items():
+            t = out.setdefault(_s(w), {"plan": 0, "actual": 0})
+            t["plan"] += int((c or {}).get("plan") or 0)
+            t["actual"] += int((c or {}).get("actual") or 0)
+    extra = {}
+    for m in models:
+        for _mon, wk in ((m or {}).get("weekly_plan") or {}).items():
+            for w, c in (wk or {}).items():
+                t = extra.setdefault(_s(w), {"plan": 0, "actual": 0})
+                t["plan"] += int((c or {}).get("plan") or 0)
+                t["actual"] += int((c or {}).get("actual") or 0)
+    for w, c in extra.items():
+        out.setdefault(w, c)
+    return out
+
+
+def _wk_no(w):
+    return int(re.sub(r"\D", "", _s(w)) or 0)
+
+
+def _pair(plan, actual):
+    """'계획 120대 / 실적 44대 (37%)'. 계획이 없으면 달성률을 지어내지 않는다."""
+    line = f"계획 {plan:,}대 / 실적 {actual:,}대"
+    if plan > 0:
+        line += f" ({round(actual * 100 / plan)}%)"
+    return line
+
+
+def _answer_project(label, proj, models, mass, dev, process_progress,
+                    now_week='', now_month=''):
     ws = proj.get("weekly_summary") or {}
     lines = [f"{label}{_josa(label)} 모델 {len(models)}종입니다 (양산 {len(mass)}종, 개발 {len(dev)}종)."]
 
@@ -266,22 +325,37 @@ def _answer_project(label, proj, models, mass, dev, process_progress):
             pct = round(act * 100 / po) if po else 0
             lines.append(f"{g}: PO {po:,}대 중 {act:,}대 출하 ({pct}%), 잔량 {rem:,}대.")
 
-    # 최근 실적이 있는 주차
-    latest = None
-    for g in ("양산", "개발"):
-        for w, c in (((ws.get(g) or {}).get("weeks")) or {}).items():
-            if (c or {}).get("actual"):
-                n = int(re.sub(r"\D", "", w) or 0)
-                if latest is None or n > latest[0]:
-                    latest = (n, w)
-    if latest:
-        w = latest[1]
-        m_cell = ((ws.get("양산") or {}).get("weeks") or {}).get(w) or {}
-        d_cell = ((ws.get("개발") or {}).get("weeks") or {}).get(w) or {}
-        lines.append(
-            f"가장 최근 실적은 {w} 주차로 양산 {int(m_cell.get('actual') or 0)}대, "
-            f"개발 {int(d_cell.get('actual') or 0)}대입니다."
-        )
+    # ── 이번 주와 그 달 ──
+    #
+    # 예전에는 '가장 최근 실적이 있는 주차' 만 적었다. 이번 주가 아직
+    # 비어 있으면 지난주 숫자가 오늘 것처럼 읽혔고, 그 달을 통틀어
+    # 얼마나 했는지는 아예 없었다.
+    cells = _week_cells(proj, models)
+    if cells:
+        this_w = _s(now_week)
+        cur = cells.get(this_w)
+        if cur and (cur["plan"] or cur["actual"]):
+            lines.append(f"이번 주 {this_w}: " + _pair(cur["plan"], cur["actual"]))
+        else:
+            done = [w for w, c in cells.items() if c["actual"]]
+            last = max(done, key=_wk_no) if done else None
+            if this_w:
+                lines.append(f"이번 주 {this_w}: 아직 실적이 없습니다.")
+            if last:
+                c = cells[last]
+                lines.append(f"마지막 실적은 {last}: " + _pair(c["plan"], c["actual"]))
+
+        # 그 달 합계. 이번 달에 주차가 없으면 자료가 있는 마지막 달로.
+        by_mon = _weeks_by_month(models)
+        mon = _s(now_month) if _s(now_month) in by_mon else (
+            max(by_mon) if by_mon else "")
+        if mon:
+            wl = by_mon.get(mon) or set()
+            tp = sum(cells.get(w, {}).get("plan", 0) for w in wl)
+            ta = sum(cells.get(w, {}).get("actual", 0) for w in wl)
+            if tp or ta:
+                label_mon = f"{int(mon[5:7])}월"
+                lines.append(f"{label_mon} 합계: " + _pair(tp, ta))
 
     scored = [p for p in (_model_progress(m, process_progress) for m in models) if p is not None]
     if scored:

@@ -19395,6 +19395,10 @@ async def chat(payload: dict):
                     'known_weeks': _known_weeks,
                     'project_label': _plabel or (last_project or ''),
                     'project_labels': [x for x in _labels if x],
+                    # 이번 주가 언제인지는 서버만 안다. 챗 답변이 지난주
+                    # 숫자를 오늘 것처럼 말하지 않게 같이 넘긴다.
+                    'now_week': 'W%d' % datetime.now().isocalendar()[1],
+                    'now_month': datetime.now().strftime('%Y-%m'),
                 })
                 if _direct_ans:
                     print(f"[chat] 정형 답변 매칭 → {_user_text[:30]}")
