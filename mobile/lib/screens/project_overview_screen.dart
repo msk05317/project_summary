@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../design/typography.dart';
 import 'model_list_screen.dart';
+import 'dev_process_screen.dart';
 import 'model_cost_list_screen.dart';
 import '../models/weekly_revenue.dart';
 import '../widgets/weekly_revenue_card.dart';
@@ -629,6 +630,39 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
     }
   }
 
+  /// '확인 필요' 한 줄을 눌렀을 때. 개발은 공정 화면, 양산은 모델 상세.
+  /// 어느 쪽도 아니면(품목 등) 예전처럼 목록으로 간다.
+  void _openCheckRow(_CheckRow r, List<Map<String, dynamic>> models) {
+    final m = r.model;
+    final g = (m['display_group'] ?? m['group'] ?? '').toString();
+    final id = (m['id'] ?? m['name'] ?? '').toString();
+    if (g == '개발' && id.isNotEmpty) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => DevProcessScreen(
+          projectKey: widget.projectKey,
+          modelId: id,
+          modelName: (m['name'] ?? id).toString(),
+        ),
+      ));
+      return;
+    }
+    if (g == '양산') {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ModelDetailScreen(
+            projectName: widget.projectName, model: m),
+      ));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ModelListScreen(
+        projectKey: widget.projectKey,
+        projectName: widget.projectName,
+        groupName: '전체',
+        models: models,
+      ),
+    ));
+  }
+
   Widget _checkRowTile(_CheckRow r, List<Map<String, dynamic>> models) {
     final c = _kindColor(r.kind);
     final sub = <String>[
@@ -636,14 +670,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       if (r.expected.isNotEmpty) '완료예정 ${r.expected}',
     ].join(' · ');
     return InkWell(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ModelListScreen(
-          projectKey: widget.projectKey,
-          projectName: widget.projectName,
-          groupName: '전체',
-          models: models,
-        ),
-      )),
+      // 목록을 한 번 더 거치게 하면 늦은 모델을 다시 찾아야 한다.
+      // 개발이면 공정 화면으로, 양산이면 모델 상세로 바로 넘긴다.
+      onTap: () => _openCheckRow(r, models),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -680,6 +709,8 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                       style: const TextStyle(
                           fontSize: 11.5, color: Color(0xFF9CA3AF))),
                 ),
+              // 적어 둔 사유와 '미기재' 는 같은 종류의 정보다.
+              // 하나는 검정 보통, 하나는 주황 굵게면 왜 다른지 물어야 한다.
               for (final l in r.lines)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
@@ -687,7 +718,10 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 12.5, height: 1.4, color: Color(0xFF374151))),
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFB45309))),
                 ),
               // 늦었는데 아무도 이유를 안 적어 두면 그 사실을 말한다.
               // 빈칸으로 두면 사유가 없는 건지 화면이 안 보여주는 건지
