@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.24",
-  "latest_version_code": 47,
+  "latest_version": "2.3.25",
+  "latest_version_code": 48,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "매출을 타겟과 견줍니다.\n\n· 홈이 '실적 / 타겟' 으로 바뀝니다\n· 타겟은 관리자 화면에서 매달 넣습니다",
+  "release_notes": "사업부 화면도 같은 매출을 봅니다.\n\n· 사업부도 '실적 / 타겟' 입니다\n· 홈과 사업부의 9월 금액이 같아졌습니다",
   "force_update": false
 }
