@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.32",
-  "latest_version_code": 55,
+  "latest_version": "2.3.33",
+  "latest_version_code": 56,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "주차 보드 구분선을 고쳤습니다.\n\n- 달이 바뀌는 선이 머리글에서 안 보이던 문제\n- 남색 바탕 위에서는 흰 선으로 긋습니다",
+  "release_notes": "주차 보드를 보기 좋게 다듬었습니다.\n\n- 달 구분을 선 대신 색으로\n- 격자선을 옅게, 0 은 회색으로\n- 숫자 자릿수를 세로로 맞춤",
   "force_update": false
 }
