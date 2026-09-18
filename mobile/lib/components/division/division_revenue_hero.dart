@@ -17,7 +17,11 @@ import '../../utils/format.dart';
 class DivisionRevenueHero extends StatelessWidget {
   final String month;          // '2026-09'
   final int revenue;           // 실적 매출
-  final int planRevenue;       // 계획 매출
+  final int planRevenue;       // 짝이 되는 금액 (계획 또는 타겟)
+
+  /// 금액 짝에 붙는 말. 반도체는 주간보고 실적과 타겟을 받아 와서
+  /// '실적 / 타겟' 이 되고, 나머지 사업부는 모델 계산이라 '실적 / 계획'.
+  final String pairLabel;
   final int qtyPlan;
   final int qtyActual;
   final String weekLabel;      // 'W36'
@@ -31,6 +35,7 @@ class DivisionRevenueHero extends StatelessWidget {
     required this.month,
     required this.revenue,
     required this.planRevenue,
+    this.pairLabel = '실적 / 계획',
     required this.qtyPlan,
     required this.qtyActual,
     required this.weekLabel,
@@ -85,8 +90,8 @@ class DivisionRevenueHero extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            const Text('실적 / 계획',
-                style: TextStyle(fontSize: 11, color: _label)),
+            Text(pairLabel,
+                style: const TextStyle(fontSize: 11, color: _label)),
             const Spacer(),
             Text(
               _todayLabel(),

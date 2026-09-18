@@ -459,6 +459,26 @@ assert 'bool _openDiv = true;' in D, '매출 상세가 접힌 채로 열린다'
 assert 'Widget kv(String k, String v)' in D, '총합 카드가 값을 왼쪽에 몰아 놓는다'
 assert '실행계획' not in D, '매출 상세가 아직 주간보고 실행계획을 말한다'
 assert '실적 / 타겟' in D and 'r.targetRate' in D, '매출 상세 총합이 타겟을 안 쓴다'
+# 사업부 화면도 같은 숫자를 봐야 한다.
+#
+# 반도체사업부 매출은 주간보고가 원본인데 사업부 화면만 모델 판가로
+# 계산하고 있었다. 홈은 $676만, 사업부 화면은 $400만 — 같은 달인데
+# 화면마다 다르면 둘 다 못 믿는다.
+HERO = (LIB / 'components' / 'division' / 'division_revenue_hero.dart') \
+    .read_text(encoding='utf-8')
+assert 'pairLabel' in HERO, '금액 짝 문구를 못 바꾼다'
+assert "const Text('실적 / 계획'" not in HERO, '문구가 박혀 있다'
+DP = (LIB / 'screens' / 'division_projects_screen.dart').read_text(encoding='utf-8')
+assert "_isSemi" in DP and 'RevenueService.fetch()' in DP, \
+    '사업부 화면이 주간보고를 안 본다'
+assert "_useSheet ? _rev.actual" in DP and "_useSheet ? _rev.target" in DP, \
+    '사업부 히어로가 아직 모델 계산값을 쓴다'
+assert "'실적 / 타겟'" in DP, '사업부 히어로 문구가 예전 그대로다'
+# 사업부로 좁혀 본 매출 상세도 같다
+assert "widget.divisionId == 'semiconductor'" in D, \
+    '사업부 매출 합계가 아직 모델 계산값을 쓴다'
+assert 'Widget _totalCard(OverviewSummary s, [RevenueMonth? rev])' in D
+assert '남은 타겟' in D, '타겟 기준인데 계획 대비라고 적는다'
 # 사업부가 하나뿐이라 비중이 100 인 것뿐인데 '100%' 라고 적으면
 # 달성률로 읽힌다. 아래 부서 줄은 68·5·28 이라 앞뒤가 안 맞아 보인다.
 _hd = D.split('Widget divisionCard()')[1].split('if (_openDiv)')[0]

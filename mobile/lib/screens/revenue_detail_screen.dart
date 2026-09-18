@@ -127,7 +127,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                     if (wide && rev.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    return _overviewBody();
+                    return _overviewBody(rev.data);
                   },
                 ),
               ),
@@ -372,8 +372,10 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
     );
   }
 
-  /// 엑셀을 아직 안 올렸을 때 — 예전처럼 모델에서 계산한 값
-  Widget _overviewBody() {
+  /// 엑셀을 아직 안 올렸을 때, 또는 사업부로 좁혀 볼 때.
+  /// 프로젝트별 줄은 모델 계산이지만, 맨 위 합계는 반도체면 주간보고
+  /// 실적과 타겟을 쓴다 — 같은 달 매출이 화면마다 다르면 둘 다 못 믿는다.
+  Widget _overviewBody(RevenueMonth? rev) {
     return FutureBuilder<OverviewSummary>(
                   future: _future,
                   builder: (context, snap) {
@@ -390,7 +392,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                     return ListView(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                       children: [
-                        _totalCard(s),
+                        _totalCard(s, rev),
                         const SizedBox(height: 12),
                         _projectSection(s),
                       ],
@@ -446,8 +448,16 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
   // ------------------------------------------------------------------
   // 합계 카드
   // ------------------------------------------------------------------
-  Widget _totalCard(OverviewSummary s) {
-    final rate = s.achievement;
+  Widget _totalCard(OverviewSummary s, [RevenueMonth? rev]) {
+    // 반도체는 주간보고 실적과 사람이 넣은 타겟이 정본이다.
+    final sheet = widget.divisionId == 'semiconductor' &&
+        rev != null && rev.loaded && rev.hasData;
+    final actual = sheet ? rev.actual : s.revenue;
+    final plan = sheet ? rev.target : s.planRevenue;
+    final pair = sheet ? (rev.hasTarget ? '실적 / 타겟' : '실적') : '실적 / 계획';
+    final rate = sheet
+        ? (plan > 0 ? (actual * 100 / plan).round() : null)
+        : s.achievement;
     final ratio = rate == null ? 0.0 : (rate / 100).clamp(0.0, 1.0);
     final ahead = rate != null && rate >= 100;
     final color = rate == null
@@ -466,7 +476,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
             children: [
               Text('${Fmt.monthShort(s.month)} 합계', style: AppText.h2),
               const SizedBox(width: 6),
-              Text('실적 / 계획',
+              Text(pair,
                   style: AppText.caption.copyWith(color: AppColors.textMute)),
             ],
           ),
@@ -476,7 +486,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                Fmt.moneyShort(s.revenue),
+                Fmt.moneyShort(actual),
                 style: const TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w800,
@@ -485,7 +495,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text('/ ${Fmt.moneyShort(s.planRevenue)}',
+              Text('/ ${Fmt.moneyShort(plan)}',
                   style: AppText.body.copyWith(color: AppColors.textMute)),
               const Spacer(),
               Container(
@@ -506,7 +516,8 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          Text('실적 ${Fmt.money(s.revenue)} · 계획 ${Fmt.money(s.planRevenue)}',
+          Text('실적 ${Fmt.money(actual)}'
+              '${plan > 0 ? ' · ${sheet ? '타겟' : '계획'} ${Fmt.money(plan)}' : ''}',
               style: AppText.caption.copyWith(color: AppColors.textMute)),
           const SizedBox(height: 12),
           ClipRRect(
@@ -533,8 +544,10 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
               ),
               Expanded(
                 child: _stat(
-                  ahead ? '계획 대비 초과' : '계획 대비 부족',
-                  Fmt.moneyShort((s.revenue - s.planRevenue).abs()),
+                  sheet
+                      ? (ahead ? '타겟 대비 초과' : '남은 타겟')
+                      : (ahead ? '계획 대비 초과' : '계획 대비 부족'),
+                  Fmt.moneyShort((actual - plan).abs()),
                   color: ahead
                       ? AppColors.summaryNormal
                       : AppColors.summaryCaution,

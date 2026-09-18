@@ -30,6 +30,7 @@ import '../widgets/bloom_today_card.dart';
 import '../components/division/division_immediate_check.dart'
     show DivisionImmediateItem, ImmediatePriority;
 import '../components/division/division_revenue_hero.dart';
+import '../services/revenue_service.dart';
 import '../components/division/division_attention_banner.dart';
 import '../components/division/project_revenue_row.dart';
 import '../components/division/automotive_hero_card.dart';
@@ -87,6 +88,21 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
 
   bool get _isAuto => widget.division.id == AutomotiveService.divisionId;
 
+  /// 반도체사업부 매출은 주간보고 엑셀이 원본이다. 모델 판가로 계산한
+  /// 값(/overview)과 숫자가 달라서, 홈에서는 $676만인데 사업부 화면은
+  /// $400만이 떴다. 같은 사업부의 같은 달인데 화면마다 다르면 둘 다 못 믿는다.
+  RevenueMonth _rev = RevenueMonth.empty;
+  bool get _isSemi => widget.division.id == 'semiconductor';
+
+  /// 주간보고 실적과 타겟을 쓸 수 있는 상태인지.
+  bool get _useSheet => _isSemi && _rev.loaded && _rev.hasData;
+
+  Future<void> _loadSheetRevenue() async {
+    final r = await RevenueService.fetch();
+    if (!mounted) return;
+    setState(() => _rev = r);
+  }
+
   /// 블룸은 '날짜 x 품목 x 공정' 이라 주차 실적이 아니라 일 보드를 본다.
   BloomDailyBoard _bloom = BloomDailyBoard.empty;
   bool get _isBloom => widget.division.id == BloomService.divisionId;
@@ -117,6 +133,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     _loadOverview();
     if (_isAuto) _loadAuto();
     if (_isBloom) _loadBloom();
+    if (_isSemi) _loadSheetRevenue();
   }
 
   Future<void> _loadAuto() async {
@@ -880,9 +897,14 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                     _autoHero()
                   else
                     DivisionRevenueHero(
-                    month: _overview.month,
-                    revenue: _overview.revenue,
-                    planRevenue: _overview.planRevenue,
+                    month: _useSheet ? _rev.month : _overview.month,
+                    // 반도체는 주간보고 실적과 사람이 넣은 타겟을 쓴다.
+                    revenue: _useSheet ? _rev.actual : _overview.revenue,
+                    planRevenue:
+                        _useSheet ? _rev.target : _overview.planRevenue,
+                    pairLabel: _useSheet
+                        ? (_rev.hasTarget ? '실적 / 타겟' : '실적')
+                        : '실적 / 계획',
                     qtyPlan: _overview.qtyPlan,
                     qtyActual: _overview.qtyActual,
                     weekLabel: _weekLabel(),
