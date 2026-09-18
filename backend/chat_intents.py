@@ -313,17 +313,10 @@ def _pair(plan, actual):
 
 def _answer_project(label, proj, models, mass, dev, process_progress,
                     now_week='', now_month=''):
-    ws = proj.get("weekly_summary") or {}
     lines = [f"{label}{_josa(label)} 모델 {len(models)}종입니다 (양산 {len(mass)}종, 개발 {len(dev)}종)."]
 
-    for g in ("양산", "개발"):
-        grp = ws.get(g) or {}
-        po = int(grp.get("po_qty") or 0)
-        act = int(grp.get("actual_total") or 0)
-        rem = int(grp.get("remaining") or 0)
-        if po or act:
-            pct = round(act * 100 / po) if po else 0
-            lines.append(f"{g}: PO {po:,}대 중 {act:,}대 출하 ({pct}%), 잔량 {rem:,}대.")
+    # PO 누계는 뺐다. 물어본 건 지금 어떤지인데, 연초부터 쌓인 숫자가
+    # 넉 줄을 차지하면서 이번 주와 그 달이 뒤로 밀렸다.
 
     # ── 이번 주와 그 달 ──
     #

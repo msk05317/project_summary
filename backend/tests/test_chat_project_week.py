@@ -87,4 +87,13 @@ assert "ctx.get('now_week')" in (ROOT / 'chat_intents.py').read_text(encoding='u
     '챗 답변이 이번 주차를 안 읽는다'
 ok += 1
 
+# ── PO 누계는 안 적는다 ──
+#
+# "PO까진 필요 없어" — 물어본 건 지금 어떤지인데, 연초부터 쌓인 숫자가
+# 넉 줄을 차지하면서 이번 주와 그 달이 뒤로 밀렸다.
+for _a in (a, b, c):
+    assert 'PO' not in _a, f'PO 줄이 남았다: {_a}'
+    assert '잔량' not in _a, f'잔량 줄이 남았다: {_a}'
+ok += 1
+
 print(f'전부 통과 · {ok}개 항목')
