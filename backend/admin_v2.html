@@ -5642,12 +5642,16 @@ window.renderAdminV2ByDivision = function(){
     '.rv-diff td { padding:5px 0; border-bottom:1px solid #F1F5F9; color:#475569; }',
     '.rv-diff td:last-child { text-align:right; font-weight:800; color:#0F172A; }',
     '.rv-diff tr:last-child td { border-bottom:0; }',
-    '.rv-est-name, .rv-est-amt { width:100%; box-sizing:border-box; padding:5px 8px;',
-    '  border:1px solid #D1D5DB; border-radius:7px; font-size:12.5px; font-family:inherit; }',
+    // 15줄이 한눈에 들어와야 다 채웠는지 안다. 칸마다 여백이 8px 인데
+    // 그 안에 또 입력칸이 들어가서 한 줄이 34px 까지 올라갔다.
+    '.rv-est-tbl td { padding:2px 6px; }',
+    '.rv-est-tbl th { padding:5px 8px; }',
+    '.rv-est-name, .rv-est-amt { width:100%; box-sizing:border-box; padding:3px 7px;',
+    '  border:1px solid #D1D5DB; border-radius:6px; font-size:12.5px; font-family:inherit; }',
     '.rv-est-amt { text-align:right; }',
     '.rv-est-name:focus, .rv-est-amt:focus { outline:none; border-color:#156082; }',
     '.rv-est-del { border:0; background:none; color:#94A3B8; cursor:pointer;',
-    '  font-size:13px; padding:2px 6px; border-radius:6px; }',
+    '  font-size:12px; padding:1px 5px; border-radius:5px; line-height:1.2; }',
     '.rv-est-del:hover { background:#FEE2E2; color:#B91C1C; }',
     '.wb-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }',
     '.wb-tbl th { background:#0F2C59; color:#fff; font-weight:700; padding:7px 8px; '
@@ -10702,7 +10706,8 @@ window._ovProjectKey = function() {
         'Commodity 별로 적으면 합계가 따라 나옵니다. 사이트 이름' +
         '(구미·화성·용인·USA)이나 Internal 이 들어가면 내부거래로 봅니다. ' +
         '비운 줄은 저장할 때 버립니다.</p>' +
-      '<div class="ov-wrap-x" style="overflow-x:auto;"><table class="wb-tbl">' +
+      '<div class="ov-wrap-x" style="overflow-x:auto;">' +
+      '<table class="wb-tbl rv-est-tbl">' +
       '<thead><tr><th style="text-align:left">Commodity</th><th>묶음</th>' +
       '<th>예상 금액</th><th>　</th></tr></thead><tbody>' +
       rs.map(function (r, i) {
