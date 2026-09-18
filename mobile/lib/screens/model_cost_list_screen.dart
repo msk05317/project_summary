@@ -14,8 +14,55 @@ class ModelCostListScreen extends StatefulWidget {
   State<ModelCostListScreen> createState() => _ModelCostListScreenState();
 }
 
+/// 재료비율 구간. 판가 대비 재료비가 얼마나 먹고 들어갔는지.
+///   high  90% 이상 — 남는 게 없다
+///   mid   80% 대   — 위험선
+///   low   80% 미만
+///   none  판가가 없어 계산이 안 된다
+enum _Band { all, high, mid, low, none }
+
+const Map<_Band, String> _bandLabel = {
+  _Band.all: '전체',
+  _Band.high: '90% 이상',
+  _Band.mid: '80%대',
+  _Band.low: '80% 미만',
+  _Band.none: '판가 미등록',
+};
+
+const Map<_Band, Color> _bandColor = {
+  _Band.all: Color(0xFF0E2841),
+  _Band.high: Color(0xFFDC2626),
+  _Band.mid: Color(0xFFEA580C),
+  _Band.low: Color(0xFF059669),
+  _Band.none: Color(0xFF9CA3AF),
+};
+
+/// .toInt() 로 자르면 $0.7 부품이 0 이 되고 재료비율이 0.0% 로 뜬다.
+/// 센트를 살린다.
+double? _ratioOf(Map m) {
+  final price = (m['price'] as num?)?.toDouble() ?? 0;
+  final mcost = (m['material_cost'] as num?)?.toDouble() ?? 0;
+  return price > 0 ? (mcost / price * 100) : null;
+}
+
+_Band _bandOf(double? r) {
+  if (r == null) return _Band.none;
+  if (r >= 90) return _Band.high;
+  if (r >= 80) return _Band.mid;
+  return _Band.low;
+}
+
+/// 숫자 색. 80% 대는 주황, 90% 이상은 빨강.
+Color _ratioColor(double? r) {
+  final b = _bandOf(r);
+  if (b == _Band.high || b == _Band.mid) return _bandColor[b]!;
+  if (b == _Band.none) return const Color(0xFF9CA3AF);
+  return const Color(0xFF0F2C59);
+}
+
 class _ModelCostListScreenState extends State<ModelCostListScreen> {
   String _tab = '양산';
+  _Band _band = _Band.all;
   late Future<List<Map<String, dynamic>>> _future;
 
   @override
@@ -57,7 +104,10 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
           if (all.isEmpty) {
             return const Center(child: Text('등록된 모델이 없습니다'));
           }
-          final filtered = all.where((m) => (m['group'] ?? '양산') == _tab).toList();
+          final inTab = all.where((m) => (m['group'] ?? '양산') == _tab).toList();
+          final filtered = _band == _Band.all
+              ? inTab
+              : inTab.where((m) => _bandOf(_ratioOf(m)) == _band).toList();
           return Column(
             children: [
               // ── 양산/개발 탭 (필터 역할)
@@ -91,20 +141,21 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
                   }).toList(),
                 ),
               ),
+              // ── 재료비율 구간 필터
+              _bandChips(inTab),
               // ── 모델 리스트
               Expanded(
                 child: filtered.isEmpty
-                    ? Center(child: Text('$_tab 모델이 없습니다'))
+                    ? Center(
+                        child: Text(_band == _Band.all
+                            ? '$_tab 모델이 없습니다'
+                            : '${_bandLabel[_band]} 모델이 없습니다'))
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: filtered.length,
                         itemBuilder: (context, i) {
                           final m = filtered[i];
-                          // .toInt() 로 자르면 \$0.7 부품이 0 이 되고
-                          // 재료비율이 0.0% 로 뜬다. 센트를 살린다.
-                          final price = (m['price'] as num?)?.toDouble() ?? 0;
-                          final mcost = (m['material_cost'] as num?)?.toDouble() ?? 0;
-                          final ratio = price > 0 ? (mcost / price * 100) : null;
+                          final ratio = _ratioOf(m);
                           final group = m['group'] ?? '양산';
                           return GestureDetector(
                             onTap: () {
@@ -154,10 +205,10 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
                                     children: [
                                       Text(
                                         ratio != null ? '${ratio.toStringAsFixed(1)}%' : '-',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 20,
                                           fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0F2C59),
+                                          color: _ratioColor(ratio),
                                         ),
                                       ),
                                       const Text('재료비율',
@@ -176,6 +227,57 @@ class _ModelCostListScreenState extends State<ModelCostListScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// 재료비율 구간 칩. 0 건인 구간은 자리만 차지하니 '판가 미등록' 은 있을 때만.
+  Widget _bandChips(List<Map<String, dynamic>> inTab) {
+    final counts = <_Band, int>{
+      for (final b in _Band.values)
+        b: b == _Band.all
+            ? inTab.length
+            : inTab.where((m) => _bandOf(_ratioOf(m)) == b).length,
+    };
+    Widget chip(_Band b) {
+      final on = _band == b;
+      final tint = _bandColor[b]!;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: GestureDetector(
+          onTap: () => setState(() => _band = b),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: on ? tint : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(99),
+              border:
+                  Border.all(color: on ? tint : const Color(0xFFE5E7EB)),
+            ),
+            child: Text('${_bandLabel[b]} ${counts[b]}',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Colors.white : const Color(0xFF4B5563),
+                )),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          chip(_Band.all),
+          chip(_Band.high),
+          chip(_Band.mid),
+          chip(_Band.low),
+          if ((counts[_Band.none] ?? 0) > 0) chip(_Band.none),
+        ]),
       ),
     );
   }
