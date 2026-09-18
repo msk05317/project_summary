@@ -21,7 +21,9 @@ for name in ('ValueNotifier<bool> downloading',
     assert name in U, f'{name} 이 없다'
 assert 'Future<void> downloadAndInstall(AppVersionInfo info)' in U, \
     '다운로드가 아직 화면에서 콜백을 받는다'
-assert 'onProgress' not in U, '진행률을 아직 콜백으로 넘긴다'
+# 화면에서 콜백을 받지 않는다 (FileDownloader 의 onProgress 는 별개다)
+assert 'void Function(double) onProgress' not in U, \
+    '진행률을 아직 화면 콜백으로 넘긴다'
 ok += 1
 
 # ── 팝업은 보기만 한다 ──
@@ -45,26 +47,43 @@ assert 'AppUpdater.instance' in M and 'up.downloading' in M
 assert 'up.retryDownload' in M, '실패했을 때 다시 받을 데가 없다'
 ok += 1
 
-# ── 알림판에도 진행률이 뜬다 ──
+# ── 앱을 꺼도 OS 가 마저 받는다 ──
+#
+# "앱을 나가도 끄지 않는 이상 알아서 다운 받게끔"
+#
+# 앱 안에서 받으면 홈으로 나간 사이에 안드로이드가 프로세스를 죽이면
+# 그대로 끝이다. 네이티브 WorkManager 로 넘긴다.
+PUB = (LIB.parent / 'pubspec.yaml').read_text(encoding='utf-8')
+assert 'background_downloader' in PUB, '아직 앱 안에서 받는다'
+# 9.6 부터 Flutter 3.47 을 요구한다. 우리는 3.44 라서 9.5 대로 묶어야 한다.
+assert "'>=9.5.9 <9.6.0'" in PUB, '버전을 안 묶어서 빌드가 깨질 수 있다'
+assert 'FileDownloader().download(' in U, '다운로드를 OS 에 안 맡긴다'
+assert 'BaseDirectory.applicationSupport' in U
+assert 'allowPause: true' in U, '9분이 넘으면 처음부터 다시 받는다'
+assert '_dio.download(' not in U, '앱 안에서 받는 길이 남아 있다'
+ok += 1
+
+# ── 알림판에 진행률 막대 ──
 #
 # "첫 번째 사진처럼 저기에 다운로드 로딩이 보였으면 좋겠고"
-#
-# 앱 안의 배지는 홈으로 나가면 안 보인다. 알림판에 띄워야 받고 있는지
-# 알 수 있다.
-F = (LIB / 'services' / 'fcm_service.dart').read_text(encoding='utf-8')
-assert 'showDownloadProgress' in F and 'finishDownloadNotif' in F, \
-    '알림판에 진행률을 못 띄운다'
-assert 'showProgress: true' in F and 'maxProgress: 100' in F
-assert 'onlyAlertOnce: true' in F and 'playSound: false' in F, \
-    '60MB 받는 동안 알림이 계속 울린다'
-assert 'ongoing: true' in F, '밀어서 지우면 받는 중인지 알 길이 없어진다'
-assert 'FcmService.showDownloadProgress' in U, '다운로드가 알림을 안 띄운다'
-assert 'if (pct != shown)' in U, '청크마다 알림을 고쳐 갱신이 막힌다'
+assert 'configureNotification(' in U and 'progressBar: true' in U, \
+    '알림판에 막대가 없다'
+assert 'tapOpensFile: true' in U, '다 받은 알림을 눌러도 설치가 안 열린다'
+assert 'OneView 업데이트 받는 중' in U
+ok += 1
+
+# ── 매니페스트 ──
+MAN = (LIB.parent / 'android' / 'app' / 'src' / 'main' /
+       'AndroidManifest.xml').read_text(encoding='utf-8')
+for perm in ('FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC',
+             'RUN_USER_INITIATED_JOBS', 'REQUEST_INSTALL_PACKAGES'):
+    assert perm in MAN, f'{perm} 권한이 없다'
 ok += 1
 
 # ── 로컬 알림은 Firebase 와 따로 준비한다 ──
 #
 # Firebase 초기화가 실패하면 return 해 버려서 로컬 알림이 통째로 죽었다.
+F = (LIB / 'services' / 'fcm_service.dart').read_text(encoding='utf-8')
 _init = F[F.index('static Future<void> initialize()'):]
 assert _init.index('_initLocal()') < _init.index('Firebase.initializeApp'), \
     'Firebase 가 안 붙으면 알림도 못 띄운다'
@@ -75,8 +94,8 @@ ok += 1
 # 예외 글자에 'Connection' 이 섞이기만 해도 '연결이 불안정합니다' 라고
 # 했다. 네트워크가 멀쩡한데 앱이 제 버그로 죽은 것을 통신 탓으로 돌렸다.
 _msg = U[U.index('static String _downloadMessage'):]
-_msg = _msg[:_msg.index('\n  }')]
-assert 'DioExceptionType' in _msg, '예외 종류를 안 보고 글자로 짐작한다'
+_msg = _msg[:_msg.index('\n  }\n')]
+assert 'TaskConnectionException' in _msg, '실패 사유를 안 보고 짐작한다'
 assert "t.contains('Connection')" not in _msg, '아직 글자로 짐작한다'
 ok += 1
 

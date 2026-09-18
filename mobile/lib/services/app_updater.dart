@@ -1,12 +1,11 @@
 import 'dart:convert';
+import 'package:background_downloader/background_downloader.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import '../config/app_config.dart';
-import 'fcm_service.dart';
 
 class AppVersionInfo {
   final String latestVersion;
@@ -230,47 +229,69 @@ class AppUpdater {
     progress.value = 0;
     _downloadingInfo = info;
     try {
-      final dir = await getApplicationSupportDirectory();
-      final savePath = '${dir.path}/app_release.apk';
       final url = info.downloadUrl.startsWith('http')
           ? info.downloadUrl
           : '$kApiBaseUrl${info.downloadUrl}';
 
-      // 알림판에도 띄운다. 앱을 나가면 앱 안의 배지는 안 보인다.
-      await FcmService.showDownloadProgress(-1);
-      var shown = -1;
-
-      await _dio.download(
-        url,
-        savePath,
-        onReceiveProgress: (rcv, total) {
-          if (total <= 0) return;
-          progress.value = rcv / total;
-          final pct = (rcv * 100 / total).floor();
-          // 1% 마다만 알림을 고친다. 매 청크마다 고치면 안드로이드가
-          // 알림 갱신을 제한해서 오히려 막대가 안 움직인다.
-          if (pct != shown) {
-            shown = pct;
-            FcmService.showDownloadProgress(pct);
-          }
+      // 받는 일은 OS 에 맡긴다.
+      //
+      // 앱 안에서 받으면 홈으로 나간 사이에 안드로이드가 프로세스를
+      // 죽이면 그대로 끝이다. background_downloader 는 네이티브
+      // WorkManager 로 받아서 앱을 완전히 꺼도 마저 받는다. 진행률
+      // 알림도 이쪽이 띄운다 — 다 받은 알림을 누르면 설치 화면이 열린다.
+      _configureNotification();
+      final task = DownloadTask(
+        url: url,
+        filename: _apkName,
+        baseDirectory: BaseDirectory.applicationSupport,
+        updates: Updates.statusAndProgress,
+        // 9분이 넘으면 멈췄다가 이어받는다. 신호가 나쁜 공장 안에서
+        // 60MB 를 처음부터 다시 받는 일이 없어야 한다.
+        allowPause: true,
+        retries: 2,
+      );
+      final res = await FileDownloader().download(
+        task,
+        onProgress: (p) {
+          if (p >= 0) progress.value = p;
         },
       );
+      if (res.status != TaskStatus.complete) {
+        throw _TaskFailed(res);
+      }
 
-      if (kDebugMode) debugPrint('APK saved: $savePath');
-      _savedApk = savePath;
+      final path = await task.filePath();
+      if (kDebugMode) debugPrint('APK saved: $path');
+      _savedApk = path;
       progress.value = 1;
-      await FcmService.finishDownloadNotif();
-      // 설치 화면 열기. 다른 화면에 있어도 안드로이드가 띄워 준다.
-      await OpenFilex.open(savePath,
+      // 설치 화면 열기. 앱을 보고 있으면 바로 뜨고, 꺼져 있었으면
+      // 알림을 눌렀을 때 열린다.
+      await OpenFilex.open(path,
           type: 'application/vnd.android.package-archive');
     } catch (e) {
-      final msg = _downloadMessage(e);
-      downloadError.value = msg;
-      await FcmService.finishDownloadNotif(error: msg);
+      downloadError.value = _downloadMessage(e);
     } finally {
       downloading.value = false;
       _downloadingInfo = null;
     }
+  }
+
+  static const String _apkName = 'app_release.apk';
+  bool _notifConfigured = false;
+
+  /// 진행률 알림. 플러그인이 알림판에 직접 띄운다 — 앱이 꺼져 있어도
+  /// 막대가 남아 있고, 다 받은 알림을 누르면 설치 화면이 열린다.
+  void _configureNotification() {
+    if (_notifConfigured) return;
+    _notifConfigured = true;
+    FileDownloader().configureNotification(
+      running: const TaskNotification('OneView 업데이트 받는 중', '{progress}'),
+      complete: const TaskNotification('업데이트 준비 완료', '눌러서 설치하세요'),
+      error: const TaskNotification('업데이트를 받지 못했습니다', '다시 시도해 주세요'),
+      paused: const TaskNotification('업데이트 잠시 멈춤', '연결되면 이어받습니다'),
+      progressBar: true,
+      tapOpensFile: true,
+    );
   }
 
   /// 다시 받기. 실패한 뒤 배지를 눌렀을 때.
@@ -287,6 +308,19 @@ class AppUpdater {
   /// 것을 통신 탓으로 돌렸다. 이제 Dio 가 말해 주는 종류만 보고,
   /// 모르면 모른다고 한다.
   static String _downloadMessage(Object e) {
+    if (e is _TaskFailed) {
+      switch (e.update.status) {
+        case TaskStatus.notFound:
+          return '업데이트 파일이 서버에 없습니다. 관리자에게 알려 주세요.';
+        case TaskStatus.canceled:
+          return '업데이트를 멈췄습니다.';
+        default:
+          if (e.update.exception is TaskConnectionException) {
+            return '연결이 불안정합니다. 네트워크를 확인하고 다시 시도해 주세요.';
+          }
+          return '업데이트 파일을 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      }
+    }
     if (e is DioException) {
       switch (e.type) {
         case DioExceptionType.connectionTimeout:
@@ -385,4 +419,13 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       },
     );
   }
+}
+
+/// 내려받기가 끝났는데 완료가 아닐 때. 사유를 그대로 들고 온다.
+class _TaskFailed implements Exception {
+  final TaskStatusUpdate update;
+  const _TaskFailed(this.update);
+
+  @override
+  String toString() => 'download ${update.status}';
 }

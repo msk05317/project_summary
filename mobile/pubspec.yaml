@@ -41,6 +41,9 @@ dependencies:
   intl: ^0.20.2
   package_info_plus: ^10.2.1
   dio: ^5.7.0
+  # APK 내려받기. 앱을 꺼도 OS 가 마저 받는다.
+  # 9.6 부터는 Flutter 3.47 을 요구하는데 우리는 3.44 라서 9.5 대로 묶는다.
+  background_downloader: '>=9.5.9 <9.6.0'
   open_filex: ^4.5.0
   path_provider: ^2.1.6
   speech_to_text: ^7.4.0
