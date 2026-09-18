@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.31",
-  "latest_version_code": 54,
+  "latest_version": "2.3.32",
+  "latest_version_code": 55,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "모델 집계와 표를 정리했습니다.\n\n- '완료' 없앰 → 정상, 보류 → 집중관리\n- 재료비율 90%↑ 빨강 · 80%대 주황 + 구간 필터\n- 주차 보드에 달 표기, 매출 표는 항상 펼침",
+  "release_notes": "주차 보드 구분선을 고쳤습니다.\n\n- 달이 바뀌는 선이 머리글에서 안 보이던 문제\n- 남색 바탕 위에서는 흰 선으로 긋습니다",
   "force_update": false
 }
