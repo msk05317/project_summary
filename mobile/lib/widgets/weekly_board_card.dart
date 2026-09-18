@@ -472,33 +472,27 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           _numCol2(_mon('${d['prev_month']}'), col('prev_month_actual'), 46,
               span: headSpan),
           // 주차 묶음 — 위에 달을 얹고 앞뒤를 굵은 선으로 끊는다.
-          Container(
-            decoration: const BoxDecoration(
-              border: Border(
-                left: BorderSide(color: _navy, width: 2),
-                right: BorderSide(color: _navy, width: 2),
-              ),
-            ),
-            child: IntrinsicWidth(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _cell(_mon('${d['month']}'), _kHeadH, head: true),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final w in weeks)
-                        _secPairCol(w, [
-                          ...flat.map((r) =>
-                              _weekPair((r['weeks'] as Map?)?[w], w, nowWeek)),
-                          _weekPair((total['weeks'] as Map?)?[w], w, nowWeek),
-                        ], w == nowWeek, titleH: _kHeadH),
-                    ],
-                  ),
-                ],
-              ),
+          _vDivider(_kHeadH * headSpan, _kSecRowH * flat.length),
+          IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _cell(_mon('${d['month']}'), _kHeadH, head: true),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final w in weeks)
+                      _secPairCol(w, [
+                        ...flat.map((r) =>
+                            _weekPair((r['weeks'] as Map?)?[w], w, nowWeek)),
+                        _weekPair((total['weeks'] as Map?)?[w], w, nowWeek),
+                      ], w == nowWeek, titleH: _kHeadH),
+                  ],
+                ),
+              ],
             ),
           ),
+          _vDivider(_kHeadH * headSpan, _kSecRowH * flat.length),
           _secPairCol('${_mon('${d['month']}')} 합계', [
             ...flat.map((r) =>
                 [_BCell(_n(r['month_plan'])), _BCell(_n(r['month_actual']))]),
@@ -632,31 +626,45 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   /// 주차 묶음. 위에 달을 한 줄 얹어 '8월' 열과 눈으로 끊어 준다.
   Widget _weekGroup(String monLabel, List<String> weeks, List<Map> rows,
       Map total, String now, double rowH) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          left: BorderSide(color: _navy, width: 2),
-          right: BorderSide(color: _navy, width: 2),
+    final bodyH = rowH * rows.length;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _vDivider(_kHeadH * 3, bodyH),
+        IntrinsicWidth(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _cell(monLabel, _kHeadH, head: true),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final w in weeks)
+                    _pairCol(w, [
+                      ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
+                      _weekPair((total['weeks'] as Map?)?[w], w, now),
+                    ], now == w, rowH, titleH: _kHeadH),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
-      child: IntrinsicWidth(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _cell(monLabel, _kHeadH, head: true),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final w in weeks)
-                  _pairCol(w, [
-                    ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
-                    _weekPair((total['weeks'] as Map?)?[w], w, now),
-                  ], now == w, rowH, titleH: _kHeadH),
-              ],
-            ),
-          ],
-        ),
-      ),
+        _vDivider(_kHeadH * 3, bodyH),
+      ],
+    );
+  }
+
+  /// 달이 바뀌는 자리에 세우는 굵은 선.
+  ///
+  /// 머리글과 합계 행은 남색 바탕이라 남색 선을 그으면 아무것도 안 보인다.
+  /// 칸 배경에 맞춰 흰색 / 남색 / 흰색 세 토막으로 세운다.
+  Widget _vDivider(double headH, double bodyH) {
+    return Column(
+      children: [
+        Container(width: 2, height: headH, color: Colors.white),
+        Container(width: 2, height: bodyH, color: _navy),
+        Container(width: 2, height: _kTotalH, color: Colors.white),
+      ],
     );
   }
 
