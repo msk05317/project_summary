@@ -350,9 +350,8 @@ def _answer_project(label, proj, models, mass, dev, process_progress,
                 label_mon = f"{int(mon[5:7])}월"
                 lines.append(f"{label_mon} 합계: " + _pair(tp, ta))
 
-    scored = [p for p in (_model_progress(m, process_progress) for m in models) if p is not None]
-    if scored:
-        lines.append(f"진행률 집계 대상 {len(scored)}종의 평균은 {round(sum(scored) / len(scored))}%입니다.")
+    # 진행률 평균도 뺐다. 양산은 PO 대비 출하, 개발은 공정 단계라 서로
+    # 다른 것을 한 숫자로 평균 낸 값이었다. 무엇이 52% 인지 말할 수 없다.
 
     issues = [m for m in models if _s(m.get("issues"))]
     if issues:
