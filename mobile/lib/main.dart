@@ -105,12 +105,98 @@ class _BriefingAppState extends State<BriefingApp> {
               child: SafeArea(
                 top: false,
                 bottom: true,
-                child: child!,
+                // 업데이트를 받는 동안은 어느 화면에 있든 진행률이 보인다.
+                // 팝업을 닫고 딴 데로 갔을 때 받고 있는지 알 길이 없었다.
+                child: Stack(children: [child!, const _UpdateBadge()]),
               ),
             );
           },
           // 항상 HomeScreen 으로 시작.
           home: const HomeScreen(),
+        );
+      },
+    );
+  }
+}
+
+/// 화면 오른쪽 아래에 뜨는 작은 진행률 배지.
+///
+/// "다운로드 누르면 뭐 앱을 나가도 끄지 않는 이상 알아서 다운 받게끔"
+/// — 받는 일은 AppUpdater 가 들고 있어서 화면을 옮겨도 계속된다. 다만
+/// 보이는 게 없으면 받고 있는지 알 수가 없어서 배지를 띄운다.
+class _UpdateBadge extends StatelessWidget {
+  const _UpdateBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final up = AppUpdater.instance;
+    return ValueListenableBuilder<bool>(
+      valueListenable: up.downloading,
+      builder: (context, busy, _) {
+        return ValueListenableBuilder<String?>(
+          valueListenable: up.downloadError,
+          builder: (context, err, _) {
+            if (!busy && err == null) return const SizedBox.shrink();
+            return Positioned(
+              right: 12,
+              bottom: 92,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: busy ? null : up.retryDownload,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: err != null
+                          ? const Color(0xFFB91C1C)
+                          : const Color(0xFF0E2841),
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: const [
+                        BoxShadow(
+                            color: Color(0x33000000),
+                            blurRadius: 8,
+                            offset: Offset(0, 2)),
+                      ],
+                    ),
+                    child: err != null
+                        ? const Text('업데이트 실패 · 다시 시도',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700))
+                        : ValueListenableBuilder<double>(
+                            valueListenable: up.progress,
+                            builder: (context, p, _) => Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    value: p > 0 ? p : null,
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                            Colors.white),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                    '업데이트 받는 중 ${(p * 100).toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
     );

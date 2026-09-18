@@ -47,6 +47,34 @@ class AppUpdater {
 
   final Dio _dio = Dio();
 
+  // ── 내려받기 상태 ────────────────────────────────────────
+  //
+  // 전에는 팝업 State 가 다운로드를 들고 있었다. 팝업을 닫거나 화면을
+  // 나가면 State 가 사라지고, 진행률 콜백이 없어진 State 에 setState 를
+  // 불러서 다운로드가 통째로 죽었다. 60MB 를 다시 받아야 했다.
+  //
+  // 이제 싱글턴이 들고 있다. 화면은 보기만 한다 — 팝업을 닫아도, 다른
+  // 화면으로 가도 계속 받는다. 앱을 완전히 끄면 그때는 멈춘다.
+  final ValueNotifier<bool> downloading = ValueNotifier<bool>(false);
+  final ValueNotifier<double> progress = ValueNotifier<double>(0);
+
+  /// 마지막 실패 사유. 성공하거나 다시 시작하면 지운다.
+  final ValueNotifier<String?> downloadError = ValueNotifier<String?>(null);
+
+  /// 다 받아 둔 파일. 설치 화면을 놓쳤을 때 다시 열 수 있다.
+  String? _savedApk;
+  AppVersionInfo? _downloadingInfo;
+
+  String? get savedApk => _savedApk;
+
+  /// 받아 둔 APK 의 설치 화면을 다시 연다.
+  Future<void> openSavedApk() async {
+    final p = _savedApk;
+    if (p == null) return;
+    await OpenFilex.open(p,
+        type: 'application/vnd.android.package-archive');
+  }
+
   /// 최신 버전 조회. 실패 시 null.
   ///
   /// 두 곳을 본다. 둘 다 같은 파일(backend/app_version.json)을 가리키지만
@@ -184,42 +212,70 @@ class AppUpdater {
 
   /// 알림 클릭 시 바로 업데이트 다운로드 시작.
   /// 팝업 없이 APK 다운로드 후 설치 화면까지 바로 진행한다.
-  Future<void> startDirectUpdateDownload({
-    void Function(double progress)? onProgress,
-  }) async {
+  Future<void> startDirectUpdateDownload() async {
     final latest = await fetchLatest();
     if (latest == null) return;
-
-    await downloadAndInstall(
-      info: latest,
-      onProgress: onProgress ?? (_) {},
-    );
+    await downloadAndInstall(latest);
   }
 
-  /// APK 다운로드 + 설치 화면 열기
-  Future<void> downloadAndInstall({
-    required AppVersionInfo info,
-    required void Function(double) onProgress,
-  }) async {
-    final dir = await getApplicationSupportDirectory();
-    final savePath = '${dir.path}/app_release.apk';
-    final url = info.downloadUrl.startsWith('http')
-        ? info.downloadUrl
-        : '$kApiBaseUrl${info.downloadUrl}';
+  /// APK 를 받아 두고 설치 화면을 연다.
+  ///
+  /// 이미 받고 있으면 아무것도 하지 않는다 — 두 번 누르면 같은 파일을
+  /// 두 군데서 쓰다가 반쪽짜리 APK 가 남는다.
+  Future<void> downloadAndInstall(AppVersionInfo info) async {
+    if (downloading.value) return;
+    downloading.value = true;
+    downloadError.value = null;
+    progress.value = 0;
+    _downloadingInfo = info;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final savePath = '${dir.path}/app_release.apk';
+      final url = info.downloadUrl.startsWith('http')
+          ? info.downloadUrl
+          : '$kApiBaseUrl${info.downloadUrl}';
 
-    await _dio.download(
-      url,
-      savePath,
-      onReceiveProgress: (rcv, total) {
-        if (total > 0) onProgress(rcv / total);
-      },
-    );
+      await _dio.download(
+        url,
+        savePath,
+        onReceiveProgress: (rcv, total) {
+          if (total > 0) progress.value = rcv / total;
+        },
+      );
 
-    if (kDebugMode) {
-      debugPrint('APK saved: $savePath');
+      if (kDebugMode) debugPrint('APK saved: $savePath');
+      _savedApk = savePath;
+      progress.value = 1;
+      // 설치 화면 열기. 다른 화면에 있어도 안드로이드가 띄워 준다.
+      await OpenFilex.open(savePath,
+          type: 'application/vnd.android.package-archive');
+    } catch (e) {
+      downloadError.value = _downloadMessage(e);
+    } finally {
+      downloading.value = false;
+      _downloadingInfo = null;
     }
-    // 설치 화면 열기
-    await OpenFilex.open(savePath, type: 'application/vnd.android.package-archive');
+  }
+
+  /// 다시 받기. 실패한 뒤 배지를 눌렀을 때.
+  Future<void> retryDownload() async {
+    final info = _downloadingInfo ?? await fetchLatest();
+    if (info == null) return;
+    await downloadAndInstall(info);
+  }
+
+  /// Dio 예외를 그대로 보여주면 영문 스택이 화면을 덮는다.
+  static String _downloadMessage(Object e) {
+    final t = e.toString();
+    if (t.contains('404')) {
+      return '업데이트 파일이 서버에 없습니다. 관리자에게 알려 주세요.';
+    }
+    if (t.contains('SocketException') ||
+        t.contains('timeout') ||
+        t.contains('Connection')) {
+      return '연결이 불안정합니다. 네트워크를 확인하고 다시 시도해 주세요.';
+    }
+    return '업데이트 파일을 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
   }
 }
 
@@ -233,63 +289,68 @@ class _UpdateDialog extends StatefulWidget {
 }
 
 class _UpdateDialogState extends State<_UpdateDialog> {
-  double _progress = 0.0;
-  bool _downloading = false;
-
-  Future<void> _start() async {
-    setState(() => _downloading = true);
-    try {
-      await widget.updater.downloadAndInstall(
-        info: widget.info,
-        onProgress: (p) => setState(() => _progress = p),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      // Dio 예외를 그대로 보여주면 영문 스택이 화면을 덮는다.
-      var msg = '업데이트 파일을 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
-      final t = e.toString();
-      if (t.contains('404')) {
-        msg = '업데이트 파일이 서버에 없습니다. 관리자에게 알려 주세요.';
-      } else if (t.contains('SocketException') || t.contains('timeout') ||
-          t.contains('Connection')) {
-        msg = '연결이 불안정합니다. 네트워크를 확인하고 다시 시도해 주세요.';
-      }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      setState(() => _downloading = false);
-    }
-  }
+  // 팝업은 진행률을 보기만 한다. 받는 일은 AppUpdater 가 들고 있어서
+  // 이 팝업을 닫아도 계속 받는다.
+  AppUpdater get _up => widget.updater;
 
   @override
   Widget build(BuildContext context) {
     final info = widget.info;
-    return AlertDialog(
-      title: Text('새 버전 ${info.latestVersion}이(가) 있습니다'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (info.releaseNotes.isNotEmpty) ...[
-            Text(info.releaseNotes),
-            const SizedBox(height: 16),
-          ],
-          if (_downloading) ...[
-            LinearProgressIndicator(value: _progress),
-            const SizedBox(height: 8),
-            Text('${(_progress * 100).toStringAsFixed(0)}%'),
-          ],
-        ],
-      ),
-      actions: [
-        if (!info.forceUpdate && !_downloading)
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('나중에'),
+    return ValueListenableBuilder<bool>(
+      valueListenable: _up.downloading,
+      builder: (context, busy, _) {
+        return AlertDialog(
+          title: Text('새 버전 ${info.latestVersion}이(가) 있습니다'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (info.releaseNotes.isNotEmpty) ...[
+                Text(info.releaseNotes),
+                const SizedBox(height: 16),
+              ],
+              if (busy) ...[
+                ValueListenableBuilder<double>(
+                  valueListenable: _up.progress,
+                  builder: (context, p, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(value: p),
+                      const SizedBox(height: 8),
+                      Text('${(p * 100).toStringAsFixed(0)}%'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('창을 닫아도 계속 받습니다.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+              ],
+              ValueListenableBuilder<String?>(
+                valueListenable: _up.downloadError,
+                builder: (context, err, _) => err == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(err,
+                            style: const TextStyle(
+                                fontSize: 12.5, color: Color(0xFFB91C1C))),
+                      ),
+              ),
+            ],
           ),
-        FilledButton(
-          onPressed: _downloading ? null : _start,
-          child: Text(_downloading ? '다운로드 중...' : '업데이트'),
-        ),
-      ],
+          actions: [
+            if (!info.forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(busy ? '닫기' : '나중에'),
+              ),
+            FilledButton(
+              onPressed: busy ? null : () => _up.downloadAndInstall(info),
+              child: Text(busy ? '받는 중...' : '업데이트'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
