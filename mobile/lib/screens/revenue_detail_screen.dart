@@ -140,7 +140,10 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
 
   /// 엑셀에서 받은 매출 — 보고서와 같은 큰 틀로.
   Widget _excelBody(RevenueMonth r) {
-    final est = r.hasEstimate;
+    // 총합 카드의 짝은 타겟. 아래 부서별은 예상 기준 그대로다 —
+    // 부서별 예상은 Commodity 를 묶음으로 이어 붙여야 나오는 값이라
+    // 타겟 금액 하나로는 나눌 수가 없다.
+    final est = r.hasTarget;
 
     // 라벨은 왼쪽, 값은 오른쪽 끝. 셋으로 쪼개 놓으면 넓은 화면에서
     // 값이 죄다 왼쪽에 몰려 보인다.
@@ -294,7 +297,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                     style: AppText.caption.copyWith(color: AppColors.textHint)),
             ]),
             const SizedBox(height: 10),
-            Text(est ? '실적 / 예상' : '실적',
+            Text(est ? '실적 / 타겟' : '실적',
                 style: AppText.caption.copyWith(color: AppColors.textHint)),
             const SizedBox(height: 3),
             Row(
@@ -315,7 +318,7 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                       if (est) ...[
                         const SizedBox(width: 6),
                         Flexible(
-                          child: Text('/ ${Fmt.moneyShort(r.estimate)}',
+                          child: Text('/ ${Fmt.moneyShort(r.target)}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: AppText.body.copyWith(
@@ -326,7 +329,10 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(est ? (r.rate == null ? '-' : '${r.rate}%') : '예상 미등록',
+                Text(
+                    est
+                        ? (r.targetRate == null ? '-' : '${r.targetRate}%')
+                        : '타겟 미등록',
                     style: est
                         ? AppText.bodyStrong.copyWith(fontSize: 15)
                         : AppText.caption
@@ -338,9 +344,9 @@ class _RevenueDetailScreenState extends State<RevenueDetailScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
-                  value: r.rate == null
+                  value: r.targetRate == null
                       ? 0
-                      : (r.rate! / 100).clamp(0.0, 1.0),
+                      : (r.targetRate! / 100).clamp(0.0, 1.0),
                   minHeight: 7,
                   backgroundColor: AppColors.statusGraySoft,
                   valueColor: const AlwaysStoppedAnimation<Color>(

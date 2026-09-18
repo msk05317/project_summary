@@ -26052,6 +26052,27 @@ def admin_revenue_estimate(month: str = Form(...),
     return res
 
 
+@app.post("/admin/revenue/target")
+def admin_revenue_target(month: str = Form(...),
+                         total: str = Form(...),
+                         _admin: int = Depends(get_admin_session)):
+    """그 달 타겟을 금액 하나로 넣는다. 0 이면 지운다.
+
+    예상과 따로 둔다 — 예상은 지금 그렇게 될 것 같은 값이고 타겟은
+    그렇게 만들기로 한 값이다. 한 칸에 담으면 목표를 낮춰 잡았는지
+    전망이 나빠진 건지 구분이 안 된다.
+    """
+    month = _check_month(month)
+    store = _load_revenue()
+    try:
+        res = _rev.set_target(store, month, total, "직접 입력")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _save_revenue(store)
+    res["view"] = _rev.month_view(store, month)
+    return res
+
+
 @app.post("/admin/revenue/estimate/import")
 async def admin_revenue_estimate_import(month: str = Form(...),
                                         mode: str = Form("preview"),

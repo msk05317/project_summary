@@ -64,8 +64,10 @@ class ExecRevenueCard extends StatelessWidget {
   /// 홈에서는 사업부 통 매출 하나만 본다. 어디서 나왔는지는 눌러서
   /// '매출 상세' 에서 본다 — 카드에 묶음을 늘어놓으면 홈이 길어진다.
   Widget _buildFromExcel(BuildContext context, RevenueMonth r) {
-    final rate = r.rate;
-    final est = r.hasEstimate;
+    // 짝은 타겟이다. 예상은 관리자 화면과 부서별 달성률에서만 쓴다 —
+    // 예상은 지금 그렇게 될 것 같은 값이고, 타겟은 그렇게 만들기로 한 값이다.
+    final rate = r.targetRate;
+    final est = r.hasTarget;
     return _shell(
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -82,7 +84,7 @@ class ExecRevenueCard extends StatelessWidget {
           ],
         ]),
         const SizedBox(height: 8),
-        Text(est ? '실적 / 예상' : '실적',
+        Text(est ? '실적 / 타겟' : '실적',
             style: AppText.caption.copyWith(color: AppColors.textHint)),
         const SizedBox(height: 3),
         // Spacer 는 flex 1 의 Expanded 다. 옆의 Flexible 도 flex 1 이라
@@ -109,7 +111,7 @@ class ExecRevenueCard extends StatelessWidget {
                   if (est) ...[
                     const SizedBox(width: 6),
                     Flexible(
-                      child: Text('/ ${Fmt.moneyShort(r.estimate)}',
+                      child: Text('/ ${Fmt.moneyShort(r.target)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppText.body.copyWith(
@@ -121,7 +123,7 @@ class ExecRevenueCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             // 예상을 아직 안 넣은 달은 달성률을 지어내지 않는다.
-            Text(est ? (rate == null ? '-' : '$rate%') : '예상 미등록',
+            Text(est ? (rate == null ? '-' : '$rate%') : '타겟 미등록',
                 style: est
                     ? AppText.bodyStrong.copyWith(fontSize: 15)
                     : AppText.caption.copyWith(color: AppColors.textHint)),
@@ -144,8 +146,8 @@ class ExecRevenueCard extends StatelessWidget {
         Row(children: [
           Expanded(
               child: _MiniStat(
-                  label: '남은 예상',
-                  value: est ? Fmt.moneyShort(r.left) : '—')),
+                  label: '남은 타겟',
+                  value: est ? Fmt.moneyShort(r.targetLeft) : '—')),
           Container(
             width: 1,
             height: 26,

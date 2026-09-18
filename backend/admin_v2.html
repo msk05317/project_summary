@@ -5615,7 +5615,8 @@ window.renderAdminV2ByDivision = function(){
     '.ov-search input:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
     '.ov-search .ico { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:13px; pointer-events:none; }',
     /* ── 매출 관리 ── */
-    '.rv-slots { display:grid; grid-template-columns:1fr 1fr; gap:12px; }',
+    '.rv-slots { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }',
+    '@media (max-width:1180px){ .rv-slots { grid-template-columns:1fr 1fr; } }',
     '@media (max-width:820px){ .rv-slots { grid-template-columns:1fr; } }',
     '.rv-slot { border:1.5px dashed #C7D2E0; border-radius:11px; padding:14px 16px; background:#FBFCFE; }',
     '.rv-slot.on { border-style:solid; border-color:#BBF7D0; background:#F5FCF8; }',
@@ -10571,13 +10572,17 @@ window._ovProjectKey = function() {
         monthOptions(d.month, d.months_all) + '</select></div>' +
     '</div>' +
 
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 20px;">' +
+    // 실적 · 예상 · 타겟 셋을 나란히 둔다. 예상은 지금 그렇게 될 것 같은
+    // 값이고 타겟은 그렇게 만들기로 한 값이라 서로 다른 숫자다.
+    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:18px 0 20px;">' +
       kpi('이번 달 실적', _rvMoney(d.actual),
           d.as_of ? d.as_of + ' 까지' : '아직 없음', 'accent') +
       kpi('이번 달 예상', d.has_estimate ? _rvMoney(d.estimate) : '—',
-          d.has_estimate ? (d.estimate_source || '') : '아래에서 넣어 주세요') +
-      kpi('달성률', pct(d.rate), d.has_estimate ? bar(d.rate) :
-          '<div class="k-sub">예상을 넣으면 나옵니다</div>', '', true) +
+          d.has_estimate ? (d.estimate_source || '') : '아래 표에서 넣어 주세요') +
+      kpi('이번 달 타겟', d.has_target ? _rvMoney(d.target) : '—',
+          d.has_target ? '앱 홈이 이 값을 씁니다' : '아래에서 넣어 주세요') +
+      kpi('타겟 달성', pct(d.target_rate), d.has_target ? bar(d.target_rate) :
+          '<div class="k-sub">타겟을 넣으면 나옵니다</div>', '', true) +
       kpi('연간 누적', _rvMoney(d.ytd), (d.month || '').slice(0, 4) + '년 · 이 달까지') +
     '</div>' +
 
@@ -10611,6 +10616,24 @@ window._ovProjectKey = function() {
         '<div class="row">' +
           '<button type="button" class="ov-btn" id="rv-est-pick">📁 파일로 넣기</button>' +
           '<span class="rv-hint">아래 표에서 직접 적어도 됩니다</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="rv-slot' + (d.has_target ? ' on' : '') + '">' +
+        '<div class="st">타겟 — ' + esc((d.month || '').slice(5)) + '월 ' +
+          '<span class="rv-badge' + (d.has_target ? ' g' : '') + '">월 1회</span></div>' +
+        '<div class="fn">' + (d.has_target
+          ? _rvMoney(d.target) : '아직 넣은 값이 없습니다') + '</div>' +
+        '<div class="when">' + (d.has_target
+          ? esc(String(d.target_at || '').replace('T', ' ').slice(5, 16)) +
+            ' · 앱 홈의 짝이 되는 값입니다'
+          : '그렇게 만들기로 한 금액입니다 (예상과 다릅니다)') + '</div>' +
+        '<div class="row">' +
+          '<input type="text" id="rv-tg" class="ov-btn" inputmode="numeric" ' +
+            'style="padding:0 10px;width:130px;text-align:right;" ' +
+            'placeholder="금액 입력" value="' +
+            (d.has_target ? esc(d.target) : '') + '">' +
+          '<button type="button" class="ov-btn ov-btn-primary" id="rv-tg-save">저장</button>' +
+          '<span class="rv-hint">0 을 넣으면 지웁니다</span>' +
         '</div>' +
       '</div>' +
       '</div>' +
@@ -10809,6 +10832,33 @@ window._ovProjectKey = function() {
         }).catch(function (e) {
           _busy = false;
           save.disabled = false;
+          alert('저장하지 못했습니다: ' + e.message);
+        });
+      };
+    }
+
+    // ── 타겟 ──
+    var tg = document.getElementById('rv-tg');
+    var tgs = document.getElementById('rv-tg-save');
+    if (tgs) {
+      tgs.onclick = function () {
+        if (_busy) return;
+        var raw = String((tg && tg.value) || '').replace(/[^0-9.]/g, '');
+        if (raw === '') {
+          alert('금액을 넣어 주세요. 0 을 넣으면 지웁니다.');
+          return;
+        }
+        _busy = true;
+        tgs.disabled = true;
+        var fd = new FormData();
+        fd.append('month', _month);
+        fd.append('total', raw);
+        post('/admin/revenue/target', fd).then(function () {
+          _busy = false;
+          window.renderRevenuePage(_month);
+        }).catch(function (e) {
+          _busy = false;
+          tgs.disabled = false;
           alert('저장하지 못했습니다: ' + e.message);
         });
       };

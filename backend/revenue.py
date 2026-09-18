@@ -329,6 +329,30 @@ def set_estimate(store: dict, month: str, items=None, source: str = "",
             "groups": rec["groups"], "removed": False}
 
 
+def set_target(store: dict, month: str, total, source: str = "") -> dict:
+    """그 달 타겟.
+
+    예상과 다른 숫자다. 예상은 지금 그렇게 될 것 같은 값이고, 타겟은
+    그렇게 만들기로 한 값이다. 둘을 한 칸에 담으면 목표를 낮춰 잡았는지
+    전망이 나빠진 건지 구분이 안 된다. 0 이면 지운다.
+    """
+    if not MONTH_RE.match(str(month or "")):
+        raise ValueError("달은 2026-09 모양이어야 합니다.")
+    tg = store.setdefault("targets", {})
+    amount = round(_num(total))
+    if amount <= 0:
+        tg.pop(month, None)
+        return {"month": month, "total": 0, "removed": True}
+    tg[month] = {"total": amount,
+                 "source": source or "직접 입력",
+                 "at": _dt.datetime.now().isoformat(timespec="seconds")}
+    return {"month": month, "total": amount, "removed": False}
+
+
+def _target_of(store: dict, month: str) -> dict:
+    return ((store.get("targets") or {}).get(month) or {})
+
+
 def _estimate_of(store: dict, month: str) -> dict:
     return ((store.get("estimates") or {}).get(month) or {})
 
@@ -336,7 +360,7 @@ def _estimate_of(store: dict, month: str) -> dict:
 # ── 저장 ──────────────────────────────────────────────────
 def blank() -> dict:
     return {"version": 3, "updated_at": None, "years": {},
-            "estimates": {}, "sources": {}}
+            "estimates": {}, "targets": {}, "sources": {}}
 
 
 class RevenueFileBroken(Exception):
@@ -445,6 +469,7 @@ def month_view(store: dict, month: str) -> dict:
 
     est = _estimate_of(store, month)
     est_g = est.get("groups") or {}
+    tgt = _target_of(store, month)
 
     def box(key, label):
         rec = totals.get(key) or {}
@@ -487,6 +512,7 @@ def month_view(store: dict, month: str) -> dict:
 
     # 총합 예상은 사람이 넣은 값이 정본이다. 묶음별은 그 안을 나눈 것뿐.
     estimate = round(_num(est.get("total")))
+    target = round(_num(tgt.get("total")))
     grand_v["estimate"] = estimate
     grand_v["rate"] = round(actual * 100 / estimate) if estimate > 0 else None
     rate = grand_v["rate"]
@@ -517,6 +543,14 @@ def month_view(store: dict, month: str) -> dict:
         "has_estimate_groups": bool(est_g),
         "estimate_at": est.get("at") or "",
         "estimate_source": est.get("source") or "",
+        # 타겟. 앱 홈은 이걸 짝으로 쓴다. 부서별 달성률은 Commodity 를
+        # 묶음으로 이어 붙인 예상에서만 나오므로 거기는 그대로 둔다.
+        "target": target,
+        "target_rate": round(actual * 100 / target) if target > 0 else None,
+        "target_left": max(0, target - actual) if target > 0 else 0,
+        "target_at": tgt.get("at") or "",
+        "target_source": tgt.get("source") or "",
+        "has_target": target > 0,
         "rate": rate,
         "left": max(0, estimate - actual) if estimate > 0 else 0,
         "ytd": ytd, "as_of": last,

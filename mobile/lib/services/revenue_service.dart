@@ -85,6 +85,13 @@ class RevenueMonth {
 
   /// 사람이 넣은 그 달 예상 매출. 안 넣었으면 0.
   final int estimate;
+
+  /// 그 달 타겟. 예상은 지금 그렇게 될 것 같은 값이고, 타겟은 그렇게
+  /// 만들기로 한 값이다. 홈 카드와 매출 상세의 짝은 타겟이다.
+  final int target;
+  final int? targetRate;
+  final int targetLeft;
+  final bool hasTarget;
   final int? rate;
   final int left;
 
@@ -118,6 +125,10 @@ class RevenueMonth {
     required this.ytd,
     required this.asOf,
     this.estimate = 0,
+    this.target = 0,
+    this.targetRate,
+    this.targetLeft = 0,
+    this.hasTarget = false,
     this.groups = const [],
     this.internal,
     this.rate,
@@ -153,6 +164,8 @@ class RevenueMonth {
         month: month, items: items, actual: actual, left: left,
         ytd: ytd, asOf: asOf, rate: rate, hasData: hasData, loaded: loaded,
         groups: groups, internal: internal, estimate: estimate,
+        target: target, targetRate: targetRate, targetLeft: targetLeft,
+        hasTarget: hasTarget,
         hasEstimate: hasEstimate, hasEstimateGroups: hasEstimateGroups,
         fromCache: fromCache ?? this.fromCache,
         savedAt: savedAt ?? this.savedAt,
@@ -175,6 +188,10 @@ class RevenueMonth {
       items: items,
       actual: (j['actual'] as num?)?.toInt() ?? 0,
       estimate: (j['estimate'] as num?)?.toInt() ?? 0,
+      target: (j['target'] as num?)?.toInt() ?? 0,
+      targetRate: (j['target_rate'] as num?)?.toInt(),
+      targetLeft: (j['target_left'] as num?)?.toInt() ?? 0,
+      hasTarget: j['has_target'] == true,
       rate: (j['rate'] as num?)?.toInt(),
       left: (j['left'] as num?)?.toInt() ?? 0,
       ytd: (j['ytd'] as num?)?.toInt() ?? 0,

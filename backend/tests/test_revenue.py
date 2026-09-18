@@ -218,9 +218,41 @@ assert all(b['estimate'] == 0 and b['rate'] is None for b in v['groups'])
 R.set_estimate(st, '2026-09', [{'item': 'PBX', 'amount': 2000}], '직접 입력')
 ok += 1
 
+# ── 타겟 ──
+#
+# "타겟을 admin v2에 작성 할 수 있는 칸을 만들어야 돼 (실적, 예상, 타겟)"
+#
+# 예상은 지금 그렇게 될 것 같은 값이고 타겟은 그렇게 만들기로 한 값이다.
+# 한 칸에 담으면 목표를 낮춰 잡았는지 전망이 나빠진 건지 구분이 안 된다.
+assert R.month_view(st, '2026-09')['has_target'] is False
+assert R.month_view(st, '2026-09')['target_rate'] is None, '타겟이 없는데 달성률이 있다'
+R.set_target(st, '2026-09', 2000)
+v = R.month_view(st, '2026-09')
+assert v['target'] == 2000 and v['has_target'] is True
+assert v['target_rate'] == 48, v['target_rate']
+assert v['target_left'] == 2000 - 959
+# 예상은 타겟이 들어와도 그대로다 — 부서별 달성률이 여기서 나온다
+assert v['estimate'] == 2000 and v['rate'] == 48
+R.set_target(st, '2026-09', 4000)
+v = R.month_view(st, '2026-09')
+assert v['target'] == 4000 and v['target_rate'] == 24, v
+assert v['estimate'] == 2000, '타겟을 넣었더니 예상이 바뀌었다'
+# 다른 달로 새지 않는다 · 0 이면 지운다 · 달 형식을 본다
+assert R.month_view(st, '2026-08')['target'] == 0
+R.set_target(st, '2026-09', 0)
+assert R.month_view(st, '2026-09')['has_target'] is False
+try:
+    R.set_target(st, '2026-9', 100)
+    raise AssertionError('달 형식을 안 본다')
+except ValueError:
+    pass
+R.set_target(st, '2026-09', 4000)
+ok += 1
+
 # 주간보고를 다시 올려도 예상은 그대로다 — 출처가 다르다
 R.apply_weekly(st, p, 'WEEKLY.xlsx')
 assert R.month_view(st, '2026-09')['estimate'] == 2000, '주간보고가 예상을 지웠다'
+assert R.month_view(st, '2026-09')['target'] == 4000, '주간보고가 타겟을 지웠다'
 ok += 1
 
 # ── Estimate 파일 읽기 ──
@@ -367,6 +399,7 @@ ok += 1
 for path in ('@app.get("/revenue")', '@app.post("/admin/revenue/import")',
              '@app.get("/admin/revenue/state")',
              '@app.post("/admin/revenue/estimate")',
+             '@app.post("/admin/revenue/target")',
              '@app.post("/admin/revenue/estimate/import")'):
     assert path in SRC, f'{path} 가 없다'
 assert 'import revenue as _rev' in SRC
@@ -392,16 +425,19 @@ S = (LIB / 'services' / 'revenue_service.dart').read_text(encoding='utf-8')
 assert '/revenue' in S, '앱이 /revenue 를 안 본다'
 assert 'RevenueGroup' in S and 'internal' in S
 assert 'hasEstimate' in S and 'estimate' in S, '앱이 예상을 안 읽는다'
+assert 'hasTarget' in S and 'targetRate' in S, '앱이 타겟을 안 읽는다'
 assert 'hasEstimateGroups' in S, '앱이 묶음별 예상을 안 읽는다'
 assert '.plan' not in S and 'budget' not in S, '앱 모델에 계획이 남아 있다'
 C = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding='utf-8')
 assert 'RevenueMonth' in C, '홈 카드가 아직 모델 계산값을 쓴다'
 # 실적과 예상을 한 줄로. 주간보고의 '실행계획' 은 더 이상 안 쓴다.
-assert '실적 / 예상' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
+assert '실적 / 타겟' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
+# 짝은 타겟이다. 예상은 관리자 화면과 부서별 달성률에서만 쓴다.
+assert 'r.targetRate' in C and 'r.target' in C, '홈 카드가 아직 예상을 짝으로 쓴다'
+assert '타겟 미등록' in C, '타겟이 없는 달에 달성률을 지어낸다'
 assert '실행계획' not in C, '홈 카드가 아직 주간보고 실행계획을 말한다'
 assert '사업부 총합' not in C, '매출을 사업부 하나로 못 박았다'
-assert '예상 미등록' in C, '예상이 없는 달에 달성률을 지어낸다'
-assert 'r.hasEstimate' in C, '예상이 있는지 안 보고 그린다'
+assert 'r.hasTarget' in C, '타겟이 있는지 안 보고 그린다'
 # 예상이 없다고 막대를 빼면 카드가 접혔다 펴졌다 한다.
 assert 'if (est)\n          ClipRRect' not in C, '예상이 없으면 막대가 사라진다'
 assert C.count('LinearProgressIndicator') >= 1, '홈 카드에 막대가 없다'
@@ -409,7 +445,7 @@ assert C.count('LinearProgressIndicator') >= 1, '홈 카드에 막대가 없다'
 #
 # Spacer 는 flex 1 의 Expanded 다. 같은 Row 안의 Flexible 도 flex 1 이라
 # 남은 폭이 똑같이 나뉘고, 카드가 넓은데도 실적이 '$67…' 로 잘렸다.
-_num = C.split("'실적 / 예상'")[1].split('LinearProgressIndicator')[0]
+_num = C.split("'실적 / 타겟'")[1].split('LinearProgressIndicator')[0]
 _num = '\n'.join(ln for ln in _num.split('\n') if not ln.strip().startswith('//'))
 assert 'Spacer' not in _num, '금액 줄에 Spacer 가 있어 폭이 쪼개진다'
 assert 'Fmt.moneyShort(r.actual)' in _num, '홈 카드에 실적 금액이 없다'
@@ -422,6 +458,7 @@ assert 'bool _openDiv = true;' in D, '매출 상세가 접힌 채로 열린다'
 # 값이 왼쪽에 몰리지 않게 라벨/값을 양끝으로 붙인다.
 assert 'Widget kv(String k, String v)' in D, '총합 카드가 값을 왼쪽에 몰아 놓는다'
 assert '실행계획' not in D, '매출 상세가 아직 주간보고 실행계획을 말한다'
+assert '실적 / 타겟' in D and 'r.targetRate' in D, '매출 상세 총합이 타겟을 안 쓴다'
 # 사업부가 하나뿐이라 비중이 100 인 것뿐인데 '100%' 라고 적으면
 # 달성률로 읽힌다. 아래 부서 줄은 68·5·28 이라 앞뒤가 안 맞아 보인다.
 _hd = D.split('Widget divisionCard()')[1].split('if (_openDiv)')[0]
@@ -444,11 +481,17 @@ assert 'data-rv-grp' in A, '큰 틀에서 세부로 펴지지 않는다'
 assert '세부 합' in A, '세부와 합계가 어긋나도 화면에 말이 없다'
 assert '/admin/revenue/estimate' in A, 'admin 에서 예상을 넣을 데가 없다'
 assert 'rv-est-save' in A and 'rv-est-pick' in A, '예상 넣는 단추가 없다'
+assert 'rv-tg-save' in A and '/admin/revenue/target' in A, 'admin 에 타겟 칸이 없다'
+assert '이번 달 타겟' in A and '타겟 달성' in A, 'KPI 에 타겟이 없다'
 assert 'function estTable' in A, 'Commodity 별로 적을 표가 없다'
 assert 'rv-est-add' in A and 'rv-est-amt' in A, '줄을 더하거나 금액을 적을 데가 없다'
 assert 'rv-est-total' in A, '적는 동안 합계가 안 보인다'
 assert "fd.append('items'" in A, '화면이 항목을 안 보낸다'
-assert "fd.append('total'" not in A, '화면이 아직 합계를 보낸다'
+# 예상은 항목으로만 보낸다 — 합계를 같이 보내면 어긋나도 모른다.
+# (타겟은 금액 하나라서 total 을 보내는 게 맞다)
+_estsave = A.split("post('/admin/revenue/estimate', fd)")[0]
+_estsave = _estsave[_estsave.rindex('rv-est-save'):]
+assert "fd.append('total'" not in _estsave, '예상이 아직 합계를 보낸다'
 _rv = A.split('renderRevenuePage')[1]
 assert '실행계획' not in _rv and '사업계획' not in _rv, \
     'admin 매출 화면에 아직 계획이 남아 있다'
