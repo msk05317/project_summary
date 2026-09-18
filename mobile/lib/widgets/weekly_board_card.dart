@@ -7,6 +7,7 @@
 // 열이 17개라 가로 스크롤이 필요하다. 열마다 폭을 고정하고, 각 열을 Column 으로
 // 세워서 행 높이를 맞춘다. (Table 위젯은 셀 병합이 안 돼서 3단 머리글을 못 만든다)
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -470,12 +471,35 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
         if (byWeek) ...[
           _numCol2(_mon('${d['prev_month']}'), col('prev_month_actual'), 46,
               span: headSpan),
-          for (final w in weeks)
-            _secPairCol(w, [
-              ...flat.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, nowWeek)),
-              _weekPair((total['weeks'] as Map?)?[w], w, nowWeek),
-            ], w == nowWeek),
-          _secPairCol(_mon('${d['month']}'), [
+          // 주차 묶음 — 위에 달을 얹고 앞뒤를 굵은 선으로 끊는다.
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(
+                left: BorderSide(color: _navy, width: 2),
+                right: BorderSide(color: _navy, width: 2),
+              ),
+            ),
+            child: IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _cell(_mon('${d['month']}'), _kHeadH, head: true),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final w in weeks)
+                        _secPairCol(w, [
+                          ...flat.map((r) =>
+                              _weekPair((r['weeks'] as Map?)?[w], w, nowWeek)),
+                          _weekPair((total['weeks'] as Map?)?[w], w, nowWeek),
+                        ], w == nowWeek, titleH: _kHeadH),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _secPairCol('${_mon('${d['month']}')} 합계', [
             ...flat.map((r) =>
                 [_BCell(_n(r['month_plan'])), _BCell(_n(r['month_actual']))]),
             [_BCell(_n(total['month_plan'])), _BCell(_n(total['month_actual']))],
@@ -528,7 +552,8 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // 섹션형의 계획/실적 두 칸 열 (머리글 3단: 제목 / 주차 / 계획·실적)
-  Widget _secPairCol(String title, List<List<_BCell>> values, bool isNow) {
+  Widget _secPairCol(String title, List<List<_BCell>> values, bool isNow,
+      {double titleH = _kHeadH * 2}) {
     return Container(
       width: 76,
       decoration: isNow
@@ -541,7 +566,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           : null,
       child: Column(
         children: [
-          _cell(title, _kHeadH * 2, head: true, redHead: isNow),
+          _cell(title, titleH, head: true, redHead: isNow),
           Row(children: [
             Expanded(child: _cell('계획', _kHeadH, head: true, redHead: isNow)),
             Expanded(child: _cell('실적', _kHeadH, head: true, redHead: isNow)),
@@ -568,45 +593,92 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
     final now = (d['current_week'] ?? '').toString();
     final rows = (d['rows'] as List? ?? const []).cast<Map>();
     final total = (d['total'] as Map?) ?? const {};
+    final delta = (d['po_delta'] as Map?) ?? const {};
 
     List<String> col(String field) => [
           ...rows.map((r) => _n(r[field])),
           _n(total[field]),
         ];
 
+    // PO증감은 양산·개발 두 행에 걸친 한 칸이라 이력이 쌓이면 넘친다.
+    // 글자를 잘라내는 대신 데이터 행 높이를 이력에 맞춰 늘린다.
+    final nRows = rows.isEmpty ? 1 : rows.length;
+    final rowH = math.max(_kRowH, _deltaNeedH(delta) / nRows);
+    final monLabel = _mon(d['month'] as String?);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _labelCol(rows),
-        _numCol('PO 수량', col('po_qty'), 62),
-        _numCol('실적', col('actual_total'), 58),
-        _numCol('잔량', col('remaining'), 54),
-        _numCol(_mon(d['prev_month'] as String?), col('prev_month_actual'), 46),
-        for (final w in weeks)
-          _pairCol(w, [
-            ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
-            _weekPair((total['weeks'] as Map?)?[w], w, now),
-          ], now == w),
-        _pairCol(_mon(d['month'] as String?), [
+        _labelCol(rows, rowH),
+        _numCol('PO 수량', col('po_qty'), 62, rowH),
+        _numCol('실적', col('actual_total'), 58, rowH),
+        _numCol('잔량', col('remaining'), 54, rowH),
+        _numCol(_mon(d['prev_month'] as String?), col('prev_month_actual'), 46,
+            rowH),
+        // 주차는 어느 달 것인지 한 줄 얹고, 앞뒤를 굵은 선으로 끊는다.
+        _weekGroup(monLabel, weeks, rows, total, now, rowH),
+        _pairCol('$monLabel 합계', [
           ...rows.map((r) =>
               [_BCell(_n(r['month_plan'])), _BCell(_n(r['month_actual']))]),
           [_BCell(_n(total['month_plan'])), _BCell(_n(total['month_actual']))],
-        ], false),
-        _numCol(_mon(d['next_month'] as String?), col('next_month_plan'), 46),
-        _deltaCol((d['po_delta'] as Map?) ?? const {}),
+        ], false, rowH),
+        _numCol(_mon(d['next_month'] as String?), col('next_month_plan'), 46,
+            rowH),
+        _deltaCol(delta, rowH * nRows),
       ],
     );
   }
 
+  /// 주차 묶음. 위에 달을 한 줄 얹어 '8월' 열과 눈으로 끊어 준다.
+  Widget _weekGroup(String monLabel, List<String> weeks, List<Map> rows,
+      Map total, String now, double rowH) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          left: BorderSide(color: _navy, width: 2),
+          right: BorderSide(color: _navy, width: 2),
+        ),
+      ),
+      child: IntrinsicWidth(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _cell(monLabel, _kHeadH, head: true),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final w in weeks)
+                  _pairCol(w, [
+                    ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
+                    _weekPair((total['weeks'] as Map?)?[w], w, now),
+                  ], now == w, rowH, titleH: _kHeadH),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// PO증감 칸이 잘리지 않으려면 몇 픽셀이 필요한가.
+  static double _deltaNeedH(Map delta) {
+    final months = (delta['months'] as List? ?? const []).length;
+    final wks = (delta['weeks'] as List? ?? const []).length;
+    if (months + wks == 0) return 0;
+    // 한 줄 = 8.5 * 1.42 → 줄 높이는 정수로 올라가 13, 구분선 5,
+    // 위아래 여백 6, 반올림 여유 2.
+    return (months + wks) * 13.0 + ((months > 0 && wks > 0) ? 5 : 0) + 8;
+  }
+
   // 구분 열 (머리글은 빈 칸, 3단 높이)
-  Widget _labelCol(List<Map> rows) {
+  Widget _labelCol(List<Map> rows, double rowH) {
     return SizedBox(
       width: 128,
       child: Column(
         children: [
           _cell('구분', _kHeadH * 3, head: true, align: TextAlign.left),
           for (final r in rows)
-            _cell('${r['label']}', _kRowH,
+            _cell('${r['label']}', rowH,
                 align: TextAlign.left, bold: true, size: 9.5),
           _cell('합계', _kTotalH, total: true, align: TextAlign.left),
         ],
@@ -615,13 +687,13 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // 한 칸짜리 숫자 열
-  Widget _numCol(String title, List<String> values, double w) {
+  Widget _numCol(String title, List<String> values, double w, double rowH) {
     return SizedBox(
       width: w,
       child: Column(
         children: [
           _cell(title, _kHeadH * 3, head: true),
-          for (var i = 0; i < values.length - 1; i++) _cell(values[i], _kRowH),
+          for (var i = 0; i < values.length - 1; i++) _cell(values[i], rowH),
           _cell(values.last, _kTotalH, total: true),
         ],
       ),
@@ -629,7 +701,8 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // 계획/실적 두 칸짜리 열 (주차 또는 월 합계)
-  Widget _pairCol(String title, List<List<_BCell>> values, bool isNow) {
+  Widget _pairCol(String title, List<List<_BCell>> values, bool isNow,
+      double rowH, {double titleH = _kHeadH * 2}) {
     final border = isNow
         ? const Border(
             left: BorderSide(color: _red, width: 2),
@@ -640,15 +713,15 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       decoration: BoxDecoration(border: border),
       child: Column(
         children: [
-          _cell(title, _kHeadH * 2, head: true, redHead: isNow),
+          _cell(title, titleH, head: true, redHead: isNow),
           Row(children: [
             Expanded(child: _cell('계획', _kHeadH, head: true, redHead: isNow)),
             Expanded(child: _cell('실적', _kHeadH, head: true, redHead: isNow)),
           ]),
           for (var i = 0; i < values.length - 1; i++)
             Row(children: [
-              Expanded(child: _cell(values[i][0].text, _kRowH, tint: isNow)),
-              Expanded(child: _cell(values[i][1].text, _kRowH,
+              Expanded(child: _cell(values[i][0].text, rowH, tint: isNow)),
+              Expanded(child: _cell(values[i][1].text, rowH,
                   tint: isNow, short: values[i][1].short)),
             ]),
           Row(children: [
@@ -663,7 +736,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   }
 
   // PO증감 — 양산/개발 두 행에 걸친 한 칸
-  Widget _deltaCol(Map delta) {
+  Widget _deltaCol(Map delta, double bodyH) {
     final months = (delta['months'] as List? ?? const []).cast<Map>();
     final wks = (delta['weeks'] as List? ?? const []).cast<Map>();
     final lines = <Widget>[
@@ -682,7 +755,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           _cell('PO증감', _kHeadH * 3, head: true),
           Container(
             width: double.infinity,
-            height: _kRowH * 2,
+            height: bodyH,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: _line), right: BorderSide(color: _line)),
