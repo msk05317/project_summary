@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.25",
-  "latest_version_code": 48,
+  "latest_version": "2.3.26",
+  "latest_version_code": 49,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "사업부 화면도 같은 매출을 봅니다.\n\n· 사업부도 '실적 / 타겟' 입니다\n· 홈과 사업부의 9월 금액이 같아졌습니다",
+  "release_notes": "업데이트를 받는 동안 다른 화면을 봐도 됩니다.\n\n· 창을 닫아도 계속 받습니다\n· 오른쪽 아래에 진행률이 뜹니다",
   "force_update": false
 }
