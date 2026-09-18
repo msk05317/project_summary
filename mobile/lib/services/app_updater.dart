@@ -6,6 +6,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../config/app_config.dart';
+import 'fcm_service.dart';
 
 class AppVersionInfo {
   final String latestVersion;
@@ -235,22 +236,37 @@ class AppUpdater {
           ? info.downloadUrl
           : '$kApiBaseUrl${info.downloadUrl}';
 
+      // 알림판에도 띄운다. 앱을 나가면 앱 안의 배지는 안 보인다.
+      await FcmService.showDownloadProgress(-1);
+      var shown = -1;
+
       await _dio.download(
         url,
         savePath,
         onReceiveProgress: (rcv, total) {
-          if (total > 0) progress.value = rcv / total;
+          if (total <= 0) return;
+          progress.value = rcv / total;
+          final pct = (rcv * 100 / total).floor();
+          // 1% 마다만 알림을 고친다. 매 청크마다 고치면 안드로이드가
+          // 알림 갱신을 제한해서 오히려 막대가 안 움직인다.
+          if (pct != shown) {
+            shown = pct;
+            FcmService.showDownloadProgress(pct);
+          }
         },
       );
 
       if (kDebugMode) debugPrint('APK saved: $savePath');
       _savedApk = savePath;
       progress.value = 1;
+      await FcmService.finishDownloadNotif();
       // 설치 화면 열기. 다른 화면에 있어도 안드로이드가 띄워 준다.
       await OpenFilex.open(savePath,
           type: 'application/vnd.android.package-archive');
     } catch (e) {
-      downloadError.value = _downloadMessage(e);
+      final msg = _downloadMessage(e);
+      downloadError.value = msg;
+      await FcmService.finishDownloadNotif(error: msg);
     } finally {
       downloading.value = false;
       _downloadingInfo = null;
@@ -265,15 +281,31 @@ class AppUpdater {
   }
 
   /// Dio 예외를 그대로 보여주면 영문 스택이 화면을 덮는다.
+  ///
+  /// 전에는 예외 글자에 'Connection' 이 섞이기만 해도 '연결이
+  /// 불안정합니다' 라고 했다. 네트워크가 멀쩡한데 앱이 제 버그로 죽은
+  /// 것을 통신 탓으로 돌렸다. 이제 Dio 가 말해 주는 종류만 보고,
+  /// 모르면 모른다고 한다.
   static String _downloadMessage(Object e) {
-    final t = e.toString();
-    if (t.contains('404')) {
-      return '업데이트 파일이 서버에 없습니다. 관리자에게 알려 주세요.';
-    }
-    if (t.contains('SocketException') ||
-        t.contains('timeout') ||
-        t.contains('Connection')) {
-      return '연결이 불안정합니다. 네트워크를 확인하고 다시 시도해 주세요.';
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.connectionError:
+          return '연결이 불안정합니다. 네트워크를 확인하고 다시 시도해 주세요.';
+        case DioExceptionType.badResponse:
+          final code = e.response?.statusCode;
+          if (code == 404) {
+            return '업데이트 파일이 서버에 없습니다. 관리자에게 알려 주세요.';
+          }
+          return '서버가 파일을 주지 않았습니다 (HTTP $code).';
+        case DioExceptionType.cancel:
+          return '업데이트를 멈췄습니다.';
+        case DioExceptionType.badCertificate:
+        case DioExceptionType.unknown:
+          break;
+      }
     }
     return '업데이트 파일을 받지 못했습니다. 잠시 후 다시 시도해 주세요.';
   }

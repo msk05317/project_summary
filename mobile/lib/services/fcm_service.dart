@@ -24,20 +24,23 @@ class FcmService {
     importance: Importance.high,
   );
 
-  /// 앱 시작 시 1회 호출.
-  static Future<void> initialize() async {
-    if (_initialized) return;
-    _initialized = true;
+  /// 업데이트 내려받기 전용 통로. 소리 없이 진행률만 띄운다.
+  static const AndroidNotificationChannel _dlChannel =
+      AndroidNotificationChannel(
+    'oneview_update',
+    '앱 업데이트',
+    description: '업데이트 파일 내려받기 진행률',
+    importance: Importance.low,
+  );
 
-    try {
-      await Firebase.initializeApp();
-      debugPrint('[FCM] Firebase initialized');
-    } catch (e) {
-      debugPrint('[FCM] Firebase init failed: $e');
-      return;
-    }
+  static const int downloadNotifId = 90001;
+  static bool _localReady = false;
 
-    // 로컬 알림 초기화 (Android)
+  /// 로컬 알림만 준비한다. Firebase 와 떼어 놓은 이유가 있다 —
+  /// 전에는 Firebase 초기화가 실패하면 return 해 버려서 로컬 알림이
+  /// 통째로 죽었다. 알림판에 진행률을 띄우는 일은 Firebase 와 상관없다.
+  static Future<void> _initLocal() async {
+    if (_localReady) return;
     try {
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const initSettings = InitializationSettings(android: androidInit);
@@ -55,13 +58,97 @@ class FcmService {
           }
         },
       );
-      await _localNotifs
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(_channel);
+      final android = _localNotifs.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(_channel);
+      await android?.createNotificationChannel(_dlChannel);
+      _localReady = true;
       debugPrint('[FCM] local notifications initialized');
     } catch (e) {
       debugPrint('[FCM] local notif init failed: $e');
+    }
+  }
+
+  /// 내려받는 중. 알림판에 진행률 막대를 띄운다.
+  ///
+  /// 앱 안에만 표시하면 홈으로 나간 순간 받고 있는지 알 수가 없다.
+  /// [percent] 가 음수면 아직 크기를 모르는 상태로 둔다.
+  static Future<void> showDownloadProgress(int percent) async {
+    await _initLocal();
+    try {
+      await _localNotifs.show(
+        id: downloadNotifId,
+        title: 'OneView 업데이트 받는 중',
+        body: percent >= 0 ? '$percent%' : '시작하는 중…',
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            _dlChannel.id,
+            _dlChannel.name,
+            channelDescription: _dlChannel.description,
+            importance: Importance.low,
+            priority: Priority.low,
+            icon: '@mipmap/ic_launcher',
+            showProgress: true,
+            maxProgress: 100,
+            progress: percent < 0 ? 0 : percent,
+            indeterminate: percent < 0,
+            // 진행률마다 소리가 나면 60MB 받는 동안 계속 울린다.
+            onlyAlertOnce: true,
+            playSound: false,
+            // 밀어서 지우면 받는 중인지 알 길이 없어진다.
+            ongoing: true,
+            autoCancel: false,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[FCM] download progress notif failed: $e');
+    }
+  }
+
+  /// 다 받았거나 실패했을 때. [error] 가 있으면 그 말을 남긴다.
+  static Future<void> finishDownloadNotif({String? error}) async {
+    await _initLocal();
+    try {
+      if (error == null) {
+        await _localNotifs.cancel(id: downloadNotifId);
+        return;
+      }
+      await _localNotifs.show(
+        id: downloadNotifId,
+        title: 'OneView 업데이트를 받지 못했습니다',
+        body: error,
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            _dlChannel.id,
+            _dlChannel.name,
+            channelDescription: _dlChannel.description,
+            importance: Importance.low,
+            priority: Priority.low,
+            icon: '@mipmap/ic_launcher',
+            playSound: false,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[FCM] download finish notif failed: $e');
+    }
+  }
+
+  /// 앱 시작 시 1회 호출.
+  static Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    // 로컬 알림부터 준비한다. Firebase 가 안 붙어도 진행률은 떠야 한다.
+    await _initLocal();
+
+    try {
+      await Firebase.initializeApp();
+      debugPrint('[FCM] Firebase initialized');
+    } catch (e) {
+      debugPrint('[FCM] Firebase init failed: $e');
+      return;
     }
 
     // 알림 권한 요청

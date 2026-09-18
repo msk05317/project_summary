@@ -45,6 +45,41 @@ assert 'AppUpdater.instance' in M and 'up.downloading' in M
 assert 'up.retryDownload' in M, '실패했을 때 다시 받을 데가 없다'
 ok += 1
 
+# ── 알림판에도 진행률이 뜬다 ──
+#
+# "첫 번째 사진처럼 저기에 다운로드 로딩이 보였으면 좋겠고"
+#
+# 앱 안의 배지는 홈으로 나가면 안 보인다. 알림판에 띄워야 받고 있는지
+# 알 수 있다.
+F = (LIB / 'services' / 'fcm_service.dart').read_text(encoding='utf-8')
+assert 'showDownloadProgress' in F and 'finishDownloadNotif' in F, \
+    '알림판에 진행률을 못 띄운다'
+assert 'showProgress: true' in F and 'maxProgress: 100' in F
+assert 'onlyAlertOnce: true' in F and 'playSound: false' in F, \
+    '60MB 받는 동안 알림이 계속 울린다'
+assert 'ongoing: true' in F, '밀어서 지우면 받는 중인지 알 길이 없어진다'
+assert 'FcmService.showDownloadProgress' in U, '다운로드가 알림을 안 띄운다'
+assert 'if (pct != shown)' in U, '청크마다 알림을 고쳐 갱신이 막힌다'
+ok += 1
+
+# ── 로컬 알림은 Firebase 와 따로 준비한다 ──
+#
+# Firebase 초기화가 실패하면 return 해 버려서 로컬 알림이 통째로 죽었다.
+_init = F[F.index('static Future<void> initialize()'):]
+assert _init.index('_initLocal()') < _init.index('Firebase.initializeApp'), \
+    'Firebase 가 안 붙으면 알림도 못 띄운다'
+ok += 1
+
+# ── 원인을 문자열로 짐작하지 않는다 ──
+#
+# 예외 글자에 'Connection' 이 섞이기만 해도 '연결이 불안정합니다' 라고
+# 했다. 네트워크가 멀쩡한데 앱이 제 버그로 죽은 것을 통신 탓으로 돌렸다.
+_msg = U[U.index('static String _downloadMessage'):]
+_msg = _msg[:_msg.index('\n  }')]
+assert 'DioExceptionType' in _msg, '예외 종류를 안 보고 글자로 짐작한다'
+assert "t.contains('Connection')" not in _msg, '아직 글자로 짐작한다'
+ok += 1
+
 # ── 받아 둔 파일을 다시 열 수 있다 ──
 #
 # 설치 화면을 놓쳤을 때 60MB 를 다시 받게 하면 안 된다.
