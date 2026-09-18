@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.27",
-  "latest_version_code": 50,
+  "latest_version": "2.3.28",
+  "latest_version_code": 51,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "업데이트를 앱이 꺼져도 마저 받습니다.\n\n· 알림판 막대로 진행률이 보입니다\n· 다 받은 알림을 누르면 설치가 열립니다\n· 끊겨도 이어받습니다",
+  "release_notes": "지금 숫자가 어디 것인지 적습니다.\n\n· 전체 현황·매출에 '(반도체 기준)' 이 붙습니다\n· 중공업·휠·헬스케어 사업부를 뺐습니다",
   "force_update": false
 }
