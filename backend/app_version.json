@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.26",
-  "latest_version_code": 49,
+  "latest_version": "2.3.27",
+  "latest_version_code": 50,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "업데이트를 받는 동안 다른 화면을 봐도 됩니다.\n\n· 창을 닫아도 계속 받습니다\n· 오른쪽 아래에 진행률이 뜹니다",
+  "release_notes": "업데이트를 앱이 꺼져도 마저 받습니다.\n\n· 알림판 막대로 진행률이 보입니다\n· 다 받은 알림을 누르면 설치가 열립니다\n· 끊겨도 이어받습니다",
   "force_update": false
 }
