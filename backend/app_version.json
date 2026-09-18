@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.28",
-  "latest_version_code": 51,
+  "latest_version": "2.3.29",
+  "latest_version_code": 52,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "지금 숫자가 어디 것인지 적습니다.\n\n· 전체 현황·매출에 '(반도체 기준)' 이 붙습니다\n· 중공업·휠·헬스케어 사업부를 뺐습니다",
+  "release_notes": "업데이트 알림이 하나만 남습니다.\n\n· 다시 받아도 알림이 쌓이지 않습니다\n· 받다 만 것은 지우고 새로 받습니다",
   "force_update": false
 }
