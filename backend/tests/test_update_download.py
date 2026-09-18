@@ -61,6 +61,17 @@ assert 'FileDownloader().download(' in U, '다운로드를 OS 에 안 맡긴다'
 assert 'BaseDirectory.applicationSupport' in U
 assert 'allowPause: true' in U, '9분이 넘으면 처음부터 다시 받는다'
 assert '_dio.download(' not in U, '앱 안에서 받는 길이 남아 있다'
+# 알림이 쌓이지 않는다.
+#
+# "중간에 끊겨서 다시 업데이트하면 알림판에 업데이트 창만 겁나게 추가돼"
+#
+# 작업 id 를 안 주면 플러그인이 매번 새로 만들고, 알림 id 는 그 id 의
+# 해시라서 다시 받을 때마다 알림이 하나씩 쌓인다.
+assert 'taskId: _taskId' in U, '작업 이름이 매번 바뀌어 알림이 쌓인다'
+assert "_taskId = 'oneview_apk'" in U
+assert 'cancelTaskWithId(_taskId)' in U, '받다 만 작업이 남는다'
+assert "groupNotificationId: 'oneview_update'" in U, '알림이 한 줄로 안 묶인다'
+ok += 1
 ok += 1
 
 # ── 알림판에 진행률 막대 ──

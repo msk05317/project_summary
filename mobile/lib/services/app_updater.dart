@@ -240,7 +240,15 @@ class AppUpdater {
       // WorkManager 로 받아서 앱을 완전히 꺼도 마저 받는다. 진행률
       // 알림도 이쪽이 띄운다 — 다 받은 알림을 누르면 설치 화면이 열린다.
       _configureNotification();
+      // 앞서 받다 만 작업이 남아 있으면 지운다. 앱을 껐다 켜면 우리
+      // 쪽 잠금(downloading)은 풀리는데 OS 쪽 작업은 살아 있을 수 있다.
+      try {
+        await FileDownloader().cancelTaskWithId(_taskId);
+      } catch (_) {
+        // 없으면 그만이다
+      }
       final task = DownloadTask(
+        taskId: _taskId,
         url: url,
         filename: _apkName,
         baseDirectory: BaseDirectory.applicationSupport,
@@ -277,6 +285,14 @@ class AppUpdater {
   }
 
   static const String _apkName = 'app_release.apk';
+
+  /// 내려받기 작업 이름을 고정한다.
+  ///
+  /// 안 주면 플러그인이 매번 새 id 를 만들고, 알림 id 는 그 id 의
+  /// 해시라서 다시 받을 때마다 알림이 하나씩 쌓였다. 끊겼다 다시
+  /// 누르기를 몇 번 하면 알림판이 업데이트 알림으로 도배됐다.
+  /// 같은 이름을 쓰면 같은 알림을 고쳐 쓴다.
+  static const String _taskId = 'oneview_apk';
   bool _notifConfigured = false;
 
   /// 진행률 알림. 플러그인이 알림판에 직접 띄운다 — 앱이 꺼져 있어도
@@ -291,6 +307,8 @@ class AppUpdater {
       paused: const TaskNotification('업데이트 잠시 멈춤', '연결되면 이어받습니다'),
       progressBar: true,
       tapOpensFile: true,
+      // 어쩌다 여러 개가 생겨도 알림은 한 줄로 묶는다.
+      groupNotificationId: 'oneview_update',
     );
   }
 
