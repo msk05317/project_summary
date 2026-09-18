@@ -311,6 +311,19 @@ def _pair(plan, actual):
     return line
 
 
+def _issue_brief(m, width=40):
+    """이슈 칸을 한 줄로 줄인다. 여러 줄이면 첫 줄만, 길면 자른다."""
+    txt = ""
+    for ln in _s(m.get("issues")).splitlines():
+        ln = ln.strip().rstrip(" ,·/")
+        if ln:
+            txt = ln
+            break
+    if len(txt) > width:
+        txt = txt[:width].rstrip() + "…"
+    return txt
+
+
 def _answer_project(label, proj, models, mass, dev, process_progress,
                     now_week='', now_month=''):
     lines = [f"{label}{_josa(label)} 모델 {len(models)}종입니다 (양산 {len(mass)}종, 개발 {len(dev)}종)."]
@@ -364,8 +377,16 @@ def _answer_project(label, proj, models, mass, dev, process_progress,
     # 진행률 평균도 뺐다. 양산은 PO 대비 출하, 개발은 공정 단계라 서로
     # 다른 것을 한 숫자로 평균 낸 값이었다. 무엇이 52% 인지 말할 수 없다.
 
+    # 이슈는 개수만 세지 않는다. '3종입니다' 를 보면 결국 무엇인지
+    # 다시 물어봐야 한다. 짧게라도 무엇인지 적는다.
     issues = [m for m in models if _s(m.get("issues"))]
     if issues:
-        lines.append(f"이슈가 등록된 모델은 {len(issues)}종입니다.")
+        lines.append(f"이슈 {len(issues)}종:")
+        for m in issues[:5]:
+            name = _s(m.get("name")) or _s(m.get("id"))
+            brief = _issue_brief(m)
+            lines.append(f"· {name}: {brief}" if brief else f"· {name}")
+        if len(issues) > 5:
+            lines.append(f"· 외 {len(issues) - 5}종")
 
     return "\n".join(lines)

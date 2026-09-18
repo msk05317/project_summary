@@ -114,4 +114,38 @@ for _a in (a, b, c):
     assert '진행률' not in _a, f'진행률 평균이 남았다: {_a}'
 ok += 1
 
+# ── 이슈는 무엇인지까지 적는다 ──
+#
+# "이슈 등록된건 그냥 짧게 요약해줘 / EFEM: 사급자재 지연"
+#
+# '3종입니다' 만 보면 결국 무엇인지 다시 물어봐야 한다.
+iss = [{'id': 'M1', 'name': 'EFEM', 'group': '개발',
+        'issues': '2대 고객 사급자재 지연'},
+       {'id': 'M2', 'name': 'LPM', 'group': '개발',
+        'issues': '도면 변경 대기\n2차 검토 예정'},
+       {'id': 'M3', 'name': '긴놈', 'group': '양산',
+        'issues': '선적 스페이스 부족으로 이번 주 미출하, 차주 복구 예정이며 고객 통보 완료'}]
+f = ci._answer_project('테스트', {'models': iss}, iss, iss, [], pp,
+                       now_week='W38', now_month='2026-09')
+assert '이슈 3종:' in f, f
+assert '· EFEM: 2대 고객 사급자재 지연' in f, f
+# 여러 줄이면 첫 줄만
+assert '· LPM: 도면 변경 대기' in f and '2차 검토' not in f, f
+# 길면 자른다
+assert '…' in f, f
+ok += 1
+
+# 다섯 종까지만 적고 나머지는 세어 준다
+many = [{'id': f'M{i}', 'name': f'모델{i}', 'group': '양산', 'issues': f'사유 {i}'}
+        for i in range(1, 8)]
+gmany = ci._answer_project('테스트', {'models': many}, many, many, [], pp,
+                           now_week='W38', now_month='2026-09')
+assert '이슈 7종:' in gmany and '· 모델5: 사유 5' in gmany, gmany
+assert '· 모델6' not in gmany and '· 외 2종' in gmany, gmany
+ok += 1
+
+# 옛 문구는 안 쓴다
+assert '이슈가 등록된 모델은' not in f, f
+ok += 1
+
 print(f'전부 통과 · {ok}개 항목')
