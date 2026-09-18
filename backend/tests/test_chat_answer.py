@@ -134,7 +134,9 @@ ok += 1
 # ── 7) 이슈 답변이 중간에서 끊기지 않는다 ──
 #   80자에서 자른 컨텍스트를 받은 LLM 이 '선적 스페이스 부' 에서 문장을 멈췄다.
 assert "m.get('issues')[:80]" not in SRC, '이슈 컨텍스트가 아직 80자에서 잘린다'
-assert '_issue_answer(last_project)' in SRC, '이슈 즉답이 /chat 에 연결되지 않았다'
+# 프로젝트를 안 짚으면 전 프로젝트를 훑는다 (test_issue_scope.py 참고).
+assert '_issue_answer(_proj_in_msg) if _one else _issue_answer_all()' in SRC, \
+    '이슈 즉답이 /chat 에 연결되지 않았다'
 
 iss = load(['_issue_answer', '_display_project_label', '_model_alert', '_display_group', '_norm_phases',
             '_phase_ord', '_as_money', '_process_step_done', '_model_hold',

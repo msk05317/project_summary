@@ -732,6 +732,54 @@ def _issue_answer(project_key: str) -> str:
     return "\n".join(lines)
 
 
+def _issue_answer_all(limit_per_project: int = 3) -> str:
+    """프로젝트를 안 짚고 '일정 지연' 만 물었을 때. 전 프로젝트를 훑는다.
+
+    예전에는 세션에 남아 있던 마지막 프로젝트로 좁혀서 답했다. 홈에는
+    '일정 지연 8건 · 3곳' 이라고 떠 있는데 챗은 메이저모듈 1건만 말하니
+    둘 중 무엇이 맞는지 알 수가 없었다.
+    """
+    data = _load_models().get("projects") or {}
+    blocks, total, places = [], 0, 0
+    for key in sorted(data):
+        if str(key).startswith("bloom"):
+            continue                       # 블룸은 일 보드라 따로 답한다
+        proj = data.get(key) or {}
+        models = proj.get("models") or []
+        if not models:
+            continue
+        rows = []
+        for m in models:
+            try:
+                if _model_hold(m):
+                    continue               # 드롭·보류는 지연이 아니다
+            except Exception:
+                pass
+            name = m.get("name") or m.get("id") or ""
+            txt = " ".join(str(m.get("issues") or "").split())
+            try:
+                late = _model_alert(m) == "지연"
+            except Exception:
+                late = False
+            if txt:
+                rows.append(f"· {name}: {txt[:40]}" + ("…" if len(txt) > 40 else ""))
+            elif late:
+                exp = m.get("current_expected") or m.get("due_text") or "미정"
+                rows.append(f"· {name}: 완료예정 {exp} 경과 (사유 미기재)")
+        if not rows:
+            continue
+        places += 1
+        total += len(rows)
+        label = _display_project_label(key)
+        blocks.append(f"[{label}] {len(rows)}건")
+        blocks.extend(rows[:limit_per_project])
+        if len(rows) > limit_per_project:
+            blocks.append(f"· 외 {len(rows) - limit_per_project}건")
+    if not blocks:
+        return "지연이나 이슈로 잡힌 모델이 없습니다."
+    return f"일정 지연·이슈 {total}건 · {places}곳.\n" + "\n".join(blocks)
+
+
 def _chat_project_keywords() -> dict:
     """질문에서 프로젝트를 찾을 때 쓰는 '키워드 → project_key' 사전.
 
@@ -18782,20 +18830,26 @@ async def chat(payload: dict):
                     'corrected_query': None}
 
     # ── 이슈·지연 질문은 적힌 그대로 답한다 (LLM 이 중간에 끊는 걸 막는다) ──
-    if (last_project and last_project != 'all'
-            and not str(last_project).startswith('bloom')
-            and any(k in _user_text for k in ('이슈', '지연', '문제', '리스크', '막힌', '지체', '밀린'))
+    #
+    # 이번 메시지에 프로젝트 이름이 없으면 전 프로젝트를 훑는다. 예전에는
+    # 세션에 남아 있던 마지막 프로젝트로 좁혀서, 홈에 '8건 · 3곳' 이라고
+    # 떠 있는데 챗은 한 곳 1건만 말했다.
+    if (any(k in _user_text for k in ('이슈', '지연', '문제', '리스크', '막힌', '지체', '밀린'))
             and not any(k in _user_text for k in ('매출', '금액', '얼마'))):
+        _one = (_proj_in_msg and _proj_in_msg != 'all'
+                and not str(_proj_in_msg).startswith('bloom'))
         try:
-            _ans_i = _issue_answer(last_project)
+            _ans_i = _issue_answer(_proj_in_msg) if _one else _issue_answer_all()
         except Exception as _e_i:
             _ans_i = ""
             print(f"[chat] 이슈 즉답 실패(무시): {_e_i}")
         if _ans_i:
-            print(f"[chat] 이슈 즉답 → {last_project}")
+            _scope = _proj_in_msg if _one else 'all'
+            print(f"[chat] 이슈 즉답 → {_scope}")
             return {'answer': _ans_i,
-                    'sources': [{'key': last_project,
-                                 'label': _display_project_label(last_project)}],
+                    'sources': ([{'key': _proj_in_msg,
+                                  'label': _display_project_label(_proj_in_msg)}]
+                                if _one else []),
                     'corrected_query': None}
 
     # ── 월 범위 기억 + 월 단위 수량/매출 즉답 (후속 질문 '각각 몇 대씩' 대응) ──
