@@ -247,11 +247,15 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           // 문제만 세 칸 늘어놓으면 나머지가 다 제대로 가고 있다는 게 안 보인다.
           final normal = models.where((m) {
             if (holdOf(m).isNotEmpty) return false;
-            if (m['finished'] == true) return false;
-            if (((m['progress'] as num?)?.toInt() ?? 0) >= 100) return false;
             final al = _alertOf(m);
             if (al == '지연' || al == '주의') return false;
-            return (m['issues'] ?? '').toString().trim().isEmpty;
+            if ((m['issues'] ?? '').toString().trim().isNotEmpty) return false;
+            // PO 가 아직 안 들어온 모델(Mach I 처럼)은 '완료'가 아니라 다음 PO 를
+            // 기다리는 중이다. 완료로 빼버리면 네 칸 합이 전체와 안 맞는다.
+            if (_poWaitOf(m)) return true;
+            if (m['finished'] == true) return false;
+            if (((m['progress'] as num?)?.toInt() ?? 0) >= 100) return false;
+            return true;
           }).length;
 
           final byGroup = <String, List<Map<String, dynamic>>>{'양산': [], '개발': []};
@@ -493,11 +497,28 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                 color: on ? color.withValues(alpha: 0.25) : const Color(0xFFE5E7EB)),
           ),
           child: Column(children: [
-            Text('$n',
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: on ? color : const Color(0xFFCBD5E1))),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text('$n',
+                    style: TextStyle(
+                        fontSize: 17,
+                        height: 1.1,
+                        fontWeight: FontWeight.w800,
+                        color: on ? color : const Color(0xFFCBD5E1))),
+                const SizedBox(width: 1),
+                Text('종',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        height: 1.1,
+                        fontWeight: FontWeight.w700,
+                        color: on
+                            ? color.withValues(alpha: 0.65)
+                            : const Color(0xFFCBD5E1))),
+              ],
+            ),
             const SizedBox(height: 1),
             Text(label,
                 maxLines: 1,
@@ -1092,6 +1113,13 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
         );
       },
     );
+  }
+
+  /// PO 가 아직 안 들어온 모델. 개발 최종 승인이 끝나도 PO 가 없으면
+  /// '완료' 가 아니라 다음 PO 를 기다리는 중이다 (Mach I) — 정상으로 센다.
+  static bool _poWaitOf(Map m) {
+    if (m['po_wait'] == true) return true;
+    return ((m['po_qty'] as num?)?.toInt() ?? 0) <= 0;
   }
 
   /// 지연/주의 판정. 서버가 alert 로 내려준다.
