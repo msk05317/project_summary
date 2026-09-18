@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.30",
-  "latest_version_code": 53,
+  "latest_version": "2.3.31",
+  "latest_version_code": 54,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "양산 모델 카드 표기를 정리했습니다.\n\n- 라벨을 '출하계획대비' → 상태값(정상)으로\n- 퍼센트 아래 '출하율' 문구 추가",
+  "release_notes": "모델 집계와 표를 정리했습니다.\n\n- '완료' 없앰 → 정상, 보류 → 집중관리\n- 재료비율 90%↑ 빨강 · 80%대 주황 + 구간 필터\n- 주차 보드에 달 표기, 매출 표는 항상 펼침",
   "force_update": false
 }
