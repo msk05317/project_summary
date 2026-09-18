@@ -245,17 +245,13 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           final watched = models.where((m) => _alertOf(m) == '주의').length;
           // 정상 = 멈추지도, 끝나지도, 밀리지도 않았고 적어 둔 문제도 없는 것.
           // 문제만 세 칸 늘어놓으면 나머지가 다 제대로 가고 있다는 게 안 보인다.
+          // '완료' 칸은 없앴다 (목록도 같다). 개발 최종 승인이 끝나도 PO 를
+          // 기다리는 중이고, 양산은 다음 PO 가 들어오면 다시 0% 부터다.
           final normal = models.where((m) {
             if (holdOf(m).isNotEmpty) return false;
             final al = _alertOf(m);
             if (al == '지연' || al == '주의') return false;
-            if ((m['issues'] ?? '').toString().trim().isNotEmpty) return false;
-            // PO 가 아직 안 들어온 모델(Mach I 처럼)은 '완료'가 아니라 다음 PO 를
-            // 기다리는 중이다. 완료로 빼버리면 네 칸 합이 전체와 안 맞는다.
-            if (_poWaitOf(m)) return true;
-            if (m['finished'] == true) return false;
-            if (((m['progress'] as num?)?.toInt() ?? 0) >= 100) return false;
-            return true;
+            return (m['issues'] ?? '').toString().trim().isEmpty;
           }).length;
 
           final byGroup = <String, List<Map<String, dynamic>>>{'양산': [], '개발': []};
@@ -1113,13 +1109,6 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
         );
       },
     );
-  }
-
-  /// PO 가 아직 안 들어온 모델. 개발 최종 승인이 끝나도 PO 가 없으면
-  /// '완료' 가 아니라 다음 PO 를 기다리는 중이다 (Mach I) — 정상으로 센다.
-  static bool _poWaitOf(Map m) {
-    if (m['po_wait'] == true) return true;
-    return ((m['po_qty'] as num?)?.toInt() ?? 0) <= 0;
   }
 
   /// 지연/주의 판정. 서버가 alert 로 내려준다.

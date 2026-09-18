@@ -95,16 +95,13 @@ bool poWaitOf(Map m) {
 /// running 은 '정상' 이다 — 문제가 하나도 없는 것. 적어 둔 문제(issues)가
 /// 있으면 정상이 아니라 issue 다. 홈의 '특이사항' 과 같은 기준이라야
 /// 프로젝트를 눌러 들어왔을 때 숫자가 어긋나지 않는다.
-enum ModelBucket { delayed, soon, issue, running, done, hold }
+enum ModelBucket { delayed, soon, issue, running, hold }
 
 ModelBucket _bucketOf(Map m) {
   // 드롭·보류가 먼저다. 시계가 멈춘 건 늦은 게 아니다.
   if (holdOf(m).isNotEmpty) return ModelBucket.hold;
-  // 최종 승인이 끝났으면 끝난 것. 양산으로 넘어가면 진행률이 PO 기준으로
-  // 다시 세어져서 숫자만 보면 '완료'에서 빠진다.
-  if (m['finished'] == true) return ModelBucket.done;
-  final pg = (m['progress'] as num?)?.toInt() ?? 0;
-  if (pg >= 100) return ModelBucket.done;
+  // '완료' 칸은 없앴다. 개발 최종 승인이 끝나도 PO 를 기다리는 중이고,
+  // 양산은 다음 PO 가 들어오면 다시 0% 부터다 — 끝난 게 아니라 정상이다.
   // 서버가 정한 값. 옛 서버면 손으로 적은 status 로 떨어진다.
   final a = ((m['alert'] ?? m['status']) ?? '').toString().trim();
   if (a == '지연') return ModelBucket.delayed;
@@ -118,7 +115,6 @@ const Map<ModelBucket, String> _bucketLabel = {
   ModelBucket.soon: StatusWords.soon,
   ModelBucket.issue: StatusWords.issue,
   ModelBucket.running: StatusWords.normal,
-  ModelBucket.done: '완료',
   ModelBucket.hold: StatusWords.hold,
 };
 
@@ -165,7 +161,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
   /// 급한 게 위로 온다.
   static const List<ModelBucket> _order = [
     ModelBucket.delayed, ModelBucket.issue, ModelBucket.soon,
-    ModelBucket.running, ModelBucket.done, ModelBucket.hold,
+    ModelBucket.running, ModelBucket.hold,
   ];
 
   Map<ModelBucket, int> get _counts {
@@ -239,9 +235,6 @@ class _ModelListScreenState extends State<ModelListScreen> {
               _filter == ModelBucket.running,
               () => setState(() => _filter = ModelBucket.running),
               AppColors.summaryNormal),
-          chip('완료', c[ModelBucket.done] ?? 0, _filter == ModelBucket.done,
-              () => setState(() => _filter = ModelBucket.done),
-              const Color(0xFF059669)),
           // 보류는 있을 때만 — 없는 칩이 자리를 차지할 이유가 없다
           if ((c[ModelBucket.hold] ?? 0) > 0)
             chip(StatusWords.hold, c[ModelBucket.hold] ?? 0,
@@ -303,7 +296,10 @@ class _ModelListScreenState extends State<ModelListScreen> {
     final hold = holdOf(m);
     if (hold.isNotEmpty) return '$hold · $stage';
 
-    if (progress >= 100) return '완료';
+    // PO 가 아직 없으면 끝난 게 아니라 다음 PO 를 기다리는 중이다.
+    if (progress >= 100) {
+      return ((m['po_qty'] as num?)?.toInt() ?? 0) > 0 ? '완료' : 'PO 대기';
+    }
     if (progress == 0) return '대기중';
     
     if (expected.isEmpty) return '진행중 · $stage';
