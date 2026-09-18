@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated_at": "2026-06-17",
+  "updated_at": "2026-09-18T02:08:43",
   "divisions": [
     {
       "id": "semiconductor",
@@ -53,20 +53,10 @@
       "description": "에너지 저장 시스템 관련 프로젝트"
     },
     {
-      "id": "heavy",
-      "label": "중공업사업부",
-      "mode": "project",
-      "order": 6,
-      "visible": true,
-      "badge_color": "#6B7280",
-      "badge_short_label": "중공업",
-      "description": "중공업 관련 프로젝트"
-    },
-    {
       "id": "automation",
       "label": "자동화사업부",
       "mode": "project",
-      "order": 7,
+      "order": 6,
       "visible": true,
       "badge_color": "#6B7280",
       "badge_short_label": "자동화",
@@ -76,31 +66,11 @@
       "id": "automotive",
       "label": "자동차사업부",
       "mode": "project",
-      "order": 8,
+      "order": 7,
       "visible": true,
       "badge_color": "#6B7280",
       "badge_short_label": "자동차",
       "description": "자동차 관련 프로젝트"
-    },
-    {
-      "id": "wheel",
-      "label": "휠사업부",
-      "mode": "project",
-      "visible": true,
-      "badge_color": "#6B7280",
-      "badge_short_label": "휠",
-      "description": "휠 관련 프로젝트",
-      "order": 9
-    },
-    {
-      "id": "healthcare",
-      "label": "헬스케어사업부",
-      "mode": "project",
-      "visible": true,
-      "badge_color": "#6B7280",
-      "badge_short_label": "헬스케어",
-      "description": "헬스케어 관련 프로젝트",
-      "order": 10
     },
     {
       "id": "bloom",
@@ -110,7 +80,7 @@
       "badge_color": "#6B7280",
       "badge_short_label": "블룸",
       "description": "블룸 관련 프로젝트",
-      "order": 11
+      "order": 8
     },
     {
       "id": "arista",
@@ -120,7 +90,7 @@
       "badge_color": "#6B7280",
       "badge_short_label": "아리스타",
       "description": "PCB, 쿨링랙",
-      "order": 12
+      "order": 9
     }
   ]
 }

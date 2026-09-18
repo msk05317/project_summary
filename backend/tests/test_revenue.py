@@ -432,6 +432,7 @@ C = (LIB / 'components' / 'home' / 'exec_revenue_card.dart').read_text(encoding=
 assert 'RevenueMonth' in C, '홈 카드가 아직 모델 계산값을 쓴다'
 # 실적과 예상을 한 줄로. 주간보고의 '실행계획' 은 더 이상 안 쓴다.
 assert '실적 / 타겟' in C and '상세 보기' in C, '홈 카드 문구가 예전 그대로다'
+assert '(반도체 기준)' in C, '전사 매출인 것처럼 보인다'
 # 짝은 타겟이다. 예상은 관리자 화면과 부서별 달성률에서만 쓴다.
 assert 'r.targetRate' in C and 'r.target' in C, '홈 카드가 아직 예상을 짝으로 쓴다'
 assert '타겟 미등록' in C, '타겟이 없는 달에 달성률을 지어낸다'

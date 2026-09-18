@@ -72,10 +72,15 @@ class ExecRevenueCard extends StatelessWidget {
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(
+          Flexible(
             child: Text('${Fmt.monthShort(r.month)} 매출',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.h2),
           ),
+          const SizedBox(width: 5),
+          // 임시. 주간보고가 반도체사업부 것뿐이라 그렇다고 적어 둔다.
+          Text('(반도체 기준)',
+              style: AppText.caption.copyWith(color: AppColors.textHint)),
+          const Spacer(),
           if (onTap != null) ...[
             Text('상세 보기',
                 textAlign: TextAlign.right,

@@ -165,6 +165,11 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
       Row(children: [
         const Text('전체 현황',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        const SizedBox(width: 5),
+        // 임시. 지금 숫자는 반도체사업부 것만이라 그렇다고 적어 둔다.
+        // 다른 사업부 자료가 들어오면 이 꼬리표를 뗀다.
+        const Text('(반도체 기준)',
+            style: TextStyle(fontSize: 11.5, color: AppColors.textHint)),
         const Spacer(),
         Text(a.fromCache && a.savedAt != null
             ? '저장된 값'

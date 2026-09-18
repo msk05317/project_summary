@@ -163,6 +163,9 @@ assert '_sel = k' in B, '타일을 눌러도 목록이 안 바뀐다'
 # 타일을 눌러도 되고 옆으로 밀어도 넘어간다.
 # 왼쪽으로 밀면 다음, 오른쪽으로 밀면 이전. 끝에서는 안 넘어간다 —
 # 정상에서 왼쪽으로 밀었는데 집중관리가 나오면 어디로 간 건지 모른다.
+# 지금 숫자는 반도체사업부 것만이다. 그렇다고 적어 둬야 전사 숫자로
+# 읽히지 않는다. 다른 사업부 자료가 들어오면 이 꼬리표를 뗀다.
+assert '(반도체 기준)' in B, '전사 숫자인 것처럼 보인다'
 assert 'onHorizontalDragEnd' in B, '옆으로 밀어도 안 넘어간다'
 assert 'primaryVelocity' in B and '_Kind.values[next]' in B
 assert 'next < 0 || next >= _Kind.values.length' in B, '끝에서 감아 돈다'
