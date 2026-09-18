@@ -536,7 +536,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
                 Icon(Icons.circle, size: 8, color: _statusColor(status)),
                 const SizedBox(width: 4),
                 Text(hasPlanData
-                        ? '출하계획대비'
+                        ? status
                         : (poWaitOf(m) ? 'PO 접수 대기' : '계획 미등록'),
                     style: TextStyle(
                         fontSize: 12,
@@ -545,11 +545,28 @@ class _ModelListScreenState extends State<ModelListScreen> {
               _noteLine(m),
             ]),
           ),
-          Text(progress == null ? '-' : '$progress%',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: progress == null ? const Color(0xFF9CA3AF) : const Color(0xFF0F2C59))),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(progress == null ? '-' : '$progress%',
+                  style: TextStyle(
+                      fontSize: 18,
+                      height: 1.05,
+                      fontWeight: FontWeight.w800,
+                      color: progress == null
+                          ? const Color(0xFF9CA3AF)
+                          : const Color(0xFF0F2C59))),
+              const SizedBox(height: 1),
+              const Text('출하율',
+                  style: TextStyle(
+                      fontSize: 10,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                      color: Color(0xFF9CA3AF))),
+            ],
+          ),
           const SizedBox(width: 8),
           const Icon(Icons.chevron_right, color: Color(0xFF9CA3AF)),
         ]),
