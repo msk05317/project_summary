@@ -95,11 +95,12 @@ bool poWaitOf(Map m) {
 /// running 은 '정상' 이다 — 문제가 하나도 없는 것. 적어 둔 문제(issues)가
 /// 있으면 정상이 아니라 issue 다. 홈의 '특이사항' 과 같은 기준이라야
 /// 프로젝트를 눌러 들어왔을 때 숫자가 어긋나지 않는다.
-enum ModelBucket { delayed, soon, issue, running, hold }
+enum ModelBucket { delayed, soon, issue, running }
 
 ModelBucket _bucketOf(Map m) {
-  // 드롭·보류가 먼저다. 시계가 멈춘 건 늦은 게 아니다.
-  if (holdOf(m).isNotEmpty) return ModelBucket.hold;
+  // 드롭·보류가 먼저다. 시계가 멈춘 건 늦은 게 아니다 — 지연이 아니라
+  // 집중관리로 센다 (칸을 따로 두면 네 칸 합이 전체와 안 맞는다).
+  if (holdOf(m).isNotEmpty) return ModelBucket.soon;
   // '완료' 칸은 없앴다. 개발 최종 승인이 끝나도 PO 를 기다리는 중이고,
   // 양산은 다음 PO 가 들어오면 다시 0% 부터다 — 끝난 게 아니라 정상이다.
   // 서버가 정한 값. 옛 서버면 손으로 적은 status 로 떨어진다.
@@ -115,7 +116,6 @@ const Map<ModelBucket, String> _bucketLabel = {
   ModelBucket.soon: StatusWords.soon,
   ModelBucket.issue: StatusWords.issue,
   ModelBucket.running: StatusWords.normal,
-  ModelBucket.hold: StatusWords.hold,
 };
 
 class ModelListScreen extends StatefulWidget {
@@ -161,7 +161,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
   /// 급한 게 위로 온다.
   static const List<ModelBucket> _order = [
     ModelBucket.delayed, ModelBucket.issue, ModelBucket.soon,
-    ModelBucket.running, ModelBucket.hold,
+    ModelBucket.running,
   ];
 
   Map<ModelBucket, int> get _counts {
@@ -235,12 +235,6 @@ class _ModelListScreenState extends State<ModelListScreen> {
               _filter == ModelBucket.running,
               () => setState(() => _filter = ModelBucket.running),
               AppColors.summaryNormal),
-          // 보류는 있을 때만 — 없는 칩이 자리를 차지할 이유가 없다
-          if ((c[ModelBucket.hold] ?? 0) > 0)
-            chip(StatusWords.hold, c[ModelBucket.hold] ?? 0,
-                _filter == ModelBucket.hold,
-                () => setState(() => _filter = ModelBucket.hold),
-                const Color(0xFF6B7280)),
         ]),
       ),
     );

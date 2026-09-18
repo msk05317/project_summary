@@ -242,7 +242,11 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
           final projHold = (data['hold'] ?? '').toString();
           final holdWhy = (data['hold_reason'] ?? '').toString();
           final delayed = models.where((m) => _alertOf(m) == '지연').length;
-          final watched = models.where((m) => _alertOf(m) == '주의').length;
+          // 보류·드롭예정은 멈춰 세운 것이라 지연이 아니다. 따로 칸을 두면
+          // 네 칸 합이 전체와 안 맞아서 집중관리로 같이 센다 (목록 칩과 동일).
+          final watched = models
+              .where((m) => holdOf(m).isNotEmpty || _alertOf(m) == '주의')
+              .length;
           // 정상 = 멈추지도, 끝나지도, 밀리지도 않았고 적어 둔 문제도 없는 것.
           // 문제만 세 칸 늘어놓으면 나머지가 다 제대로 가고 있다는 게 안 보인다.
           // '완료' 칸은 없앴다 (목록도 같다). 개발 최종 승인이 끝나도 PO 를
