@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.29",
-  "latest_version_code": 52,
+  "latest_version": "2.3.30",
+  "latest_version_code": 53,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "업데이트 알림이 하나만 남습니다.\n\n· 다시 받아도 알림이 쌓이지 않습니다\n· 받다 만 것은 지우고 새로 받습니다",
+  "release_notes": "양산 모델 카드 표기를 정리했습니다.\n\n- 라벨을 '출하계획대비' → 상태값(정상)으로\n- 퍼센트 아래 '출하율' 문구 추가",
   "force_update": false
 }
