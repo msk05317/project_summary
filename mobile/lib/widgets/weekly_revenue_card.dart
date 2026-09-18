@@ -23,8 +23,6 @@ class WeeklyRevenueCard extends StatefulWidget {
 }
 
 class _WeeklyRevenueCardState extends State<WeeklyRevenueCard> {
-  bool _showTable = false;
-
   WeeklyRevenue get rev => widget.rev;
 
   int _weekActual(String w) =>
@@ -112,33 +110,11 @@ class _WeeklyRevenueCardState extends State<WeeklyRevenueCard> {
               _legend(AppColors.statusGray, '계획'),
               const SizedBox(width: 12),
               _legend(AppColors.summaryNormal, '실적'),
-              const Spacer(),
-              InkWell(
-                onTap: () => setState(() => _showTable = !_showTable),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(_showTable ? '표 닫기' : '표로 보기',
-                          style: AppText.caption
-                              .copyWith(color: AppColors.summaryInProgress)),
-                      Icon(
-                        _showTable ? Icons.expand_less : Icons.expand_more,
-                        size: 16,
-                        color: AppColors.summaryInProgress,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ],
           ),
 
-          // 3) 상세 표 (요청 시)
-          if (_showTable) ...[
+          // 3) 상세 표 — 접지 않는다. 열어보는 수고를 시킬 만큼 긴 표가 아니다.
+          ...[
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,

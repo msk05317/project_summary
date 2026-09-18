@@ -89,8 +89,10 @@ assert 'out["finished"] = bool(proc) and _process_step_done(proc[-1])' in SRC, \
 assert 'out.setdefault("finished", False)' in SRC
 DART2 = (pathlib.Path(__file__).resolve().parents[2] / 'mobile' / 'lib' / 'screens'
          / 'model_list_screen.dart').read_text(encoding='utf-8')
-assert "if (m['finished'] == true) return ModelBucket.done;" in DART2, \
-    '앱이 최종 승인 완료를 완료로 안 본다'
+# '완료' 칸은 없앴다 — 최종 승인이 끝나도 PO 를 기다리는 중이라 정상으로 센다.
+# 서버는 그대로 finished 를 내려준다 (개발 공정 화면이 쓴다).
+assert 'ModelBucket.done' not in DART2, '앱에 완료 칸이 아직 남아 있다'
+assert "'PO 대기'" in DART2, '앱이 PO 대기를 표시하지 않는다'
 ok += 1
 
 assert 'out["alert"] = _model_alert(m, _disp, expected, out["progress"])' in SRC
