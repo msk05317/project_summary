@@ -135,6 +135,21 @@ for _v in _ex:
     assert _tc.notes_for(_v, path=CL) == '', f'release.sh 도 예시 {_v} 를 항목으로 본다'
 ok += 1
 
+# ── 머리말은 온전해야 한다 ──
+#
+# 항목을 '## ' 가 처음 나오는 자리에 끼웠더니 머리말 문장 한가운데로
+# 들어갔다 (설명문에 `## 버전 — 날짜` 라는 글자가 있다). 들여쓰기가
+# 붙어 파서가 통째로 무시했고, release.sh 는 항목이 없다고 멈췄다.
+assert '`## 버전 — 날짜` 한 줄' in TXT, '머리말 설명문이 갈라졌다'
+# 들여쓴 머리는 형식 예시 하나뿐이어야 한다
+_indented = [ln for ln in TXT.split('\n')
+             if ln[:1] in (' ', '\t') and ln.strip().startswith('## ')]
+assert len(_indented) == 1, f'들여쓴 항목이 여럿이다: {_indented}'
+# 배포된 버전은 반드시 줄 맨 앞에 있어야 release.sh 가 찾는다
+assert _re.search(r'(?m)^## ' + _re.escape(_cur), TXT), \
+    f'{_cur} 항목이 줄 맨 앞에 없다'
+ok += 1
+
 # ── 짧게 쓴다 ──
 #
 # "새 버전 업데이트 할 때마다 내용들이 너무 길어, 다음번부터는 짧게"
