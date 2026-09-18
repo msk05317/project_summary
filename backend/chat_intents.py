@@ -326,15 +326,26 @@ def _answer_project(label, proj, models, mass, dev, process_progress,
     cells = _week_cells(proj, models)
     if cells:
         this_w = _s(now_week)
+        this_n = _wk_no(this_w)
+
+        # 저번 주. 이번 주가 아직 비어 있는 화요일 아침에도 지난주가
+        # 어땠는지는 알아야 한다.
+        prev_w = f"W{this_n - 1}" if this_n > 1 else ""
+        prev = cells.get(prev_w) if prev_w else None
+        if prev and (prev["plan"] or prev["actual"]):
+            lines.append(f"저번 주 {prev_w}: " + _pair(prev["plan"], prev["actual"]))
+
         cur = cells.get(this_w)
         if cur and (cur["plan"] or cur["actual"]):
             lines.append(f"이번 주 {this_w}: " + _pair(cur["plan"], cur["actual"]))
         else:
-            done = [w for w, c in cells.items() if c["actual"]]
-            last = max(done, key=_wk_no) if done else None
             if this_w:
                 lines.append(f"이번 주 {this_w}: 아직 실적이 없습니다.")
-            if last:
+            # 저번 주까지 비어 있을 때만 마지막 실적을 따로 찾는다.
+            # 바로 위에 적은 주차를 한 번 더 적을 이유가 없다.
+            done = [w for w, c in cells.items() if c["actual"]]
+            last = max(done, key=_wk_no) if done else None
+            if last and last != prev_w:
                 c = cells[last]
                 lines.append(f"마지막 실적은 {last}: " + _pair(c["plan"], c["actual"]))
 
