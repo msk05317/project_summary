@@ -23,6 +23,15 @@ const Color _navy = Color(0xFF0F2C59);
 const Color _line = Color(0xFFE5E7EB);
 const Color _red = Color(0xFFDC2626);
 
+// 이번 달 주차 묶음은 선으로 끊지 않고 색으로 묶는다.
+// 선을 그으면 남색 머리글 위에서는 안 보이거나 구멍처럼 보인다.
+const Color _navyGroup = Color(0xFF1E4A80);  // 묶음 머리글 (기본보다 밝은 남색)
+const Color _groupTint = Color(0xFFF4F8FE);  // 묶음 데이터 칸 (아주 옅은 파랑)
+const Color _gridV = Color(0xFFEDF1F6);      // 세로 격자 (거의 안 보이게)
+const Color _gridH = Color(0xFFE6EBF1);      // 가로 격자
+const Color _headLine = Color(0xFF2A4C7A);   // 남색 칸끼리의 경계
+const Color _zeroInk = Color(0xFFC2CBD8);    // 0 · 빈 값은 죽인다
+
 /// 표 칸 하나. 숫자만으로는 '계획에 못 미친 칸' 을 말할 수 없다.
 class _BCell {
   final String text;
@@ -377,8 +386,21 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   //   layout: 'sections'  프로젝트별 행 구성 (챔버 — 기존/내재화/Dep 챔버)
   //   그 외                양산/개발 두 줄 + 주차 (하바플레이트)
   Widget _table(Map<String, dynamic> d) {
-    if ((d['layout'] ?? '') == 'sections') return _sectionTable(d);
-    return _weekTable(d);
+    final t = (d['layout'] ?? '') == 'sections'
+        ? _sectionTable(d)
+        : _weekTable(d);
+    // 각진 표 하나가 카드 안에 박혀 있으면 붙여 넣은 것처럼 보인다.
+    // 카드와 같은 곡률로 깎고 바깥선을 한 겹 두른다.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _line),
+        ),
+        child: t,
+      ),
+    );
   }
 
   // ── 섹션형 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──────
@@ -471,13 +493,12 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
         if (byWeek) ...[
           _numCol2(_mon('${d['prev_month']}'), col('prev_month_actual'), 46,
               span: headSpan),
-          // 주차 묶음 — 위에 달을 얹고 앞뒤를 굵은 선으로 끊는다.
-          _vDivider(_kHeadH * headSpan, _kSecRowH * flat.length),
+          // 주차 묶음 — 위에 달을 얹고, 선 대신 색으로 묶는다.
           IntrinsicWidth(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _cell(_mon('${d['month']}'), _kHeadH, head: true),
+                _cell(_mon('${d['month']}'), _kHeadH, head: true, group: true),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -486,13 +507,12 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
                         ...flat.map((r) =>
                             _weekPair((r['weeks'] as Map?)?[w], w, nowWeek)),
                         _weekPair((total['weeks'] as Map?)?[w], w, nowWeek),
-                      ], w == nowWeek, titleH: _kHeadH),
+                      ], w == nowWeek, titleH: _kHeadH, group: true),
                   ],
                 ),
               ],
             ),
           ),
-          _vDivider(_kHeadH * headSpan, _kSecRowH * flat.length),
           _secPairCol('${_mon('${d['month']}')} 합계', [
             ...flat.map((r) =>
                 [_BCell(_n(r['month_plan'])), _BCell(_n(r['month_actual']))]),
@@ -547,7 +567,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
 
   // 섹션형의 계획/실적 두 칸 열 (머리글 3단: 제목 / 주차 / 계획·실적)
   Widget _secPairCol(String title, List<List<_BCell>> values, bool isNow,
-      {double titleH = _kHeadH * 2}) {
+      {double titleH = _kHeadH * 2, bool group = false}) {
     return Container(
       width: 76,
       decoration: isNow
@@ -560,16 +580,19 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
           : null,
       child: Column(
         children: [
-          _cell(title, titleH, head: true, redHead: isNow),
+          _cell(title, titleH, head: true, redHead: isNow, group: group),
           Row(children: [
-            Expanded(child: _cell('계획', _kHeadH, head: true, redHead: isNow)),
-            Expanded(child: _cell('실적', _kHeadH, head: true, redHead: isNow)),
+            Expanded(child: _cell('계획', _kHeadH,
+                head: true, redHead: isNow, group: group)),
+            Expanded(child: _cell('실적', _kHeadH,
+                head: true, redHead: isNow, group: group)),
           ]),
           for (var i = 0; i < values.length - 1; i++)
             Row(children: [
-              Expanded(child: _cell(values[i][0].text, _kSecRowH, tint: isNow)),
+              Expanded(child: _cell(values[i][0].text, _kSecRowH,
+                  tint: isNow, group: group)),
               Expanded(child: _cell(values[i][1].text, _kSecRowH,
-                  tint: isNow, short: values[i][1].short)),
+                  tint: isNow, group: group, short: values[i][1].short)),
             ]),
           Row(children: [
             Expanded(child: _cell(values.last[0].text, _kTotalH,
@@ -626,45 +649,23 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
   /// 주차 묶음. 위에 달을 한 줄 얹어 '8월' 열과 눈으로 끊어 준다.
   Widget _weekGroup(String monLabel, List<String> weeks, List<Map> rows,
       Map total, String now, double rowH) {
-    final bodyH = rowH * rows.length;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _vDivider(_kHeadH * 3, bodyH),
-        IntrinsicWidth(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return IntrinsicWidth(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _cell(monLabel, _kHeadH, head: true, group: true),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _cell(monLabel, _kHeadH, head: true),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final w in weeks)
-                    _pairCol(w, [
-                      ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
-                      _weekPair((total['weeks'] as Map?)?[w], w, now),
-                    ], now == w, rowH, titleH: _kHeadH),
-                ],
-              ),
+              for (final w in weeks)
+                _pairCol(w, [
+                  ...rows.map((r) => _weekPair((r['weeks'] as Map?)?[w], w, now)),
+                  _weekPair((total['weeks'] as Map?)?[w], w, now),
+                ], now == w, rowH, titleH: _kHeadH, group: true),
             ],
           ),
-        ),
-        _vDivider(_kHeadH * 3, bodyH),
-      ],
-    );
-  }
-
-  /// 달이 바뀌는 자리에 세우는 굵은 선.
-  ///
-  /// 머리글과 합계 행은 남색 바탕이라 남색 선을 그으면 아무것도 안 보인다.
-  /// 칸 배경에 맞춰 흰색 / 남색 / 흰색 세 토막으로 세운다.
-  Widget _vDivider(double headH, double bodyH) {
-    return Column(
-      children: [
-        Container(width: 2, height: headH, color: Colors.white),
-        Container(width: 2, height: bodyH, color: _navy),
-        Container(width: 2, height: _kTotalH, color: Colors.white),
-      ],
+        ],
+      ),
     );
   }
 
@@ -710,7 +711,7 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
 
   // 계획/실적 두 칸짜리 열 (주차 또는 월 합계)
   Widget _pairCol(String title, List<List<_BCell>> values, bool isNow,
-      double rowH, {double titleH = _kHeadH * 2}) {
+      double rowH, {double titleH = _kHeadH * 2, bool group = false}) {
     final border = isNow
         ? const Border(
             left: BorderSide(color: _red, width: 2),
@@ -721,16 +722,19 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       decoration: BoxDecoration(border: border),
       child: Column(
         children: [
-          _cell(title, titleH, head: true, redHead: isNow),
+          _cell(title, titleH, head: true, redHead: isNow, group: group),
           Row(children: [
-            Expanded(child: _cell('계획', _kHeadH, head: true, redHead: isNow)),
-            Expanded(child: _cell('실적', _kHeadH, head: true, redHead: isNow)),
+            Expanded(child: _cell('계획', _kHeadH,
+                head: true, redHead: isNow, group: group)),
+            Expanded(child: _cell('실적', _kHeadH,
+                head: true, redHead: isNow, group: group)),
           ]),
           for (var i = 0; i < values.length - 1; i++)
             Row(children: [
-              Expanded(child: _cell(values[i][0].text, rowH, tint: isNow)),
+              Expanded(child: _cell(values[i][0].text, rowH,
+                  tint: isNow, group: group)),
               Expanded(child: _cell(values[i][1].text, rowH,
-                  tint: isNow, short: values[i][1].short)),
+                  tint: isNow, group: group, short: values[i][1].short)),
             ]),
           Row(children: [
             Expanded(child: _cell(values.last[0].text, _kTotalH,
@@ -799,6 +803,12 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
         ));
   }
 
+  /// 0 · - · · 처럼 '아무것도 없음' 을 뜻하는 칸
+  static bool _isZero(String t) {
+    final v = t.replaceAll(RegExp(r'[\s,\$]'), '');
+    return v.isEmpty || v == '0' || v == '-' || v == '·';
+  }
+
   Widget _cell(String text, double h,
       {bool head = false,
       bool total = false,
@@ -806,19 +816,25 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       bool tint = false,
       bool short = false,
       bool bold = false,
+      bool group = false,
       double? size,
       int maxLines = 2,
       TextAlign align = TextAlign.center}) {
-    Color bg = Colors.white;
+    Color bg = group ? _groupTint : Colors.white;
     Color fg = const Color(0xFF0F172A);
     if (head) {
-      bg = redHead ? const Color(0xFF7F1D1D) : _navy;
+      bg = redHead
+          ? const Color(0xFF7F1D1D)
+          : (group ? _navyGroup : _navy);
       fg = Colors.white;
     } else if (total) {
       bg = redHead ? const Color(0xFF7F1D1D) : _navy;
       fg = Colors.white;
     } else if (tint) {
       bg = const Color(0xFFFEF2F2);
+    } else if (_isZero(text)) {
+      // 0 과 · 이 절반인 표다. 다 검게 찍으면 실제 숫자가 안 보인다.
+      fg = _zeroInk;
     }
     // 마감된 주인데 계획에 못 미친 칸. 숫자만 보면 지나친다.
     //
@@ -845,8 +861,8 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
       decoration: BoxDecoration(
         color: bg,
         border: Border(
-          bottom: BorderSide(color: head || total ? const Color(0xFF1E3A63) : _line),
-          right: BorderSide(color: head || total ? const Color(0xFF1E3A63) : _line),
+          bottom: BorderSide(color: head || total ? _headLine : _gridH),
+          right: BorderSide(color: head || total ? _headLine : _gridV),
         ),
       ),
       child: Text(short ? '$text ▼' : text,
@@ -857,9 +873,11 @@ class _WeeklyBoardCardState extends State<WeeklyBoardCard> {
             fontSize: size ?? (head || total ? 9.5 : 10.5),
             fontWeight: head || total || bold || short
                 ? FontWeight.w800
-                : FontWeight.w500,
+                : FontWeight.w600,
             color: fg,
             height: 1.15,
+            // 숫자가 세로로 줄이 맞아야 크기 비교가 된다
+            fontFeatures: const [FontFeature.tabularFigures()],
           )),
     );
   }
