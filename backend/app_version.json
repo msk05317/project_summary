@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.33",
-  "latest_version_code": 56,
+  "latest_version": "2.3.34",
+  "latest_version_code": 57,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "주차 보드를 보기 좋게 다듬었습니다.\n\n- 달 구분을 선 대신 색으로\n- 격자선을 옅게, 0 은 회색으로\n- 숫자 자릿수를 세로로 맞춤",
+  "release_notes": "재료비율 색을 상세 화면에도 적용했습니다.\n\n- 90% 이상 빨강 · 80%대 주황\n- 목록에서 누르고 들어가도 색이 같습니다",
   "force_update": false
 }
