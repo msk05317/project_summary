@@ -9071,9 +9071,16 @@ window._ovProjectKey = function() {
     if (wbBtn && !wbBtn.dataset.wired) {
       wbBtn.dataset.wired = '1';
       wbBtn.onclick = function() {
-        // 챔버처럼 행 구성이 정의된 프로젝트는 행별 입력창을 연다
-        if ((window._wbSpecData || {}).layout === 'sections') {
-          _wbOpenRowEditor(window._ovProjectKey());
+        // 챔버처럼 행 구성이 정의된 프로젝트는 행별 입력창을 연다.
+        //
+        // _wbSpecData 는 전역이라, 챔버를 보고 나서 하바플레이트로 넘어가면
+        // 챔버의 행 구성(기존 / 내재화 / Dep 챔버)이 그대로 남아 있었다.
+        // 그 상태로 저장하면 남의 행 키가 하바플레이트에 적힌다 — 반드시
+        // '지금 보고 있는 프로젝트의' spec 인지 확인한다.
+        var _pk = window._ovProjectKey();
+        var _spec = window._wbSpecData || {};
+        if (_spec.layout === 'sections' && window._wbSpecPk === _pk) {
+          _wbOpenRowEditor(_pk);
         } else {
           window.openBoardEditor();
         }
@@ -9305,6 +9312,7 @@ window._ovProjectKey = function() {
   // ── 섹션형 보드 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──
   function _wbRenderSections(box, pk, d) {
     window._wbSpecData = d;
+    window._wbSpecPk = pk;
     if (d.columns === 'week') { _wbRenderSectionsWeek(box, d); return; }
 
     var months = d.months || [];
@@ -9557,6 +9565,11 @@ window._ovProjectKey = function() {
   // 섹션형 행별 입력창
   function _wbOpenRowEditor(pk) {
     var d = window._wbSpecData || {};
+    // 남의 프로젝트 행 구성으로 저장하면 엉뚱한 행 키가 적힌다.
+    if (d.layout !== 'sections' || window._wbSpecPk !== pk) {
+      alert('행 구성을 아직 못 읽었습니다. 보드를 다시 불러온 뒤 눌러주세요.');
+      return;
+    }
     var months = d.months || [];
     fetch('/projects/' + encodeURIComponent(pk) + '/board-rows', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
@@ -10004,6 +10017,9 @@ window._ovProjectKey = function() {
           { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
+        // 지난 프로젝트의 행 구성이 남아 있으면 안 된다 (위 wbBtn.onclick 참고).
+        window._wbSpecData = null;
+        window._wbSpecPk = pk;
         // 백엔드가 두 모양을 돌려준다.
         //   layout 'sections'  프로젝트별 행 구성 (챔버)
         //   그 외               양산/개발 2줄 + 주차 (하바플레이트)
