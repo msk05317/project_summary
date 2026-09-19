@@ -7305,6 +7305,13 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
           var _tot = (d.total !== undefined) ? d.total : (_add + _upd);
           var _msg = '✅ 완료: 신규 ' + _add + '개, 갱신 ' + _upd + '개 (전체 ' + _tot + '개)';
           if (d.auto_detected === 'weekly_report') _msg += '\n주간보고 형식 자동 인식 · 시트 ' + (d.sheet || '');
+          if (d.auto_detected === 'dev_status') {
+            _msg += '\n개발현황 형식 자동 인식 · 시트 ' + (d.sheet || '');
+            _msg += '\n가공 완료일 ' + (d.machining_dates || 0) + '건 → 가공 (조립) 계획일';
+            if ((d.machining_pending || []).length) _msg += ' · 미정 ' + d.machining_pending.length + '건';
+            if ((d.cancelled || []).length) _msg += '\nPO 취소 ' + d.cancelled.length + '건 → 드롭예정 (' + d.cancelled.join(', ') + ')';
+            if ((d.released || []).length) _msg += '\n취소 풀림 ' + d.released.length + '건 → 정상';
+          }
           if (d.enriched && d.enriched.history_weeks) {
             _msg += '\nPO증감 ' + d.enriched.history_weeks + '주차 반영' +
               (d.enriched.ongoing_types ? ' · 개발 ' + d.enriched.ongoing_types + '종 진행중 / ' +

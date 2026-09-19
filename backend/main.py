@@ -5794,6 +5794,24 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
         raise HTTPException(status_code=400, detail=f"엑셀 파싱 실패: {e}")
     ws = wb.active
 
+    # ── 개발현황 엑셀이 먼저다.
+    #
+    # 열 이름이 모델 등록 양식과 겹쳐서('모델', '판가', '비고') 아래 일반
+    # 파서가 그냥 읽어버리면 'PO 잔량' 이 'PO 수량' 자리를 덮고, '구분' 열이
+    # 없어서 개발품이 양산으로 들어간다. 모양을 먼저 알아본다.
+    try:
+        import dev_status_import as _dsi
+        _dev = _dsi.parse_workbook(wb)
+    except Exception as _e:
+        print(f"[models/import] 개발현황 판별 실패(무시): {_e}")
+        _dev = None
+    if _dev and _dev.get("rows"):
+        _res = _apply_dev_status(project_key, _dev)
+        _res["auto_detected"] = "dev_status"
+        print(f"[models/import] 개발현황 형식 자동 인식 → {_dev.get('sheet')} "
+              f"{len(_dev['rows'])}행")
+        return _res
+
     # 헤더 행 탐색: '모델' 텍스트가 있는 행
     header_row = None
     col_map = {}
@@ -5817,7 +5835,9 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
                 col_map["material_cost"] = c
             elif k in ("파트넘버", "파트번호", "품번", "partno", "partnumber"):
                 col_map["part_number"] = c
-            elif k.startswith("po"):
+            elif k in ("po", "po수량", "poqty", "poq'ty", "발주수량"):
+                # 'PO 잔량' 도 po 로 시작한다. startswith 로 잡으면 뒤에 나오는
+                # 잔량이 PO 수량 자리를 덮어써서 수량이 통째로 틀어진다.
                 col_map["po_qty"] = c
             elif k in ("실적수량", "출하수량", "출하실적", "실적", "출하"):
                 col_map["shipped_qty"] = c
@@ -25324,6 +25344,97 @@ def _is_rpm_model(m: dict) -> bool:
     if _norm_group(m.get("group")) != "개발":
         return False
     return "RPM" in str(m.get("dev_type") or "").upper()
+
+
+def _apply_dev_status(project_key: str, parsed: dict, dry_run: bool = False) -> dict:
+    """개발현황 엑셀(dev_status_import)을 모델에 반영한다.
+
+    하바플레이트 '260919_하바플레이트 개발현황.xlsx' 같은 파일.
+    모델 등록 양식과 열 이름이 겹쳐서 일반 파서에 맡기면 'PO 잔량' 이
+    'PO 수량' 을 덮고 개발품이 양산으로 들어간다 — 그래서 따로 읽는다.
+
+      · 모델명(= 파트넘버) 으로 맞추고, 없으면 개발품으로 새로 만든다
+      · '가공 완료' 날짜 → 개발 공정 '가공 (조립)' 단계 계획일
+        (앱의 '완료예정' · 지연/집중관리 판정이 이 날짜로 돈다)
+      · '고객요청일' 이 'PO 취소' 면 상태를 '드롭예정' 으로
+      · 판가 · 개발종류 · PO 수량 · 출하수량 · 비고
+    """
+    key = str(project_key or "").strip()
+    data = _load_models()
+    proj = (data.setdefault("projects", {})).setdefault(key, {"models": []})
+    models = proj.setdefault("models", [])
+
+    # 파트넘버 · 모델명 · id 아무거나로 맞춘다. 이 파일은 셋이 다 같은 값이다.
+    by = {}
+    for m in models:
+        for f in ("part_number", "name", "id"):
+            v = str(m.get(f) or "").strip().lower()
+            if v:
+                by.setdefault(v, m)
+
+    added = updated = dated = 0
+    cancelled, released, pending = [], [], []
+    for r in (parsed.get("rows") or []):
+        nm = str(r.get("name") or "").strip()
+        if not nm:
+            continue
+        m = by.get(nm.lower())
+        if m is None:
+            m = {"id": nm, "name": nm, "part_number": nm, "group": "개발",
+                 "status": "정상", "progress": 0, "process": _default_process()}
+            models.append(m)
+            by[nm.lower()] = m
+            added += 1
+        else:
+            updated += 1
+
+        m["group"] = "개발"
+        if r.get("dev_type"):
+            m["dev_type"] = r["dev_type"]
+        if r.get("price") is not None:
+            m["price"] = r["price"]
+        if r.get("po_qty") is not None:
+            m["po_qty"] = int(r["po_qty"])
+        if r.get("shipped_qty") is not None:
+            m["shipped_qty"] = int(r["shipped_qty"])
+        if r.get("note"):
+            m["note"] = r["note"]
+
+        # '가공 완료' → '가공 (조립)' 계획일
+        proc = _ensure_process(m)
+        if r.get("machining_date"):
+            for st in proc:
+                if st.get("key") == "machining":
+                    st["expected"] = r["machining_date"]
+                    dated += 1
+                    break
+        elif r.get("machining_text"):
+            pending.append(nm)
+        m["process"] = proc
+        m["progress"] = _process_progress(proc)
+
+        # PO 취소 → 드롭예정. 멈춰 세운 일정은 지연으로 세지 않는다.
+        _note = str(m.get("note") or "")
+        if r.get("cancelled"):
+            m["status"] = "드롭예정"
+            if "PO 취소" not in _note:
+                m["note"] = ("PO 취소 · " + _note).strip(" ·")
+            cancelled.append(nm)
+        elif "PO 취소" in _note:
+            # 취소가 풀렸다. 우리가 붙인 표시만 걷어낸다 —
+            # 사람이 직접 고른 드롭예정까지 되돌리면 안 된다.
+            m["note"] = _note.replace("PO 취소 ·", "").replace("PO 취소", "").strip(" ·")
+            if str(m.get("status") or "") == "드롭예정":
+                m["status"] = "정상"
+            released.append(nm)
+
+    models.sort(key=lambda x: 0 if x.get("group") == "양산" else 1)
+    if not dry_run:
+        _save_models(data)
+    return {"ok": True, "added": added, "updated": updated,
+            "machining_dates": dated, "cancelled": cancelled,
+            "released": released, "machining_pending": pending,
+            "sheet": parsed.get("sheet"), "rows": len(parsed.get("rows") or [])}
 
 
 def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False) -> dict:
