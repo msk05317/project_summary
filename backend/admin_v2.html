@@ -7133,7 +7133,17 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           const r2 = await fetch('/projects/' + encodeURIComponent(_currentProjectKey) +
             '/model-process?model_id=' + encodeURIComponent(d.model_id), { credentials: 'same-origin' });
           const fresh = await r2.json();
-          if (!fresh.detail) renderProcessEditor(fresh);
+          if (!fresh.detail) {
+            // 공정은 순서대로 간다. 현재 위치 뒤는 전부 '대기' 로 내려가므로
+            // 고른 값이 그대로 안 보일 수 있다. 왜 그런지 말해 준다.
+            var _now = (fresh.steps || []).filter(function(x) { return x.key === stepKey; })[0];
+            if (msgEl && _now && _now.status && status && _now.status !== status) {
+              msgEl.textContent = '저장했습니다 (' + status + '). 화면에는 ' + _now.status +
+                ' 로 보입니다 — 공정은 순서대로라 진행중인 단계 뒤는 대기로 내려갑니다.';
+              msgEl.className = 'mdl-save-msg';
+            }
+            renderProcessEditor(fresh);
+          }
         } catch (e) {
           if (msgEl) { msgEl.textContent = '❌ ' + e.message; msgEl.className = 'mdl-save-msg err'; }
         }

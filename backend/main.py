@@ -21837,7 +21837,15 @@ def _process_rolled(proc: list) -> list:
         cur = n - 1
     else:
         for i, s in enumerate(proc):
-            if str((s or {}).get("status") or "").strip() == "진행중":
+            # 실적일이 찍힌 자리는 '진행중' 이라고 적혀 있어도 끝난 것이다.
+            #
+            # 파워박스 Striker Oxide 는 BV2 에 실적일(9/19)을 넣고도 상태가
+            # '진행중' 으로 남아 있었다. 그 자리를 현재 위치로 잡는 바람에
+            # 뒤에 있는 Source Inspection 을 무엇으로 바꾸든 화면은 늘 '대기'
+            # 였다 — 고쳐지지 않는 것처럼 보인다.
+            # _process_current 는 이미 같은 조건으로 거른다. 둘을 맞춘다.
+            if (str((s or {}).get("status") or "").strip() == "진행중"
+                    and not _process_step_done(s)):
                 cur = i
                 break
         if cur < 0:
