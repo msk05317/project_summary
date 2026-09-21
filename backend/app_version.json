@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.35",
-  "latest_version_code": 58,
+  "latest_version": "2.3.36",
+  "latest_version_code": 59,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "매출 카드 '상세 보기' 자리를 바로잡았습니다.\n\n- 오른쪽 끝이 아니라 어중간한 자리에 서던 문제",
+  "release_notes": "개발 승인 프로세스에 표준 소요를 적었습니다.\n\n- 칩마다 'CB (2주)', 제목 옆에 전체 주수\n- admin 에서 단계별 주수를 고칩니다",
   "force_update": false
 }
