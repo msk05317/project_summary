@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.36",
-  "latest_version_code": 59,
+  "latest_version": "2.3.37",
+  "latest_version_code": 60,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "개발 승인 프로세스에 표준 소요를 적었습니다.\n\n- 칩마다 'CB (2주)', 제목 옆에 전체 주수\n- admin 에서 단계별 주수를 고칩니다",
+  "release_notes": "업데이트 받기를 다시 손봤습니다.\n\n- 앱을 나갔다 와도 받던 걸 이어서 받습니다\n- 에러 알림이 쌓이던 것 정리, 알림은 하나만",
   "force_update": false
 }
