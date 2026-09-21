@@ -52,4 +52,15 @@ nt = nt[:nt.index('.catch(')]
 assert "window.mdlRefresh('alerts')" in nt, '보류로 바꿔도 지연 배지가 남는다'
 ok += 1
 
+# 6) 날짜 칸 연도는 4자리까지
+#    "년도 작성하는 칸에 6자 입력이 가능한데 년도면 최대 4자"
+#    input[type=date] 는 max 가 없으면 연도를 275760년(6자리)까지 받는다.
+import re as _re
+for m in _re.finditer(r'<input type="date"[^>]*>', H):
+    assert 'max="' in m.group(0), f'연도가 6자리까지 들어간다: {m.group(0)[:80]}'
+for m in _re.finditer(r"(\w+)\.type = 'date';", H):
+    tail = H[m.end():m.end() + 200]
+    assert m.group(1) + '.max' in tail, '스크립트로 만든 날짜 칸에 max 가 없다'
+ok += 1
+
 print(f'전부 통과 · {ok}개 항목')

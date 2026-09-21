@@ -2705,6 +2705,9 @@ window.renderAdminV2ByDivision = function(){
 
             const inp = document.createElement('input');
             inp.type = 'date';
+            // 연도 칸을 4자리로 (max 가 없으면 6자리까지 들어간다)
+            inp.min = '2000-01-01';
+            inp.max = '2099-12-31';
             inp.value = override || auto || '';
             inp.style.cssText = 'padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:100%;';
 
@@ -7126,8 +7129,10 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
             (isDone ? '✓' : (isCurrent ? '●' : (s.status === '미승인' ? '✗' : (s.status === '미제출' ? '!' : '○')))) + '</span>' +
           '<span class="mdl-proc-name">' + (/^\d/.test(s.name) ? s.name : ('0' + num).slice(-2) + ' ' + s.name) + '</span>' +
           '<span class="mdl-proc-dates">' +
-            '<label>예상 <input type="date" data-f="expected" value="' + (s.expected || '') + '"></label>' +
-            '<label>실제 <input type="date" data-f="actual" value="' + (s.actual || '') + '"></label>' +
+            // max 를 안 주면 브라우저가 연도를 6자리(275760년)까지 받는다.
+            // max 의 연도가 4자리면 연도 칸도 4자리로 막힌다.
+            '<label>예상 <input type="date" min="2000-01-01" max="2099-12-31" data-f="expected" value="' + (s.expected || '') + '"></label>' +
+            '<label>실제 <input type="date" min="2000-01-01" max="2099-12-31" data-f="actual" value="' + (s.actual || '') + '"></label>' +
           '</span>' +
           '<span class="mdl-proc-status ' + (isDone ? 'done' : (isCurrent ? 'doing' : '')) + '" ' +
             'style="' + (s.status === '미승인' ? 'color:#DC2626;font-weight:800;' : 
