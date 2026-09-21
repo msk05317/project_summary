@@ -24740,6 +24740,111 @@ def put_weekly_plan(project_key: str, model_id: str, payload: dict,
     return {"ok": True, "model_id": model_id, "month": month, "progress": target["weekly_progress"]}
 
 
+# ─── 단계별 표준 소요 (주) ───────────────────────────────
+#
+# '자재 입고부터 최종 승인까지 평균 석 달' 을 단계로 쪼개 보여준다.
+# 실적일로 내고 싶었지만 파워박스는 실적일이 단계당 2~5건뿐이고,
+# 계획일은 대부분 +7 / +14 로 찍혀 있어 실제 리드타임이 아니다
+# (계획일 기준 자재입고→최종승인 중앙값이 5주 — 석 달의 절반도 안 된다).
+# 그래서 기본값을 넣어 두고 admin 에서 고친다.
+PROCESS_LEAD_DEFAULT = {
+    "powerbox": {
+        "FA PO": 0, "자재 발주": 1, "자재 입고": 4,
+        "CB": 2, "BV1": 2, "BV2": 1, "LA 입고": 1,
+        "LAIR 작성": 1, "LAIR 승인": 2, "Source Inspection": 0,
+        "FAIR 작성": 1, "FAIR 승인": 2, "CDR (PRR)": 1,
+        "PRR 작성": 1, "PRR 승인": 1, "최종 승인": 1,
+    },
+}
+
+
+def _canon_step(name: str) -> str:
+    """'04 CB' → 'CB'. 엑셀마다 번호를 붙이기도 하고 안 붙이기도 한다."""
+    t = str(name or "").strip()
+    if len(t) > 3 and t[:2].isdigit():
+        t = t[3:].strip()
+    return t
+
+
+def _project_steps(proj: dict) -> list:
+    """이 프로젝트가 실제로 쓰는 단계 이름. 모델마다 틀이 달라질 수 있어
+    가장 많이 쓰이는 것을 고른다. 하나도 없으면 기본 13단계."""
+    from collections import Counter
+    sigs = Counter()
+    for m in (proj or {}).get("models") or []:
+        proc = m.get("process") or []
+        if not proc:
+            continue
+        sigs[tuple(_canon_step(s.get("name")) for s in proc)] += 1
+    if sigs:
+        return list(sigs.most_common(1)[0][0])
+    return [n for _k, n, _g in DEV_PROCESS_STEPS]
+
+
+@app.get("/projects/{project_key}/process-steps")
+def get_process_steps(project_key: str):
+    """앱 칩 줄 — 단계 이름 + 표준 소요(주).
+
+    weeks 가 None 이면 아직 안 정한 것이라 칩에 아무것도 안 붙인다.
+    """
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = (data.get("projects") or {}).get(_key) or {}
+    steps = _project_steps(proj)
+    lead = proj.get("process_lead")
+    src = "saved"
+    if not isinstance(lead, dict) or not lead:
+        lead = PROCESS_LEAD_DEFAULT.get(_key) or {}
+        src = "default" if lead else "none"
+    out = []
+    for n in steps:
+        v = lead.get(n)
+        if v is None:
+            v = lead.get(_canon_step(n))
+        try:
+            v = int(v) if v is not None and str(v).strip() != "" else None
+        except (TypeError, ValueError):
+            v = None
+        out.append({"name": n, "weeks": v})
+    total = sum(x["weeks"] for x in out if isinstance(x.get("weeks"), int))
+    return {"project_key": _key, "source": src, "steps": out, "total_weeks": total}
+
+
+@app.put("/admin/projects/{project_key}/process-lead")
+async def admin_set_process_lead(project_key: str, request: Request,
+                                 _admin: int = Depends(get_admin_session)):
+    """단계별 표준 소요(주) 저장. 빈 값은 '안 정함' 으로 둔다."""
+    payload = await request.json()
+    lead_in = (payload or {}).get("lead") or {}
+    if not isinstance(lead_in, dict):
+        raise HTTPException(status_code=400, detail="lead 는 객체여야 합니다.")
+    lead = {}
+    for k, v in lead_in.items():
+        name = str(k or "").strip()
+        if not name:
+            continue
+        t = str(v if v is not None else "").strip()
+        if t == "":
+            continue
+        try:
+            n = int(float(t))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"'{name}' 의 주 수가 숫자가 아닙니다: {v}")
+        if n < 0 or n > 104:
+            raise HTTPException(status_code=400, detail=f"'{name}' 의 주 수가 범위를 벗어납니다: {n}")
+        lead[name] = n
+    _key = _model_key_alias(project_key)
+    data = _load_models()
+    proj = (data.setdefault("projects", {})).setdefault(_key, {"models": []})
+    if lead:
+        proj["process_lead"] = lead
+    else:
+        proj.pop("process_lead", None)
+    _save_models(data)
+    return {"ok": True, "project_key": _key, "count": len(lead),
+            "total_weeks": sum(lead.values())}
+
+
 @app.get("/projects/{project_key}/models/{model_id}/process")
 def get_model_process(project_key: str, model_id: str):
     """앱용 개발 승인 프로세스 조회"""

@@ -40,6 +40,14 @@ const Map<String, List<String>> _devProcessStepsByProject = {
 List<String> _devProcessStepsFor(String projectKey) =>
     _devProcessStepsByProject[projectKey] ?? _devProcessStepsDefault;
 
+/// 개발 승인 프로세스 한 단계. weeks 가 null 이면 아직 안 정한 것이라
+/// 칩에 아무것도 안 붙인다 (0주 와 '안 정함' 은 다르다).
+class _Step {
+  final String name;
+  final int? weeks;
+  const _Step(this.name, this.weeks);
+}
+
 /// 개발 모델에 실제 공정 데이터가 입력되어 있는지 판정.
 /// 13단계 틀은 자동 생성되므로 단계 수만으로는 판단할 수 없고,
 /// 계획일(expected)/실적일(actual)/상태(status) 중 하나라도 채워져야 '데이터 있음'.
@@ -150,6 +158,33 @@ class _ModelListScreenState extends State<ModelListScreen> {
   void initState() {
     super.initState();
     _filter = widget.initialFilter;
+    _loadSteps();
+  }
+
+  /// 단계 이름 + 표준 소요(주). 서버가 주면 그걸 쓰고,
+  /// 못 받으면 아래 하드코딩한 목록으로 그린다 (칩 줄은 늘 보여야 한다).
+  List<_Step>? _steps;
+
+  Future<void> _loadSteps() async {
+    if (widget.groupName != '개발') return;
+    try {
+      final res = await http
+          .get(Uri.parse('$kApiBaseUrl/projects/$projectKey/process-steps'))
+          .timeout(const Duration(seconds: 6));
+      if (res.statusCode != 200) return;
+      final d = jsonDecode(utf8.decode(res.bodyBytes));
+      final list = (d['steps'] as List? ?? const [])
+          .whereType<Map>()
+          .map((e) => _Step(
+                (e['name'] ?? '').toString(),
+                (e['weeks'] as num?)?.toInt(),
+              ))
+          .where((e) => e.name.isNotEmpty)
+          .toList();
+      if (list.isNotEmpty && mounted) setState(() => _steps = list);
+    } catch (_) {
+      // 칩 줄은 하드코딩 목록으로도 그려진다. 굳이 알릴 일이 아니다.
+    }
   }
 
   String get projectKey => widget.projectKey;
@@ -350,6 +385,61 @@ class _ModelListScreenState extends State<ModelListScreen> {
     );
   }
 
+  int get _totalWeeks =>
+      (_steps ?? const <_Step>[]).fold(0, (a, s) => a + (s.weeks ?? 0));
+
+  /// 개발 승인 프로세스 칩 줄. 소요 주가 정해진 단계만 '(2주)' 가 붙는다.
+  Widget _stepChips() {
+    final list = _steps ??
+        _devProcessStepsFor(projectKey).map((n) => _Step(n, null)).toList();
+    return Wrap(
+      spacing: 4,
+      runSpacing: 6,
+      children: [
+        for (int i = 0; i < list.length; i++)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F3FF),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(list[i].name,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF7C3AED),
+                        )),
+                    if (list[i].weeks != null) ...[
+                      const SizedBox(width: 3),
+                      Text('(${list[i].weeks}주)',
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFA78BFA),
+                          )),
+                    ],
+                  ],
+                ),
+              ),
+              if (i < list.length - 1)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Icon(Icons.arrow_forward_ios,
+                      size: 8, color: Colors.grey[400]),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
   /// 모델 하나에 붙는 표시들
   static List<Widget> _tagsFor(Map m) {
     final out = <Widget>[];
@@ -386,43 +476,22 @@ class _ModelListScreenState extends State<ModelListScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('개발 승인 프로세스',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151))),
+                        Row(children: [
+                          const Text('개발 승인 프로세스',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF374151))),
+                          const Spacer(),
+                          if (_totalWeeks > 0)
+                            Text('표준 $_totalWeeks주',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF7C3AED))),
+                        ]),
                         const SizedBox(height: 8),
-                        Wrap(
-                      spacing: 4,
-                      runSpacing: 6,
-                      children: [
-                        for (int i = 0; i < _devProcessStepsFor(projectKey).length; i++)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF5F3FF),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  _devProcessStepsFor(projectKey)[i],
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF7C3AED),
-                                  ),
-                                ),
-                              ),
-                              if (i < _devProcessStepsFor(projectKey).length - 1)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                                  child: Icon(Icons.arrow_forward_ios,
-                                      size: 8, color: Colors.grey[400]),
-                                ),
-                            ],
-                          ),
-                          ],
-                        ),
+                        _stepChips(),
                       ],
                     ),
                   ),

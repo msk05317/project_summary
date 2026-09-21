@@ -7330,6 +7330,27 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     }
 
     // 프로세스 엑셀 업로드
+    // ── 단계별 표준 소요 (주)
+    //
+    // '자재 입고부터 최종 승인까지 석 달' 을 단계로 쪼개 앱 칩에 (00주) 로 붙인다.
+    // 실적일이 단계당 2~5건뿐이라 자동으로는 못 낸다 — 사람이 적는다.
+    var leadBtn = document.getElementById('mdl-lead-btn');
+    if (leadBtn && !leadBtn.dataset.wired) {
+      leadBtn.dataset.wired = '1';
+      leadBtn.onclick = function() {
+        var pk = _currentProjectKey;
+        if (!pk) { alert('프로젝트를 먼저 선택하세요.'); return; }
+        fetch('/projects/' + encodeURIComponent(pk) + '/process-steps',
+              { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (!window._openLeadEditor) { alert('입력창을 못 찾았습니다.'); return; }
+            window._openLeadEditor(pk, d);
+          })
+          .catch(function(e) { alert('불러오기 실패: ' + e.message); });
+      };
+    }
+
     var procBtn = document.getElementById('mdl-proc-excel-btn');
     var procInput = document.getElementById('mdl-proc-excel-input');
     if (procBtn && procInput) {
@@ -7686,6 +7707,8 @@ var sidebarSel = document.getElementById('v2-division-select');
                 '<button type="button" id="mdl-bloom-btn" hidden>📊 일 보고 자료 올리기</button>' +
                 '<button type="button" id="mdl-excel-btn">📥 모델·주간보고 엑셀 올리기</button>' +
                 '<button type="button" id="mdl-proc-excel-btn">📅 개발 프로세스 엑셀 올리기</button>' +
+                '<div class="sep"></div>' +
+                '<button type="button" id="mdl-lead-btn">⏱ 단계별 표준 소요 (주)</button>' +
                 '<div class="sep"></div>' +
                 '<button type="button" id="mdl-excel-tpl-btn">📄 모델 양식 내려받기</button>' +
                 '<div class="sep"></div>' +
@@ -9568,6 +9591,82 @@ window._ovProjectKey = function() {
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+
+  // 단계별 표준 소요(주) 입력창 (버튼은 다른 <script> 블록이라 window 에 건다)
+  window._openLeadEditor = function(pk, d) {
+    var steps = (d && d.steps) || [];
+    if (!steps.length) { alert('이 프로젝트에는 개발 단계가 없습니다.'); return; }
+    var rows = steps.map(function(s, i) {
+      return '<tr>' +
+        '<td class="lbl" style="white-space:nowrap">' + (i + 1) + '. ' + _esc(s.name) + '</td>' +
+        '<td><input class="mdl-input lead-i" data-step="' + _esc(s.name) + '" type="text" ' +
+          'inputmode="numeric" placeholder="미정" value="' +
+          (s.weeks === null || s.weeks === undefined ? '' : _esc(s.weeks)) +
+          '" style="width:100%;text-align:center"></td>' +
+      '</tr>';
+    }).join('');
+
+    var back = document.createElement('div');
+    back.className = 'ph-back';
+    back.innerHTML =
+      '<div class="ph-box" style="width:min(520px,94vw)">' +
+        '<div class="ph-hd">' +
+          '<h3>단계별 표준 소요 (주)</h3>' +
+          '<p>앱의 개발 승인 프로세스 칩에 <b>CB (2주)</b> 처럼 붙습니다. ' +
+          '앞 단계가 끝난 뒤 이 단계까지 걸리는 기간입니다. ' +
+          '비워두면 그 칩에는 아무것도 안 붙습니다.<br>' +
+          '지금 값은 ' + (d.source === 'saved' ? '저장해 둔 값' : '기본값') +
+          ' 이고, 합계는 <b id="lead-total">' + (d.total_weeks || 0) + '주</b> 입니다.</p>' +
+        '</div>' +
+        '<div style="padding:14px 16px;overflow:auto;max-height:60vh">' +
+          '<table class="wb-tbl"><thead><tr>' +
+            '<th style="min-width:180px">단계</th><th style="min-width:90px">소요 (주)</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid #E5E7EB">' +
+          '<button type="button" class="ov-btn" id="lead-cancel">취소</button>' +
+          '<button type="button" class="ov-btn ov-btn-primary" id="lead-save">저장</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(back);
+
+    function close() { back.remove(); }
+    function retotal() {
+      var t = 0;
+      back.querySelectorAll('.lead-i').forEach(function(el) {
+        var n = parseInt(String(el.value || '').trim(), 10);
+        if (!isNaN(n)) t += n;
+      });
+      var el = back.querySelector('#lead-total');
+      if (el) el.textContent = t + '주';
+    }
+    back.querySelectorAll('.lead-i').forEach(function(el) { el.oninput = retotal; });
+    back.querySelector('#lead-cancel').onclick = close;
+    back.onclick = function(e) { if (e.target === back) close(); };
+
+    back.querySelector('#lead-save').onclick = function() {
+      var lead = {};
+      back.querySelectorAll('.lead-i').forEach(function(el) {
+        var v = String(el.value || '').trim();
+        if (v !== '') lead[el.dataset.step] = v;
+      });
+      fetch('/admin/projects/' + encodeURIComponent(pk) + '/process-lead', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ lead: lead })
+      })
+      .then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || ('HTTP ' + r.status)); });
+        return r.json();
+      })
+      .then(function(j) {
+        close();
+        alert('✅ 저장했습니다 · ' + j.count + '단계 · 합계 ' + j.total_weeks + '주');
+      })
+      .catch(function(e) { alert('저장 실패: ' + e.message); });
+    };
+  };
 
   // 섹션형 행별 입력창
   function _wbOpenRowEditor(pk) {
