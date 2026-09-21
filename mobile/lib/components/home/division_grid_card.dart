@@ -137,8 +137,12 @@ class DivisionGridCard extends StatelessWidget {
     final c = customStatus != null
         ? AppColors.todayBlue
         : _statusColor(status);
+    // 폭을 안 묶으면 긴 문구('9/21 계획 1083대 · 실적 대기')가 카드 밖으로
+    // 삐져나가 옆 카드 위에 그려졌다. 두 줄까지 접고, 그래도 넘치면 … 로.
     final text = Text(
       customStatus ?? _statusLabel(status),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
       style: AppText.caption.copyWith(
         fontSize: 11.5,
         fontWeight: _quiet ? FontWeight.w500 : FontWeight.w700,
@@ -154,18 +158,25 @@ class DivisionGridCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: c.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
+        // 999 로 두면 두 줄이 됐을 때 양 끝이 반원으로 부풀어 보인다.
+        // 한 줄일 땐 10 이어도 알약 모양 그대로다.
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+          // 점은 첫 줄 가운데에 맞춘다 (11.5 × 1.1 ≒ 12.7 → 위 3.4)
+          Padding(
+            padding: const EdgeInsets.only(top: 3.5),
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+            ),
           ),
           const SizedBox(width: 5),
-          text,
+          Flexible(child: text),
         ],
       ),
     );
