@@ -71,21 +71,38 @@ class ExecRevenueCard extends StatelessWidget {
     return _shell(
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Spacer 도 flex 1 의 Expanded 다. 제목 Flexible 이 flex 1 이라
+        // 남는 폭을 둘이 반씩 나눠 가졌고, 그래서 '상세 보기' 가 오른쪽
+        // 끝이 아니라 어중간한 자리에 섰다. 왼쪽을 Expanded 하나로 묶으면
+        // 남는 폭이 전부 그쪽으로 가고 오른쪽 묶음은 끝에 붙는다.
         Row(children: [
-          Flexible(
-            child: Text('${Fmt.monthShort(r.month)} 매출',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.h2),
+          Expanded(
+            child: Row(children: [
+              Flexible(
+                child: Text('${Fmt.monthShort(r.month)} 매출',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: AppText.h2),
+              ),
+              const SizedBox(width: 5),
+              // 임시. 주간보고가 반도체사업부 것뿐이라 그렇다고 적어 둔다.
+              Flexible(
+                child: Text('(반도체 기준)',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(color: AppColors.textHint)),
+              ),
+            ]),
           ),
-          const SizedBox(width: 5),
-          // 임시. 주간보고가 반도체사업부 것뿐이라 그렇다고 적어 둔다.
-          Text('(반도체 기준)',
-              style: AppText.caption.copyWith(color: AppColors.textHint)),
-          const Spacer(),
           if (onTap != null) ...[
+            const SizedBox(width: 8),
             Text('상세 보기',
-                textAlign: TextAlign.right,
                 style: AppText.caption.copyWith(color: AppColors.textMute)),
-            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMute),
+            // 꺾쇠는 24px 칸에 그려져 좌우에 빈 공간이 남는다.
+            // 그대로 두면 아래 '47%' 보다 안쪽으로 들어가 보인다.
+            Transform.translate(
+              offset: const Offset(3, 0),
+              child: const Icon(Icons.chevron_right,
+                  size: 18, color: AppColors.textMute),
+            ),
           ],
         ]),
         const SizedBox(height: 8),
