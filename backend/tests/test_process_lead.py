@@ -36,6 +36,9 @@ pb = lead['powerbox']
 after = sum(v for k, v in pb.items()
             if k not in ('FA PO', '자재 발주', '자재 입고'))
 assert 10 <= after <= 18, f'자재 입고 이후 합이 석 달과 너무 다르다: {after}주'
+# 시작점(FA PO) 말고는 0주가 없어야 한다 — 0 이면 '공짜 단계' 처럼 보인다
+zero = [k for k, v in pb.items() if v == 0 and k != 'FA PO']
+assert not zero, f'0주로 둔 단계가 있다: {zero}'
 ok += 1
 
 # ── 3) 조회 엔드포인트 ──
