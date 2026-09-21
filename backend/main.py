@@ -24768,10 +24768,9 @@ PROCESS_LEAD_DEFAULT = {
         # 것인지 실제로 당일에 끝난 것인지 가릴 수 없다. 0주로 두면
         # '공짜 단계' 처럼 보인다 — 1주로 잡는다.
         "LAIR 작성": 1, "LAIR 승인": 2, "Source Inspection": 1,
-        # 모델마다 틀이 둘이다 — '13 CDR' 로 끝나는 26종, '13 PRR 작성 ·
-        # 14 PRR 승인' 으로 끝나는 19종. 칩 줄은 많이 쓰는 쪽(CDR)을 따른다.
-        "FAIR 작성": 1, "FAIR 승인": 2, "CDR": 1, "CDR (PRR)": 1,
-        "PRR 작성": 1, "PRR 승인": 1, "최종 승인": 1,
+        # 13·14번은 CDR/PRR 한 틀로 맞췄다 (_unify_cdr_prr).
+        "FAIR 작성": 1, "FAIR 승인": 2,
+        "CDR/PRR 작성": 1, "CDR/PRR 승인": 1, "최종 승인": 1,
     },
 }
 
@@ -24782,6 +24781,54 @@ def _canon_step(name: str) -> str:
     if len(t) > 3 and t[:2].isdigit():
         t = t[3:].strip()
     return t
+
+
+# ─── 파워박스 공정 13·14번 자리를 한 틀로 ─────────────────────────
+#
+# 모델이 두 틀로 갈라져 있었다.
+#   CDR 틀 26종  … 12 FAIR 승인 · 13 CDR · 14 최종 승인
+#   PRR 틀 22종  … 12 FAIR 승인 · 13 PRR 작성 · 14 PRR 승인 · 15 최종 승인
+# 같은 자리(FAIR 승인 다음, 최종 승인 앞)다. 작성/승인을 따로 보려고
+# 두 칸으로 맞춘다 (Min 2026-09-21, 안 B).
+#   … 12 FAIR 승인 · 13 CDR/PRR 작성 · 14 CDR/PRR 승인 · 15 최종 승인
+# CDR 틀은 CDR 날짜를 '승인' 칸으로 옮기고 '작성' 칸은 비워 둔다
+# (승인이 끝나면 _process_rolled 가 앞 칸을 완료로 그린다).
+#
+# 번호가 붙은 파워박스 틀('01 FA PO')만 본다. 기본 13단계 틀로 들어간
+# 모델(CONGA SPDB · VDP Aux)은 가공 · LAP TEST 가 있는 다른 틀이라 안 건드린다.
+_CDR_PRR_PROJECTS = {"powerbox"}
+
+
+def _unify_cdr_prr(proc: list):
+    """바꾼 사본, 바꿀 게 없으면 None."""
+    import re as _re
+    if not proc or not _re.match(r"^\d{2}\s", str((proc[0] or {}).get("name") or "")):
+        return None
+    names = [_canon_step((x or {}).get("name")) for x in proc]
+    if "PRR 작성" in names or "PRR 승인" in names:
+        out = []
+        for x, c in zip(proc, names):
+            t = dict(x or {})
+            t["name"] = ("CDR/PRR " + c.split(" ", 1)[1]) if c in ("PRR 작성", "PRR 승인") else c
+            out.append(t)
+    elif "CDR" in names:
+        i = names.index("CDR")
+        cdr = dict(proc[i] or {})
+        write = {"key": "", "name": "CDR/PRR 작성", "group": cdr.get("group") or "승인",
+                 "expected": "", "actual": "", "status": ""}
+        appr = dict(cdr)
+        appr["name"] = "CDR/PRR 승인"
+        out = [dict(x or {}) for x in proc[:i]] + [write, appr] + \
+              [dict(x or {}) for x in proc[i + 1:]]
+        for t in out:
+            t["name"] = _canon_step(t.get("name"))
+    else:
+        return None
+    # 번호와 key 를 다시 매긴다. 파워박스 틀은 key 가 step_N 이다.
+    for n, t in enumerate(out, start=1):
+        t["name"] = f"{n:02d} {t['name']}"
+        t["key"] = f"step_{n}"
+    return out
 
 
 def _project_steps(proj: dict) -> list:
@@ -25260,6 +25307,12 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
                 })
             m['process'] = steps
             m['progress'] = round(done / n_steps * 100) if n_steps else 0
+            # 파워박스는 CDR/PRR 한 틀로 받는다 (_unify_cdr_prr)
+            if cfg['proj'] in _CDR_PRR_PROJECTS:
+                _u = _unify_cdr_prr(steps)
+                if _u:
+                    m['process'] = _u
+                    m['progress'] = _process_progress(_u)
             # 개발 일정표에 올라온 모델이다. 양산으로 잡혀 있으면 바로잡는다.
             m['group'] = '개발'
             if cfg['dt']: m['dev_type'] = cfg['dt']
@@ -26267,6 +26320,31 @@ _cleanup_auto_notes()
 _cleanup_plan_originals()
 _restore_curie_busbar()
 _cleanup_legacy_status()
+
+
+def _cleanup_cdr_prr() -> None:
+    try:
+        data = _load_models()
+        hit = []
+        for pkey in _CDR_PRR_PROJECTS:
+            proj = (data.get("projects") or {}).get(pkey) or {}
+            for m in proj.get("models") or []:
+                if not isinstance(m, dict):
+                    continue
+                u = _unify_cdr_prr(m.get("process") or [])
+                if u:
+                    m["process"] = u
+                    m["progress"] = _process_progress(u)
+                    hit.append(f"{pkey}/{m.get('id')}")
+        if hit:
+            _save_models(data)
+            print(f"[cleanup] 공정 CDR/PRR 틀로 맞춤 {len(hit)}건: {', '.join(hit[:5])}"
+                  + (" ..." if len(hit) > 5 else ""))
+    except Exception as e:
+        print(f"[cleanup] CDR/PRR 정리 실패(무시하고 계속): {e}")
+
+
+_cleanup_cdr_prr()
 _stamp_holds_once()
 
 

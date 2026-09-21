@@ -29,11 +29,13 @@ const Map<String, List<String>> _devProcessStepsByProject = {
     'Source Inspection', 'FAIR 작성', 'FAIR 승인',
     'PRR 작성', 'PRR 승인', '최종 승인',
   ],
-  // 파워박스: EMA 기준 14단계 (13번 = CDR (PRR))
+  // 파워박스: 15단계. CDR 틀 · PRR 틀을 13·14번 'CDR/PRR 작성 · 승인' 으로
+  // 맞췄다 (서버 _unify_cdr_prr). 서버가 칩 목록을 주면 그걸 쓰고, 이건
+  // 못 받았을 때만 쓴다.
   'powerbox': [
     'FA PO', '자재 발주', '자재 입고', 'CB', 'BV1', 'BV2', 'LA 입고',
     'LAIR 작성', 'LAIR 승인', 'Source Inspection',
-    'FAIR 작성', 'FAIR 승인', 'CDR (PRR)', '최종 승인',
+    'FAIR 작성', 'FAIR 승인', 'CDR/PRR 작성', 'CDR/PRR 승인', '최종 승인',
   ],
 };
 
