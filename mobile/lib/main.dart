@@ -41,6 +41,9 @@ Future<void> main() async {
     }
   }));
   FcmService.initialize();
+  // 앱이 꺼져 있던 사이에 OS 가 받던 업데이트에 다시 붙는다.
+  // 이걸 안 하면 다시 켰을 때 '받는 중' 을 모르고 처음부터 또 받는다.
+  unawaited(AppUpdater.instance.init());
 }
 
 class BriefingApp extends StatefulWidget {

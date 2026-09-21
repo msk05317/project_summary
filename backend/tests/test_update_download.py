@@ -57,7 +57,12 @@ PUB = (LIB.parent / 'pubspec.yaml').read_text(encoding='utf-8')
 assert 'background_downloader' in PUB, '아직 앱 안에서 받는다'
 # 9.6 부터 Flutter 3.47 을 요구한다. 우리는 3.44 라서 9.5 대로 묶어야 한다.
 assert "'>=9.5.9 <9.6.0'" in PUB, '버전을 안 묶어서 빌드가 깨질 수 있다'
-assert 'FileDownloader().download(' in U, '다운로드를 OS 에 안 맡긴다'
+# download() 는 Dart 쪽에서 끝날 때까지 기다리는 편의 함수라, 앱이 죽으면
+# 결과를 못 받는다. enqueue 로 OS 에 걸고 updates 스트림으로 붙는다.
+assert 'FileDownloader().enqueue(task)' in U, '다운로드를 OS 에 안 맡긴다'
+assert 'FileDownloader().download(' not in U, '앱이 죽으면 결과를 못 받는 길이 남아 있다'
+assert 'FileDownloader().updates.listen(_onUpdate)' in U, 'OS 작업에 안 붙는다'
+assert 'await FileDownloader().start()' in U, '꺼져 있던 사이의 결과를 안 받아 온다'
 assert 'BaseDirectory.applicationSupport' in U
 assert 'allowPause: true' in U, '9분이 넘으면 처음부터 다시 받는다'
 assert '_dio.download(' not in U, '앱 안에서 받는 길이 남아 있다'
@@ -69,9 +74,46 @@ assert '_dio.download(' not in U, '앱 안에서 받는 길이 남아 있다'
 # 해시라서 다시 받을 때마다 알림이 하나씩 쌓인다.
 assert 'taskId: _taskId' in U, '작업 이름이 매번 바뀌어 알림이 쌓인다'
 assert "_taskId = 'oneview_apk'" in U
-assert 'cancelTaskWithId(_taskId)' in U, '받다 만 작업이 남는다'
-assert "groupNotificationId: 'oneview_update'" in U, '알림이 한 줄로 안 묶인다'
 ok += 1
+
+# ── 나갔다 들어와도 안 끊긴다 ──
+#
+# "업데이트 하다가 나가면 끊기고 … 알림창이 사라지는게 아니라 계속 쌓여"
+#
+# 전에는 다시 누를 때마다 cancelTaskWithId 로 OS 가 받던 작업을 먼저
+# 죽였다. 이제 받고 있으면 붙고, 다른 버전일 때만 걷는다.
+_dl = U[U.index('Future<void> downloadAndInstall(AppVersionInfo info)'):]
+_dl = _dl[:_dl.index('\n  /// 내려받기 작업 이름을 고정한다')]
+assert 'await _liveTask()' in _dl, '받고 있던 작업을 안 찾는다'
+assert _dl.index('live.metaData == tag') < _dl.index('cancelTaskWithId(_taskId)'), \
+    '같은 버전인지 보기 전에 끊는다'
+assert 'metaData: tag' in _dl, '어느 버전 작업인지 모른다'
+assert "filename: 'oneview_$tag.apk'" in _dl, '옛 APK 를 새 것으로 착각할 수 있다'
+assert 'rec.status == TaskStatus.complete' in _dl, '다 받아 둔 걸 또 받는다'
+# 안드로이드 14+ '사용자가 시작한 전송' — 앱을 나가도 OS 가 지킨다
+assert 'priority: 0' in _dl, '앱을 나가면 OS 가 작업을 세운다'
+ok += 1
+
+# 그룹 알림은 쓰지 않는다 — 취소가 '실패' 로 세어져 에러 알림이 떴다
+assert "groupNotificationId: 'oneview_update'" not in U, \
+    '그룹 알림이 남아 있어 취소가 에러로 뜬다'
+# 취소는 실패가 아니다
+_on = U[U.index('Future<void> _onUpdate(TaskUpdate u)'):]
+_on = _on[:_on.index('\n  /// APK 를 받아 두고')]
+_c = _on[_on.index('case TaskStatus.canceled:'):]
+_c = _c[:_c.index('break;')]
+assert 'downloadError' not in _c, '취소를 실패처럼 빨간 글로 띄운다'
+# 예전 버전이 쌓아 둔 알림 청소 — 받고 있지 않을 때만
+assert '_clearStaleNotifications' in U and "_notifChannel = 'background_downloader'" in U
+_i = U[U.index('Future<void> init() async'):]
+_i = _i[:_i.index('\n  /// 지금 OS 에 걸려 있는')]
+assert _i.index('if (live != null)') < _i.index('_clearStaleNotifications()'), \
+    '받는 중인 막대까지 지운다'
+ok += 1
+
+# 앱을 켤 때 붙는다
+M2 = (LIB / 'main.dart').read_text(encoding='utf-8')
+assert 'AppUpdater.instance.init()' in M2, '다시 켰을 때 받던 것에 안 붙는다'
 ok += 1
 
 # ── 알림판에 진행률 막대 ──
@@ -89,6 +131,11 @@ MAN = (LIB.parent / 'android' / 'app' / 'src' / 'main' /
 for perm in ('FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC',
              'RUN_USER_INITIATED_JOBS', 'REQUEST_INSTALL_PACKAGES'):
     assert perm in MAN, f'{perm} 권한이 없다'
+# 안드로이드 14 는 포그라운드 서비스 종류를 밝혀야 전환을 허락한다
+assert 'androidx.work.impl.foreground.SystemForegroundService' in MAN, \
+    'WorkManager 포그라운드 서비스 선언이 없다'
+assert 'android:foregroundServiceType="dataSync"' in MAN
+assert 'Config.runInForeground, Config.always' in U, '포그라운드로 안 돌린다'
 ok += 1
 
 # ── 로컬 알림은 Firebase 와 따로 준비한다 ──

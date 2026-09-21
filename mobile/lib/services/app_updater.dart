@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../config/app_config.dart';
@@ -218,97 +220,223 @@ class AppUpdater {
     await downloadAndInstall(latest);
   }
 
-  /// APK 를 받아 두고 설치 화면을 연다.
-  ///
-  /// 이미 받고 있으면 아무것도 하지 않는다 — 두 번 누르면 같은 파일을
-  /// 두 군데서 쓰다가 반쪽짜리 APK 가 남는다.
-  Future<void> downloadAndInstall(AppVersionInfo info) async {
-    if (downloading.value) return;
-    downloading.value = true;
-    downloadError.value = null;
-    progress.value = 0;
-    _downloadingInfo = info;
+  // ── OS 쪽 작업과 이어 붙이기 ─────────────────────────────
+  //
+  // 받는 일은 OS 가 한다. 앱은 '지금 받고 있는 작업' 에 붙어서 보기만 한다.
+  //
+  // 전에는 다시 누를 때마다 cancelTaskWithId 로 남아 있던 작업을 먼저
+  // 죽이고 새로 받았다. 앱을 나갔다 들어와서 다시 누르면, OS 가 마저
+  // 받고 있던 걸 우리가 끊은 셈이다 — '나가면 끊긴다' 의 절반이 이거였다.
+  // 끊긴 작업은 취소 알림을 남기고, 그룹 알림 모드에서는 취소가 '실패' 로
+  // 세어져서 '업데이트를 받지 못했습니다' 가 계속 떴다.
+  bool _started = false;
+
+  /// 앱을 켤 때 한 번. 꺼져 있던 사이의 결과를 받아 오고, 받고 있던
+  /// 작업이 있으면 진행률에 다시 붙는다. 여러 번 불러도 한 번만 돈다.
+  Future<void> init() async {
+    if (_started) return;
+    _started = true;
     try {
-      final url = info.downloadUrl.startsWith('http')
-          ? info.downloadUrl
-          : '$kApiBaseUrl${info.downloadUrl}';
-
-      // 받는 일은 OS 에 맡긴다.
-      //
-      // 앱 안에서 받으면 홈으로 나간 사이에 안드로이드가 프로세스를
-      // 죽이면 그대로 끝이다. background_downloader 는 네이티브
-      // WorkManager 로 받아서 앱을 완전히 꺼도 마저 받는다. 진행률
-      // 알림도 이쪽이 띄운다 — 다 받은 알림을 누르면 설치 화면이 열린다.
-      _configureNotification();
-      // 앞서 받다 만 작업이 남아 있으면 지운다. 앱을 껐다 켜면 우리
-      // 쪽 잠금(downloading)은 풀리는데 OS 쪽 작업은 살아 있을 수 있다.
-      try {
-        await FileDownloader().cancelTaskWithId(_taskId);
-      } catch (_) {
-        // 없으면 그만이다
-      }
-      final task = DownloadTask(
-        taskId: _taskId,
-        url: url,
-        filename: _apkName,
-        baseDirectory: BaseDirectory.applicationSupport,
-        updates: Updates.statusAndProgress,
-        // 9분이 넘으면 멈췄다가 이어받는다. 신호가 나쁜 공장 안에서
-        // 60MB 를 처음부터 다시 받는 일이 없어야 한다.
-        allowPause: true,
-        retries: 2,
-      );
-      final res = await FileDownloader().download(
-        task,
-        onProgress: (p) {
-          if (p >= 0) progress.value = p;
-        },
-      );
-      if (res.status != TaskStatus.complete) {
-        throw _TaskFailed(res);
-      }
-
-      final path = await task.filePath();
-      if (kDebugMode) debugPrint('APK saved: $path');
-      _savedApk = path;
-      progress.value = 1;
-      // 설치 화면 열기. 앱을 보고 있으면 바로 뜨고, 꺼져 있었으면
-      // 알림을 눌렀을 때 열린다.
-      await OpenFilex.open(path,
-          type: 'application/vnd.android.package-archive');
-    } catch (e) {
-      downloadError.value = _downloadMessage(e);
-    } finally {
-      downloading.value = false;
-      _downloadingInfo = null;
+      await FileDownloader().configure(androidConfig: [
+        // 포그라운드로 돌리지 않으면 앱을 나가자마자 삼성 절전이 작업을
+        // 세운다. 알림판의 진행률 막대가 곧 포그라운드 표시다.
+        (Config.runInForeground, Config.always),
+      ]);
+    } catch (_) {}
+    _configureNotification();
+    FileDownloader().updates.listen(_onUpdate);
+    try {
+      // 추적 켜기 + 꺼져 있던 동안의 상태 받아오기 + 죽은 작업 다시 걸기
+      await FileDownloader().start();
+    } catch (_) {}
+    final live = await _liveTask();
+    if (live != null) {
+      downloading.value = true;
+    } else {
+      await _clearStaleNotifications();
     }
   }
 
-  static const String _apkName = 'app_release.apk';
+  /// 지금 OS 에 걸려 있는 우리 작업 (대기 · 받는 중 · 재시도 대기 · 멈춤).
+  Future<Task?> _liveTask() async {
+    try {
+      return await FileDownloader().taskForId(_taskId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 예전 버전이 남긴 업데이트 알림을 걷어낸다.
+  ///
+  /// 2.3.28 까지는 받을 때마다 작업 id 가 새로 생겨서 알림이 하나씩
+  /// 쌓였고, 그 뒤로는 그룹 알림이 따로 남았다. 둘 다 이 채널에 있다.
+  /// 받고 있는 게 없을 때만 지운다 — 진행 중인 막대까지 지우면 안 된다.
+  Future<void> _clearStaleNotifications() async {
+    try {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final android = plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      final active = await android.getActiveNotifications();
+      for (final n in active) {
+        if (n.channelId == _notifChannel && n.id != null) {
+          await android.cancel(id: n.id!, tag: n.tag);
+        }
+      }
+    } catch (_) {
+      // 못 지워도 그만이다. 사용자가 밀어서 지울 수 있다.
+    }
+  }
+
+  /// OS 가 보내는 상태 · 진행률. 앱이 꺼져 있던 사이의 것도 start() 가 모아서 준다.
+  Future<void> _onUpdate(TaskUpdate u) async {
+    if (u.task.taskId != _taskId) return;
+    if (u is TaskProgressUpdate) {
+      if (u.progress >= 0 && u.progress <= 1) {
+        progress.value = u.progress;
+        if (u.progress < 1 && !downloading.value) downloading.value = true;
+      }
+      return;
+    }
+    if (u is! TaskStatusUpdate) return;
+    switch (u.status) {
+      case TaskStatus.enqueued:
+      case TaskStatus.running:
+      case TaskStatus.waitingToRetry:
+      case TaskStatus.paused:
+        downloading.value = true;
+        downloadError.value = null;
+        break;
+      case TaskStatus.complete:
+        downloading.value = false;
+        progress.value = 1;
+        _downloadingInfo = null;
+        try {
+          final path = await u.task.filePath();
+          _savedApk = path;
+          if (kDebugMode) debugPrint('APK saved: $path');
+          // 앱을 보고 있으면 바로 설치 화면이 뜬다. 꺼져 있었으면
+          // 알림을 누르면 열린다 (tapOpensFile).
+          await OpenFilex.open(path,
+              type: 'application/vnd.android.package-archive');
+        } catch (_) {}
+        break;
+      case TaskStatus.canceled:
+        // 우리가 옛 버전 작업을 걷었거나, 사용자가 알림에서 취소한 것.
+        // 실패가 아니니 빨간 글을 띄우지 않는다.
+        downloading.value = false;
+        break;
+      case TaskStatus.notFound:
+      case TaskStatus.failed:
+        downloading.value = false;
+        downloadError.value = _downloadMessage(_TaskFailed(u));
+        break;
+    }
+  }
+
+  /// APK 를 받아 두고 설치 화면을 연다.
+  ///
+  /// 이미 받고 있으면 새로 걸지 않고 그 작업에 붙는다. 같은 버전을 다
+  /// 받아 둔 게 있으면 받지 않고 바로 연다.
+  Future<void> downloadAndInstall(AppVersionInfo info) async {
+    await init();
+    if (downloading.value) return;
+    downloadError.value = null;
+    final tag = '${info.latestVersionCode}';
+    final url = info.downloadUrl.startsWith('http')
+        ? info.downloadUrl
+        : '$kApiBaseUrl${info.downloadUrl}';
+
+    // 1) OS 가 받고 있는 게 있으면 붙는다. 다른 버전이면 그것만 걷는다.
+    final live = await _liveTask();
+    if (live != null) {
+      if (live.metaData == tag) {
+        downloading.value = true;
+        _downloadingInfo = info;
+        return;
+      }
+      try {
+        await FileDownloader().cancelTaskWithId(_taskId);
+      } catch (_) {}
+    }
+
+    // 2) 같은 버전을 이미 다 받아 뒀으면 그걸 연다.
+    try {
+      final rec = await FileDownloader().database.recordForId(_taskId);
+      if (rec != null &&
+          rec.status == TaskStatus.complete &&
+          rec.task.metaData == tag) {
+        final path = await rec.task.filePath();
+        if (await File(path).exists()) {
+          _savedApk = path;
+          progress.value = 1;
+          await OpenFilex.open(path,
+              type: 'application/vnd.android.package-archive');
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 3) 새로 받는다.
+    downloading.value = true;
+    progress.value = 0;
+    _downloadingInfo = info;
+    final task = DownloadTask(
+      taskId: _taskId,
+      url: url,
+      // 버전을 이름에 넣는다. 옛 APK 를 새 것으로 착각해 여는 일이 없게.
+      filename: 'oneview_$tag.apk',
+      baseDirectory: BaseDirectory.applicationSupport,
+      updates: Updates.statusAndProgress,
+      // 9분이 넘으면 멈췄다가 이어받는다. 신호가 나쁜 공장 안에서
+      // 60MB 를 처음부터 다시 받는 일이 없어야 한다.
+      allowPause: true,
+      retries: 2,
+      // 0 이면 안드로이드 14+ 에서 '사용자가 시작한 전송' 으로 돈다.
+      // OS 가 끝까지 지켜주는 종류라 앱을 나가도, 화면을 꺼도 안 끊긴다.
+      priority: 0,
+      metaData: tag,
+    );
+    bool ok = false;
+    try {
+      ok = await FileDownloader().enqueue(task);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok) {
+      downloading.value = false;
+      downloadError.value = '업데이트를 시작하지 못했습니다. 다시 시도해 주세요.';
+    }
+  }
 
   /// 내려받기 작업 이름을 고정한다.
   ///
   /// 안 주면 플러그인이 매번 새 id 를 만들고, 알림 id 는 그 id 의
-  /// 해시라서 다시 받을 때마다 알림이 하나씩 쌓였다. 끊겼다 다시
-  /// 누르기를 몇 번 하면 알림판이 업데이트 알림으로 도배됐다.
-  /// 같은 이름을 쓰면 같은 알림을 고쳐 쓴다.
+  /// 해시라서 다시 받을 때마다 알림이 하나씩 쌓였다. 같은 이름을 쓰면
+  /// 같은 알림을 고쳐 쓴다.
   static const String _taskId = 'oneview_apk';
+
+  /// background_downloader 가 알림을 올리는 채널 (Notifications.kt).
+  static const String _notifChannel = 'background_downloader';
   bool _notifConfigured = false;
 
   /// 진행률 알림. 플러그인이 알림판에 직접 띄운다 — 앱이 꺼져 있어도
   /// 막대가 남아 있고, 다 받은 알림을 누르면 설치 화면이 열린다.
+  ///
+  /// 그룹 알림(groupNotificationId)은 쓰지 않는다. 한 번에 하나만 받는데
+  /// 그룹으로 묶으면 취소가 '실패' 로 세어져 에러 알림이 떴고, 누르면
+  /// 설치 화면이 열리던 것도 그룹 알림에서는 안 됐다. 작업 이름이 고정이라
+  /// 알림은 원래 하나다.
   void _configureNotification() {
     if (_notifConfigured) return;
     _notifConfigured = true;
     FileDownloader().configureNotification(
       running: const TaskNotification('OneView 업데이트 받는 중', '{progress}'),
       complete: const TaskNotification('업데이트 준비 완료', '눌러서 설치하세요'),
-      error: const TaskNotification('업데이트를 받지 못했습니다', '다시 시도해 주세요'),
+      error: const TaskNotification('업데이트를 받지 못했습니다', '앱에서 다시 시도해 주세요'),
       paused: const TaskNotification('업데이트 잠시 멈춤', '연결되면 이어받습니다'),
       progressBar: true,
       tapOpensFile: true,
-      // 어쩌다 여러 개가 생겨도 알림은 한 줄로 묶는다.
-      groupNotificationId: 'oneview_update',
     );
   }
 
