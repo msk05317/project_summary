@@ -7014,7 +7014,60 @@ window.renderAdminV2ByDivision = function(){
     });
   }
 
+  // ── 저장 뒤 화면을 서버 값으로 다시 맞춘다 (새로고침 없이) ──
+  //
+  // 진행률 · 다음 단계 · 지연/보류 배지는 서버가 계산한다. 저장하고 나서
+  // 들고 있던 목록을 그대로 다시 그리면 옛 값이 남아서, 매번 새로고침을
+  // 눌러야 반영됐다.
+  //
+  //   'all'    방금 표 전체를 저장했다. 목록을 통째로 바꾼다.
+  //   'one'    한 모델만 바뀌었다 (Process 입력). 그 모델과 배지만 바꾸고
+  //            아직 저장 안 한 다른 줄의 입력은 그대로 둔다.
+  //   'alerts' 배지만 다시 받는다 (현황 · 보류 저장).
+  window.mdlRefresh = function(mode, modelId) {
+    var pk = _currentProjectKey;
+    var box = document.getElementById('mdl-table-box');
+    if (!pk || !box) return Promise.resolve();
+    var y = window.scrollY;
+    // 표가 떠 있을 때만 화면의 입력을 먼저 챙긴다 (Process 입력 화면이면 표가 없다)
+    var onTable = !box.querySelector('.mdl-proc-head');
+    if (mode !== 'all' && onTable) { try { syncDomToData(box); } catch (e) {} }
+    return fetch('/admin/projects/' + encodeURIComponent(pk) + '/models', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (pk !== _currentProjectKey) return;          // 그 사이 프로젝트를 바꿨다
+        var fresh = (d && d.models) || [];
+        if (mode === 'all') {
+          window._modelsData = fresh;
+        } else if (mode === 'one' && modelId) {
+          var f = fresh.filter(function(x) { return x.id === modelId; })[0];
+          var list = window._modelsData || [];
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].id === modelId) { if (f) list[i] = f; break; }
+          }
+        }
+        window._mdlAlerts = (d && d.alerts) || {};
+        if (box.querySelector('.mdl-proc-head')) return;  // 아직 Process 입력 화면
+        renderTable(box);
+        window.scrollTo(0, y);
+      })
+      .catch(function(e) { console.warn('[models] 갱신 실패', e); })
+      .then(function() {
+        try { if (window.wbRefresh) window.wbRefresh(); } catch (e) {}
+        // 판가 · 수량이 바뀌면 주차별 매출도 바뀐다
+        if (mode === 'all') {
+          try { if (window.renderRevenueCard) window.renderRevenueCard(pk, null); } catch (e) {}
+        }
+      });
+  };
+
   function openProcessEditor(modelId) {
+    // 표에서 고치다 만 값이 있으면 챙겨 둔다. 안 그러면 Process 입력을
+    // 다녀오는 사이 날아간다.
+    try {
+      var _tb = document.getElementById('mdl-table-box');
+      if (_tb && !_tb.querySelector('.mdl-proc-head')) syncDomToData(_tb);
+    } catch (e) {}
     _currentProjectKey = _currentProjectKey || (function(){var s=document.querySelector('#mdl-proj-select')||document.querySelector('select[id*="proj"]');return (s&&s.value)||'';})();
 if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
     fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/model-process?model_id=' + encodeURIComponent(modelId), { credentials: 'same-origin' })
@@ -7112,6 +7165,8 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         if (el) { el.textContent = ''; el.className = 'mdl-save-msg'; }
       });
       renderTable(document.getElementById("mdl-table-box"));
+      // 진행률 · 다음 단계 · 지연 배지는 서버가 다시 계산한 값으로
+      window.mdlRefresh('one', d.model_id);
     });
 
     // 단계 상태 변경 핸들러
@@ -7571,10 +7626,9 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       }
       window._phaseTouched = {};
       if (statusEl) { statusEl.textContent = _msg; statusEl.className = 'mdl-status ok'; }
-      window.wbRefresh();
-      // 저장 성공: window._modelsData는 이미 sync된 상태 → renderTable만 호출 (재조회 X, 부드러운 UX)
-      var tableBox = document.getElementById('mdl-table-box');
-      if (tableBox) renderTable(document.getElementById("mdl-table-box"));
+      // 다 저장했으니 서버가 다시 계산한 값(진행률 · 지연 배지 · 양산 전환)으로
+      // 통째로 바꾼다. 들고 있던 목록을 다시 그리기만 하면 옛 값이 남는다.
+      window.mdlRefresh('all');
     })
     .catch(function(e) {
       if (statusEl) { statusEl.textContent = '❌ 저장 실패: ' + e.message; statusEl.className = 'mdl-status err'; }
@@ -8288,6 +8342,8 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
               msg.textContent = '✅ 현황 저장 완료' +
                 (d.hold ? ' · 프로젝트 ' + d.hold + ' (지연으로 세지 않음)' : '');
               msg.style.color = '#059669';
+              // 보류로 바꾸면 지연 배지가 사라져야 한다
+              window.mdlRefresh('alerts');
             }
             else {
               msg.textContent = '❌ 저장 실패 (' + res.status + ') ' +
