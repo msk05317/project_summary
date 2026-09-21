@@ -3173,6 +3173,7 @@ def _normalize_model(raw: dict, existing_ids: set) -> dict | None:
         progress = 0
     progress = max(0, min(100, progress))
     status = str(raw.get("status") or "정상").strip()
+    status = _LEGACY_MODEL_STATUS.get(status, status)
     if status not in MODEL_STATUSES:
         status = "정상"
     # 판가/재료비 (선택)
@@ -14188,6 +14189,7 @@ def admin_update_model(project_key: str, model_id: str, payload: dict, _admin: i
         target["progress"] = max(0, min(100, p))
     if "status" in payload:
         s = str(payload["status"]).strip()
+        s = _LEGACY_MODEL_STATUS.get(s, s)
         if s in MODEL_STATUSES:
             target["status"] = s
     if "price" in payload:
@@ -22369,6 +22371,9 @@ def get_progress_trend(period: str = "week", points: int = 4, division_id: str =
 # 모델 상태. '드롭예정'·'보류' 는 시계가 멈춘 상태라 지연으로 세지 않는다.
 MODEL_STATUSES = ("정상", "주의", "지연", "드롭예정", "보류")
 
+# 목록에 없는 옛 값 → 지금 값. 입력 받을 때와 기동 정리(_cleanup_legacy_status)가 쓴다.
+_LEGACY_MODEL_STATUS = {"진행": "정상"}
+
 # 비고·이슈에 이렇게 적어두면 상태를 안 골라도 알아본다.
 _HOLD_WORDS = (("드롭예정", "드롭"), ("드롭예정", "drop"), ("보류", "보류"),
                ("보류", "홀딩"), ("보류", "홀드"), ("보류", "hold"), ("보류", "중단"))
@@ -26229,9 +26234,39 @@ def _stamp_holds_once() -> None:
         print(f"[hold] 보류 새기기 실패(무시하고 계속): {e}")
 
 
+# ── 모델 상태 '진행' 을 '정상' 으로 (한 번) ────────────────────────
+#
+# '진행' 은 지금 쓰는 상태(MODEL_STATUSES)에 없는 옛 값이다. 예전 엑셀
+# 가져오기가 남긴 것으로, 지연/집중관리 판정에서는 '정상' 과 똑같이 셌다.
+# admin 드롭다운에만 따로 보여서 '둘이 뭐가 다르냐' 가 됐다.
+# (2026-09-21 기준 파워박스 36종 · 메이저모듈 1종. Min 확인 후 바꿈)
+#
+# 모델의 status 만 본다. 공정 단계의 '진행중' 은 다른 값이라 안 건드린다.
+# 한 번 바꾸고 나면 걸리는 게 없어 다음 기동부터는 아무 일도 안 한다.
+def _cleanup_legacy_status() -> None:
+    try:
+        data = _load_models()
+        hit = []
+        for pkey, proj in (data.get("projects") or {}).items():
+            for m in (proj or {}).get("models") or []:
+                if not isinstance(m, dict):
+                    continue
+                st = str(m.get("status") or "").strip()
+                if st in _LEGACY_MODEL_STATUS:
+                    m["status"] = _LEGACY_MODEL_STATUS[st]
+                    hit.append(f"{pkey}/{m.get('id')}")
+        if hit:
+            _save_models(data)
+            print(f"[cleanup] 옛 상태 '진행' → '정상' {len(hit)}건: {', '.join(hit[:5])}"
+                  + (" ..." if len(hit) > 5 else ""))
+    except Exception as e:
+        print(f"[cleanup] 옛 상태 정리 실패(무시하고 계속): {e}")
+
+
 _cleanup_auto_notes()
 _cleanup_plan_originals()
 _restore_curie_busbar()
+_cleanup_legacy_status()
 _stamp_holds_once()
 
 
