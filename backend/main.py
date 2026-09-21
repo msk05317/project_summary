@@ -24760,7 +24760,9 @@ PROCESS_LEAD_DEFAULT = {
         "FA PO": 0, "자재 발주": 1, "자재 입고": 4,
         "CB": 2, "BV1": 2, "BV2": 1, "LA 입고": 1,
         "LAIR 작성": 1, "LAIR 승인": 2, "Source Inspection": 0,
-        "FAIR 작성": 1, "FAIR 승인": 2, "CDR (PRR)": 1,
+        # 모델마다 틀이 둘이다 — '13 CDR' 로 끝나는 26종, '13 PRR 작성 ·
+        # 14 PRR 승인' 으로 끝나는 19종. 칩 줄은 많이 쓰는 쪽(CDR)을 따른다.
+        "FAIR 작성": 1, "FAIR 승인": 2, "CDR": 1, "CDR (PRR)": 1,
         "PRR 작성": 1, "PRR 승인": 1, "최종 승인": 1,
     },
 }
