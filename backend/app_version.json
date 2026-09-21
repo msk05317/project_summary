@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.37",
-  "latest_version_code": 60,
+  "latest_version": "2.3.38",
+  "latest_version_code": 61,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "업데이트 받기를 다시 손봤습니다.\n\n- 앱을 나갔다 와도 받던 걸 이어서 받습니다\n- 에러 알림이 쌓이던 것 정리, 알림은 하나만",
+  "release_notes": "홈 사업부 카드 표시가 넘치던 것을 고쳤습니다.\n\n- 블룸 문구가 옆 카드까지 삐져나가던 문제",
   "force_update": false
 }
