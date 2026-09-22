@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.38",
-  "latest_version_code": 61,
+  "latest_version": "2.3.39",
+  "latest_version_code": 62,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "홈 사업부 카드 표시가 넘치던 것을 고쳤습니다.\n\n- 블룸 문구가 옆 카드까지 삐져나가던 문제",
+  "release_notes": "파워박스 공정 단계를 맞추고 블룸 화면을 고쳤습니다.\n\n- CDR · PRR → 'CDR/PRR 작성 · 승인' 두 칸\n- 블룸 '막혀 있는 곳' 카드가 깨지던 문제\n- 블룸 9월 계획 대비 실적 · 일별 보기",
   "force_update": false
 }
