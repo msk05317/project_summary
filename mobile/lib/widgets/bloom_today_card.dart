@@ -370,7 +370,13 @@ class _BlockedBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.borderDefault),
       ),
-      child: Row(
+      // 왼쪽 색 띠가 카드 높이만큼 늘어나게 stretch 를 쓴다. 그런데 이 카드는
+      // 스크롤 목록 안이라 높이 제한이 없어서, stretch 가 '무한 높이' 를
+      // 강요하다 터졌다 (블룸 화면을 열면 빨간 에러가 줄줄이 났다).
+      // IntrinsicHeight 로 내용 높이를 먼저 재고 그 높이로 늘린다 —
+      // 이슈 카드 · 캘린더 카드가 이미 이렇게 한다.
+      child: IntrinsicHeight(
+        child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
@@ -450,6 +456,7 @@ class _BlockedBox extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
