@@ -144,6 +144,9 @@ class AppUpdater {
 
   /// 시작 시 호출 — 업데이트가 있으면 다이얼로그 표시
   Future<void> checkAndPromptUpdate(BuildContext context) async {
+    // 크롬(flutter run -d chrome)으로 띄웠을 때는 APK 를 깔 수 없다.
+    // 업데이트 팝업이 화면을 가려서 볼 일만 방해했다.
+    if (kIsWeb) return;
     final latest = await fetchLatest();
     debugPrint('[AppUpdater] latest=${latest?.latestVersion}, latestCode=${latest?.latestVersionCode}');
     if (latest == null) return;
@@ -236,6 +239,8 @@ class AppUpdater {
   Future<void> init() async {
     if (_started) return;
     _started = true;
+    // 웹에는 백그라운드 다운로더가 없다 (플랫폼 확인에서 바로 터진다)
+    if (kIsWeb) return;
     try {
       await FileDownloader().configure(androidConfig: [
         // 포그라운드로 돌리지 않으면 앱을 나가자마자 삼성 절전이 작업을
