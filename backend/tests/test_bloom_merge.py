@@ -10,7 +10,8 @@ sys.path.insert(0, str(ROOT))
 SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 
-WANT = {'_bloom_pick', '_bloom_merge', '_bloom_summary'}
+WANT = {'_bloom_pick', '_bloom_merge', '_bloom_summary', '_norm_label',
+        '_bloom_last_day', '_bloom_fold_steps', '_bloom_fold'}
 srcs = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name in WANT}
 assert set(srcs) == WANT, f'못 찾은 함수: {WANT - set(srcs)}'
@@ -18,7 +19,7 @@ CAP = next(ast.literal_eval(n.value) for n in tree.body
            if isinstance(n, ast.Assign)
            and any(getattr(t, 'id', '') == '_BLOOM_DIFF_CAP' for t in n.targets))
 g = {'_BLOOM_DIFF_CAP': CAP}
-for n in ('_bloom_pick', '_bloom_merge', '_bloom_summary'):
+for n in sorted(WANT):
     exec(srcs[n], g)
 merge, summary = g['_bloom_merge'], g['_bloom_summary']
 

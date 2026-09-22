@@ -23991,6 +23991,69 @@ def _bloom_pick(new_v, old_v):
     return old_v if new_v is None or new_v == "" else new_v
 
 
+def _bloom_last_day(x) -> str:
+    """품목·공정에서 숫자가 적힌 마지막 날 — 둘 중 어느 쪽이 새 것인지 가른다."""
+    steps = x.get("steps") if isinstance(x, dict) and "steps" in x else [x]
+    last = ""
+    for st in steps or []:
+        for d, v in ((st or {}).get("days") or {}).items():
+            if isinstance(v, dict) and (v.get("plan") is not None or v.get("actual") is not None):
+                last = max(last, str(d))
+    return last
+
+
+def _bloom_fold_steps(steps):
+    """같은 공정이 이름만 달리 두 번 있으면 (NCT(박장) / NCT(박닌)) 하나로.
+    옛 것 위에 새 것을 덮는다 — 날짜 칸은 합치고, 나머지는 새 값이 있으면 새 값."""
+    import bloom_daily_import as _bd
+    groups, order = {}, []
+    for st in steps or []:
+        if not isinstance(st, dict):
+            continue
+        k = _bd.step_key(st.get("step"))
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(st)
+    out = []
+    for k in order:
+        g = sorted(groups[k], key=_bloom_last_day)
+        cur = dict(g[0])
+        for nx in g[1:]:
+            days = dict(cur.get("days") or {})
+            days.update(nx.get("days") or {})
+            for f, v in nx.items():
+                if f != "days":
+                    cur[f] = _bloom_pick(v, cur.get(f))
+            cur["days"] = days
+        out.append(cur)
+    return out
+
+
+def _bloom_fold(items):
+    """'Corva KPE' 와 'Corva KPE (117품목)' 처럼 이름만 다른 같은 품목을 하나로."""
+    import bloom_daily_import as _bd
+    groups, order = {}, []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        k = _norm_label(_bd.clean_item(it.get("item")))
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(it)
+    out = []
+    for k in order:
+        g = sorted(groups[k], key=_bloom_last_day)
+        cur = dict(g[0])
+        cur["item"] = _bd.clean_item(cur.get("item"))
+        cur["steps"] = _bloom_fold_steps(cur.get("steps"))
+        for nx in g[1:]:
+            cur = _bloom_merge({"items": [cur]}, {"items": [nx]})[0]["items"][0]
+        out.append(cur)
+    return out
+
+
 def _bloom_merge(old: dict, parsed: dict):
     """(합쳐진 보드, 무엇이 바뀌는지)."""
     import bloom_daily_import as _bd
@@ -23999,13 +24062,16 @@ def _bloom_merge(old: dict, parsed: dict):
     diff = {"items_new": [], "steps_new": [], "items_kept": [],
             "days_added": 0, "day_changes": [], "month_changes": []}
 
-    old_items = {i.get("item"): i for i in (old.get("items") or []) if isinstance(i, dict)}
-    new_items = {i.get("item"): i for i in (parsed.get("items") or []) if isinstance(i, dict)}
-    names = list(new_items) + [n for n in old_items if n not in new_items]
+    # 품목은 '(N품목)' 꼬리를 뗀 이름으로, 공정은 괄호(공장)를 뗀 이름으로 맞춘다
+    _ik = lambda i: _norm_label(_bd.clean_item(i.get("item")))  # noqa: E731
+    old_items = {_ik(i): i for i in _bloom_fold(old.get("items"))}
+    new_items = {_ik(i): i for i in _bloom_fold(parsed.get("items"))}
+    keys = list(new_items) + [k for k in old_items if k not in new_items]
 
     merged = []
-    for name in names:
-        nu, ol = new_items.get(name), old_items.get(name)
+    for key in keys:
+        nu, ol = new_items.get(key), old_items.get(key)
+        name = (nu or ol).get("item")
         if nu is None:
             merged.append(ol)
             diff["items_kept"].append(name)
@@ -24018,15 +24084,17 @@ def _bloom_merge(old: dict, parsed: dict):
         for f in ("code", "wait_ship", "wait_part"):
             entry[f] = _bloom_pick(nu.get(f), (ol or {}).get(f))
 
-        old_steps = {s.get("step"): s for s in ((ol or {}).get("steps") or [])
-                     if isinstance(s, dict)}
-        new_steps = {s.get("step"): s for s in (nu.get("steps") or []) if isinstance(s, dict)}
+        old_steps = {_bd.step_key(s.get("step")): s
+                     for s in _bloom_fold_steps((ol or {}).get("steps"))}
+        new_steps = {_bd.step_key(s.get("step")): s
+                     for s in _bloom_fold_steps(nu.get("steps"))}
         steps = []
-        for sname in list(new_steps) + [s for s in old_steps if s not in new_steps]:
-            ns, os_ = new_steps.get(sname), old_steps.get(sname)
+        for skey in list(new_steps) + [k for k in old_steps if k not in new_steps]:
+            ns, os_ = new_steps.get(skey), old_steps.get(skey)
             if ns is None:
                 steps.append(os_)
                 continue
+            sname = ns.get("step")
             if os_ is None and old_steps:
                 diff["steps_new"].append(f"{name} · {sname}")
 
@@ -24148,9 +24216,10 @@ def _bloom_item_of(project_key: str) -> str:
 
 def _bloom_slice(board: dict, item: str) -> dict:
     """품목 하나만 남긴 보드. 날짜·요약도 그 품목 기준으로 다시 낸다."""
-    want = _norm_label(item)
+    import bloom_daily_import as _bd
+    want = _norm_label(_bd.clean_item(item))
     items = [i for i in (board.get("items") or [])
-             if isinstance(i, dict) and _norm_label(i.get("item")) == want]
+             if isinstance(i, dict) and _norm_label(_bd.clean_item(i.get("item"))) == want]
     out = dict(board)
     out["items"] = items
     out["dates"] = sorted({d for i in items for st in (i.get("steps") or [])
@@ -26356,6 +26425,40 @@ def _cleanup_cdr_prr() -> None:
 
 
 _cleanup_cdr_prr()
+
+
+def _cleanup_bloom_dupes() -> None:
+    """이미 저장된 블룸 보드에 'Corva KPE' / 'Corva KPE (117품목)' 가 따로
+    쌓인 것을 한 번 합친다. 합칠 게 없으면 파일을 건드리지 않는다."""
+    try:
+        import bloom_daily_import as _bd
+        data = _load_models()
+        changed = 0
+        for pk, proj in (data.get("projects") or {}).items():
+            b = (proj or {}).get("daily_board")
+            if not isinstance(b, dict) or not b.get("items"):
+                continue
+            items = b["items"]
+            n_items = len({_norm_label(_bd.clean_item(i.get("item"))) for i in items
+                           if isinstance(i, dict)})
+            n_steps = sum(len(i.get("steps") or []) for i in items if isinstance(i, dict))
+            folded = _bloom_fold(items)
+            if n_items == len(items) and \
+                    n_steps == sum(len(i.get("steps") or []) for i in folded) and \
+                    all(i.get("item") == f.get("item") for i, f in zip(items, folded)):
+                continue
+            b["items"] = folded
+            b["dates"] = sorted({d for i in folded for st in (i.get("steps") or [])
+                                 for d in ((st or {}).get("days") or {})})
+            changed += 1
+        if changed:
+            _save_models(data)
+            print(f"[bloom] 중복 품목 합침: 보드 {changed}개")
+    except Exception as e:
+        print(f"[bloom] 중복 품목 합치기 실패: {e}")
+
+
+_cleanup_bloom_dupes()
 _stamp_holds_once()
 
 

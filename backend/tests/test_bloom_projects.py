@@ -4,9 +4,10 @@
 # 엑셀은 품목 전체가 한 장이다. 원본은 bloom_main 한 곳에 두고 품목
 # 프로젝트는 자기 몫만 잘라 본다. 갈라 저장하면 다음 업로드 때 합치는 일이
 # 또 생기고, 한 번 어긋나면 되돌리기 어렵다.
-import ast, json, pathlib, re
+import ast, json, pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 CFG = json.loads((ROOT / 'config' / 'projects.json').read_text(encoding='utf-8'))['projects']
 ok = 0

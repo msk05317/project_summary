@@ -898,7 +898,12 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                   ],
                   if (_isAuto)
                     _autoHero()
-                  else
+                  // 블룸은 '계획 대비 실적' 카드에 매출이 이미 있다. 매출 계획이
+                  // 따로 등록된 적도 없어서 '계획이 없습니다' 만 떴다 — 뺀다.
+                  // (보드가 없고 매출이 등록돼 있을 때만 보여준다)
+                  else if (!_isBloom ||
+                      (!_bloom.hasBoard &&
+                          (_overview.planRevenue > 0 || _overview.revenue > 0)))
                     DivisionRevenueHero(
                     month: _useSheet ? _rev.month : _overview.month,
                     // 반도체는 주간보고 실적과 사람이 넣은 타겟을 쓴다.

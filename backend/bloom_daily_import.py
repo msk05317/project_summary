@@ -21,6 +21,21 @@ import re
 NOTE_RE = re.compile(r"^\s*[◆◇■□●○*・\-]\s*(.+)$")
 ETA_RE = re.compile(r"ETA\s*[:：]?\s*([0-9]{1,2}\s*/\s*[0-9]{1,2})", re.I)
 
+# 'Corva KPE (117품목)' — 파일마다 품목 수를 이름에 붙였다 뗐다 한다.
+# 붙은 채로 두면 지난 파일의 'Corva KPE' 와 다른 품목으로 쌓인다.
+_CNT_RE = re.compile(r"\s*[\(（]\s*\d[\d,]*\s*품목\s*[\)）]\s*$")
+_PAREN_RE = re.compile(r"\s*[\(（][^)）]*[\)）]\s*")
+
+
+def clean_item(name):
+    """품목 이름에서 '(N품목)' 꼬리를 뗀다."""
+    return _CNT_RE.sub("", str(name or "")).strip()
+
+
+def step_key(step):
+    """공정 비교용 키 — 'NCT(박닌)' 과 'NCT(박장)' 은 같은 공정 (공장만 바뀜)."""
+    return _PAREN_RE.sub("", str(step or "")).strip().upper()
+
 
 def _s(v):
     return "" if v is None else str(v).strip()
@@ -204,7 +219,7 @@ def parse_daily(wb, sheet_name=None):
     items, order, notes = {}, [], []
     for r in range(sub + 1, ws.max_row + 1):
         name = _s(g.get((r, cols["item"]))).replace("\n", " ").strip()
-        name = re.sub(r"\s+", " ", name)
+        name = clean_item(re.sub(r"\s+", " ", name))
         step = _s(g.get((r, cols["step"]))).replace("\n", " ").strip() if cols.get("step") else ""
 
         if not name or not step:
