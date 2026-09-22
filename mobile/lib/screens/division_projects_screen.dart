@@ -949,6 +949,8 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                       },
                     ),
                   ],
+                  // 블룸은 품목이 곧 프로젝트라 위 '계획 대비 실적' 카드가 목록을 대신한다
+                  if (!_isBloom) ...[
                   const SizedBox(height: 18),
 
                   // ── 프로젝트 (매출 기여순)
@@ -1103,6 +1105,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                           ),
                         ],
                     ],
+                  ],
                   ],
                 ],
               ),

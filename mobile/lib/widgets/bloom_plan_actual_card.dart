@@ -101,8 +101,8 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
     return (plan: p, actual: a, ptd: hasPtd ? t : null);
   }
 
-  /// 일별에서 처음 골라둘 날 — 실적이 적힌 마지막 날
-  String? _defaultDay() {
+  /// 실적이 적힌 마지막 날 (보통 보고일 전날)
+  String? _lastActual() {
     String? last;
     for (final it in b.items) {
       for (final s in it.steps) {
@@ -110,7 +110,17 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
         if (d != null && (last == null || d.compareTo(last) > 0)) last = d;
       }
     }
-    return last ?? (b.dates.isNotEmpty ? b.dates.last : null);
+    return last;
+  }
+
+  /// 일별에서 처음 골라둘 날 — 실적이 적힌 마지막 날
+  String? _defaultDay() =>
+      _lastActual() ?? (b.dates.isNotEmpty ? b.dates.last : null);
+
+  String _asOf() {
+    final last = _lastActual();
+    final rep = b.reportDate.isNotEmpty ? ' · ${_md(b.reportDate)} 보고' : '';
+    return last == null ? '실적 입력 전$rep' : '${_md(last)} 실적까지$rep';
   }
 
   @override
@@ -148,10 +158,12 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
               }),
             ),
           ]),
-          if (b.reportDate.isNotEmpty)
+          // 파일은 매일 아침 '전날까지' 실적으로 올라온다 — 보고일이 아니라
+          // 실적이 적힌 마지막 날을 앞에 쓴다.
+          if (b.reportDate.isNotEmpty || _lastActual() != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('${_md(b.reportDate)} 보고 기준',
+              child: Text(_asOf(),
                   style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
             ),
           const SizedBox(height: 12),
@@ -164,7 +176,9 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
   String _monthOf() {
     final m = b.money?.month ?? '';
     if (m.isNotEmpty) return m;
-    final d = b.reportDate.isNotEmpty ? b.reportDate : (b.dates.isNotEmpty ? b.dates.last : '');
+    // 10/1 보고는 9/30 실적 — 달은 보고일이 아니라 실적 날짜로 잡는다
+    final d = _lastActual() ??
+        (b.reportDate.isNotEmpty ? b.reportDate : (b.dates.isNotEmpty ? b.dates.last : ''));
     final p = d.split('-');
     return p.length == 3 ? '${int.tryParse(p[1]) ?? p[1]}' : '';
   }
