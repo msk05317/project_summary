@@ -7,9 +7,7 @@
 //   월간  맨 위에 매출 · 출하, 그 밑에 품목별 NCT · 조립 · 출하 막대
 //   일별  날짜를 고르면 그날 품목 · 공정별 계획/실적
 //
-// 막대는 9월 전체 계획 대비다. 그대로만 두면 22일인 지금은 다 뒤처져
-// 보이므로, 일별 계획이 있는 공정(NCT · 조립)은 '실적이 적힌 날까지의
-// 계획' 대비도 같이 적는다 (BloomStep.planToDate).
+// 막대는 이달 전체 계획 대비다.
 import 'package:flutter/material.dart';
 
 import '../design/colors.dart';
@@ -458,7 +456,6 @@ class _ItemMonth extends StatelessWidget {
     if (r.plan < 0) return const SizedBox.shrink(); // 이 품목에 없는 공정
     final p = _pct(r.actual, r.plan);
     final c = _rateColor(p);
-    final q = r.ptd == null ? null : _pct(r.actual, r.ptd!);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.5),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -494,14 +491,6 @@ class _ItemMonth extends StatelessWidget {
             ),
           ),
         ]),
-        // 오늘까지 계획 대비 — 전체 대비와 크게 다를 때만 (같으면 소음이다)
-        if (q != null && p != null && (q - p).abs() >= 5)
-          Padding(
-            padding: const EdgeInsets.only(left: 34, top: 1),
-            child: Text('실적 적힌 날까지 계획 대비 $q%',
-                style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: _rateColor(q))),
-          ),
       ]),
     );
   }
