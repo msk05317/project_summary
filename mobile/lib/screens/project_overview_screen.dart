@@ -14,6 +14,7 @@ import '../utils/status_words.dart';
 import '../design/colors.dart';
 import '../models/bloom_daily.dart';
 import '../services/bloom_service.dart';
+import '../widgets/bloom_plan_actual_card.dart';
 import '../widgets/bloom_today_card.dart';
 import '../widgets/automotive_overview_card.dart';
 import '../services/api_service.dart';
@@ -303,6 +304,8 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                     ),
                   ),
                 if (_isBloomItem && _bloom.hasBoard) ...[
+                  BloomPlanActualCard(board: _bloom),
+                  const SizedBox(height: 12),
                   BloomTodayCard(board: _bloom),
                   const SizedBox(height: 12),
                 ],

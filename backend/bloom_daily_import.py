@@ -269,3 +269,110 @@ def parse_daily(wb, sheet_name=None):
         "items": [items[n] for n in order],
         "notes": notes,
     }
+
+
+# ── '금액 실적' 시트 ─────────────────────────────────────────────────
+#
+#   제품명 | CODE | 출하 국가 | 단가 USD | 영업 계획          | 예상실적
+#                                       | 09월 출하계획 | 09월 매출계획 USD | 09월 출하계획 | 09월 매출계획 USD | 09월 출하 완료 | 09월 매출완료 USD | 잔량
+#
+# '출하계획' · '매출계획' 이 두 번 나온다 (영업 계획 / 예상실적). 계획으로는
+# 뒤의 예상실적을 쓴다 — 시트의 '달성율' 도 그걸 분모로 쓴다.
+# 앞의 영업 계획은 sales_* 로 따로 둔다.
+
+def _norm(t):
+    return re.sub(r"\s+", "", _s(t)).lower()
+
+
+def find_money_sheet(wb):
+    for ws in wb.worksheets:
+        g = _grid(ws)
+        for r in range(1, min(ws.max_row, 12) + 1):
+            row = [_norm(g.get((r, c))) for c in range(1, ws.max_column + 1)]
+            if any("매출완료" in t for t in row) and any("매출계획" in t for t in row):
+                return ws, g, r
+    return None, None, None
+
+
+def parse_money(wb):
+    """{'sheet','month','items':[...],'total':{...},'stated_rate'} 또는 None."""
+    ws, g, hr = find_money_sheet(wb)
+    if ws is None:
+        return None
+    row = {c: _norm(g.get((hr, c))) for c in range(1, ws.max_column + 1)}
+    up = {c: _norm(g.get((hr - 1, c))) for c in range(1, ws.max_column + 1)} if hr > 1 else {}
+
+    def cols(pred):
+        return [c for c, t in row.items() if t and pred(t)]
+
+    plan_q = cols(lambda t: "출하계획" in t)
+    plan_u = cols(lambda t: "매출계획" in t)
+    done_q = cols(lambda t: "출하" in t and "완료" in t and "매출" not in t)
+    done_u = cols(lambda t: "매출완료" in t)
+    if not plan_u or not done_u:
+        return None
+    # 제품명 · 국가 · 단가는 윗줄 머리글에 있다
+    def find_up(*keys):
+        for c in range(1, ws.max_column + 1):
+            t = up.get(c, "") or row.get(c, "")
+            if any(k in t for k in keys):
+                return c
+        return None
+    c_name = find_up("제품명", "품목", "item")
+    c_cty = find_up("국가")
+    c_price = find_up("단가")
+    if not c_name:
+        return None
+
+    month = ""
+    m = re.search(r"(\d{1,2})\s*월", _s(g.get((hr, plan_u[-1]))))
+    if m:
+        month = str(int(m.group(1)))
+
+    def num(r, c):
+        if not c:
+            return None
+        v = ws.cell(r, c).value
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return float(v)
+        try:
+            return float(str(v).replace(",", "").replace("$", "").strip())
+        except Exception:
+            return None
+
+    items, total = [], None
+    for r in range(hr + 1, ws.max_row + 1):
+        name = re.sub(r"\s+", " ", _s(g.get((r, c_name)))).strip()
+        if not name:
+            continue
+        rec = {
+            "item": name,
+            "country": _s(ws.cell(r, c_cty).value) if c_cty else "",
+            "price": num(r, c_price),
+            "sales_qty": num(r, plan_q[0]) if len(plan_q) > 1 else None,
+            "sales_usd": num(r, plan_u[0]) if len(plan_u) > 1 else None,
+            "plan_qty": num(r, plan_q[-1]) if plan_q else None,
+            "plan_usd": num(r, plan_u[-1]),
+            "done_qty": num(r, done_q[0]) if done_q else None,
+            "done_usd": num(r, done_u[0]),
+        }
+        if name.replace(" ", "") in ("합계", "총계", "total", "TOTAL"):
+            total = rec
+            break
+        if rec["plan_usd"] is None and rec["done_usd"] is None:
+            continue
+        items.append(rec)
+    if not items:
+        return None
+
+    def s(f):
+        return round(sum(x.get(f) or 0 for x in items), 2)
+    calc = {f: s(f) for f in ("sales_qty", "sales_usd", "plan_qty", "plan_usd", "done_qty", "done_usd")}
+    return {
+        "sheet": ws.title,
+        "month": month,
+        "items": items,
+        # 시트의 합계 줄보다 우리가 더한 값을 쓴다. 합계 줄이 손으로 고쳐져 있기도 하다.
+        "total": calc,
+        "stated_total": total,
+    }

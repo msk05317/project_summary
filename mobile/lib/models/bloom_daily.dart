@@ -37,6 +37,10 @@ class BloomStep {
   final int? wip;
   final int? monthPlan;
   final int? monthActual;
+
+  /// 날짜 칸이 시작되기 전까지의 계획/실적 ('9월 9일 이전 데이터' 칸)
+  final int? priorPlan;
+  final int? priorActual;
   final String note;
   final Map<String, BloomCell> days;
 
@@ -46,6 +50,8 @@ class BloomStep {
     this.wip,
     this.monthPlan,
     this.monthActual,
+    this.priorPlan,
+    this.priorActual,
     this.note = '',
     this.days = const {},
   });
@@ -58,6 +64,8 @@ class BloomStep {
       wip: _nInt(j['wip']),
       monthPlan: _nInt(j['month_plan']),
       monthActual: _nInt(j['month_actual']),
+      priorPlan: _nInt(j['prior_plan']),
+      priorActual: _nInt(j['prior_actual']),
       note: _s(j['note']),
       days: {
         for (final e in raw.entries)
@@ -67,6 +75,35 @@ class BloomStep {
   }
 
   BloomCell? at(String date) => days[date];
+
+  /// 실적이 적힌 마지막 날. 없으면 null.
+  String? get lastActualDate {
+    String? last;
+    for (final e in days.entries) {
+      if (e.value.actual == null) continue;
+      if (last == null || e.key.compareTo(last) > 0) last = e.key;
+    }
+    return last;
+  }
+
+  /// 실적이 적힌 날까지 잡혀 있던 계획.
+  ///
+  /// 9월 전체 계획과만 비교하면 22일인 지금은 다 뒤처져 보인다.
+  /// 실적과 같은 날까지의 계획을 분모로 써야 '지금 제대로 가고 있나' 가 보인다.
+  /// 일별 계획이 비어 있으면(출하가 그렇다) null.
+  int? get planToDate {
+    final last = lastActualDate;
+    if (last == null) return null;
+    var sum = priorPlan ?? 0;
+    var any = (priorPlan ?? 0) > 0;
+    for (final e in days.entries) {
+      if (e.key.compareTo(last) > 0) continue;
+      final p = e.value.plan ?? 0;
+      if (p > 0) any = true;
+      sum += p;
+    }
+    return any && sum > 0 ? sum : null;
+  }
 
   /// 월 누적 달성률(%). 계획이 없으면 null.
   int? get monthPct {
@@ -191,6 +228,35 @@ class BloomDaySummary {
   }
 }
 
+/// '금액 실적' 시트 한 달 치 (USD). 계획은 예상실적 기준.
+class BloomMoney {
+  final String month;
+  final double planUsd;
+  final double doneUsd;
+  final double salesUsd;
+  const BloomMoney({
+    this.month = '',
+    this.planUsd = 0,
+    this.doneUsd = 0,
+    this.salesUsd = 0,
+  });
+
+  static BloomMoney? fromJson(dynamic j) {
+    if (j is! Map) return null;
+    final t = (j['total'] as Map?) ?? const {};
+    double d(dynamic v) => v is num ? v.toDouble() : (double.tryParse('${v ?? ''}') ?? 0);
+    final m = BloomMoney(
+      month: _s(j['month']),
+      planUsd: d(t['plan_usd']),
+      doneUsd: d(t['done_usd']),
+      salesUsd: d(t['sales_usd']),
+    );
+    return m.planUsd > 0 || m.doneUsd > 0 ? m : null;
+  }
+
+  int? get pct => planUsd > 0 ? (doneUsd * 100 / planUsd).round() : null;
+}
+
 class BloomDailyBoard {
   final bool hasBoard;
   final String title;
@@ -202,6 +268,9 @@ class BloomDailyBoard {
   final BloomDaySummary today;
   final BloomDaySummary? prev;
 
+  /// 금액 실적 (블룸 전체 화면에만 온다. 품목 화면은 null)
+  final BloomMoney? money;
+
   const BloomDailyBoard({
     this.hasBoard = false,
     this.title = '',
@@ -212,6 +281,7 @@ class BloomDailyBoard {
     this.notes = const [],
     this.today = const BloomDaySummary(),
     this.prev,
+    this.money,
   });
 
   static const BloomDailyBoard empty = BloomDailyBoard();
@@ -235,6 +305,7 @@ class BloomDailyBoard {
           .toList(),
       today: BloomDaySummary.fromJson((sum['today'] as Map?) ?? const {}),
       prev: prevRaw is Map ? BloomDaySummary.fromJson(prevRaw) : null,
+      money: BloomMoney.fromJson(j['money']),
     );
   }
 

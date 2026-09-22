@@ -24069,6 +24069,8 @@ def _bloom_merge(old: dict, parsed: dict):
         "prior_label": _bloom_pick(parsed.get("prior_label"), old.get("prior_label")) or "",
         # 메모는 '오늘 자 알림'이라 누적하지 않고 새 파일 것으로 바꾼다
         "notes": parsed.get("notes") or [],
+        # 금액은 그 달 누계 한 장이다. 새 파일에 있으면 바꾸고, 없으면 두던 것
+        "money": parsed.get("money") or old.get("money"),
         "items": merged,
         "dates": sorted({d for i in merged for s in (i.get("steps") or [])
                          for d in ((s or {}).get("days") or {})}),
@@ -24153,6 +24155,9 @@ def _bloom_slice(board: dict, item: str) -> dict:
     out["items"] = items
     out["dates"] = sorted({d for i in items for st in (i.get("steps") or [])
                            for d in ((st or {}).get("days") or {})})
+    # 금액 시트는 품목 이름이 다르다 ('CORVA EFM KPE' ↔ 'Corva KPE') —
+    # 억지로 맞추면 틀린 숫자가 붙는다. 품목 화면에서는 빼고 전체 화면에만 둔다.
+    out.pop("money", None)
     return out
 
 def _bloom_board_for(project_key: str):
@@ -24315,6 +24320,12 @@ def _bloom_parse_upload(raw: bytes):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
     parsed = _bd.parse_daily(wb)
+    # 같은 파일의 '금액 실적' 시트 — 없으면 None (일 보고만 올린 파일)
+    try:
+        parsed["money"] = _bd.parse_money(wb)
+    except Exception as _e:
+        print(f"[bloom] 금액 실적 시트 읽기 실패(무시): {_e}")
+        parsed["money"] = None
     if not parsed.get("items"):
         raise HTTPException(
             status_code=400,

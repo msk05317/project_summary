@@ -26,6 +26,7 @@ import '../services/automotive_service.dart';
 import '../models/automotive.dart';
 import '../models/bloom_daily.dart';
 import '../services/bloom_service.dart';
+import '../widgets/bloom_plan_actual_card.dart';
 import '../widgets/bloom_today_card.dart';
 import '../components/division/division_immediate_check.dart'
     show DivisionImmediateItem, ImmediatePriority;
@@ -890,6 +891,8 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
                   if (_isBloom && _bloom.hasBoard) ...[
+                    BloomPlanActualCard(board: _bloom),
+                    const SizedBox(height: 12),
                     BloomTodayCard(board: _bloom),
                     const SizedBox(height: 12),
                   ],
