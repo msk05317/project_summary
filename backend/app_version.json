@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.40",
-  "latest_version_code": 63,
+  "latest_version": "2.3.41",
+  "latest_version_code": 64,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "블룸 화면을 정리했습니다.\n\n- 계획 대비 실적(월간 · 일별) + 막혀 있는 곳만 표시\n- 같은 품목이 두 줄로 뜨던 문제\n- 블룸 화면의 '9월 매출' 카드 제거",
+  "release_notes": "블룸 화면을 더 간단히 했습니다.\n\n- 프로젝트 목록 제거\n- 'N/D 실적까지' 기준으로 표시",
   "force_update": false
 }
