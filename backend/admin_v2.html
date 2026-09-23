@@ -5830,7 +5830,28 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-table select.mdl-st-hold { background-color:#EDE9FE; color:#5B21B6; }',
     '.mdl-table select.mdl-st-chip:hover { filter:brightness(0.97); }',
     '.mdl-table .mdl-input-name { width:100%; min-width:120px; }',
-    '.mdl-table td.mdl-name-cell { min-width:250px; }',
+    // ── 값은 글자처럼, 고칠 때만 칸처럼 ─────────────────────────
+    // 칸마다 회색 상자를 깔아 두니 표가 상자 벽으로 보였다. 평소엔 값만
+    // 보이고(테두리·바탕 없음), 마우스를 올리거나 고칠 때만 칸이 드러난다.
+    '.mdl-table .mdl-input, .mdl-table .mdl-memo { background:transparent; border-color:transparent; }',
+    '.mdl-table .mdl-input:hover, .mdl-table .mdl-memo:hover { background:#F1F5F9; border-color:#E2E8F0; }',
+    '.mdl-table .mdl-input:focus, .mdl-table .mdl-memo:focus { background:#fff; border-color:#0F2C59;',
+    '  box-shadow:0 0 0 3px rgba(15,44,89,.10); }',
+    '.mdl-table .mdl-memo { width:100%; min-height:32px; }',
+    '.mdl-table select[data-field="dev_type"] { background-color:transparent !important; }',
+    '.mdl-table select[data-field="dev_type"]:hover { background-color:#F1F5F9 !important; }',
+    '.mdl-table td { padding-top:7px; padding-bottom:7px; }',
+    '.mdl-table .mdl-input { width:100%; }',
+    // 일정 경고는 사람이 고르는 '상태' 와 다른 것이다 — 따로 표를 단다
+    '.mdl-flag { display:inline-block; margin-right:5px; padding:1px 7px; border-radius:99px;',
+    '  font-size:10px; font-weight:800; vertical-align:1px; }',
+    '.mdl-flag-late { background:#FEE2E2; color:#B91C1C; }',
+    '.mdl-flag-soon { background:#FFEDD5; color:#9A3412; }',
+    '.mdl-table td select { border-color:transparent; }',
+    '.mdl-table td select[data-field=\"dev_type\"] { min-width:88px; }',
+    '.mdl-table td select:hover { border-color:#E2E8F0; }',
+    '.mdl-table td select.mdl-st-chip { border-color:transparent; }',
+    '.mdl-table td.mdl-name-cell { min-width:300px; }',
     '.mdl-table select:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }',
     '.mdl-memo { min-height:34px; }',
     '.mdl-btn-process { height:32px; display:inline-flex; align-items:center; }',
@@ -6817,6 +6838,12 @@ window.renderAdminV2ByDivision = function(){
     // 아래는 칸 이름과 '무엇을 적는 칸인지' 한 줄. 처음 보는 사람이
     // 표만 보고 어디에 무엇을 넣는지 알 수 있어야 한다.
     var _hasPN = window._mdlHasPN(_getCurrentProjectKey());
+    // 3686 보다 3,686 이 눈에 빨리 들어온다. 저장은 _rawNum 이 쉼표를 떼고 읽는다.
+    function _comma(v) {
+      var n = Number(v);
+      if (!isFinite(n)) return String(v == null ? '' : v);
+      return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    }
     function _hd(t, d, cls, w) {
       return '<th' + (cls ? ' class="' + cls + '"' : '') + (w ? ' style="width:' + w + 'px"' : '') + '>' +
         '<div class="mdl-hd-t">' + t + '</div>' +
@@ -6830,8 +6857,8 @@ window.renderAdminV2ByDivision = function(){
         : '판가와 수량이 매출 집계로, 상태와 공정이 앱의 \'일정 지연 · 집중관리\'로 들어갑니다. ') +
       '고친 뒤 오른쪽 위 <b>저장</b>을 눌러야 반영됩니다.</p>' +
       '<div class="lg">' +
-        '<span><i class="mdl-sw mdl-sw-in"></i> 흰 칸 = 직접 입력</span>' +
-        '<span><i class="mdl-sw mdl-sw-auto"></i> 회색 점선 = 자동 계산</span>' +
+        '<span>값을 눌러 바로 고칩니다</span>' +
+        '<span><i class="mdl-sw mdl-sw-auto"></i> 회색 점선 = 자동 계산 (못 고침)</span>' +
         '<span><i class="mdl-sw mdl-sw-late"></i> 왼쪽 빨간 띠 = 일정 지연</span>' +
         '<span>모델명 옆 칩을 눌러 상태(정상 · 주의 · 지연 · 보류 · 드롭예정)를 바꿉니다</span>' +
       '</div></div>' +
@@ -6848,7 +6875,7 @@ window.renderAdminV2ByDivision = function(){
       '<tr class="mdl-hd-row">' +
       '<th class="mdl-th-chk" style="width:34px"><input type="checkbox" class="mdl-check" id="mdl-check-all" title="전체 선택"></th>' +
       '<datalist id="mdl-type-list">' + (_projTypes || []).map(function(t){ return '<option value="' + t + '">'; }).join('') + '</datalist>' +
-      _hd('모델명 · 상태', _hasPN ? '이름 아래 파트넘버' : '부르는 이름', '', 250) +
+      _hd('모델명 · 상태', _hasPN ? '이름 아래 파트넘버' : '부르는 이름', '', 300) +
       _hd('구분', '양산 / 개발', '', 88) +
       _hd('유형 <i class="mdl-help" title="프로젝트마다 쓰는 제품 유형입니다 (예: HVM)">?</i>', '제품 유형', '', 116) +
       (_projIsEss
@@ -6861,8 +6888,8 @@ window.renderAdminV2ByDivision = function(){
           _hd('재료비율', '자동 계산', 'mdl-grp-money', 96) +
           _hd('PO 수량', '받은 발주', 'mdl-grp-qty', 100) +
           _hd('실적 수량', '출하 완료', 'mdl-grp-qty', 100)) +
-      _hd('이슈사항', '막힌 것 · 리스크', '', 236) +
-      _hd('비고', '그 외 메모', '', 212) +
+      _hd('이슈사항', '막힌 것 · 리스크', '', 220) +
+      _hd('비고', '그 외 메모', '', 200) +
       _hd('관리', _projIsEss ? '삭제' : '공정 · 이력', '', 126) +
       '</tr></thead><tbody>';
 
@@ -6943,8 +6970,11 @@ window.renderAdminV2ByDivision = function(){
               // 찾느라 표를 처음부터 훑게 된다.
               var a = (window._mdlAlerts || {})[m.id];
               if (!a) return '';
-              var cls = a.kind === '지연' ? 'mdl-why-late' : 'mdl-why-soon';
-              return '<div class="' + cls + '">' + _aE(a.why || '사유 미기재') + '</div>';
+              var late = a.kind === '지연';
+              return '<div class="' + (late ? 'mdl-why-late' : 'mdl-why-soon') + '">' +
+                '<span class="mdl-flag ' + (late ? 'mdl-flag-late' : 'mdl-flag-soon') + '">' +
+                (late ? '일정 지연' : '집중관리') + '</span>' +
+                _aE(a.why || '사유 미기재') + '</div>';
             })() +
           '</td>' +
           // 전환 주차가 지났으면 양산으로 골라둔다. 저장하면 그대로 저장돼
@@ -6956,8 +6986,8 @@ window.renderAdminV2ByDivision = function(){
               '<option value="개발"' + (gnow === '개발' ? ' selected' : '') + '>개발</option>' +
             '</select></td>';
           })() +
-          '<td><select data-field="dev_type" style="width:90px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;font-weight:600;background:#fff;">' +
-            '<option value=""></option>' +
+          '<td><select data-field="dev_type">' +
+            '<option value="">—</option>' +
             (function(){
               var cur = (m.dev_type || '').trim();
               var list = (_projTypes || []).slice();
@@ -6972,13 +7002,13 @@ window.renderAdminV2ByDivision = function(){
   '<td class="mdl-grp-qty"><input data-field="shipped_qty" type="text" inputmode="numeric" value="' + (m.shipped_qty || 0) + '" class="mdl-input mdl-ess-qty" style="width:90px;"></td>' +
   '<td class="mdl-grp-qty"><div data-field="remaining" class="mdl-auto">' + Math.max(0, (m.po_qty || 0) - (m.shipped_qty || 0)) + '</div></td>' +
   '<td class="mdl-grp-qty"><input data-field="due_text" type="text" value="' + (m.due_text || '').replace(/"/g, '&quot;') + '" class="mdl-input" placeholder="예: 8월 24일" style="width:140px;"></td>' +
-  '<td><textarea data-field="issues" class="mdl-memo" placeholder="예: 챔버 리크 재시험">' + (m.issues || '') + '</textarea></td>' +
-  '<td><textarea data-field="note" class="mdl-memo" placeholder="적을 게 없으면 비워 둡니다">' + (m.note || '') + '</textarea></td>'
+  '<td><textarea data-field="issues" class="mdl-memo" placeholder="">' + (m.issues || '') + '</textarea></td>' +
+  '<td><textarea data-field="note" class="mdl-memo" placeholder="">' + (m.note || '') + '</textarea></td>'
 :
-  '<td class="mdl-grp-money"><input data-field="price" type="text" inputmode="decimal" placeholder="예: 4800" value="' + price + '" class="mdl-input' +
+  '<td class="mdl-grp-money"><input data-field="price" type="text" inputmode="decimal" placeholder="예: 4800" value="' + _comma(price) + '" class="mdl-input' +
     (_pw ? ' mdl-input-warn' : '') + '"' + (_pw ? ' title="' + _pw.replace(/"/g, '&quot;') + '"' : '') + '>' +
     (_pw ? '<div class="mdl-price-warn" title="' + _pw.replace(/"/g, '&quot;') + '">확인 필요</div>' : '') + '</td>' +
-  '<td class="mdl-grp-money"><input data-field="material_cost" type="text" inputmode="decimal" placeholder="예: 4150" value="' + mcost + '" class="mdl-input"></td>' +
+  '<td class="mdl-grp-money"><input data-field="material_cost" type="text" inputmode="decimal" placeholder="예: 4150" value="' + _comma(mcost) + '" class="mdl-input"></td>' +
   // 재료비율은 판가·재료비로 자동 계산이다. 입력창처럼 보이면 고칠 수 있는 줄 안다.
   (function(){
     var r = price > 0 ? (mcost / price) * 100 : -1;
@@ -6986,10 +7016,10 @@ window.renderAdminV2ByDivision = function(){
     return '<td class="mdl-grp-money"><div data-field="ratio" class="mdl-auto' + cls + '"' +
       (r >= 80 ? ' title="재료비율이 높습니다 — 판가·재료비를 확인해 주세요"' : '') + '>' + ratio + '</div></td>';
   })() +
-  '<td class="mdl-grp-qty"><input data-field="po_qty" type="text" inputmode="numeric" placeholder="0" value="' + (m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
-  '<td class="mdl-grp-qty"><input data-field="shipped_qty" type="text" inputmode="numeric" placeholder="0" value="' + (m.shipped_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
-  '<td><textarea data-field="issues" class="mdl-memo" placeholder="예: 챔버 리크 재시험">' + (m.issues || '') + '</textarea></td>' +
-  '<td><textarea data-field="note" class="mdl-memo" placeholder="적을 게 없으면 비워 둡니다">' + (m.note || '') + '</textarea></td>'
+  '<td class="mdl-grp-qty"><input data-field="po_qty" type="text" inputmode="numeric" placeholder="0" value="' + _comma(m.po_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
+  '<td class="mdl-grp-qty"><input data-field="shipped_qty" type="text" inputmode="numeric" placeholder="0" value="' + _comma(m.shipped_qty || 0) + '" class="mdl-input" style="width:88px;"></td>' +
+  '<td><textarea data-field="issues" class="mdl-memo" placeholder="">' + (m.issues || '') + '</textarea></td>' +
+  '<td><textarea data-field="note" class="mdl-memo" placeholder="">' + (m.note || '') + '</textarea></td>'
 ) +
           (!_projIsEss ? '<td class="mdl-td-actions">' +
             '<input data-field="progress" type="hidden" value="' + (m.progress || 0) + '">' +

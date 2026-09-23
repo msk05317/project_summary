@@ -42,11 +42,23 @@ ok += 1
 
 # 안내 문구 · 범례
 assert '이 표는 무엇인가요' in SRC and 'mdl-guide' in SRC
-assert '흰 칸 = 직접 입력' in SRC and '회색 점선 = 자동 계산' in SRC
+assert '값을 눌러 바로 고칩니다' in SRC and '회색 점선 = 자동 계산' in SRC
 ok += 1
 
-# 빈 칸 예시 문구
-assert 'placeholder="예: 4800"' in SRC and 'placeholder="예: 챔버 리크 재시험"' in SRC
+# 빈 칸 예시 문구 (숫자 칸). 메모 칸은 머리글이 설명하므로 비워 둔다.
+assert 'placeholder="예: 4800"' in SRC and 'placeholder="예: 4150"' in SRC
+ok += 1
+
+# 값은 글자처럼 보이고 누를 때만 칸이 된다 (상자 벽 방지)
+assert '.mdl-table .mdl-input, .mdl-table .mdl-memo { background:transparent;' in SRC
+ok += 1
+
+# 일정 경고는 사람이 고르는 상태와 다른 것이라 따로 표를 단다
+assert 'mdl-flag-late' in SRC and "'일정 지연'" in SRC
+ok += 1
+
+# 숫자는 천 단위 쉼표 (저장은 _rawNum 이 쉼표를 뗀다)
+assert '_comma(price)' in SRC and "replace(/[,\\s$₩]/g, '')" in SRC
 ok += 1
 
 # 스크립트 블록 문법
