@@ -201,9 +201,13 @@
       </select>
     </div>
 
-    <div class="nav-title">MENU</div>
+    <div class="nav-title">전사</div>
     <nav class="nav">
+      <div class="nav-item" data-page="homeadmin"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></span><span>홈 관리</span></div>
       <div class="nav-item" data-page="home"><span class="icon"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg></span><span>홈 대시보드</span></div>
+    </nav>
+    <div class="nav-title">사업부</div>
+    <nav class="nav">
       <div class="nav-item active" data-page="models"><span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span><span>모델 관리</span></div>
       <div class="nav-item" data-page="revenue"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg></span><span>매출 관리</span></div>
     </nav>
@@ -877,6 +881,7 @@ window._attachAutoListBehavior = function(el){
 <script>
 (function(){
   const PAGE_LABEL = {
+    homeadmin: '홈 관리',
     home: '홈 대시보드',
     revenue: '매출 관리',
     report: '보고',
@@ -909,7 +914,13 @@ window._attachAutoListBehavior = function(el){
 
   function renderPage(pg){
     const c = document.getElementById('v2-content');
-    if (pg === 'home' || pg === 'report') {
+    if (pg === 'homeadmin') {
+      // 전사 화면이다 — 사이드바에 걸린 사업부 이름을 빵부스러기에 두면
+      // 반도체만 보고 있는 줄 안다
+      var _cb = document.getElementById('v2-crumb-biz');
+      if (_cb) _cb.textContent = '전사';
+      window.renderHomeAdmin();
+    } else if (pg === 'home' || pg === 'report') {
       window.renderHomeDashboard();
     } else if (pg === 'revenue') {
       window.renderRevenuePage();
@@ -5577,6 +5588,78 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-table tr.mdl-row-late td:first-child { box-shadow:inset 3px 0 0 #DC2626; }',
     '.mdl-help { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px;',
     '  border-radius:99px; background:#E2E8F0; color:#64748B; font-size:9.5px; font-weight:800; cursor:help; margin-left:4px; }',
+    // ── 홈 관리 (전사) ─────────────────────────────────────────
+    '.ha-scope { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:800;',
+    '  border-radius:99px; padding:3px 10px; background:#E8EEF8; color:#0F2C59; margin-bottom:10px; }',
+    '.ha-wrap { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:18px; align-items:start; }',
+    '.ha-card { background:#fff; border:1px solid #E4E7EC; border-radius:12px; margin-bottom:16px; }',
+    '.ha-card .hd { display:flex; align-items:center; gap:10px; padding:13px 16px; border-bottom:1px solid #E4E7EC; }',
+    '.ha-card .hd b { font-size:13.5px; }',
+    '.ha-card .bd { padding:12px 16px 16px; }',
+    '.ha-hint { font-size:11.5px; color:#94A3B8; }',
+    '.ha-sp { flex:1; }',
+    // 지시 한 줄
+    '.ha-it { display:flex; align-items:center; gap:9px; padding:8px 0; border-bottom:1px solid #F1F5F9; }',
+    '.ha-it:last-child { border-bottom:none; }',
+    '.ha-it .gp { color:#CBD5E1; font-size:15px; cursor:grab; user-select:none; }',
+    '.ha-it input.tx { flex:1; min-width:0; padding:7px 10px; border:1px solid #E3E9F1; border-radius:7px;',
+    '  background:#F4F7FB; font-size:12.5px; font-family:inherit; color:#0F172A; }',
+    '.ha-it input.tx:focus, .ha-it .dt:focus, .ha-it select:focus { outline:none; background:#fff;',
+    '  border-color:#0F2C59; box-shadow:0 0 0 3px rgba(15,44,89,.10); }',
+    '.ha-it select { min-width:104px; padding:6px 8px; border:1px solid #E3E9F1; border-radius:7px;',
+    '  background:#F4F7FB; font-size:11.5px; font-weight:700; color:#334155; font-family:inherit; }',
+    '.ha-it .dt { width:132px; padding:6px 8px; border:1px solid #E3E9F1; border-radius:7px;',
+    '  background:#F4F7FB; font-size:11.5px; font-weight:600; color:#334155; font-family:inherit; }',
+    '.ha-it .dt:disabled { opacity:.45; }',
+    '.ha-it .chk { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:#64748B; white-space:nowrap; }',
+    '.ha-it .reg { font-size:11px; color:#94A3B8; white-space:nowrap; min-width:76px; text-align:right; }',
+    '.ha-it .x { color:#CBD5E1; cursor:pointer; padding:0 2px; }',
+    '.ha-it .x:hover { color:#DC2626; }',
+    '.ha-it.done input.tx { color:#94A3B8; text-decoration:line-through; background:#FAFBFC; }',
+    '.ha-done-head { display:flex; align-items:center; gap:8px; padding:10px 0 2px; cursor:pointer;',
+    '  font-size:12px; font-weight:700; color:#64748B; border-top:1px solid #F1F5F9; margin-top:6px; }',
+    // 표
+    '.ha-tbl { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }',
+    '.ha-tbl th { background:#F8FAFC; padding:8px 14px 9px; text-align:left; border-bottom:1px solid #E4E7EC; vertical-align:top; }',
+    '.ha-tbl td { padding:9px 14px; border-bottom:1px solid #F1F5F9; }',
+    '.ha-tbl tr:last-child td { border-bottom:none; }',
+    '.ha-tbl tr:hover td { background:#FBFCFE; }',
+    '.ha-t { font-size:12px; font-weight:800; white-space:nowrap; }',
+    '.ha-d { font-size:10.5px; color:#94A3B8; font-weight:600; margin-top:2px; white-space:nowrap; }',
+    '.ha-num { text-align:right; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }',
+    '.ha-dim { color:#94A3B8; font-weight:500; }',
+    '.ha-tag { display:inline-block; padding:2px 8px; border-radius:99px; font-size:10.5px; font-weight:800; white-space:nowrap; }',
+    '.ha-tag.auto { background:#EEF2F7; color:#475569; }',
+    '.ha-tag.hand { background:#FEF3C7; color:#92400E; }',
+    '.ha-tag.none { background:#FEE2E2; color:#B91C1C; }',
+    '.ha-bar { height:6px; border-radius:3px; background:#F1F5F9; overflow:hidden; min-width:72px; }',
+    '.ha-bar i { display:block; height:100%; background:#0F2C59; }',
+    '.ha-tgt { width:120px; padding:6px 8px; border:1px solid #E3E9F1; border-radius:7px; background:#F4F7FB;',
+    '  font-size:12px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums; font-family:inherit; }',
+    // 앱 미리보기
+    '.ha-prev { position:sticky; top:16px; }',
+    '.ha-phone { background:#F5F6F8; border:1px solid #D7DBE2; border-radius:16px; overflow:hidden; }',
+    '.ha-phone .pb { background:#fff; padding:9px 12px; font-size:12px; font-weight:800; color:#0F2C59;',
+    '  border-bottom:1px solid #E4E7EC; }',
+    '.ha-phone .pp { padding:11px 12px; display:flex; flex-direction:column; gap:9px; }',
+    '.ha-boss { background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:11px 12px; }',
+    '.ha-boss .bt { font-size:11.5px; font-weight:700; color:#92400E; display:flex; align-items:center; }',
+    '.ha-boss .bi { display:flex; gap:6px; align-items:flex-start; margin-top:7px; }',
+    '.ha-boss .bi .dot { color:#D97706; font-weight:800; font-size:11px; line-height:16px; }',
+    '.ha-boss .bi .tx { font-size:11.5px; color:#78350F; line-height:1.45; }',
+    '.ha-pill { display:inline-block; margin-left:5px; padding:1px 6px; border-radius:99px;',
+    '  font-size:9.5px; font-weight:800; vertical-align:1px; }',
+    '.ha-pill.late { background:#FEE2E2; color:#B91C1C; }',
+    '.ha-pill.warn { background:#FDE68A; color:#78350F; }',
+    '.ha-pill.repeat { background:#E0E7FF; color:#3730A3; }',
+    '.ha-pill.plain { background:#F1F5F9; color:#64748B; }',
+    '.ha-mini { background:#fff; border:1px solid #E4E7EC; border-radius:10px; padding:10px 11px; }',
+    '.ha-mini .h { font-size:11.5px; font-weight:700; margin-bottom:6px; display:flex; }',
+    '.ha-mini .r { display:flex; align-items:center; gap:6px; font-size:10.5px; margin-top:5px; color:#64748B; }',
+    '.ha-mini .r .n { font-weight:700; color:#0F172A; min-width:64px; }',
+    '.ha-mini .r .b { flex:1; height:4px; background:#F1F5F9; border-radius:2px; overflow:hidden; }',
+    '.ha-mini .r .b i { display:block; height:100%; background:#0F2C59; }',
+    '@media (max-width:1180px) { .ha-wrap { grid-template-columns:minmax(0,1fr); } .ha-prev { position:static; } }',
     '.mdl-late-badge { background:#FEE2E2; color:#991B1B; }',
     '.mdl-soon-badge { background:#FFEDD5; color:#9A3412; }',
     '.mdl-why-late, .mdl-why-soon { font-size:10.5px; font-weight:700; margin-top:2px;',
@@ -11472,6 +11555,406 @@ window._ovProjectKey = function() {
     document.getElementById('rv-cancel').onclick = closeDlg;
     document.getElementById('rv-commit').onclick = function () { send('commit'); };
   }
+})();
+</script>
+
+<script>
+// ============================================================
+// 홈 관리 (전사) — 앱 홈에 뜨는 것을 한자리에서
+//
+// 손으로 넣는 건 사장님 지시사항과, 자료에 계획이 없는 사업부의 타겟뿐이다.
+// 나머지(실적 · 진행현황)는 각 사업부 자료에서 자동으로 모인다. 그래서
+// 여기서는 값 옆에 '어디서 온 숫자인지'를 같이 보여준다.
+// ============================================================
+(function () {
+  var _st = null;          // 서버에서 받은 상태
+  var _rows = [];          // 편집 중인 지시 목록
+  var _showDone = false;
+  var _month = '';
+  var KINDS = [['date', '날짜까지'], ['none', '기한 없음'], ['daily', '매일'], ['weekly', '매주']];
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function haMoney(n) {
+    n = Number(n || 0);
+    if (!n) return '$0';
+    if (n >= 10000) return '$' + Math.round(n / 10000).toLocaleString() + '만';
+    return '$' + Math.round(n).toLocaleString();
+  }
+  function thisMonth() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function today() { return new Date().toISOString().slice(0, 10); }
+  function monthOptions(sel) {
+    var now = new Date(), out = '';
+    for (var i = -6; i <= 1; i++) {
+      var d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      var v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      out += '<option value="' + v + '"' + (v === sel ? ' selected' : '') + '>' +
+             d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월</option>';
+    }
+    return out;
+  }
+
+  // ── 꼬리표 (앱 미리보기용). 서버 계산과 같은 규칙이다 ──
+  function badge(it) {
+    if (it.due_kind === 'daily') return { t: '매일', c: 'repeat' };
+    if (it.due_kind === 'weekly') return { t: '매주', c: 'repeat' };
+    if (it.due_kind === 'date' && it.due) {
+      var n = Math.round((new Date(it.due) - new Date(today())) / 86400000);
+      var md = Number(it.due.slice(5, 7)) + '/' + Number(it.due.slice(8, 10));
+      if (n < 0) return { t: '지남 · D+' + (-n), c: 'late' };
+      if (n === 0) return { t: '오늘 · ' + md, c: 'late' };
+      return { t: 'D-' + n + ' · ' + md, c: n <= 3 ? 'late' : (n <= 7 ? 'warn' : 'plain') };
+    }
+    var c = it.created || '';
+    return { t: c ? (Number(c.slice(5, 7)) + '/' + Number(c.slice(8, 10)) + ' 등록') : '', c: 'plain' };
+  }
+  function ord(it) {
+    if (it.due_kind === 'date' && it.due) {
+      var n = Math.round((new Date(it.due) - new Date(today())) / 86400000);
+      return n < 0 ? [0, n] : [1, n];
+    }
+    if (it.due_kind === 'daily') return [2, 0];
+    if (it.due_kind === 'weekly') return [2, 1];
+    return [3, -(Number((it.created || '').replace(/-/g, '')) || 0)];
+  }
+  function liveRows() {
+    return _rows.filter(function (r) { return !r.done && String(r.text || '').trim(); })
+      .slice().sort(function (a, b) {
+        var x = ord(a), y = ord(b);
+        return x[0] - y[0] || x[1] - y[1];
+      });
+  }
+
+  function itemRow(r, i) {
+    var isDate = r.due_kind === 'date';
+    return '<div class="ha-it' + (r.done ? ' done' : '') + '" data-i="' + i + '">' +
+      '<span class="gp" title="끌어서 순서 바꾸기">⠿</span>' +
+      '<input class="tx" data-k="text" value="' + esc(r.text) + '" placeholder="지시 내용">' +
+      '<select data-k="due_kind">' +
+        KINDS.map(function (k) {
+          return '<option value="' + k[0] + '"' + (r.due_kind === k[0] ? ' selected' : '') +
+                 '>' + k[1] + '</option>';
+        }).join('') +
+      '</select>' +
+      '<input class="dt" type="date" data-k="due" value="' + esc(r.due || '') + '"' +
+        (isDate ? '' : ' disabled') + ' min="2000-01-01" max="2099-12-31">' +
+      '<label class="chk"><input type="checkbox" data-k="done"' + (r.done ? ' checked' : '') +
+        '> 완료</label>' +
+      '<span class="reg">' + esc(r.done ? ((r.done_at || '').slice(5).replace('-', '/') + ' 완료')
+                                        : ((r.created || '').slice(5).replace('-', '/') + ' 등록')) + '</span>' +
+      '<span class="x" data-act="del" title="줄 지우기">✕</span>' +
+    '</div>';
+  }
+
+  function ordersCard() {
+    var live = _rows.filter(function (r) { return !r.done; });
+    var done = _rows.filter(function (r) { return r.done; });
+    return '<div class="ha-card">' +
+      '<div class="hd"><b>사장님 지시사항</b>' +
+        '<span class="ha-hint">앱 홈 맨 위 노란 카드 · 기한이 임박한 줄이 위로 올라갑니다</span>' +
+        '<span class="ha-sp"></span>' +
+        '<span class="ha-hint" id="ha-ord-msg"></span>' +
+        '<button type="button" class="ov-btn ov-btn-primary" id="ha-ord-save">저장</button>' +
+      '</div>' +
+      '<div class="bd" id="ha-ord-list">' +
+        (live.length ? live.map(function (r) { return itemRow(r, _rows.indexOf(r)); }).join('')
+                     : '<div class="ha-hint" style="padding:6px 0 10px">아직 없습니다. 아래에 적어 주세요.</div>') +
+        '<div class="ha-it" style="border-top:1px solid #F1F5F9">' +
+          '<span class="gp" style="opacity:.35">⠿</span>' +
+          '<input class="tx" id="ha-new" placeholder="＋ 새 지시사항 — 적으면 오늘 날짜로 등록됩니다">' +
+          '<select id="ha-new-kind">' +
+            KINDS.map(function (k) {
+              return '<option value="' + k[0] + '"' + (k[0] === 'none' ? ' selected' : '') +
+                     '>' + k[1] + '</option>';
+            }).join('') + '</select>' +
+          '<input class="dt" type="date" id="ha-new-due" disabled min="2000-01-01" max="2099-12-31">' +
+          '<button type="button" class="ov-btn" id="ha-add">추가</button>' +
+        '</div>' +
+        (done.length
+          ? '<div class="ha-done-head" id="ha-done-toggle">' +
+              '<span>완료한 지시 ' + done.length + '건</span>' +
+              '<span style="color:#CBD5E1">' + (_showDone ? '▴' : '▾') + '</span>' +
+              '<span class="ha-hint">되돌리려면 체크를 풀면 됩니다</span></div>' +
+            (_showDone ? done.map(function (r) { return itemRow(r, _rows.indexOf(r)); }).join('') : '')
+          : '') +
+        '<div class="ha-hint" style="margin-top:10px">완료를 누르면 목록에서 내려가고 앱에서도 사라집니다</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function moneyCard() {
+    var d = _st.divisions || [];
+    var rows = d.map(function (r) {
+      var rate = (r.rate === null || r.rate === undefined) ? null : r.rate;
+      var tgt;
+      if (!r.target_editable) {
+        tgt = '<span class="ha-num">' + haMoney(r.target) + '</span>';
+      } else {
+        tgt = '<input class="ha-tgt" data-div="' + esc(r.id) + '" value="' +
+              (r.target ? Math.round(r.target).toLocaleString() : '') +
+              '" placeholder="미등록">';
+      }
+      return '<tr>' +
+        '<td><b' + (r.models ? '' : ' class="ha-dim"') + '>' + esc(r.label) + '</b></td>' +
+        '<td class="ha-num' + (r.actual ? '' : ' ha-dim') + '">' +
+          (r.actual_source ? haMoney(r.actual) : '—') + '</td>' +
+        '<td>' + (r.actual_source
+          ? '<span class="ha-tag auto">' + esc(r.actual_source) + '</span>' +
+            (r.actual_at ? ' <span class="ha-hint">' + esc(String(r.actual_at).slice(5)) + '</span>' : '')
+          : '<span class="ha-hint">등록된 모델 없음</span>') + '</td>' +
+        '<td>' + tgt + '</td>' +
+        '<td>' + (r.target_source
+          ? '<span class="ha-tag ' + (r.target_editable ? 'hand' : 'auto') + '">' +
+            esc(r.target_source) + '</span>'
+          : '<span class="ha-tag none">미등록</span>') + '</td>' +
+        '<td>' + (rate === null
+          ? '<span class="ha-hint">타겟이 없어 계산 안 됨</span>'
+          : '<div style="display:flex;align-items:center;gap:8px">' +
+            '<span class="ha-bar"><i style="width:' + Math.max(0, Math.min(100, rate)) + '%"></i></span>' +
+            '<b>' + rate + '%</b></div>') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div class="ha-card">' +
+      '<div class="hd"><b>사업부별 ' + Number(_month.slice(5)) + '월 매출</b>' +
+        '<span class="ha-hint">자료에 계획이 있으면 타겟도 자동 · 없는 사업부만 직접 넣습니다</span>' +
+        '<span class="ha-sp"></span>' +
+        '<span class="ha-hint" id="ha-tgt-msg"></span>' +
+        '<select class="ov-btn" id="ha-month" style="padding:0 10px">' +
+          monthOptions(_month) + '</select>' +
+      '</div>' +
+      '<table class="ha-tbl"><thead><tr>' +
+        '<th style="width:150px"><div class="ha-t">사업부</div><div class="ha-d">앱 표시 순서</div></th>' +
+        '<th style="width:110px"><div class="ha-t">실적</div><div class="ha-d">자동</div></th>' +
+        '<th style="width:170px"><div class="ha-t">실적 출처</div><div class="ha-d">어디서 모이나</div></th>' +
+        '<th style="width:140px"><div class="ha-t">타겟</div><div class="ha-d">그 달 목표</div></th>' +
+        '<th style="width:150px"><div class="ha-t">타겟 출처</div><div class="ha-d">자동 / 직접</div></th>' +
+        '<th><div class="ha-t">달성률</div><div class="ha-d">자동</div></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div class="bd ha-hint">타겟이 비면 앱 홈에서 그 사업부는 \'미등록\'으로 보입니다 · ' +
+        '숫자를 적고 칸 밖을 누르면 저장됩니다</div>' +
+    '</div>';
+  }
+
+  function statusCard() {
+    var rows = (_st.divisions || []).map(function (r) {
+      var c = r.counts || {};
+      var n = function (v, col) {
+        return '<td class="ha-num"' + (v ? ' style="color:' + col + '"' : ' class="ha-num ha-dim"') +
+               '>' + (v || 0) + '</td>';
+      };
+      return '<tr>' +
+        '<td><b' + (r.models ? '' : ' class="ha-dim"') + '>' + esc(r.label) + '</b></td>' +
+        '<td class="ha-hint">' + (r.models
+          ? ('프로젝트 ' + r.projects_with_models + '개 · 모델 ' + r.models + '종')
+          : '등록된 모델 없음') + '</td>' +
+        n(c.normal, '#059669') + n(c.delayed, '#DC2626') +
+        n(c.issue, '#475569') + n(c.watch, '#E97132') +
+      '</tr>';
+    }).join('');
+    return '<div class="ha-card">' +
+      '<div class="hd"><b>사업부별 진행현황</b>' +
+        '<span class="ha-hint">전부 자동 — 모델 관리에 적은 값을 셉니다. 여기서는 확인만 합니다</span></div>' +
+      '<table class="ha-tbl"><thead><tr>' +
+        '<th style="width:150px"><div class="ha-t">사업부</div></th>' +
+        '<th style="width:200px"><div class="ha-t">규모</div><div class="ha-d">프로젝트 · 모델</div></th>' +
+        '<th style="width:90px"><div class="ha-t">정상</div></th>' +
+        '<th style="width:90px"><div class="ha-t">지연</div></th>' +
+        '<th style="width:100px"><div class="ha-t">특이사항</div></th>' +
+        '<th><div class="ha-t">집중관리</div><div class="ha-d">보류 포함</div></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function previewCard() {
+    var live = liveRows();
+    var divs = (_st.divisions || []).filter(function (r) { return r.actual || r.has_target; });
+    return '<div class="ha-prev">' +
+      '<div class="ha-hint" style="font-weight:700;margin-bottom:6px">앱 홈에서 이렇게 보입니다</div>' +
+      '<div class="ha-phone"><div class="pb">OneView</div><div class="pp">' +
+        '<div class="ha-boss"><div class="bt">● 사장님 지시사항<span class="ha-sp"></span>' +
+          '<span style="font-weight:500;color:#B45309">' + live.length + '건</span></div>' +
+          (live.length ? live.map(function (r) {
+            var b = badge(r);
+            return '<div class="bi"><div class="dot">·</div><div class="tx">' + esc(r.text) +
+                   ' <span class="ha-pill ' + b.c + '">' + esc(b.t) + '</span></div></div>';
+          }).join('') : '<div class="bi"><div class="tx">아직 등록된 지시가 없습니다</div></div>') +
+        '</div>' +
+        '<div class="ha-mini"><div class="h">' + Number(_month.slice(5)) + '월 매출' +
+          '<span class="ha-sp"></span><span style="font-weight:800;color:#0F2C59">' +
+          haMoney(_st.total_actual) + ' / ' + haMoney(_st.total_target) + '</span></div>' +
+          divs.map(function (r) {
+            return '<div class="r"><span class="n">' + esc(r.label.replace('사업부', '')) + '</span>' +
+              '<span class="b"><i style="width:' +
+              Math.max(0, Math.min(100, r.rate || 0)) + '%"></i></span>' +
+              (r.has_target ? (r.rate + '%') : '미등록') + '</div>';
+          }).join('') +
+        '</div>' +
+      '</div></div></div>';
+  }
+
+  function paint() {
+    var c = document.getElementById('v2-content');
+    if (!c) return;
+    c.innerHTML =
+      '<div class="ha-scope">전사 · 모든 사업부</div>' +
+      '<div class="ov-page-head"><div><p class="ttl">홈 관리</p>' +
+      '<p class="desc">앱 홈에 무엇이 뜨는지 한자리에서 봅니다. 손으로 넣는 건 지시사항과, ' +
+      '자료에 계획이 없는 사업부의 타겟뿐입니다.</p></div></div>' +
+      '<div class="ha-wrap"><div>' + ordersCard() + moneyCard() + statusCard() + '</div>' +
+      previewCard() + '</div>';
+    bind();
+  }
+
+  function repaintOrders() {
+    var box = document.getElementById('ha-ord-list');
+    if (!box) return paint();
+    paint();
+  }
+
+  function bind() {
+    var list = document.getElementById('ha-ord-list');
+    if (list) {
+      list.addEventListener('input', onEdit);
+      list.addEventListener('change', onEdit);
+      list.addEventListener('click', function (e) {
+        var x = e.target.closest('[data-act="del"]');
+        if (x) {
+          var i = Number(x.closest('.ha-it').getAttribute('data-i'));
+          if (_rows[i] && confirm('이 줄을 지울까요?\n\n' + (_rows[i].text || ''))) {
+            _rows.splice(i, 1);
+            repaintOrders();
+          }
+        }
+      });
+    }
+    var dt = document.getElementById('ha-done-toggle');
+    if (dt) dt.onclick = function () { _showDone = !_showDone; repaintOrders(); };
+
+    var nk = document.getElementById('ha-new-kind'), nd = document.getElementById('ha-new-due');
+    if (nk) nk.onchange = function () { nd.disabled = nk.value !== 'date'; };
+    var add = document.getElementById('ha-add');
+    if (add) add.onclick = addRow;
+    var ni = document.getElementById('ha-new');
+    if (ni) ni.onkeydown = function (e) { if (e.key === 'Enter') addRow(); };
+
+    var sv = document.getElementById('ha-ord-save');
+    if (sv) sv.onclick = saveOrders;
+
+    var ms = document.getElementById('ha-month');
+    if (ms) ms.onchange = function () { window.renderHomeAdmin(ms.value); };
+
+    document.querySelectorAll('.ha-tgt').forEach(function (el) {
+      el.addEventListener('change', function () { saveTarget(el); });
+    });
+  }
+
+  function onEdit(e) {
+    var el = e.target, wrap = el.closest('.ha-it');
+    if (!wrap || !el.dataset.k) return;
+    var i = Number(wrap.getAttribute('data-i'));
+    var r = _rows[i];
+    if (!r) return;
+    var k = el.dataset.k;
+    if (k === 'done') {
+      r.done = el.checked;
+      r.done_at = el.checked ? today() : '';
+      return repaintOrders();          // 완료는 목록에서 바로 내려간다
+    }
+    if (k === 'due_kind') {
+      r.due_kind = el.value;
+      if (r.due_kind !== 'date') r.due = '';
+      return repaintOrders();
+    }
+    r[k] = el.value;
+    if (k === 'text' || k === 'due') {
+      // 미리보기만 다시 그린다 — 타이핑 중에 표 전체를 새로 그리면 커서가 튄다
+      var prev = document.querySelector('.ha-prev');
+      if (prev) prev.outerHTML = previewCard();
+    }
+  }
+
+  function addRow() {
+    var t = (document.getElementById('ha-new').value || '').trim();
+    if (!t) return;
+    var kind = document.getElementById('ha-new-kind').value;
+    var due = document.getElementById('ha-new-due').value || '';
+    _rows.push({ text: t, due_kind: kind, due: kind === 'date' ? due : '',
+                 created: today(), done: false, done_at: '' });
+    repaintOrders();
+  }
+
+  function msg(id, text, bad) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text || '';
+    el.style.color = bad ? '#DC2626' : '#059669';
+    if (text) setTimeout(function () { if (el) el.textContent = ''; }, 2600);
+  }
+
+  function saveOrders() {
+    var body = { items: _rows.filter(function (r) { return String(r.text || '').trim(); }) };
+    fetch('/admin/home/orders', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        return j; }); })
+      .then(function (j) {
+        _rows = j.items || [];
+        repaintOrders();
+        msg('ha-ord-msg', '저장했습니다');
+      })
+      .catch(function (e) { msg('ha-ord-msg', '저장 실패: ' + e.message, true); });
+  }
+
+  function saveTarget(el) {
+    var fd = new FormData();
+    fd.append('month', _month);
+    fd.append('division_id', el.getAttribute('data-div'));
+    fd.append('total', String(el.value || '').replace(/,/g, '').trim() || '0');
+    fetch('/admin/home/division-target', {
+      method: 'POST', credentials: 'same-origin', body: fd
+    }).then(function (r) { return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        return j; }); })
+      .then(function (j) {
+        _st.divisions = j.divisions || _st.divisions;
+        _st.total_target = (_st.divisions || []).reduce(function (a, b) {
+          return a + (b.target || 0); }, 0);
+        paint();
+        msg('ha-tgt-msg', '타겟을 저장했습니다');
+      })
+      .catch(function (e) { msg('ha-tgt-msg', '저장 실패: ' + e.message, true); });
+  }
+
+  window.renderHomeAdmin = function (month) {
+    var c = document.getElementById('v2-content');
+    if (!c) return;
+    _month = month || _month || thisMonth();
+    c.innerHTML = '<div class="mdl-loading">불러오는 중…</div>';
+    fetch('/admin/home/summary?month=' + encodeURIComponent(_month),
+          { credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (j) {
+          if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+          return j; }); })
+      .then(function (j) {
+        _st = j;
+        _month = j.month || _month;
+        _rows = (j.orders || []).slice();
+        paint();
+      })
+      .catch(function (e) {
+        c.innerHTML = '<div class="mdl-empty">홈 관리를 불러오지 못했습니다 — ' +
+                      esc(e.message) + '</div>';
+      });
+  };
 })();
 </script>
 </body>

@@ -20,7 +20,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Response, Cookie, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Response, Cookie, Depends, Body
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -26474,6 +26474,224 @@ _stamp_holds_once()
 # 올려도 된다.
 # ─────────────────────────────────────────────────────────────
 REVENUE_FILE = DATA_DIR / "revenue.json"
+
+# ── 사장님 지시사항 ─────────────────────────────────────────────
+#
+# 앱 홈 맨 위 노란 카드. 전사 공통이라 사업부와 상관없이 한 벌이다.
+# 줄마다 기한(날짜까지 · 기한 없음 · 매일 · 매주)과 등록일을 따로 가진다.
+import home_orders as _ho
+
+ORDERS_FILE = DATA_DIR / "home_orders.json"
+
+
+def _orders_load() -> dict:
+    try:
+        return _ho.load(ORDERS_FILE)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/home/orders")
+def get_home_orders():
+    """앱 홈이 읽는다 — 완료는 빼고, 급한 것부터."""
+    data = _orders_load()
+    items = _ho.for_app(data.get("items"))
+    return {"items": items, "count": len(items),
+            "updated_at": data.get("updated_at", "")}
+
+
+@app.get("/admin/home/orders")
+def admin_home_orders(_admin: int = Depends(get_admin_session)):
+    """admin 편집 화면 — 완료한 줄까지 다 준다."""
+    data = _orders_load()
+    items = data.get("items") or []
+    return {"items": items,
+            "live": _ho.for_app(items),
+            "done_count": sum(1 for i in items if i.get("done")),
+            "updated_at": data.get("updated_at", "")}
+
+
+# ── 사업부별 한 눈 (앱 홈의 매출 · 진행현황) ────────────────────
+#
+# 사람이 넣는 건 타겟뿐이다. 실적은 사업부마다 이미 들어오는 자료가 달라서
+# (반도체는 주간보고, 블룸은 매일 올리는 보고자료, 나머지는 모델의 판가 ×
+# 출하 실적) 여기서 출처까지 같이 들고 나간다. 어디서 온 숫자인지 모르면
+# 틀렸을 때 어디를 고쳐야 하는지도 모른다.
+DIV_TARGET_FILE = DATA_DIR / "division_targets.json"
+
+
+def _div_targets() -> dict:
+    try:
+        raw = json.loads(DIV_TARGET_FILE.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+
+def _div_target_set(month: str, division_id: str, total) -> dict:
+    data = _div_targets()
+    mon = data.setdefault(month, {})
+    try:
+        v = float(str(total).replace(",", "").strip() or 0)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="타겟은 숫자로 넣어 주세요.")
+    if v > 0:
+        mon[division_id] = {"total": round(v, 2),
+                            "at": datetime.now().isoformat(timespec="seconds")}
+    else:
+        mon.pop(division_id, None)          # 0 이면 지운다 = '미등록'
+    DIV_TARGET_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                               encoding="utf-8")
+    return data
+
+
+def _div_model_money(models: list) -> float:
+    """모델의 판가 × 출하 실적. 달을 나눌 수 없어서 누계다."""
+    out = 0.0
+    for m in models or []:
+        if not isinstance(m, dict):
+            continue
+        try:
+            out += _as_money(m.get("price"), 0) * int(m.get("shipped_qty") or 0)
+        except Exception:
+            continue
+    return round(out, 2)
+
+
+def _div_counts(models: list) -> dict:
+    """정상 · 지연 · 특이사항 · 집중관리. 모델 관리에 적은 값을 그대로 센다."""
+    c = {"total": 0, "normal": 0, "delayed": 0, "issue": 0, "watch": 0}
+    for m in models or []:
+        if not isinstance(m, dict):
+            continue
+        c["total"] += 1
+        alert = _model_alert(m, _display_group(m))
+        if alert == "지연":
+            c["delayed"] += 1
+        elif alert == "주의" or _model_hold(m):
+            c["watch"] += 1                      # 집중관리 (보류 포함)
+        elif str(m.get("issues") or "").strip():
+            c["issue"] += 1                      # 특이사항
+        else:
+            c["normal"] += 1
+    return c
+
+
+def _home_division_rows(month: str) -> list:
+    data = _load_models()
+    projects = data.get("projects") or {}
+    targets = (_div_targets().get(month) or {})
+
+    # 반도체는 주간보고에서 실적·타겟이 온다 (매출 관리 화면이 쓰는 그 값)
+    try:
+        rv = _rev.month_view(_load_revenue(), month)
+    except Exception:
+        rv = {}
+
+    rows = []
+    for d in _cl.get_divisions(visible_only=True):
+        did = d.get("id")
+        try:
+            plist = _cl.get_projects(did, visible_only=True)
+        except Exception:
+            plist = []
+        models, with_models = [], 0
+        for p in plist:
+            ms = (projects.get(p.get("id")) or {}).get("models") or []
+            if ms:
+                with_models += 1
+            models.extend(ms)
+
+        actual, a_src, a_at = 0.0, "", ""
+        target, t_src = 0.0, ""
+
+        if did == "semiconductor":
+            actual = float(rv.get("actual") or 0)
+            a_src, a_at = "주간보고", str(rv.get("as_of") or "")
+            if rv.get("has_target"):
+                target, t_src = float(rv.get("target") or 0), "직접 입력"
+        elif did == "bloom":
+            board = (projects.get(_BLOOM_STORE) or {}).get("daily_board") or {}
+            money = (board.get("money") or {}).get("total") or {}
+            actual = float(money.get("done_usd") or 0)
+            target = float(money.get("plan_usd") or 0)
+            a_at = str(board.get("report_date") or "")
+            if actual or target:
+                a_src, t_src = "보고자료 금액", "보고자료 계획"
+        else:
+            actual = _div_model_money(models)
+            a_src = "모델 판가 × 출하" if models else ""
+
+        # 자료에 계획이 없는 사업부는 손으로 넣은 타겟을 쓴다
+        if not target and did in targets:
+            target = float((targets.get(did) or {}).get("total") or 0)
+            t_src = "직접 입력"
+
+        rows.append({
+            "id": did, "label": d.get("label"), "order": d.get("order", 999),
+            "actual": round(actual, 2), "actual_source": a_src, "actual_at": a_at,
+            "target": round(target, 2), "target_source": t_src,
+            "has_target": target > 0,
+            "rate": round(actual / target * 100, 1) if target > 0 else None,
+            "projects": len(plist), "projects_with_models": with_models,
+            "models": len(models),
+            "counts": _div_counts(models),
+            "target_editable": t_src != "보고자료 계획",
+        })
+    rows.sort(key=lambda r: r.get("order", 999))
+    return rows
+
+
+@app.get("/admin/home/summary")
+def admin_home_summary(month: str = None,
+                       _admin: int = Depends(get_admin_session)):
+    """admin '홈 관리' 화면 — 앱 홈에 뜨는 것을 한자리에서."""
+    month = _check_month(month)
+    rows = _home_division_rows(month)
+    orders = _orders_load()
+    return {
+        "month": month,
+        "divisions": rows,
+        "total_actual": round(sum(r["actual"] for r in rows), 2),
+        "total_target": round(sum(r["target"] for r in rows), 2),
+        "no_target": [r["id"] for r in rows
+                      if not r["has_target"] and r["target_editable"]],
+        "orders": orders.get("items") or [],
+        "orders_live": _ho.for_app(orders.get("items")),
+    }
+
+
+@app.post("/admin/home/division-target")
+def admin_home_division_target(month: str = Form(...),
+                               division_id: str = Form(...),
+                               total: str = Form(...),
+                               _admin: int = Depends(get_admin_session)):
+    """자료에 계획이 없는 사업부의 그 달 타겟. 0 이면 지운다."""
+    month = _check_month(month)
+    if not _cl.get_division(division_id):
+        raise HTTPException(status_code=400, detail="없는 사업부입니다.")
+    _div_target_set(month, division_id, total)
+    return {"ok": True, "divisions": _home_division_rows(month)}
+
+
+@app.put("/admin/home/orders")
+async def admin_home_orders_save(payload: dict = Body(...),
+                                 _admin: int = Depends(get_admin_session)):
+    """목록을 통째로 저장한다. 줄이 몇 개 안 되고 순서도 뜻이 있어서
+    한 줄씩 고치는 것보다 통째로 주고받는 쪽이 어긋날 일이 없다."""
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail="items 목록이 필요합니다.")
+    if len(items) > _ho.MAX_ITEMS:
+        raise HTTPException(status_code=400,
+                            detail=f"지시사항은 {_ho.MAX_ITEMS}줄까지입니다.")
+    data = _ho.save(ORDERS_FILE, items)
+    return {"ok": True, "items": data["items"], "live": _ho.for_app(data["items"]),
+            "updated_at": data["updated_at"]}
+
+
 _MONTH_RE = re.compile(r"20\d\d-\d{2}$")
 
 
