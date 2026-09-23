@@ -5619,7 +5619,9 @@ window.renderAdminV2ByDivision = function(){
     '.ha-done-head { display:flex; align-items:center; gap:8px; padding:10px 0 2px; cursor:pointer;',
     '  font-size:12px; font-weight:700; color:#64748B; border-top:1px solid #F1F5F9; margin-top:6px; }',
     // 표
-    '.ha-tbl { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; }',
+    '.ha-tbl { width:100%; min-width:880px; border-collapse:separate; border-spacing:0; font-size:12.5px; }',
+    '.ha-sc { overflow-x:auto; }',
+    '.ha-tbl td:first-child { white-space:nowrap; }',
     '.ha-tbl th { background:#F8FAFC; padding:8px 14px 9px; text-align:left; border-bottom:1px solid #E4E7EC; vertical-align:top; }',
     '.ha-tbl td { padding:9px 14px; border-bottom:1px solid #F1F5F9; }',
     '.ha-tbl tr:last-child td { border-bottom:none; }',
@@ -5659,7 +5661,7 @@ window.renderAdminV2ByDivision = function(){
     '.ha-mini .r .n { font-weight:700; color:#0F172A; min-width:64px; }',
     '.ha-mini .r .b { flex:1; height:4px; background:#F1F5F9; border-radius:2px; overflow:hidden; }',
     '.ha-mini .r .b i { display:block; height:100%; background:#0F2C59; }',
-    '@media (max-width:1180px) { .ha-wrap { grid-template-columns:minmax(0,1fr); } .ha-prev { position:static; } }',
+    '@media (max-width:1560px) { .ha-wrap { grid-template-columns:minmax(0,1fr); } .ha-prev { position:static; max-width:420px; } }',
     '.mdl-late-badge { background:#FEE2E2; color:#991B1B; }',
     '.mdl-soon-badge { background:#FFEDD5; color:#9A3412; }',
     '.mdl-why-late, .mdl-why-soon { font-size:10.5px; font-weight:700; margin-top:2px;',
@@ -11729,14 +11731,14 @@ window._ovProjectKey = function() {
         '<select class="ov-btn" id="ha-month" style="padding:0 10px">' +
           monthOptions(_month) + '</select>' +
       '</div>' +
-      '<table class="ha-tbl"><thead><tr>' +
+      '<div class="ha-sc"><table class="ha-tbl"><thead><tr>' +
         '<th style="width:150px"><div class="ha-t">사업부</div><div class="ha-d">앱 표시 순서</div></th>' +
         '<th style="width:110px"><div class="ha-t">실적</div><div class="ha-d">자동</div></th>' +
         '<th style="width:170px"><div class="ha-t">실적 출처</div><div class="ha-d">어디서 모이나</div></th>' +
         '<th style="width:140px"><div class="ha-t">타겟</div><div class="ha-d">그 달 목표</div></th>' +
         '<th style="width:150px"><div class="ha-t">타겟 출처</div><div class="ha-d">자동 / 직접</div></th>' +
         '<th><div class="ha-t">달성률</div><div class="ha-d">자동</div></th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="bd ha-hint">타겟이 비면 앱 홈에서 그 사업부는 \'미등록\'으로 보입니다 · ' +
         '숫자를 적고 칸 밖을 누르면 저장됩니다</div>' +
     '</div>';
@@ -11761,14 +11763,14 @@ window._ovProjectKey = function() {
     return '<div class="ha-card">' +
       '<div class="hd"><b>사업부별 진행현황</b>' +
         '<span class="ha-hint">전부 자동 — 모델 관리에 적은 값을 셉니다. 여기서는 확인만 합니다</span></div>' +
-      '<table class="ha-tbl"><thead><tr>' +
+      '<div class="ha-sc"><table class="ha-tbl"><thead><tr>' +
         '<th style="width:150px"><div class="ha-t">사업부</div></th>' +
         '<th style="width:200px"><div class="ha-t">규모</div><div class="ha-d">프로젝트 · 모델</div></th>' +
         '<th style="width:90px"><div class="ha-t">정상</div></th>' +
         '<th style="width:90px"><div class="ha-t">지연</div></th>' +
         '<th style="width:100px"><div class="ha-t">특이사항</div></th>' +
         '<th><div class="ha-t">집중관리</div><div class="ha-d">보류 포함</div></th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
   }
 
   function previewCard() {
