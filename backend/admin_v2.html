@@ -63,6 +63,14 @@
   }
   .biz-select select option{ color:#111; }
 
+  /* 사업부 고르는 칸은 '사업부' 묶음 안에 둔다. 맨 위에 두면 전사 화면
+     (홈 관리) 을 보면서도 '반도체사업부' 가 걸려 있어 헷갈린다. */
+  .biz-select.biz-in-nav{ margin:2px 0 6px; padding:7px 10px; }
+  .biz-select.biz-in-nav .label{ display:none; }
+  .biz-select.biz-in-nav select{ font-size:13.5px; }
+  /* 전사 화면을 보는 동안에는 사업부 칸을 흐리게 — 지금 이 화면과 상관없다 */
+  body.scope-all .biz-select.biz-in-nav{ opacity:.45; }
+
   .nav-title{ font-size:10px; color:#7BA4DC; letter-spacing:.12em; padding:4px 8px 0; font-weight:800; }
   .nav{ display:flex; flex-direction:column; gap:2px; }
   .nav-item{
@@ -194,20 +202,20 @@
       <span class="sub">ADMIN</span>
     </div>
 
-    <div class="biz-select">
+    <div class="nav-title">전사</div>
+    <nav class="nav">
+      <div class="nav-item" data-page="homeadmin"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></span><span>홈 관리</span></div>
+    </nav>
+    <div class="nav-title">사업부</div>
+    <div class="biz-select biz-in-nav">
       <span class="label">사업부</span>
       <select id="v2-division-select">
         <option value="">로딩 중...</option>
       </select>
     </div>
 
-    <div class="nav-title">전사</div>
     <nav class="nav">
-      <div class="nav-item" data-page="homeadmin"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></span><span>홈 관리</span></div>
       <div class="nav-item" data-page="home"><span class="icon"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg></span><span>홈 대시보드</span></div>
-    </nav>
-    <div class="nav-title">사업부</div>
-    <nav class="nav">
       <div class="nav-item active" data-page="models"><span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span><span>모델 관리</span></div>
       <div class="nav-item" data-page="revenue"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg></span><span>매출 관리</span></div>
     </nav>
@@ -914,6 +922,7 @@ window._attachAutoListBehavior = function(el){
 
   function renderPage(pg){
     const c = document.getElementById('v2-content');
+    document.body.classList.toggle('scope-all', pg === 'homeadmin');
     if (pg === 'homeadmin') {
       // 전사 화면이다 — 사이드바에 걸린 사업부 이름을 빵부스러기에 두면
       // 반도체만 보고 있는 줄 안다
