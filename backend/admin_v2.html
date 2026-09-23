@@ -5531,7 +5531,11 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-group-cnt { margin-left: 8px; font-size: 12px; color: #64748B; font-weight: 600; }',
     // 개발품이 늦고 있으면 표를 훑지 않아도 여기서 보인다.
     '.mdl-late-badge, .mdl-soon-badge { margin-left:8px; padding:1.5px 8px; border-radius:99px;',
-    '  font-size:11px; font-weight:800; cursor:default; }',
+    '  font-size:11px; font-weight:800; cursor:pointer; user-select:none; }',
+    // 누르면 그 줄만 남는다 (다시 누르면 해제)
+    '.mdl-badge-on { box-shadow:0 0 0 2px currentColor inset; }',
+    '.mdl-badge-clear { margin-left:8px; padding:1.5px 8px; border-radius:99px; font-size:11px;',
+    '  font-weight:700; cursor:pointer; background:#E2E8F0; color:#334155; user-select:none; }',
     '.mdl-late-badge { background:#FEE2E2; color:#991B1B; }',
     '.mdl-soon-badge { background:#FFEDD5; color:#9A3412; }',
     '.mdl-why-late, .mdl-why-soon { font-size:10.5px; font-weight:700; margin-top:2px;',
@@ -6647,6 +6651,17 @@ window.renderAdminV2ByDivision = function(){
     };
   };
 
+  // 그룹 머리줄의 '지연' · '집중관리' 뱃지 — 누르면 그 줄만, 다시 누르면 해제.
+  // 같은 스크립트 블록 밖(인라인 onclick)에서 부르므로 window 에 건다.
+  window._mdlAlertFilter = null;
+  window._mdlAlertPick = function(g, kind) {
+    var f = window._mdlAlertFilter;
+    window._mdlAlertFilter =
+      (!g || (f && f.g === g && f.kind === kind)) ? null : { g: g, kind: kind };
+    var box = document.getElementById('mdl-table-box');
+    if (box && window.renderTable) window.renderTable(box);
+  };
+
   window.renderTable = function renderTable(container) {
     // 프로세스 편집에서 돌아올 때 툴바·노트·유형바 복원
     ['mdl-toolbar', 'mdl-note-card', 'mdl-types-bar'].forEach(function(id) {
@@ -6739,6 +6754,11 @@ window.renderAdminV2ByDivision = function(){
       return '';
     }
     var _priceWarnCount = 0;
+    // 다른 프로젝트로 가면 뱃지 필터는 푼다 (모델이 통째로 바뀐다)
+    if (window._mdlAlertFilterPk !== _pk) {
+      window._mdlAlertFilter = null;
+      window._mdlAlertFilterPk = _pk;
+    }
     const tabCount = document.getElementById('mdl-tab-count');
     if (tabCount) tabCount.textContent = (window._modelsData || []).length;
 
@@ -6766,19 +6786,30 @@ window.renderAdminV2ByDivision = function(){
       var _soon = list.filter(function(x) {
         return (_al[x.id] || {}).kind === '주의';
       });
+      // 지연 · 집중관리 뱃지를 누르면 그 줄만 남긴다 (다시 누르면 해제)
+      var _flt = window._mdlAlertFilter;
+      var _on = _flt && _flt.g === g ? _flt.kind : '';
+      var _rows = _on === '지연' ? _late : (_on === '주의' ? _soon : list);
       html += '<tr class="mdl-group-row"><td colspan="18">' +
         '<span class="mdl-group-badge mdl-group-' + (g === '양산' ? 'mass' : 'dev') + '">' + g + '</span>' +
-        '<span class="mdl-group-cnt">' + list.length + '개</span>' +
+        '<span class="mdl-group-cnt">' +
+          (_on ? _rows.length + ' / ' + list.length + '개' : list.length + '개') + '</span>' +
         (_late.length
-          ? '<span class="mdl-late-badge" title="' +
+          ? '<span class="mdl-late-badge' + (_on === '지연' ? ' mdl-badge-on' : '') +
+            '" onclick="window._mdlAlertPick(\'' + g + '\', \'지연\')" title="' +
             _late.slice(0, 8).map(function(x) {
               return String(x.name || x.id) + ' — ' + ((_al[x.id] || {}).why || '사유 미기재');
             }).join('&#10;').replace(/"/g, '&quot;') +
             '">지연 ' + _late.length + '</span>' : '') +
         (_soon.length
-          ? '<span class="mdl-soon-badge">집중관리 ' + _soon.length + '</span>' : '') +
+          ? '<span class="mdl-soon-badge' + (_on === '주의' ? ' mdl-badge-on' : '') +
+            '" onclick="window._mdlAlertPick(\'' + g + '\', \'주의\')" title="누르면 이 줄만 봅니다">' +
+            '집중관리 ' + _soon.length + '</span>' : '') +
+        (_on
+          ? '<span class="mdl-badge-clear" onclick="window._mdlAlertPick(\'\', \'\')">전체 보기</span>'
+          : '') +
         '</td></tr>';
-      list.forEach(function(m) {
+      _rows.forEach(function(m) {
         const price = _shownPrice(m);
         const mcost = _moneyOf(m.material_cost);
         const ratio = price > 0 ? ((mcost / price) * 100).toFixed(1) + '%' : '-';
