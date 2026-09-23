@@ -42,7 +42,7 @@ ok += 1
 
 # 안내 문구 · 범례
 assert '이 표는 무엇인가요' in SRC and 'mdl-guide' in SRC
-assert '값을 눌러 바로 고칩니다' in SRC and '회색 점선 = 자동 계산' in SRC
+assert '회색 칸 = 직접 입력' in SRC and '점선 칸 = 자동 계산' in SRC
 ok += 1
 
 # 빈 칸 예시 문구 (숫자 칸). 메모 칸은 머리글이 설명하므로 비워 둔다.
@@ -50,7 +50,7 @@ assert 'placeholder="예: 4800"' in SRC and 'placeholder="예: 4150"' in SRC
 ok += 1
 
 # 값은 글자처럼 보이고 누를 때만 칸이 된다 (상자 벽 방지)
-assert '.mdl-table .mdl-input, .mdl-table .mdl-memo { background:transparent;' in SRC
+assert 'background-color:#F4F7FB; border:1px solid #E3E9F1; }' in SRC, '입력 칸이 그냥 봐서는 안 보인다'
 ok += 1
 
 # 일정 경고는 사람이 고르는 상태와 다른 것이라 따로 표를 단다
