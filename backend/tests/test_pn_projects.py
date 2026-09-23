@@ -23,9 +23,11 @@ assert not stray, f'같은 목록이 {len(stray)}군데 더 박혀 있다: {stra
 assert "_pk === 'powerbox'" not in HTML, '모델 추가 쪽이 아직 직접 비교한다'
 ok += 1
 
-# 세 군데가 다 헬퍼를 쓴다
-assert HTML.count('window._mdlHasPN(') >= 3, \
-    f"_mdlHasPN 을 {HTML.count('window._mdlHasPN(')}군데서만 쓴다 (머리글·입력칸·모델 추가)"
+# 쓰는 곳은 다 헬퍼를 거친다 (표는 줄마다 부르지 않고 _hasPN 에 한 번 담는다)
+assert 'var _hasPN = window._mdlHasPN(' in HTML, '표가 헬퍼를 안 쓴다'
+assert HTML.count('window._mdlHasPN(') >= 2, \
+    f"_mdlHasPN 을 {HTML.count('window._mdlHasPN(')}군데서만 쓴다 (표·모델 추가)"
+assert HTML.count('_hasPN') >= 3, '파트넘버 칸이 _hasPN 을 안 본다'
 ok += 1
 
 # 큐리 키가 설정의 실제 키와 같은지
