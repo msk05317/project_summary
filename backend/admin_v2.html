@@ -6445,8 +6445,12 @@ window.renderAdminV2ByDivision = function(){
   }
 
   // ── 삭제(저장 전까지 되돌리기 가능) + 토스트 ──
+  // 사람이 지우기로 지운 것만 서버에 '지워도 된다' 고 알린다. 화면이
+  // 목록을 덜 들고 저장해서 나머지가 통째로 사라진 적이 있다.
+  window._mdlDidDelete = false;
   window.mdlDeleteModels = function(ids, container) {
     if (!ids || !ids.length) return;
+    window._mdlDidDelete = true;
     var removed = (window._modelsData || []).filter(function(m) { return ids.indexOf(m.id) >= 0; });
     if (!removed.length) return;
     window._modelsData = (window._modelsData || []).filter(function(m) { return ids.indexOf(m.id) < 0; });
@@ -6879,6 +6883,7 @@ window.renderAdminV2ByDivision = function(){
         b.onclick = function() {
           var id = b.closest('tr').dataset.modelId;
           if (!confirm('이 제품을 지울까요?')) return;
+          window._mdlDidDelete = true;
           window._modelsData = (window._modelsData || []).filter(function(x) {
             return String(x.id) !== String(id);
           });
@@ -7773,6 +7778,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     }).then(function(r) { return r.json(); })
       .then(function(d) {
         window._modelsData = (d && d.models) || [];
+        window._mdlDidDelete = false;
         // 지연 여부는 서버가 앱과 같은 규칙으로 계산해 따로 준다.
         // 모델 안에 섞여 있으면 저장할 때 models.json 에 눌러앉는다.
         window._mdlAlerts = (d && d.alerts) || {};
@@ -7855,7 +7861,8 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ models: window._modelsData, price_mode: mode })
+        body: JSON.stringify({ models: window._modelsData, price_mode: mode,
+                               allow_delete: !!window._mdlDidDelete })
       });
     };
     // 먼저 무엇이 바뀌는지만 물어본다 (저장 안 함)

@@ -1,0 +1,4352 @@
+{
+ "source": "backups/models_20260915_143920.json",
+ "at": "2026-09-15T14:39",
+ "projects": {
+  "chamber": {
+   "models": [
+    {
+     "id": "853-246190-001",
+     "name": "853-246190-001",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 9564.41,
+     "material_cost": 5644,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-156359-006",
+     "name": "715-156359-006",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 10754.3,
+     "material_cost": 6750,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "1EA 조립 완료 (고객측 확인 중)",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "715-156359-024",
+     "name": "715-156359-024",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 10151.85,
+     "material_cost": 7019,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-156359-020",
+     "name": "715-156359-020",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 10853.86,
+     "material_cost": 6773,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "1EA 고객사와 에폭시 2차 도포 완료\n3EA 절삭 완료",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "715-156359-026",
+     "name": "715-156359-026",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 10813.52,
+     "material_cost": 7002,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-156359-008",
+     "name": "715-156359-008",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 10563.4,
+     "material_cost": 6746,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "1EA 황삭 완료",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "715-156359-207",
+     "name": "715-156359-207",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 5962.49,
+     "material_cost": 2917,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-156359-014",
+     "name": "715-156359-014",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 10123.62,
+     "material_cost": 6736,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-156359-009",
+     "name": "715-156359-009",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 12292.03,
+     "material_cost": 6722,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-156359-029",
+     "name": "715-156359-029",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 13895.94,
+     "material_cost": 6744,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-241018-010",
+     "name": "715-241018-010",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 7422.28,
+     "material_cost": 4715,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "1EA 조립 완료 (고객측 확인 중)",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "715-241018-211",
+     "name": "715-241018-211",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 3711.87,
+     "material_cost": 1450,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-241018-101",
+     "name": "715-241018-101",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 7642.48,
+     "material_cost": 4812,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-242910-001",
+     "name": "715-242910-001",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 9842.01,
+     "material_cost": 6840,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "카이저 원소재 11월말 입고 예정",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-11-30",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "715-241018-006",
+     "name": "715-241018-006",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 9200,
+     "material_cost": 5234,
+     "po_qty": 285,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "1EA 조립 완료 (고객측 확인 중)",
+     "dev_type": "DEP챔버",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "15-152302-00",
+     "name": "15-152302-00",
+     "group": "개발",
+     "progress": 38,
+     "status": "정상",
+     "price": 0,
+     "material_cost": 0,
+     "po_qty": 11,
+     "shipped_qty": 1,
+     "due_text": "",
+     "issues": "",
+     "note": "치수, 각인, 사상 문의(5/15)→ 도면대로 진행 컨펌 (8/18)",
+     "part_number": "15-152302-00",
+     "dev_type": "HVM",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "2026-09-10",
+       "status": "완료"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "2026-04-29",
+       "status": "완료"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "15-379966-00",
+     "name": "15-379966-00",
+     "group": "개발",
+     "progress": 31,
+     "status": "정상",
+     "price": 0,
+     "material_cost": 0,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "치수, 각인, 사상 문의(5/15)→ 도면대로 진행 컨펌 (8/18)",
+     "part_number": "15-379966-00",
+     "dev_type": "HVM",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "2026-11-27",
+       "status": "진행중"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "15-389568-00",
+     "name": "15-389568-00",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 0,
+     "material_cost": 0,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "치수, 각인, 사상 문의(5/15)→ 사상 고객 컨펌 필요",
+     "part_number": "15-389568-00",
+     "dev_type": "",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "853-268706-003",
+     "name": "853-268706-003",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 0,
+     "material_cost": 0,
+     "po_qty": 10,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "흥옌 설비 입고 예정 (9/15)",
+     "part_number": "853-268706-003",
+     "dev_type": "HVM",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-09-15",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    }
+   ]
+  },
+  "enclosure": {
+   "models": [
+    {
+     "id": "839-025898-403",
+     "name": "839-025898-403",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 2272.9,
+     "material_cost": 826.65,
+     "po_qty": 0,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "",
+     "dev_type": "413"
+    },
+    {
+     "id": "714-025898-009",
+     "name": "714-025898-009",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 2931.15,
+     "material_cost": 468.15,
+     "po_qty": 0,
+     "shipped_qty": 0,
+     "due_text": "2026-09 주차계획 · 잔여 80개",
+     "issues": "",
+     "note": "",
+     "dev_type": "009",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 20,
+        "actual": 0
+       },
+       "W38": {
+        "plan": 20,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 20,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 20,
+        "actual": 0
+       }
+      }
+     },
+     "weekly_progress": 0.0
+    }
+   ]
+  },
+  "powerbox": {
+   "models": [
+    {
+     "id": "CONGA SPDB",
+     "name": "CONGA SPDB",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 0,
+     "material_cost": 0,
+     "po_qty": 0,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "",
+     "part_number": "925-295706-006",
+     "dev_type": "HVM",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-10-03",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    },
+    {
+     "id": "VDP Aux (Triple Halo)",
+     "name": "VDP Aux (Triple Halo)",
+     "group": "개발",
+     "progress": 15,
+     "status": "정상",
+     "price": 0,
+     "material_cost": 0,
+     "po_qty": 0,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "",
+     "part_number": "925-B84491-101",
+     "dev_type": "HVM",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": "완료"
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "2026-10-10",
+       "actual": "",
+       "status": "진행중"
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": "대기"
+      }
+     ]
+    }
+   ]
+  },
+  "major_module": {
+   "models": [
+    {
+     "id": "EFEM",
+     "name": "EFEM",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 130000,
+     "material_cost": 107900,
+     "po_qty": 97,
+     "shipped_qty": 64,
+     "due_text": "2026-08 주차계획 · 잔여 -1개",
+     "issues": "2대 고객 사급자재 지연 (ETA: 9/20) → W39 (9/23) 출하예정",
+     "note": "",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 2,
+        "actual": 2
+       },
+       "W38": {
+        "plan": 4,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 2,
+        "actual": 0
+       }
+      },
+      "2026-08": {
+       "W32": {
+        "plan": 5,
+        "actual": 5
+       },
+       "W33": {
+        "plan": 5,
+        "actual": 5
+       },
+       "W34": {
+        "plan": 5,
+        "actual": 5
+       },
+       "W35": {
+        "plan": 4,
+        "actual": 5
+       }
+      }
+     },
+     "weekly_progress": 100.0,
+     "part_number": "EFEM"
+    },
+    {
+     "id": "VTM",
+     "name": "VTM",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 240000,
+     "material_cost": 196800,
+     "po_qty": 106,
+     "shipped_qty": 70,
+     "due_text": "2026-08 주차계획 · 잔여 -4개",
+     "issues": "",
+     "note": "",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 4,
+        "actual": 4
+       },
+       "W38": {
+        "plan": 2,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 2,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 1,
+        "actual": 0
+       }
+      },
+      "2026-08": {
+       "W32": {
+        "plan": 4,
+        "actual": 4
+       },
+       "W33": {
+        "plan": 6,
+        "actual": 6
+       },
+       "W34": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W35": {
+        "plan": 1,
+        "actual": 5
+       }
+      }
+     },
+     "weekly_progress": 100.0,
+     "part_number": "VTM"
+    }
+   ]
+  },
+  "frame": {
+   "models": [
+    {
+     "id": "CEFEM FE(HS)",
+     "name": "CEFEM FE(HS)",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 3865,
+     "material_cost": 1269,
+     "po_qty": 319,
+     "shipped_qty": 71,
+     "due_text": "2026-08 주차계획 · 잔여 0개",
+     "issues": "",
+     "note": "",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 11,
+        "actual": 11
+       },
+       "W38": {
+        "plan": 11,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 11,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 11,
+        "actual": 0
+       }
+      },
+      "2026-08": {
+       "W32": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W33": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W34": {
+        "plan": 11,
+        "actual": 11
+       },
+       "W35": {
+        "plan": 11,
+        "actual": 11
+       }
+      }
+     },
+     "weekly_progress": 100.0,
+     "part_number": "CEFEM FE(HS)"
+    },
+    {
+     "id": "CEFEM BE(HS)",
+     "name": "CEFEM BE(HS)",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 2952,
+     "material_cost": 499,
+     "po_qty": 331,
+     "shipped_qty": 33,
+     "due_text": "2026-09 주차계획 · 잔여 27개",
+     "issues": "",
+     "note": "",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W38": {
+        "plan": 9,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 9,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 9,
+        "actual": 0
+       }
+      }
+     },
+     "weekly_progress": 0.0,
+     "part_number": "CEFEM BE(HS)"
+    },
+    {
+     "id": "CEFEM FE(VN)",
+     "name": "CEFEM FE(VN)",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 2443,
+     "material_cost": 1076,
+     "po_qty": 67,
+     "shipped_qty": 56,
+     "due_text": "2026-08 주차계획 · 잔여 0개",
+     "issues": "",
+     "note": "",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 3,
+        "actual": 3
+       },
+       "W37": {
+        "plan": 3,
+        "actual": 3
+       },
+       "W38": {
+        "plan": 6,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 4,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 3,
+        "actual": 0
+       }
+      },
+      "2026-08": {
+       "W32": {
+        "plan": 2,
+        "actual": 2
+       },
+       "W33": {
+        "plan": 2,
+        "actual": 2
+       },
+       "W34": {
+        "plan": 2,
+        "actual": 2
+       },
+       "W35": {
+        "plan": 1,
+        "actual": 1
+       }
+      }
+     },
+     "weekly_progress": 100.0,
+     "part_number": "CEFEM FE(VN)"
+    },
+    {
+     "id": "CEFEM BE(VN)",
+     "name": "CEFEM BE(VN)",
+     "group": "양산",
+     "progress": 0,
+     "status": "정상",
+     "price": 2563,
+     "material_cost": 499,
+     "po_qty": 67,
+     "shipped_qty": 61,
+     "due_text": "2026-08 주차계획 · 잔여 0개",
+     "issues": "",
+     "note": "",
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 2,
+        "actual": 2
+       },
+       "W37": {
+        "plan": 2,
+        "actual": 2
+       },
+       "W38": {
+        "plan": 4,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 4,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 3,
+        "actual": 0
+       }
+      },
+      "2026-08": {
+       "W32": {
+        "plan": 1,
+        "actual": 1
+       },
+       "W33": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W34": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W35": {
+        "plan": 0,
+        "actual": 0
+       }
+      }
+     },
+     "weekly_progress": 100.0,
+     "part_number": "CEFEM BE(VN)"
+    },
+    {
+     "id": "SABRE 3D",
+     "name": "SABRE 3D",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 15625.49,
+     "material_cost": 3688.74,
+     "po_qty": 0,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "",
+     "part_number": "SABRE 3D",
+     "dev_type": "",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "VECTOR CORE",
+     "name": "VECTOR CORE",
+     "group": "개발",
+     "progress": 0,
+     "status": "정상",
+     "price": 3615,
+     "material_cost": 1360,
+     "po_qty": 0,
+     "shipped_qty": 0,
+     "due_text": "",
+     "issues": "",
+     "note": "",
+     "part_number": "VECTOR CORE",
+     "dev_type": "",
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    }
+   ]
+  },
+  "spacex": {
+   "models": [
+    {
+     "id": "556B",
+     "name": "키스톤",
+     "group": "양산",
+     "dev_type": "",
+     "price": 4950.0,
+     "material_cost": 0,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "556B",
+     "po_qty": 2,
+     "shipped_qty": 0
+    },
+    {
+     "id": "66C",
+     "name": "리프트 캐리지",
+     "group": "양산",
+     "dev_type": "",
+     "price": 13000.0,
+     "material_cost": 0,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "66C",
+     "po_qty": 24,
+     "shipped_qty": 12,
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W38": {
+        "plan": 4,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 0,
+        "actual": 0
+       }
+      }
+     },
+     "weekly_progress": 0.0
+    },
+    {
+     "id": "643A",
+     "name": "터미널 로드",
+     "group": "양산",
+     "dev_type": "",
+     "price": 332.0,
+     "material_cost": 0,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "643A",
+     "po_qty": 12,
+     "shipped_qty": 0
+    },
+    {
+     "id": "76C",
+     "name": "도기도어",
+     "group": "양산",
+     "dev_type": "",
+     "price": 59.1,
+     "material_cost": 0,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "76C",
+     "po_qty": 3200,
+     "shipped_qty": 379
+    },
+    {
+     "id": "635C",
+     "name": "쉴드 플레이트",
+     "group": "양산",
+     "dev_type": "",
+     "price": 25.0,
+     "material_cost": 23.5,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "635C",
+     "po_qty": 396,
+     "shipped_qty": 396,
+     "weekly_plan": {
+      "2026-09": {
+       "W36": {
+        "plan": 30,
+        "actual": 0
+       },
+       "W37": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W38": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W39": {
+        "plan": 0,
+        "actual": 0
+       },
+       "W40": {
+        "plan": 0,
+        "actual": 0
+       }
+      }
+     },
+     "weekly_progress": 0.0
+    },
+    {
+     "id": "568D",
+     "name": "버스바",
+     "group": "양산",
+     "dev_type": "",
+     "price": 50.0,
+     "material_cost": 12.12,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "568D",
+     "po_qty": 880,
+     "shipped_qty": 0
+    },
+    {
+     "id": "569D",
+     "name": "버스바",
+     "group": "양산",
+     "dev_type": "",
+     "price": 49.0,
+     "material_cost": 12.06,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "569D",
+     "po_qty": 440,
+     "shipped_qty": 0
+    },
+    {
+     "id": "566D",
+     "name": "버스바",
+     "group": "양산",
+     "dev_type": "",
+     "price": 430.0,
+     "material_cost": 193.01,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "566D",
+     "po_qty": 20,
+     "shipped_qty": 0
+    },
+    {
+     "id": "564D",
+     "name": "버스바",
+     "group": "양산",
+     "dev_type": "",
+     "price": 422.0,
+     "material_cost": 187.06,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "564D",
+     "po_qty": 20,
+     "shipped_qty": 0
+    },
+    {
+     "id": "563D",
+     "name": "버스바",
+     "group": "양산",
+     "dev_type": "",
+     "price": 415.0,
+     "material_cost": 182.8,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "563D",
+     "po_qty": 20,
+     "shipped_qty": 0
+    },
+    {
+     "id": "562D",
+     "name": "시트메탈",
+     "group": "양산",
+     "dev_type": "",
+     "price": 12.0,
+     "material_cost": 3.75,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "562D",
+     "po_qty": 200,
+     "shipped_qty": 0
+    },
+    {
+     "id": "561D",
+     "name": "시트메탈",
+     "group": "양산",
+     "dev_type": "",
+     "price": 8.0,
+     "material_cost": 0.7,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "561D",
+     "po_qty": 40,
+     "shipped_qty": 0
+    },
+    {
+     "id": "570D",
+     "name": "시트메탈",
+     "group": "양산",
+     "dev_type": "",
+     "price": 533.0,
+     "material_cost": 137.17,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "570D",
+     "po_qty": 20,
+     "shipped_qty": 0
+    },
+    {
+     "id": "560D",
+     "name": "시트메탈",
+     "group": "양산",
+     "dev_type": "",
+     "price": 577.0,
+     "material_cost": 63.09,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "560D",
+     "po_qty": 20,
+     "shipped_qty": 0
+    },
+    {
+     "id": "559D",
+     "name": "시트메탈",
+     "group": "양산",
+     "dev_type": "",
+     "price": 93.0,
+     "material_cost": 8.53,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "559D",
+     "po_qty": 20,
+     "shipped_qty": 0
+    },
+    {
+     "id": "565D",
+     "name": "시트메탈",
+     "group": "양산",
+     "dev_type": "",
+     "price": 7.0,
+     "material_cost": 3.39,
+     "status": "정상",
+     "progress": 0,
+     "part_number": "565D",
+     "po_qty": 60,
+     "shipped_qty": 0
+    }
+   ]
+  },
+  "auto_schaeffler": {
+   "models": [
+    {
+     "id": "SVCT",
+     "name": "SVCT",
+     "status": "정상",
+     "progress": 0,
+     "group": "양산",
+     "auto": {
+      "end_customer": "기아자동차",
+      "car_model": "EV3",
+      "site": "한국 /이천공장",
+      "sop": "2024년 4월",
+      "weight_kg": 5.07,
+      "tonnage": 3500.0,
+      "defect_rate": 0.3,
+      "price_fx": 27.06,
+      "fx_rate": 1350.0,
+      "cost": {
+       "material": 25830.0,
+       "process": 17115.0,
+       "admin": 2847.974,
+       "depr": 2951.024,
+       "logi": 1806.0
+      },
+      "contract": {
+       "2026": {
+        "qty": 116755,
+        "revenue": 56.74876775
+       },
+       "2027": {
+        "qty": 140650,
+        "revenue": 68.3629325
+       },
+       "2028": {
+        "qty": 151150,
+        "revenue": 73.4664575
+       },
+       "2029": {
+        "qty": 165520,
+        "revenue": 80.450996
+       },
+       "2030": {
+        "qty": 142560,
+        "revenue": 69.291288
+       },
+       "2031": {
+        "qty": 12465,
+        "revenue": 6.05861325
+       }
+      }
+     },
+     "price": 36531,
+     "material_cost": 25830
+    },
+    {
+     "id": "OV1",
+     "name": "OV1",
+     "status": "정상",
+     "progress": 0,
+     "group": "양산",
+     "auto": {
+      "end_customer": "기아자동차",
+      "car_model": "EV4",
+      "site": "한국 /이천공장",
+      "sop": "2025년 5월",
+      "weight_kg": 5.991,
+      "tonnage": 3500.0,
+      "defect_rate": 0.24,
+      "price_fx": 30.73,
+      "fx_rate": 1350.0,
+      "cost": {
+       "material": 27353.0,
+       "process": 22262.0,
+       "admin": 3704.324,
+       "depr": 2407.0,
+       "logi": 1806.0
+      },
+      "contract": {
+       "2026": {
+        "qty": 68354,
+        "revenue": 37.60358602
+       },
+       "2027": {
+        "qty": 90210,
+        "revenue": 49.6272273
+       },
+       "2028": {
+        "qty": 98615,
+        "revenue": 54.25106995
+       },
+       "2029": {
+        "qty": 93995,
+        "revenue": 51.70946935
+       },
+       "2030": {
+        "qty": 94695,
+        "revenue": 52.09456035
+       },
+       "2031": {
+        "qty": 77360,
+        "revenue": 42.5580568
+       }
+      }
+     },
+     "price": 41486,
+     "material_cost": 27353
+    }
+   ]
+  },
+  "auto_kefico": {
+   "models": [
+    {
+     "id": "V2LC HOUSING",
+     "name": "V2LC HOUSING",
+     "status": "정상",
+     "progress": 0,
+     "group": "양산",
+     "auto": {
+      "end_customer": "현대자동차",
+      "car_model": "Ioniq5",
+      "site": "베트남 /하이퐁",
+      "sop": "2024년 5월",
+      "weight_kg": 2.39,
+      "tonnage": 1250.0,
+      "defect_rate": 0.32,
+      "price_fx": 33.63,
+      "fx_rate": 1350.0,
+      "cost": {
+       "material": 13418.62,
+       "process": 22475.0,
+       "admin": 5560.09,
+       "depr": 3497.0,
+       "logi": 270.83
+      },
+      "contract": {
+       "2026": {
+        "qty": 18795,
+        "revenue": 8.8490619
+       },
+       "2027": {
+        "qty": 26823,
+        "revenue": 12.62880486
+       },
+       "2028": {
+        "qty": 32085,
+        "revenue": 15.1062597
+       },
+       "2029": {
+        "qty": 27810,
+        "revenue": 13.0935042
+       },
+       "2030": {
+        "qty": 28280,
+        "revenue": 13.3147896
+       },
+       "2031": {
+        "qty": 28850,
+        "revenue": 13.583157
+       }
+      }
+     },
+     "price": 45400,
+     "material_cost": 13419
+    },
+    {
+     "id": "DCDC HOUSING",
+     "name": "DCDC HOUSING",
+     "status": "정상",
+     "progress": 0,
+     "group": "개발",
+     "auto": {
+      "end_customer": "CEER",
+      "site": "인도 (CIF)",
+      "sop": "2026년 11월",
+      "weight_kg": 2.24,
+      "tonnage": 800.0,
+      "defect_rate": 0.25,
+      "cost": {
+       "material": 16661.0,
+       "process": 20088.0,
+       "admin": 2666.0,
+       "depr": 3875.0,
+       "logi": 1941.0
+      },
+      "contract": {
+       "2026": {
+        "qty": 1000,
+        "revenue": 0.41546399999999994
+       },
+       "2027": {
+        "qty": 13440,
+        "revenue": 5.583836159999999
+       },
+       "2028": {
+        "qty": 56089,
+        "revenue": 23.302960296
+       },
+       "2029": {
+        "qty": 72982,
+        "revenue": 30.321393647999997
+       },
+       "2030": {
+        "qty": 67413,
+        "revenue": 28.007674631999997
+       },
+       "2031": {
+        "qty": 68253,
+        "revenue": 28.356664392
+       }
+      }
+     },
+     "price": 0,
+     "material_cost": 16661,
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "OBC HOUSING",
+     "name": "OBC HOUSING",
+     "status": "정상",
+     "progress": 0,
+     "group": "개발",
+     "auto": {
+      "end_customer": "CEER",
+      "site": "인도 (CIF)",
+      "sop": "2026년 11월",
+      "weight_kg": 3.65,
+      "tonnage": 1250.0,
+      "defect_rate": 0.39,
+      "cost": {
+       "material": 26132.0,
+       "process": 36165.0,
+       "admin": 4730.0,
+       "depr": 5678.0,
+       "logi": 2184.0
+      },
+      "contract": {
+       "2026": {
+        "qty": 1000,
+        "revenue": 0.575484
+       },
+       "2027": {
+        "qty": 13440,
+        "revenue": 7.73450496
+       },
+       "2028": {
+        "qty": 56089,
+        "revenue": 32.278322076
+       },
+       "2029": {
+        "qty": 72982,
+        "revenue": 41.999973288
+       },
+       "2030": {
+        "qty": 67413,
+        "revenue": 38.795102892
+       },
+       "2031": {
+        "qty": 68253,
+        "revenue": 39.278509452
+       }
+      }
+     },
+     "price": 0,
+     "material_cost": 26132,
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "HE ICCU ASSY",
+     "name": "HE ICCU ASSY",
+     "status": "정상",
+     "progress": 0,
+     "group": "개발",
+     "auto": {
+      "end_customer": "현대자동차",
+      "car_model": "EV",
+      "site": "인도 (CIF)",
+      "sop": "2026년 7월",
+      "weight_kg": 2.64,
+      "tonnage": 1650.0,
+      "defect_rate": 0.41,
+      "cost": {
+       "material": 28739.0,
+       "process": 38909.0,
+       "admin": 3842.0,
+       "depr": 5700.0,
+       "logi": 2427.0
+      },
+      "contract": {
+       "2026": {
+        "qty": 3878,
+        "revenue": 2.994638136
+       },
+       "2027": {
+        "qty": 45955,
+        "revenue": 35.48700246
+       },
+       "2028": {
+        "qty": 71461,
+        "revenue": 55.183041732
+       },
+       "2029": {
+        "qty": 109254,
+        "revenue": 84.36724984799999
+       },
+       "2030": {
+        "qty": 125063,
+        "revenue": 96.575149356
+       },
+       "2031": {
+        "qty": 128428,
+        "revenue": 99.173642736
+       }
+      }
+     },
+     "price": 0,
+     "material_cost": 28739,
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    },
+    {
+     "id": "EREV ICCU HOUSING",
+     "name": "EREV ICCU HOUSING",
+     "status": "정상",
+     "progress": 0,
+     "group": "개발",
+     "auto": {
+      "end_customer": "현대자동차",
+      "car_model": "EREV",
+      "site": "인도 (CIF)",
+      "sop": "2027년",
+      "weight_kg": 4.41,
+      "tonnage": 2250.0,
+      "defect_rate": 0.4,
+      "cost": {
+       "material": 37516.0,
+       "process": 38773.0,
+       "admin": 3522.0,
+       "depr": 6344.0,
+       "logi": 3237.0
+      },
+      "contract": {
+       "2027": {
+        "qty": 40000,
+        "revenue": 36.0
+       },
+       "2028": {
+        "qty": 51000,
+        "revenue": 45.0
+       },
+       "2029": {
+        "qty": 77000,
+        "revenue": 69.0
+       },
+       "2030": {
+        "qty": 95000,
+        "revenue": 85.0
+       },
+       "2031": {
+        "qty": 95000,
+        "revenue": 85.0
+       }
+      }
+     },
+     "price": 0,
+     "material_cost": 37516,
+     "process": [
+      {
+       "key": "fa_po",
+       "name": "FA PO",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "material_order",
+       "name": "자재 발주",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "incoming",
+       "name": "입고",
+       "group": "발주",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "machining",
+       "name": "가공 (조립)",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "la_incoming",
+       "name": "LA 입고",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_write",
+       "name": "LAIR 제출",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lair_approval",
+       "name": "LAIR 승인",
+       "group": "제작·검사",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "source_inspection",
+       "name": "Source Inspection",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_write",
+       "name": "FAIR 제출",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "fair_approval",
+       "name": "FAIR 승인",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "lap_test",
+       "name": "LAP TEST",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "cdr",
+       "name": "CDR",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      },
+      {
+       "key": "final_approval",
+       "name": "최종 승인 완료",
+       "group": "승인",
+       "expected": "",
+       "actual": "",
+       "status": ""
+      }
+     ]
+    }
+   ]
+  },
+  "auto_valeo": {
+   "models": [
+    {
+     "id": "DCDC HOUSING",
+     "name": "DCDC HOUSING",
+     "status": "정상",
+     "progress": 0,
+     "group": "양산",
+     "auto": {
+      "end_customer": "PSA",
+      "site": "프랑스 /SFL",
+      "sop": "2023년 10월",
+      "weight_kg": 0.8,
+      "tonnage": 800.0,
+      "defect_rate": 0.17,
+      "price_fx": 8.55,
+      "fx_rate": 1650.0,
+      "cost": {
+       "material": 7509.625,
+       "process": 6664.0,
+       "admin": 946.77,
+       "depr": 1136.025
+      },
+      "contract": {
+       "2026": {
+        "qty": 809680,
+        "revenue": 120.4
+       },
+       "2027": {
+        "qty": 950000,
+        "revenue": 141.3
+       },
+       "2028": {
+        "qty": 200000,
+        "revenue": 29.8
+       }
+      }
+     },
+     "price": 14108,
+     "material_cost": 7510
+    }
+   ]
+  },
+  "auto_stellantis": {
+   "models": [
+    {
+     "id": "오일펌프하우징",
+     "name": "오일펌프하우징",
+     "status": "정상",
+     "progress": 0,
+     "group": "양산",
+     "auto": {
+      "end_customer": "스텔란티스",
+      "site": "미국 /미시간창고",
+      "sop": "2025년 8월",
+      "weight_kg": 3.24,
+      "tonnage": 2250.0,
+      "defect_rate": 0.31,
+      "price_fx": 27.23,
+      "fx_rate": 1350.0,
+      "cost": {
+       "material": 16120.400000000001,
+       "process": 11009.0,
+       "admin": 1690.2,
+       "depr": 2783.7,
+       "logi": 3927.1499999999996
+      },
+      "contract": {
+       "2026": {
+        "qty": 197398,
+        "revenue": 77.57346604
+       },
+       "2027": {
+        "qty": 423792,
+        "revenue": 166.54178016
+       },
+       "2028": {
+        "qty": 404166,
+        "revenue": 158.82915468
+       },
+       "2029": {
+        "qty": 301985,
+        "revenue": 118.6740653
+       },
+       "2030": {
+        "qty": 217154,
+        "revenue": 85.33717892
+       },
+       "2031": {
+        "qty": 163468,
+        "revenue": 64.23965464
+       }
+      }
+     },
+     "price": 36760,
+     "material_cost": 16120
+    }
+   ]
+  }
+ }
+}

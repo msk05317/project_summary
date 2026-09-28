@@ -14382,15 +14382,36 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         normalized.append(entry)
 
     normalized.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
+
+    # 이 저장으로 사라지는 모델. '전체 교체' 라 화면이 목록을 덜 들고
+    # 저장하면 나머지가 통째로 지워진다 — 실제로 챔버 19종·SpaceX 16종이
+    # 그렇게 날아갔다. 사람이 정말 지운 것이면 화면이 allow_delete 를 같이
+    # 보낸다. 안 보내고 많이 지우려 하면 저장을 거부한다.
+    _gone = [mid for mid in old_map if mid not in seen_ids]
+    _allow = bool(payload.get("allow_delete"))
+    if (_price_mode != "preview" and _gone and not _allow
+            and (len(_gone) >= 5 or len(_gone) > len(old_map) * 0.25)):
+        raise HTTPException(
+            status_code=409,
+            detail=("이 저장은 %d종을 지웁니다 (%d종 → %d종). 화면이 목록을 "
+                    "덜 불러온 상태로 보이니 새로 고친 뒤 다시 저장해 주세요. "
+                    "정말 지우려면 지우기 버튼으로 지운 뒤 저장하세요. "
+                    "사라질 모델: %s"
+                    % (len(_gone), len(old_map), len(normalized),
+                       ", ".join(_gone[:8]) + (" 외" if len(_gone) > 8 else ""))))
+
     if _price_mode == "preview":
         # 무엇이 바뀌는지만 알려주고 아무것도 저장하지 않는다.
         return {"ok": True, "project_key": _key, "preview": True,
-                "count": len(normalized), "price_changes": _price_changes}
+                "count": len(normalized), "removing": _gone,
+                "price_changes": _price_changes}
     proj["models"] = normalized
     _save_models(data)
     print(f"[models] saved {_key}: {len(normalized)} models"
+          + (f" · 삭제 {len(_gone)}종" if _gone else "")
           + (f" · 판가 이력 {len(_price_changes)}건({_price_mode})" if _price_changes else ""))
     return {"ok": True, "project_key": _key, "count": len(normalized),
+            "removed": _gone,
             "price_mode": _price_mode, "price_changes": _price_changes}
 
 
@@ -27200,3 +27221,94 @@ def admin_division_revenue(div: str, month: str = None,
     if not div:
         raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
     return _div_revenue_view(div, month)
+
+
+# ── 사라진 모델 되살리기 ────────────────────────────────────────
+#
+# 모델 저장이 '전체 교체' 라, 화면이 목록을 덜 들고 저장하면 나머지가
+# 통째로 지워진다. 챔버 19종·SpaceX 16종·자동차 9종이 그렇게 날아갔고,
+# 서버 자동 백업은 10개만 남아 그때까지 거슬러 올라가지 못했다.
+#
+# 그래서 오래된 백업에서 뽑아 둔 파일을 backend/restore/ 에 넣어 두고,
+# '지금 없는 모델만' 더한다. 지금 있는 것은 절대 건드리지 않는다 —
+# 되살리려다 그 뒤 13일치 작업을 덮으면 그게 더 큰 사고다.
+RESTORE_DIR = BASE_DIR / "restore"
+
+
+def _restore_file(name: str):
+    safe = os.path.basename(str(name or "").strip())
+    if not safe or not safe.endswith(".json"):
+        safe = (safe or "") + ".json"
+    path = RESTORE_DIR / safe
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="그런 복구 파일이 없습니다: %s" % safe)
+    with open(path, "r", encoding="utf-8") as f:
+        return safe, json.load(f)
+
+
+@app.get("/admin/models/restore-files")
+def admin_models_restore_files(_admin: int = Depends(get_admin_session)):
+    """backend/restore/ 에 있는 복구 파일 목록."""
+    out = []
+    if RESTORE_DIR.exists():
+        for p in sorted(RESTORE_DIR.glob("*.json")):
+            try:
+                doc = json.loads(p.read_text(encoding="utf-8"))
+                shape = {k: len((v or {}).get("models") or [])
+                         for k, v in (doc.get("projects") or {}).items()}
+                out.append({"name": p.name, "source": doc.get("source", ""),
+                            "at": doc.get("at", ""), "shape": shape,
+                            "total": sum(shape.values())})
+            except Exception as e:
+                out.append({"name": p.name, "error": str(e)})
+    return {"ok": True, "files": out}
+
+
+@app.post("/admin/models/restore-missing")
+def admin_models_restore_missing(payload: dict = Body(...),
+                                 _admin: int = Depends(get_admin_session)):
+    """복구 파일에서 '지금 없는 모델만' 더한다.
+
+    payload = {name, projects?: [키...], mode: "preview"|"commit"}
+
+    같은 id 가 이미 있으면 건너뛴다. 값을 덮지 않으므로 여러 번 돌려도
+    결과가 같다. 저장 직전 상태는 _save_models 가 자동 백업으로 남긴다.
+    """
+    name, doc = _restore_file((payload or {}).get("name"))
+    want = [str(k).strip() for k in ((payload or {}).get("projects") or []) if str(k).strip()]
+    mode = str((payload or {}).get("mode") or "preview").strip()
+
+    data = _load_models()
+    projects = data.setdefault("projects", {})
+    report, total = {}, 0
+    for key, block in (doc.get("projects") or {}).items():
+        if want and key not in want:
+            continue
+        src = [m for m in ((block or {}).get("models") or []) if isinstance(m, dict)]
+        if not src:
+            continue
+        proj = projects.setdefault(key, {})
+        cur = [m for m in (proj.get("models") or []) if isinstance(m, dict)]
+        have = {str(m.get("id") or "").strip() for m in cur}
+        add = [m for m in src if str(m.get("id") or "").strip()
+               and str(m.get("id") or "").strip() not in have]
+        if not add:
+            continue
+        report[key] = {"before": len(cur), "add": [str(m.get("id")) for m in add],
+                       "after": len(cur) + len(add)}
+        total += len(add)
+        if mode == "commit":
+            proj["models"] = cur + add
+
+    out = {"ok": True, "file": name, "mode": mode,
+           "total": total, "projects": report}
+    if mode != "commit":
+        return out
+    if not total:
+        out["saved"] = False
+        return out
+    _save_models(data)
+    print("[restore-missing] %s → %s (%d종)"
+          % (name, ", ".join(report), total))
+    out["saved"] = True
+    return out
