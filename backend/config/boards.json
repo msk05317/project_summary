@@ -154,7 +154,7 @@
             },
             {
               "key": "mass19",
-              "label": "양산19종",
+              "label": "양산 19종",
               "group": "양산",
               "exclude_dev_type": [
                 "EMA"
@@ -165,7 +165,7 @@
             },
             {
               "key": "dev22",
-              "label": "개발24종",
+              "label": "개발 24종",
               "group": "개발",
               "exclude_dev_type": [
                 "EMA"
