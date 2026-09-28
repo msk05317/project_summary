@@ -7094,10 +7094,13 @@ window.renderAdminV2ByDivision = function(){
             (function(){
               var cur = (m.dev_type || '').trim();
               var list = (_projTypes || []).slice();
-              var html = '';
-              
-              html += list.map(function(t){ return '<option value="' + t + '"' + (cur === t ? ' selected' : '') + '>' + t + '</option>'; }).join('');
-              return html;
+              // 목록에 없는 유형이 이미 붙어 있으면 그것도 넣는다. 안 넣으면
+              // 화면에는 '—' 로 보이고, 저장할 때 빈 값으로 덮여서 주차별
+              // 현황의 그 줄(예: 챔버의 'Dep 챔버')이 통째로 비어 버린다.
+              if (cur && list.indexOf(cur) < 0) list.push(cur);
+              return list.map(function(t){
+                return '<option value="' + t + '"' + (cur === t ? ' selected' : '') + '>' + t + '</option>';
+              }).join('');
             })() +
           '</select></td>' +
           (_projIsEss ?

@@ -14379,13 +14379,28 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
 # ─── 프로젝트별 유형(types) 관리 ───
 
 def _get_project_types(project_key: str) -> list:
-    """프로젝트의 유형 목록 (기본값: 빈 목록)"""
+    """프로젝트의 유형 목록.
+
+    엑셀로 올라온 모델은 유형(dev_type)이 붙어 있는데 이 목록에는 없을 수
+    있다. 챔버가 그랬다 — 모델 14개가 'DEP챔버' 인데 목록이 비어 있어서
+    admin 표에서 유형 칸이 '—' 로 보였고(있는 값을 못 그림), 그 줄을 저장하면
+    빈 값으로 덮여 주차별 현황의 'Dep 챔버' 줄이 통째로 비었다.
+    그래서 실제로 쓰이는 유형을 목록에 합쳐서 돌려준다.
+    """
     data = _read_json(MODELS_FILE, {})
     proj = data.get("projects", {}).get(project_key, {})
     types = proj.get("types")
-    if not isinstance(types, list):
-        return []
-    return types
+    out = [t for t in types if isinstance(t, str) and t.strip()] if isinstance(types, list) else []
+    seen = {t for t in out}
+    extra = []
+    for m in proj.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        t = str(m.get("dev_type") or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            extra.append(t)
+    return out + sorted(extra)
 
 
 @app.get("/projects/{project_key}/types")
