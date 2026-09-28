@@ -7742,35 +7742,6 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
       };
     }
     
-    // 프로세스 초기화 버튼
-    var resetBtn = document.getElementById('mdl-proc-reset-btn');
-    if (resetBtn) {
-      resetBtn.onclick = function() {
-        if (!_currentProjectKey) { alert('프로젝트를 먼저 선택하세요.'); return; }
-        if (!confirm('⚠️ 모든 모델의 프로세스를 초기화하시겠습니까?\n\n예상일, 실제일, 상태가 모두 비워집니다.')) return;
-        
-        var msgEl = document.getElementById('mdl-save-msg');
-        if (msgEl) { msgEl.textContent = '초기화 중...'; msgEl.className = 'mdl-save-msg'; }
-        
-        // 한 번의 API 호출로 전체 초기화 (JSON 손상 방지)
-        fetch('/admin/projects/' + encodeURIComponent(_currentProjectKey) + '/process/reset-all',
-          { method: 'POST', credentials: 'same-origin' })
-          .then(function(r) { return r.json(); })
-          .then(function(res) {
-            if (res.ok) {
-              if (msgEl) { msgEl.textContent = '✅ ' + res.reset_count + '개 모델 프로세스 초기화 완료'; msgEl.className = 'mdl-save-msg ok'; }
-              // 목록 새로고침
-              var tb = document.getElementById('mdl-table-box');
-              if (tb) loadModels(_currentProjectKey, tb);
-            } else {
-              if (msgEl) { msgEl.textContent = '❌ 초기화 실패: ' + (res.detail || ''); msgEl.className = 'mdl-save-msg err'; }
-            }
-          })
-          .catch(function(e) {
-            if (msgEl) { msgEl.textContent = '❌ 초기화 실패: ' + e.message; msgEl.className = 'mdl-save-msg err'; }
-          });
-      };
-    }
   };
 
   window.loadModels = function loadModels(projectKey, container) {
@@ -8062,8 +8033,6 @@ var sidebarSel = document.getElementById('v2-division-select');
                 '<button type="button" id="mdl-lead-btn">⏱ 단계별 표준 소요 (주)</button>' +
                 '<div class="sep"></div>' +
                 '<button type="button" id="mdl-excel-tpl-btn">📄 모델 양식 내려받기</button>' +
-                '<div class="sep"></div>' +
-                '<button type="button" class="danger" id="mdl-proc-reset-btn">🔄 프로세스 전체 초기화</button>' +
               '</div>' +
             '</div>' +
             '<input type="file" id="auto-import-file" accept=".xlsx,.xlsm" style="display:none;">' +
@@ -10232,7 +10201,7 @@ window._ovProjectKey = function() {
   window._bdSyncMenu = function(pk) {
     var daily = window._bdIsDaily(pk);
     var bloomBtn = document.getElementById('mdl-bloom-btn');
-    ['mdl-excel-btn', 'mdl-proc-excel-btn', 'mdl-excel-tpl-btn', 'mdl-proc-reset-btn']
+    ['mdl-excel-btn', 'mdl-proc-excel-btn', 'mdl-excel-tpl-btn']
       .forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.hidden = daily;
