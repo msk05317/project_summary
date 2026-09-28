@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.43",
-  "latest_version_code": 66,
+  "latest_version": "2.3.44",
+  "latest_version_code": 67,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "PCB사업부 화면을 매입 현황만 보이게 했습니다.\n\n- 지급 내역 아래 매출·프로젝트는 잠시 숨김",
+  "release_notes": "매입 현황에서 월별 숫자를 볼 수 있습니다.\n\n- 월별 추이 막대를 누르면 그 달 숫자 표시",
   "force_update": false
 }
