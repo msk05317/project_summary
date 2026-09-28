@@ -14287,7 +14287,14 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             material_cost = _as_money(m.get("material_cost"))
         except (ValueError, TypeError):
             material_cost = 0
-        entry = {
+        old = old_map.get(mid) or {}
+        # 서버에 있던 것을 바탕으로 깔고, 이 화면에서 고치는 칸만 덮는다.
+        #
+        # 예전에는 빈 도시락에 아는 칸만 담았다. 그래서 이 화면이 모르는 칸
+        # (엑셀이 넣어 둔 소재 · 월 실적 같은 것)은 저장할 때마다 조용히
+        # 사라졌다 — "고치기만 했는데 엑셀에서 끌어온 게 다 날아간다".
+        entry = dict(old)
+        entry.update({
             "id": mid,
             "name": name,
             "group": group,
@@ -14303,8 +14310,7 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             "issues": str(m.get("issues") or ""),
             # 이슈와 별개로 자유롭게 적는 비고(메모)
             "note": str(m.get("note") or ""),
-        }
-        old = old_map.get(mid) or {}
+        })
         # 이 화면에서 편집하지 않는 묶음은 서버에 있는 것을 그대로 둔다.
         #
         # 예전에는 보낸 값을 먼저 봤다. 목록 화면은 열 때 받아 둔 사본을
