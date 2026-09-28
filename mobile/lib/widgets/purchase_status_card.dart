@@ -39,7 +39,15 @@ String _n(num v) {
 class PurchaseStatusCard extends StatefulWidget {
   final PurchaseStatus status;
 
-  const PurchaseStatusCard({super.key, required this.status});
+  /// '요약 / 표로 보기' 토글. 지금은 지급 내역 아래를 다 비워 두기로 해서
+  /// 꺼 둔다 — 다시 켤 때 이 한 줄만 true 로 주면 된다.
+  final bool showToggle;
+
+  const PurchaseStatusCard({
+    super.key,
+    required this.status,
+    this.showToggle = false,
+  });
 
   @override
   State<PurchaseStatusCard> createState() => _PurchaseStatusCardState();
@@ -109,8 +117,10 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
         _table ? _itemTable(m) : _items(m),
         const SizedBox(height: 10),
         _payment(m),
-        const SizedBox(height: 8),
-        _toggle(),
+        if (widget.showToggle) ...[
+          const SizedBox(height: 8),
+          _toggle(),
+        ],
       ],
     );
   }

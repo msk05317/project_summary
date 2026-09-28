@@ -120,6 +120,11 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
   /// has_data=false 로 와서 카드가 통째로 빠진다.
   PurchaseStatus _purchase = PurchaseStatus.empty;
 
+  /// 매입 현황이 있는 사업부는 그 카드만 본다. 매출·프로젝트는 아직
+  /// 이 사업부 자료가 아니라서, 같이 두면 남의 숫자처럼 읽힌다.
+  /// (다시 보여줄 때는 이 한 줄을 false 로)
+  bool get _onlyPurchase => _purchase.hasData;
+
   Future<void> _loadPurchase() async {
     final p = await PurchaseService.fetch(widget.division.id);
     if (mounted) setState(() => _purchase = p);
@@ -919,9 +924,11 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                   // 블룸은 '계획 대비 실적' 카드에 매출이 이미 있다. 매출 계획이
                   // 따로 등록된 적도 없어서 '계획이 없습니다' 만 떴다 — 뺀다.
                   // (보드가 없고 매출이 등록돼 있을 때만 보여준다)
-                  else if (!_isBloom ||
-                      (!_bloom.hasBoard &&
-                          (_overview.planRevenue > 0 || _overview.revenue > 0)))
+                  else if (!_onlyPurchase &&
+                      (!_isBloom ||
+                          (!_bloom.hasBoard &&
+                              (_overview.planRevenue > 0 ||
+                                  _overview.revenue > 0))))
                     DivisionRevenueHero(
                     month: _useSheet ? _rev.month : _overview.month,
                     // 반도체는 주간보고 실적과 사람이 넣은 타겟을 쓴다.
@@ -948,7 +955,8 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                       );
                     },
                   ),
-                  if (!_isAuto && data.delayed + data.warning > 0) ...[
+                  if (!_isAuto && !_onlyPurchase &&
+                      data.delayed + data.warning > 0) ...[
                     const SizedBox(height: 10),
                     DivisionAttentionBanner(
                       count: data.delayed + data.warning,
@@ -968,7 +976,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                     ),
                   ],
                   // 블룸은 품목이 곧 프로젝트라 위 '계획 대비 실적' 카드가 목록을 대신한다
-                  if (!_isBloom) ...[
+                  if (!_isBloom && !_onlyPurchase) ...[
                   const SizedBox(height: 18),
 
                   // ── 프로젝트 (매출 기여순)
