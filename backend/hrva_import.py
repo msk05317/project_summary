@@ -12,6 +12,7 @@
 import week_calendar as _wcal
 import re
 import datetime as _dt
+import re as _re
 
 WEEK_RE = re.compile(r"^W\s*(\d{1,2})$", re.I)
 MONTH_RE = re.compile(r"^(\d{1,2})\s*월")
@@ -54,6 +55,36 @@ def _date_text(v):
     if isinstance(v, _dt.date):
         return v.isoformat()
     return str(v).strip()
+
+
+def parse_day(v, year=None):
+    """셀 → 'YYYY-MM-DD'. 날짜가 아니면 ''.
+
+    주간보고의 '고객요청일 · 가공 완료' 칸은 날짜일 때도 있고 '9/28 (6)',
+    '10/2 (5ea)', 'TBD', 'Done' 처럼 사람이 적어 둔 글자일 때도 있다.
+    날짜로 읽히는 것만 쓴다. 9999-12-31 은 '미정' 표기라 날짜로 치지 않는다.
+    """
+    if v is None:
+        return ""
+    if isinstance(v, _dt.datetime):
+        v = v.date()
+    if isinstance(v, _dt.date):
+        return "" if v.year >= 9999 else v.isoformat()
+    t = str(v).strip()
+    if not t:
+        return ""
+    m = _re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", t)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    else:
+        m = _re.match(r"^(\d{1,2})[-/.](\d{1,2})", t)
+        if not m:
+            return ""
+        y, mo, d = (year or _dt.date.today().year), int(m.group(1)), int(m.group(2))
+    try:
+        return "" if y >= 9999 else _dt.date(y, mo, d).isoformat()
+    except ValueError:
+        return ""
 
 
 def pick_sheet(wb, sheet_name=None):
@@ -147,6 +178,9 @@ def parse_workbook(wb, sheet_name=None, year=None):
         # 제출일 = 이미 제출한 날(실적), LAIR ECD = 예정일(계획)
         c_submit = _col(cols, "제출일")
         c_ecd = _col(cols, "LAIR ECD", "ECD")
+        # RPM 블록: 고객요청일 = FAIR 제출 예정일, 가공 완료 = FAIR 제출 실제일
+        c_need = _col(cols, "고객요청일", "고객 요청일", "Need date")
+        c_fg = _col(cols, "가공 완료", "가공완료", "FG completion")
 
         for r in range(hr + 1, len(grid)):
             row = grid[r]
@@ -195,6 +229,10 @@ def parse_workbook(wb, sheet_name=None, year=None):
                 "note": " · ".join(note_parts),
                 "material": _s(row[c_mat]) if c_mat is not None and c_mat < len(row) else "",
                 "dev_type": dev_type if group == "개발" else "",
+                "fair_expected": (parse_day(row[c_need], year)
+                                  if c_need is not None and c_need < len(row) else ""),
+                "fair_actual": (parse_day(row[c_fg], year)
+                                if c_fg is not None and c_fg < len(row) else ""),
             })
 
     _read_model_block(2, "양산")

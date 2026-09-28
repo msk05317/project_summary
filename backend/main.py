@@ -21787,6 +21787,33 @@ def _merge_process_keep(old, new):
     return out
 
 
+def _set_fair_dates(proc, expected: str = "", actual: str = "") -> list:
+    """'FAIR 제출' 단계에 예정일·실제일을 적는다.
+
+    하바플레이트 주간보고·개발현황의 두 칸이 여기로 온다.
+      고객요청일 → FAIR 제출 예정일
+      가공 완료  → FAIR 제출 실제일
+    빈 값은 덮지 않는다 (엑셀에 아직 안 적힌 칸이 기존 입력을 지우면 안 된다).
+    """
+    if not isinstance(proc, list):
+        return proc
+    for st in proc:
+        if not isinstance(st, dict):
+            continue
+        if st.get("key") != "fair_write" and _canon_step(st.get("name")) != _canon_step("FAIR 제출"):
+            continue
+        if expected:
+            st["expected"] = expected
+        if actual:
+            st["actual"] = actual
+        if st.get("actual"):
+            st["status"] = "완료"
+        elif st.get("expected") and not str(st.get("status") or "").strip():
+            st["status"] = "진행중"
+        break
+    return proc
+
+
 def _ensure_process(m: dict) -> list:
     proc = m.get("process")
     # process가 이미 있고 리스트면 그대로 사용
@@ -25712,14 +25739,15 @@ def _apply_dev_status(project_key: str, parsed: dict, dry_run: bool = False) -> 
         if r.get("note"):
             m["note"] = r["note"]
 
-        # '가공 완료' → '가공 (조립)' 계획일
+        # 고객요청일 → FAIR 제출 예정일 · 가공 완료 → FAIR 제출 실제일
         proc = _ensure_process(m)
-        if r.get("machining_date"):
-            for st in proc:
-                if st.get("key") == "machining":
-                    st["expected"] = r["machining_date"]
-                    dated += 1
-                    break
+        if r.get("request_date") or r.get("machining_date"):
+            _req = r.get("request_date") or ""
+            if _req.startswith("9999"):
+                _req = ""          # 9999-12-31 은 '미정' 표기다
+            _set_fair_dates(proc, _req, r.get("machining_date") or "")
+            if r.get("machining_date"):
+                dated += 1
         elif r.get("machining_text"):
             pending.append(nm)
         m["process"] = proc
@@ -25809,6 +25837,8 @@ def _apply_report_workbook(project_key: str, parsed: dict, dry_run: bool = False
                             st["expected"] = _sdate
                             st["status"] = "진행중"
                         break
+            # 고객요청일 → FAIR 제출 예정일 · 가공 완료 → FAIR 제출 실제일
+            _set_fair_dates(proc, nm.get("fair_expected") or "", nm.get("fair_actual") or "")
             entry["process"] = proc
             entry["progress"] = _process_progress(proc)
         # 양산이어도 기존 공정 데이터는 지우지 않는다 (그룹이 바뀌어도 입력이 남도록)
