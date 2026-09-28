@@ -165,7 +165,7 @@
             },
             {
               "key": "dev22",
-              "label": "개발22종",
+              "label": "개발24종",
               "group": "개발",
               "exclude_dev_type": [
                 "EMA"
