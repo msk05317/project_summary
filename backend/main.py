@@ -27023,60 +27023,6 @@ def admin_division_purchase_save(payload: dict = Body(...),
     return out
 
 
-@app.post("/admin/division/purchase/import-xlsx")
-async def admin_division_purchase_import(
-        file: UploadFile = File(...),
-        div: str = Form(...),
-        mode: str = Form("preview"),
-        _admin: int = Depends(get_admin_session)):
-    """'월별 매입 현황 분석' 엑셀을 올린다 — 미리보기 → 확인 2단계.
-
-    빈 칸과 엑셀에 없는 달은 건드리지 않는다. 한 번 올릴 때마다 손으로
-    넣은 값이 날아가면 아무도 두 번은 안 올린다.
-    """
-    import io as _io
-    import purchase_import as _pimp
-
-    div = (div or "").strip()
-    if not div:
-        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
-    name = file.filename or "purchase.xlsx"
-    if not name.lower().endswith((".xlsx", ".xlsm")):
-        raise HTTPException(status_code=400, detail="엑셀(.xlsx) 파일만 올릴 수 있습니다.")
-
-    raw = await file.read()
-    try:
-        parsed = _pimp.parse_workbook(_io.BytesIO(raw))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"엑셀을 읽지 못했습니다: {e}")
-
-    data = _pur_load()
-    body = (data.get("divisions") or {}).get(div) or {}
-    old = body.get("months") or {}
-
-    out = {
-        "file": name, "mode": mode, "division": div,
-        "sheet": parsed["sheet"],
-        "items": parsed["items"],
-        "warnings": parsed["warnings"],
-        "diff": _pimp.diff(old, parsed["months"]),
-    }
-    if mode != "commit":
-        return out
-
-    merged = _pimp.merge_keep(old, parsed["months"])
-    data = _pur.put_division(data, div, {
-        "currency": body.get("currency") or "USD", "months": merged})
-    saved = _pur.save(PURCHASE_FILE, data)
-    out["saved"] = True
-    out["months"] = _pur.for_admin(saved, div)["months"]
-    out["view"] = _pur.for_app(saved, div)
-    out["updated_at"] = saved.get("updated_at", "")
-    return out
-
-
 # ── 매입 현황 엑셀 올리기 ───────────────────────────────────────
 #
 # preview 로 한 번 보여 주고, commit 이어야 저장한다. 엑셀에 없는 달은
