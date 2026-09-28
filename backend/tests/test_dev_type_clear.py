@@ -54,4 +54,13 @@ assert re.search(r"const dt = r\.querySelector\('\[data-field=\"dev_type\"\]'\);
     or 'if (dt) m.dev_type = dt.value;' in HTML, 'admin 표가 유형을 안 보낸다'
 ok += 1
 
+# ── 비고도 같다 — 지우고 저장하면 지워져야 한다 ──
+assert 'if "note" not in m and old.get("note")' in fn, \
+    '비고를 비워서 저장하면 옛 값이 되살아난다'
+assert 'if not str(entry.get("note") or "").strip() and old.get("note")' not in fn, \
+    '옛 규칙(빈 값이면 옛 비고)이 남아 있다'
+HTML2 = (ROOT / 'admin_v2.html').read_text(encoding='utf-8')
+assert "if (nte) m.note = nte.value || '';" in HTML2, 'admin 표가 비고를 안 보낸다'
+ok += 1
+
 print(f'test_dev_type_clear: {ok} passed')

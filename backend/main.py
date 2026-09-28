@@ -14326,7 +14326,10 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             entry["part_number"] = m.get("part_number")
         elif old.get("part_number") is not None:
             entry["part_number"] = old.get("part_number")
-        if not str(entry.get("note") or "").strip() and old.get("note"):
+        # 비고를 지우고 저장하면 지워져야 한다. 빈 값을 '안 보냈다' 로 보고
+        # 옛 값을 되살리면, 화면에서 비웠는데 저장하면 다시 살아난다.
+        # (유형 칸에서 났던 것과 같은 문제다 — 키가 왔으면 그 값이 맞다.)
+        if "note" not in m and old.get("note"):
             entry["note"] = old.get("note")
         # 구분·판가 이력 (개발→양산 전환, 판가 변경). 과거 매출이 흔들리지 않게 보존한다.
         _ph = _norm_phases(m.get("phases") if m.get("phases") is not None else old.get("phases"))
