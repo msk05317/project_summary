@@ -27129,3 +27129,72 @@ async def admin_division_purchase_import(
     out["updated_at"] = saved.get("updated_at", "")
     out["state"] = _pur.for_admin(saved, div)
     return out
+
+
+# ── 사업부 매출 (매출 관리 화면이 반도체 아닌 사업부를 열 때) ─────
+#
+# revenue.json 은 반도체사업부 주간보고 한 장이 원본이다. 그런데 매출
+# 관리가 사이드바 '사업부' 그룹에 있어서, PCB 를 골라도 반도체 숫자가
+# 떴다. 사업부를 고른 사람에게 다른 사업부 숫자를 보여주면 안 된다.
+#
+# 반도체가 아닌 사업부는 홈 카드가 쓰는 것과 같은 자리에서 온다 —
+# 블룸은 보고자료 금액, 나머지는 모델 판가 × 출하. 타겟만 사람이 넣는다.
+
+
+def _div_revenue_view(div: str, month: str) -> dict:
+    """사업부 하나의 매출. 홈 카드와 같은 숫자를 쓴다."""
+    row = None
+    for r in _home_division_rows(month):
+        if r.get("id") == div:
+            row = r
+            break
+    if row is None:
+        raise HTTPException(status_code=404, detail="없는 사업부입니다.")
+
+    data = _load_models()
+    projects = data.get("projects") or {}
+    try:
+        plist = _cl.get_projects(div, visible_only=True)
+    except Exception:
+        plist = []
+
+    rows = []
+    for p in plist:
+        ms = (projects.get(p.get("id")) or {}).get("models") or []
+        money = _div_model_money(ms)
+        shipped = sum(int(m.get("shipped_qty") or 0)
+                      for m in ms if isinstance(m, dict))
+        po = sum(int(m.get("po_qty") or 0)
+                 for m in ms if isinstance(m, dict))
+        rows.append({"id": p.get("id"), "label": p.get("label") or p.get("id"),
+                     "models": len(ms), "po_qty": po, "shipped_qty": shipped,
+                     "money": money})
+    rows.sort(key=lambda r: -r["money"])
+
+    return {
+        "scope": "division",
+        "division": div,
+        "label": row.get("label"),
+        "month": month,
+        "actual": row.get("actual"),
+        "actual_source": row.get("actual_source"),
+        "actual_at": row.get("actual_at"),
+        "target": row.get("target"),
+        "target_source": row.get("target_source"),
+        "target_editable": row.get("target_editable"),
+        "has_target": row.get("has_target"),
+        "rate": row.get("rate"),
+        "counts": row.get("counts"),
+        "projects": rows,
+        "months_all": [],
+    }
+
+
+@app.get("/admin/division/revenue")
+def admin_division_revenue(div: str, month: str = None,
+                           _admin: int = Depends(get_admin_session)):
+    month = _check_month(month)
+    div = (div or "").strip()
+    if not div:
+        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
+    return _div_revenue_view(div, month)

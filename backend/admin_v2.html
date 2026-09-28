@@ -10931,11 +10931,164 @@ window._ovProjectKey = function() {
     return String(src.at).replace('T', ' ').slice(5, 16);
   }
 
+
+  // ── 반도체가 아닌 사업부 ─────────────────────────────────────
+  //
+  // revenue.json 은 반도체 주간보고 한 장이 원본이다. 그런데 이 화면이
+  // 사이드바 '사업부' 그룹에 있어서 PCB 를 골라도 반도체 숫자가 떴다.
+  // 사업부를 고른 사람에게 다른 사업부 숫자를 보여주면 안 된다.
+  function dvDiv() {
+    var el = document.getElementById('v2-division-select');
+    return (el && el.value) || '';
+  }
+  function dvCss() {
+    if (document.getElementById('dv-css')) return;
+    var st = document.createElement('style');
+    st.id = 'dv-css';
+    st.textContent = [
+      '.dv-kpis{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 18px}',
+      '.dv-kpi{flex:1 1 200px;background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:14px 16px}',
+      '.dv-kpi .k{font-size:11.5px;color:#98A2B3;font-weight:700}',
+      '.dv-kpi .v{font-size:26px;font-weight:800;color:#0F2C59;letter-spacing:-.5px;margin-top:5px;',
+      ' font-variant-numeric:tabular-nums}',
+      '.dv-kpi .s{font-size:11.5px;color:#98A2B3;margin-top:5px}',
+      '.dv-kpi .track{height:7px;border-radius:5px;background:#EEF1F4;margin-top:10px;overflow:hidden}',
+      '.dv-kpi .track i{display:block;height:100%;background:#0F2C59;border-radius:5px}',
+      '.dv-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;margin-bottom:16px}',
+      '.dv-card .hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #E4E7EC}',
+      '.dv-card .hd b{font-size:13.5px}',
+      '.dv-card .hd .sub{font-size:11.5px;color:#98A2B3;margin-left:auto}',
+      '.dv-card .bd{padding:14px 16px 16px}',
+      '.dv-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}',
+      '.dv-tbl th{background:#F8FAFC;padding:8px 12px;text-align:right;border-bottom:1px solid #E4E7EC;',
+      ' font-size:11.5px;color:#475467;white-space:nowrap}',
+      '.dv-tbl th:first-child,.dv-tbl td:first-child{text-align:left}',
+      '.dv-tbl td{padding:8px 12px;border-bottom:1px solid #F1F5F9;text-align:right;',
+      ' font-variant-numeric:tabular-nums}',
+      '.dv-tbl tr:last-child td{border-bottom:none}',
+      '.dv-tbl td.nm{font-weight:700;color:#101828}',
+      '.dv-in{width:170px;text-align:right;font-size:13px;padding:7px 10px;border-radius:7px;',
+      ' background:#F4F7FB;border:1px solid #E3E9F1;font-variant-numeric:tabular-nums}',
+      '.dv-note{background:#F8FAFC;border:1px solid #E4E7EC;border-radius:10px;padding:10px 14px;',
+      ' font-size:12px;color:#475467;line-height:1.7;margin-bottom:16px}',
+      '.dv-note b{color:#101828}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+  function dvMoney(n) { return '$' + Math.round(Number(n) || 0).toLocaleString(); }
+
+  function dvView(d) {
+    var rate = d.rate === null || d.rate === undefined ? null : d.rate;
+    var rows = (d.projects || []).map(function (p) {
+      return '<tr><td class="nm">' + esc(p.label) + '</td>' +
+        '<td>' + (p.models || 0) + '</td>' +
+        '<td>' + (p.po_qty || 0).toLocaleString() + '</td>' +
+        '<td>' + (p.shipped_qty || 0).toLocaleString() + '</td>' +
+        '<td>' + dvMoney(p.money) + '</td></tr>';
+    }).join('');
+    if (!rows) {
+      rows = '<tr><td class="nm" colspan="5" style="color:#98A2B3;text-align:left">' +
+             '등록된 프로젝트가 없습니다.</td></tr>';
+    }
+    var c = d.counts || {};
+
+    return '' +
+    '<div class="ov-page-head" style="display:flex;align-items:flex-end;gap:12px;">' +
+      '<div><p class="ttl">매출 관리</p>' +
+      '<p class="desc">' + esc(d.label) + ' — 앱 홈의 사업부 매출이 이 값을 그대로 씁니다.</p></div>' +
+      '<div style="margin-left:auto"><select class="pu-sel dv-month" id="rv-month" ' +
+        'style="font-size:13px;padding:7px 10px;border-radius:7px;background:#fff;' +
+        'border:1px solid #D8DEE7">' + monthOptions(d.month, d.months_all) + '</select></div>' +
+    '</div>' +
+
+    '<div class="dv-note">이 화면은 <b>' + esc(d.label) + '</b> 의 숫자입니다. ' +
+      '반도체사업부의 주간보고 매출은 사이드바에서 반도체사업부를 골라야 나옵니다.' +
+      (d.actual_source === '모델 판가 × 출하'
+        ? '<br>실적은 <b>모델 관리</b>의 판가 × 출하 실적입니다. 달을 나눌 수 없어 <b>누계</b>입니다.'
+        : (d.actual_source ? '<br>실적 출처: <b>' + esc(d.actual_source) + '</b>' +
+            (d.actual_at ? ' · ' + esc(String(d.actual_at).slice(0, 10)) : '') : '')) +
+    '</div>' +
+
+    '<div class="dv-kpis">' +
+      '<div class="dv-kpi"><div class="k">실적</div><div class="v">' + dvMoney(d.actual) + '</div>' +
+        '<div class="s">' + esc(d.actual_source || '자료 없음') + '</div></div>' +
+      '<div class="dv-kpi"><div class="k">타겟</div><div class="v">' +
+        (d.has_target ? dvMoney(d.target) : '—') + '</div>' +
+        '<div class="s">' + esc(d.target_source || '미등록') + '</div></div>' +
+      '<div class="dv-kpi"><div class="k">달성</div><div class="v">' +
+        (rate === null ? '—' : rate + '%') + '</div>' +
+        '<div class="track"><i style="width:' +
+          Math.max(0, Math.min(100, rate || 0)) + '%"></i></div></div>' +
+      '<div class="dv-kpi"><div class="k">모델</div><div class="v">' + (c.total || 0) + '</div>' +
+        '<div class="s">지연 ' + (c.delayed || 0) + ' · 집중관리 ' + (c.watch || 0) + '</div></div>' +
+    '</div>' +
+
+    (d.target_editable
+      ? '<div class="dv-card"><div class="hd"><b>타겟</b>' +
+        '<span class="sub">앱 홈의 짝이 되는 값입니다</span></div><div class="bd">' +
+        '<input class="dv-in" id="dv-target" value="' +
+          (d.has_target ? Math.round(d.target) : '') + '" placeholder="0 을 넣으면 지웁니다"> ' +
+        '<button type="button" class="ov-btn ov-btn-primary" id="dv-save">저장</button>' +
+        '<span id="dv-stat" style="font-size:11.5px;color:#98A2B3;margin-left:10px"></span>' +
+        '</div></div>'
+      : '') +
+
+    '<div class="dv-card"><div class="hd"><b>프로젝트별</b>' +
+      '<span class="sub">판가 × 출하 실적</span></div><div class="bd">' +
+      '<table class="dv-tbl"><tr><th>프로젝트</th><th>모델</th><th>PO</th><th>출하</th><th>금액</th></tr>' +
+      rows + '</table></div></div>';
+  }
+
+  function dvWire(d) {
+    var ms = document.getElementById('rv-month');
+    if (ms) ms.onchange = function () { window.renderRevenuePage(ms.value); };
+    var sv = document.getElementById('dv-save');
+    if (!sv) return;
+    sv.onclick = function () {
+      var el = document.getElementById('dv-target');
+      var st = document.getElementById('dv-stat');
+      var fd = new FormData();
+      fd.append('month', d.month);
+      fd.append('division_id', d.division);
+      fd.append('total', (el && el.value) || '0');
+      sv.disabled = true;
+      fetch('/admin/home/division-target',
+            { method: 'POST', credentials: 'same-origin', body: fd })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function () {
+          if (st) st.textContent = '저장했습니다';
+          window.renderRevenuePage(d.month);
+        })
+        .catch(function (e) { alert('저장하지 못했습니다: ' + e.message); })
+        .then(function () { sv.disabled = false; });
+    };
+  }
+
   window.renderRevenuePage = function (month) {
     _month = month || _month || thisMonth();
     var c = document.getElementById('v2-content');
     if (!c) return;
     c.innerHTML = '<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
+    var _dv = dvDiv();
+    if (_dv && _dv !== 'semiconductor') {
+      dvCss();
+      fetch('/admin/division/revenue?div=' + encodeURIComponent(_dv) +
+            '&month=' + encodeURIComponent(_month), { credentials: 'same-origin' })
+        .then(function (r) {
+          if (r.status === 401) throw new Error('로그인이 필요합니다');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (d) { c.innerHTML = dvView(d); dvWire(d); })
+        .catch(function (e) {
+          c.innerHTML = '<div class="placeholder"><div class="big">₩</div>' +
+            '<div class="title">매출 관리</div><div class="sub">' + esc(e.message) + '</div></div>';
+        });
+      return;
+    }
     fetch('/admin/revenue/state?month=' + encodeURIComponent(_month),
           { credentials: 'same-origin' })
       .then(function (r) {
