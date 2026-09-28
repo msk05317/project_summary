@@ -37,8 +37,12 @@ ok += 1
 
 CFG = json.loads((ROOT / 'config' / 'projects.json').read_text(encoding='utf-8'))['projects']
 g['PROJECT_LABELS'] = {p['id']: p.get('label', p['id']) for p in CFG}
+# 실제 config_loader 와 같은 모양: get_projects(division_id=None, visible_only=True)
 g['_cl'] = type('C', (), {'get_projects': staticmethod(
-    lambda visible_only=True: [p for p in CFG if p.get('visible', True)] if visible_only else CFG)})()
+    lambda division_id=None, visible_only=True: [
+        p for p in CFG
+        if (p.get('visible', True) or not visible_only)
+        and (not division_id or p.get('division_id') == division_id)])})()
 
 # ── 지어낸 데이터로 판정 확인 ──
 import datetime
@@ -61,7 +65,7 @@ g['_load_models'] = lambda: {'projects': {'powerbox': {'models': [
     {'id': 'MASS-1', 'name': 'MASS-1', 'group': '양산', 'po_qty': 0},
     {'id': 'MASS-2', 'name': 'MASS-2', 'group': '양산', 'po_qty': 100, 'shipped_qty': 100},
 ]}}}
-r = fn(10)
+r = fn(10)                      # 기본 = 반도체사업부 (powerbox 가 거기 있다)
 c = r['counts']
 assert c['total'] == 5, c
 assert c['delayed'] == 1, f"지연이 1이어야 한다: {c}"
@@ -138,8 +142,10 @@ if bk:
     CFGM = {p['id']: p for p in CFG}
     g['_cl'] = type('C', (), {
         'get_projects': staticmethod(
-            lambda visible_only=True: [p for p in CFG if p.get('visible', True)]
-            if visible_only else CFG),
+            lambda division_id=None, visible_only=True: [
+                p for p in CFG
+                if (p.get('visible', True) or not visible_only)
+                and (not division_id or p.get('division_id') == division_id)]),
         'get_project': staticmethod(lambda k: CFGM.get(k))})()
     b = fn(12)['bloom']
     assert b and (b['plan'] > 0 or b['prev_plan'] > 0), f'블룸 요약이 비었다: {b}'
@@ -235,6 +241,24 @@ _ps = _cfg['projects'] if isinstance(_cfg.get('projects'), list) else list(_cfg[
 _lab = {x['id']: x.get('label') for x in _ps}
 assert _lab.get('fluence') == '플루언스', _lab.get('fluence')
 assert _lab.get('sdi') == 'SDI', 'SDI 는 SDI 로 둔다'
+ok += 1
+
+
+# ── 반도체 밖 프로젝트는 세지 않는다 ──
+# 카드에 '(반도체 기준)' 이라 적혀 있는데 전 사업부를 세고 있었다.
+g['_load_models'] = lambda: {'projects': {
+    'powerbox': {'models': [dev('P-1', past), dev('P-2', soon)]},   # 반도체
+    'net_samsung': {'models': [dev('O-1', past), dev('O-2', past)]},  # 네트워크
+}}
+_r2 = fn(10)
+assert _r2['counts']['total'] == 2, \
+    f"반도체 밖 프로젝트가 섞였다: {_r2['counts']}"
+assert _r2['counts']['delayed'] == 1, _r2['counts']
+ok += 1
+
+# 빈 값으로 부르면 전사를 센다 (관리용 통로는 남겨 둔다)
+_r3 = fn(10, '')
+assert _r3['counts']['total'] == 4, f"전사 집계가 안 된다: {_r3['counts']}"
 ok += 1
 
 print(f'전부 통과 · {ok}개 항목')
