@@ -57,6 +57,10 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
   String _sel = '';
   bool _table = false;
 
+  /// 막대를 누르면 그 달 숫자를 검은 박스로 띄운다. 막대 높이만 보고
+  /// 얼마인지 맞히라고 하면 아무도 안 본다.
+  String _tip = '';
+
   PurchaseStatus get _s => widget.status;
 
   String get _cur => _s.currency == 'KRW' ? '₩' : '\$';
@@ -70,6 +74,13 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
         : m.abs().toStringAsFixed(1);
     final head = '$_cur${_group(t)}만';
     return neg ? '($head)' : head;
+  }
+
+  /// 툴팁 안에서는 통화 기호 없이 만 단위 숫자만 쓴다.
+  String _manNum(double v) {
+    final m = v / 10000;
+    final t = m.abs() >= 1000 ? m.abs().toStringAsFixed(0) : m.abs().toStringAsFixed(1);
+    return (m < 0 ? '(' : '') + _group(t) + (m < 0 ? ')' : '');
   }
 
   String _group(String t) {
@@ -138,7 +149,7 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
           final t = tabs[i];
           final on = t.month == _cardMonth.month;
           return GestureDetector(
-            onTap: () => setState(() => _sel = t.month),
+            onTap: () => setState(() { _sel = t.month; _tip = ''; }),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               alignment: Alignment.center,
@@ -307,46 +318,73 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
         children: [
           _head('월별 추이', '단위 만 ${_s.currency}'),
           const SizedBox(height: 10),
-          SizedBox(
-            height: plot + 22,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: ms.map((m) {
-                final on = m.month == _cardMonth.month;
-                return Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _sel = m.month),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        SizedBox(
-                          height: plot,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _bar(m.revenue / max * plot, _kRev),
-                              const SizedBox(width: 3),
-                              _bar(m.buy / max * plot, _kBuy),
-                              const SizedBox(width: 3),
-                              _bar(m.paid / max * plot, _kPaid),
-                            ],
-                          ),
+          LayoutBuilder(builder: (ctx, bc) {
+            final w = bc.maxWidth;
+            final n = ms.length;
+            final gw = n > 0 ? w / n : w;
+            const tipW = 178.0;
+            var tipLeft = 0.0;
+            var tipIdx = -1;
+            for (var i = 0; i < n; i++) {
+              if (ms[i].month == _tip) tipIdx = i;
+            }
+            if (tipIdx >= 0) {
+              tipLeft = ((tipIdx + 0.5) * gw - tipW / 2)
+                  .clamp(0.0, (w - tipW).clamp(0.0, double.infinity));
+            }
+            return SizedBox(
+              height: plot + 22,
+              child: Stack(children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: ms.map((m) {
+                    final on = m.month == _cardMonth.month;
+                    return Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() {
+                          _sel = m.month;
+                          _tip = _tip == m.month ? '' : m.month;
+                        }),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              height: plot,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _bar(m.revenue / max * plot, _kRev),
+                                  const SizedBox(width: 3),
+                                  _bar(m.buy / max * plot, _kBuy),
+                                  const SizedBox(width: 3),
+                                  _bar(m.paid / max * plot, _kPaid),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(m.label,
+                                style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: on ? _kNavy : _kT2)),
+                          ],
                         ),
-                        const SizedBox(height: 5),
-                        Text(m.label,
-                            style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: on ? _kNavy : _kT2)),
-                      ],
-                    ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                if (tipIdx >= 0)
+                  Positioned(
+                    left: tipLeft,
+                    top: 0,
+                    width: tipW,
+                    child: _tipBox(ms[tipIdx]),
                   ),
-                );
-              }).toList(),
-            ),
-          ),
+              ]),
+            );
+          }),
           const SizedBox(height: 9),
           Row(children: [
             _dot(_kRev, '매출'),
@@ -359,6 +397,47 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
       ),
     );
   }
+
+  Widget _tipBox(PurchaseMonth m) => GestureDetector(
+        onTap: () => setState(() => _tip = ''),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${m.label} · 만 ${_s.currency}',
+                  style: const TextStyle(
+                      fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white)),
+              const SizedBox(height: 4),
+              _tipLine('매출', _manNum(m.revenue), '매입', _manNum(m.buy)),
+              const SizedBox(height: 2),
+              _tipLine('지급', _manNum(m.paid), '잔액', _manNum(m.balance)),
+            ],
+          ),
+        ),
+      );
+
+  Widget _tipLine(String k1, String v1, String k2, String v2) => Row(children: [
+        Text('$k1 ',
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1))),
+        Text(v1,
+            style: const TextStyle(
+                fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white)),
+        const SizedBox(width: 10),
+        Text('$k2 ',
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1))),
+        Text(v2,
+            style: const TextStyle(
+                fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white)),
+      ]);
 
   Widget _bar(double h, Color c) => Container(
         width: 11,
