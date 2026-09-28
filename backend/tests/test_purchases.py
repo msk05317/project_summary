@@ -83,6 +83,32 @@ def main():
     t("잘못된 월 제거", list(junk["divisions"]["pcb"]["months"]) == ["2026-08"])
     t("항목 없으면 기본 4개", len(junk["divisions"]["pcb"]["months"]["2026-08"]["items"]) == 4)
 
+
+    # 7. 세 칸이 다 0인 항목은 앱에서 뺀다 (admin 입력 칸은 남는다)
+    z = P.put_division({}, "pcb", {"currency": "USD", "months": {"2026-08": {
+        "revenue": 100,
+        "items": [
+            {"key": "raw", "label": "원소재", "buy": 1000, "paid": 400, "balance": 500},
+            {"key": "g2", "label": "조립자재", "buy": 0, "paid": 0, "balance": 0},
+            {"key": "supply", "label": "소모품", "buy": 200, "paid": 100},
+        ],
+        "prepaid": 10, "actual_paid": 20}}})
+    zv = P.for_app(z, "pcb")
+    t("0 만 있는 항목은 앱에서 뺀다",
+      [i["label"] for i in zv["months"][0]["items"]] == ["원소재", "소모품"])
+    t("누적에서도 뺀다",
+      [i["label"] for i in zv["total"]["items"]] == ["원소재", "소모품"])
+    t("합계는 그대로", zv["months"][0]["buy"] == 1200)
+    t("admin 입력 칸은 남는다",
+      [i["label"] for i in P.for_admin(z, "pcb")["months"]["2026-08"]["items"]]
+      == ["원소재", "조립자재", "소모품"])
+    # 한 칸이라도 값이 있으면 남는다
+    z2 = P.put_division({}, "pcb", {"currency": "USD", "months": {"2026-08": {
+        "items": [{"key": "g2", "label": "조립자재", "buy": 0, "paid": 0,
+                   "balance": -5}]}}})
+    t("잔액만 있어도 남는다",
+      len(P.for_app(z2, "pcb")["months"][0]["items"]) == 1)
+
     print("test_purchases: 전부 통과")
 
 

@@ -159,6 +159,11 @@ def _resolve(mv: dict) -> dict:
         b, p = _f(it.get("buy")), _f(it.get("paid"))
         raw_bal = it.get("balance")
         r = b - p if raw_bal is None else float(raw_bal)
+        # 세 칸이 다 0인 항목은 앱에서 빼 준다. PCB 의 '조립자재' 처럼
+        # 표에는 줄이 있지만 값이 없는 항목이 화면 자리만 차지했다.
+        # (admin 은 for_admin 으로 원본을 받으니 입력 칸은 그대로 있다)
+        if b == 0 and p == 0 and r == 0:
+            continue
         items.append({
             "key": it.get("key", ""),
             "label": it.get("label", ""),
