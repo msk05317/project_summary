@@ -3,6 +3,9 @@
 #
 # 하바플레이트 주간보고(RPM 블록)와 개발현황 엑셀의 두 칸이 여기로 온다.
 # 앱의 완료예정 · 지연 판정이 이 날짜로 돈다.
+#
+# 가공 완료가 앞으로의 날짜면 아직 한 게 아니다 — 예정일만 적고 진행중.
+# 지난 날짜(오늘 포함)면 완료로 적고 다음 칸을 진행중으로 올린다.
 import ast, datetime, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -12,7 +15,7 @@ import hrva_import as hi              # noqa: E402
 SRC = (ROOT / 'main.py').read_text(encoding='utf-8')
 tree = ast.parse(SRC)
 g = {}
-want = {'_set_fair_dates', '_canon_step'}
+want = {'_set_fair_dates', '_canon_step', '_parse_any_date'}
 for n in tree.body:
     if isinstance(n, ast.FunctionDef) and n.name in want:
         exec(ast.get_source_segment(SRC, n), g)
@@ -32,10 +35,31 @@ assert p[1]['status'] == '진행중', p[1]
 assert p[0]['expected'] == '', '가공 단계를 건드렸다'
 ok += 1
 
-# ── 실제일까지 ──
-p = F(proc(), '2026-10-07', '2026-10-02')
-assert p[1]['expected'] == '2026-10-07' and p[1]['actual'] == '2026-10-02'
-assert p[1]['status'] == '완료'
+# ── 가공 완료가 지난 날짜면 완료 + 다음 칸 진행중 ──
+TODAY = datetime.date(2026, 9, 28)
+p = F(proc(), '2026-10-07', '2026-09-20', TODAY)
+assert p[1]['expected'] == '2026-10-07' and p[1]['actual'] == '2026-09-20'
+assert p[1]['status'] == '완료', p[1]
+assert p[2]['status'] == '진행중', f'다음 칸이 안 올라간다: {p[2]}'
+ok += 1
+
+# ── 당일도 완료 ──
+p = F(proc(), '2026-10-07', '2026-09-28', TODAY)
+assert p[1]['actual'] == '2026-09-28' and p[1]['status'] == '완료', p[1]
+ok += 1
+
+# ── 앞으로의 날짜면 실제일을 안 적는다 ──
+p = F(proc(), '2026-10-07', '2026-10-02', TODAY)
+assert p[1]['expected'] == '2026-10-07', p[1]
+assert p[1]['actual'] == '', f'미래 날짜가 실제일로 들어갔다: {p[1]}'
+assert p[1]['status'] == '진행중', p[1]
+assert p[2]['status'] in ('', '대기'), f'다음 칸이 먼저 올라갔다: {p[2]}'
+ok += 1
+
+# ── 사람이 적어 둔 다음 칸은 건드리지 않는다 ──
+b = proc(); b[2].update(status='완료', actual='2026-09-10')
+p = F(b, '2026-10-07', '2026-09-20', TODAY)
+assert p[2]['status'] == '완료' and p[2]['actual'] == '2026-09-10', p[2]
 ok += 1
 
 # ── 빈 값은 기존 입력을 지우지 않는다 ──

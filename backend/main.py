@@ -21796,30 +21796,60 @@ def _merge_process_keep(old, new):
     return out
 
 
-def _set_fair_dates(proc, expected: str = "", actual: str = "") -> list:
+def _set_fair_dates(proc, expected: str = "", actual: str = "", today=None) -> list:
     """'FAIR 제출' 단계에 예정일·실제일을 적는다.
 
     하바플레이트 주간보고·개발현황의 두 칸이 여기로 온다.
       고객요청일 → FAIR 제출 예정일
-      가공 완료  → FAIR 제출 실제일
+      가공 완료  → FAIR 제출 실제일 (단, 오늘까지 지난 날짜일 때만)
+
+    가공 완료가 앞으로의 날짜면 아직 한 게 아니다. 예정일만 적고 진행중으로
+    둔다. 지난 날짜(오늘 포함)면 그날 한 것으로 보고 완료로 적고, 바로
+    다음 단계를 진행중으로 올린다 — 완료 밑이 계속 '대기' 면 지금 무엇을
+    하고 있는지가 화면에 안 나온다.
+
     빈 값은 덮지 않는다 (엑셀에 아직 안 적힌 칸이 기존 입력을 지우면 안 된다).
     """
+    import datetime as _dtf
     if not isinstance(proc, list):
         return proc
-    for st in proc:
+    today = today or _dtf.date.today()
+
+    done = ""
+    if actual:
+        d = _parse_any_date(actual)
+        if d and d <= today:
+            done = actual
+
+    hit = -1
+    for i, st in enumerate(proc):
         if not isinstance(st, dict):
             continue
         if st.get("key") != "fair_write" and _canon_step(st.get("name")) != _canon_step("FAIR 제출"):
             continue
         if expected:
             st["expected"] = expected
-        if actual:
-            st["actual"] = actual
+        if done:
+            st["actual"] = done
         if st.get("actual"):
             st["status"] = "완료"
         elif st.get("expected") and not str(st.get("status") or "").strip():
             st["status"] = "진행중"
+        hit = i
         break
+
+    # 방금 완료로 만든 단계의 다음 칸을 진행중으로. 이미 뭔가 적힌 칸은
+    # 사람이 쓴 것이니 건드리지 않는다.
+    if done and hit >= 0:
+        for st in proc[hit + 1:]:
+            if not isinstance(st, dict):
+                continue
+            if st.get("actual"):
+                continue                    # 이미 끝난 칸
+            cur = str(st.get("status") or "").strip()
+            if cur in ("", "대기"):
+                st["status"] = "진행중"
+            break
     return proc
 
 
