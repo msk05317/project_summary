@@ -27278,9 +27278,11 @@ def admin_models_restore_missing(payload: dict = Body(...),
     want = [str(k).strip() for k in ((payload or {}).get("projects") or []) if str(k).strip()]
     mode = str((payload or {}).get("mode") or "preview").strip()
 
+    fill = bool((payload or {}).get("fill_empty"))
+
     data = _load_models()
     projects = data.setdefault("projects", {})
-    report, total = {}, 0
+    report, total, filled = {}, 0, 0
     for key, block in (doc.get("projects") or {}).items():
         if want and key not in want:
             continue
@@ -27290,25 +27292,50 @@ def admin_models_restore_missing(payload: dict = Body(...),
         proj = projects.setdefault(key, {})
         cur = [m for m in (proj.get("models") or []) if isinstance(m, dict)]
         have = {str(m.get("id") or "").strip() for m in cur}
+
+        # 살아남은 모델의 '비어 있는 칸' 만 채운다. 유형이 지워지면 주차
+        # 보드가 그 행을 못 찾아 전부 0 으로 뜬다 — 엔클로저가 그랬다.
+        # 값이 들어 있는 칸은 지금 것이 최신이므로 건드리지 않는다.
+        fills = []
+        if fill:
+            src_map = {str(m.get("id") or "").strip(): m for m in src}
+            for m in cur:
+                o = src_map.get(str(m.get("id") or "").strip())
+                if not o:
+                    continue
+                got = []
+                if (o.get("dev_type") or "") and not (m.get("dev_type") or ""):
+                    m["dev_type"] = o["dev_type"]
+                    got.append("dev_type")
+                if (o.get("weekly_plan") or {}) and not (m.get("weekly_plan") or {}):
+                    m["weekly_plan"] = o["weekly_plan"]
+                    got.append("weekly_plan")
+                if (o.get("part_number") or "") and not (m.get("part_number") or ""):
+                    m["part_number"] = o["part_number"]
+                    got.append("part_number")
+                if got:
+                    fills.append({"id": m.get("id"), "fields": got})
         add = [m for m in src if str(m.get("id") or "").strip()
                and str(m.get("id") or "").strip() not in have]
-        if not add:
+        if not add and not fills:
             continue
+        if fills:
+            filled += len(fills)
         report[key] = {"before": len(cur), "add": [str(m.get("id")) for m in add],
-                       "after": len(cur) + len(add)}
+                       "after": len(cur) + len(add), "filled": fills}
         total += len(add)
         if mode == "commit":
             proj["models"] = cur + add
 
     out = {"ok": True, "file": name, "mode": mode,
-           "total": total, "projects": report}
+           "total": total, "filled": filled, "projects": report}
     if mode != "commit":
         return out
-    if not total:
+    if not total and not filled:
         out["saved"] = False
         return out
     _save_models(data)
-    print("[restore-missing] %s → %s (%d종)"
-          % (name, ", ".join(report), total))
+    print("[restore-missing] %s → %s (추가 %d종 · 칸 채움 %d종)"
+          % (name, ", ".join(report), total, filled))
     out["saved"] = True
     return out
