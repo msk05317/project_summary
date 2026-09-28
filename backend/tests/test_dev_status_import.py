@@ -89,8 +89,10 @@ fn = {n.name: ast.get_source_segment(SRC, n) for n in tree.body
 assert fn, '_apply_dev_status 가 없다'
 body = fn['_apply_dev_status']
 assert "m[\"group\"] = \"개발\"" in body, '개발품으로 안 넣는다'
-assert '"machining"' in body and 'st["expected"]' in body, \
-    "'가공 완료' 를 가공 (조립) 계획일로 안 넣는다"
+# 고객요청일 → FAIR 제출 예정일, 가공 완료 → FAIR 제출 실제일 (2026-09 규칙 변경)
+assert '_set_fair_dates(proc, _req, r.get("machining_date")' in body, \
+    "'고객요청일 · 가공 완료' 를 FAIR 제출 단계로 안 넣는다"
+assert 'machining_date' in body
 assert '"드롭예정"' in body, 'PO 취소를 드롭예정으로 안 바꾼다'
 assert 'part_number' in body, '파트넘버로 안 맞춘다'
 ok += 1
