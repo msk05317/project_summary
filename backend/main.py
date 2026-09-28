@@ -26975,3 +26975,49 @@ async def admin_revenue_estimate_import(month: str = Form(...),
     out["saved"] = True
     out["view"] = _rev.month_view(store, month)
     return out
+
+
+# ── 사업부 월별 매입·지급 현황 ──────────────────────────────────
+#
+# PCB 사업부의 '월별 매입 현황 분석' 엑셀을 담는 자리다. 매출과 달리
+# 매입은 사업부마다 형식이 제각각이라, 자동 집계 대신 admin 에서 직접
+# 넣는다. 잔액은 계산하지 않고 적힌 값을 쓴다 — 표의 잔액이 매입-지급과
+# 맞지 않는 달이 있어서다(선급금 상계로 보인다). 비워두면 그때만 계산한다.
+import purchases as _pur
+
+PURCHASE_FILE = DATA_DIR / "purchases.json"
+
+
+def _pur_load() -> dict:
+    return _pur.load(PURCHASE_FILE)
+
+
+@app.get("/division/{div}/purchase")
+def get_division_purchase(div: str):
+    """앱 카드 한 장이 필요한 전부 — 월별 + 누적."""
+    return _pur.for_app(_pur_load(), (div or "").strip())
+
+
+@app.get("/admin/division/purchase")
+def admin_division_purchase(div: str, _admin: int = Depends(get_admin_session)):
+    data = _pur_load()
+    div = (div or "").strip()
+    out = _pur.for_admin(data, div)
+    out["view"] = _pur.for_app(data, div)
+    out["updated_at"] = data.get("updated_at", "")
+    return out
+
+
+@app.put("/admin/division/purchase")
+def admin_division_purchase_save(payload: dict = Body(...),
+                                 _admin: int = Depends(get_admin_session)):
+    div = str((payload or {}).get("division") or "").strip()
+    if not div:
+        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
+    data = _pur.put_division(_pur_load(), div, payload or {})
+    saved = _pur.save(PURCHASE_FILE, data)
+    out = _pur.for_admin(saved, div)
+    out["view"] = _pur.for_app(saved, div)
+    out["updated_at"] = saved.get("updated_at", "")
+    out["saved"] = True
+    return out

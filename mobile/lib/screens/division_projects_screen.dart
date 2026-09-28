@@ -28,6 +28,9 @@ import '../models/bloom_daily.dart';
 import '../services/bloom_service.dart';
 import '../widgets/bloom_plan_actual_card.dart';
 import '../widgets/bloom_today_card.dart';
+import '../widgets/purchase_status_card.dart';
+import '../services/purchase_service.dart';
+import '../models/purchase_status.dart';
 import '../components/division/division_immediate_check.dart'
     show DivisionImmediateItem, ImmediatePriority;
 import '../components/division/division_revenue_hero.dart';
@@ -113,6 +116,15 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     if (mounted) setState(() => _bloom = b);
   }
 
+  /// 매입·지급 현황 (지금은 PCB 만 채워져 있다). 데이터가 없는 사업부는
+  /// has_data=false 로 와서 카드가 통째로 빠진다.
+  PurchaseStatus _purchase = PurchaseStatus.empty;
+
+  Future<void> _loadPurchase() async {
+    final p = await PurchaseService.fetch(widget.division.id);
+    if (mounted) setState(() => _purchase = p);
+  }
+
   AutoProjectRow _autoOf(String key) {
     for (final r in _auto.projects) {
       if (r.key == key) return r;
@@ -135,6 +147,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
     if (_isAuto) _loadAuto();
     if (_isBloom) _loadBloom();
     if (_isSemi) _loadSheetRevenue();
+    _loadPurchase();
   }
 
   Future<void> _loadAuto() async {
@@ -276,6 +289,7 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
       _loadOverview(),
       if (_isAuto) _loadAuto(),
       if (_isBloom) _loadBloom(),
+      _loadPurchase(),
     ]);
   }
 
@@ -894,6 +908,10 @@ class _DivisionProjectsScreenState extends State<DivisionProjectsScreen> {
                     BloomPlanActualCard(board: _bloom),
                     const SizedBox(height: 12),
                     BloomTodayCard(board: _bloom),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_purchase.hasData) ...[
+                    PurchaseStatusCard(status: _purchase),
                     const SizedBox(height: 12),
                   ],
                   if (_isAuto)

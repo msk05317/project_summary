@@ -218,6 +218,7 @@
       <div class="nav-item" data-page="home"><span class="icon"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg></span><span>홈 대시보드</span></div>
       <div class="nav-item active" data-page="models"><span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span><span>모델 관리</span></div>
       <div class="nav-item" data-page="revenue"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/></svg></span><span>매출 관리</span></div>
+      <div class="nav-item" data-page="purchase"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8 12h8"/><path d="M8 16h5"/></svg></span><span>매입 관리</span></div>
     </nav>
 
     <div class="spacer"></div>
@@ -892,6 +893,7 @@ window._attachAutoListBehavior = function(el){
     homeadmin: '홈 관리',
     home: '홈 대시보드',
     revenue: '매출 관리',
+    purchase: '매입 관리',
     report: '보고',
     production: '생산',
     inbound: '입고',
@@ -933,6 +935,8 @@ window._attachAutoListBehavior = function(el){
       window.renderHomeDashboard();
     } else if (pg === 'revenue') {
       window.renderRevenuePage();
+    } else if (pg === 'purchase') {
+      window.renderPurchasePage();
     } else {
       const icons = { home:'🏠', production:'🏭', inbound:'📥', outbound:'📤' };
       c.innerHTML = '<div class="placeholder"><div class="big">'+(icons[pg]||'✦')+'</div><div class="title">'+(PAGE_LABEL[pg]||pg)+'</div><div class="sub">개발 중 — 곧 오픈됩니다</div></div>';
@@ -11940,5 +11944,355 @@ window._ovProjectKey = function() {
   };
 })();
 </script>
+
+<script>
+// ============================================================
+// 매입 관리 — 사업부 월별 매입·지급 현황
+//
+// 한 번에 한 달만 보여 준다. 열을 19개 늘어놓으면 어느 칸이 무슨
+// 칸인지 아무도 모른다. 회색 칸이 사람이 넣는 칸, 점선 칸은 자동이다.
+// 잔액은 비워 두면 '매입-지급'으로 채우고, 적으면 적은 값을 쓴다.
+// ============================================================
+(function () {
+  var _state = null;   // { division, currency, months:{...} }
+  var _month = '';
+  var _dirty = false;
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function divOf() {
+    var s = document.getElementById('v2-division-select');
+    return (s && s.value) || '';
+  }
+  function divLabel() {
+    var s = document.getElementById('v2-division-select');
+    if (!s) return '';
+    var o = s.options[s.selectedIndex];
+    return (o && o.text) || s.value || '';
+  }
+  function num(v) {
+    if (v === null || v === undefined || v === '') return null;
+    var t = String(v).replace(/[,\s$₩]/g, '');
+    var neg = false;
+    if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
+    if (t === '' || isNaN(Number(t))) return null;
+    var n = Number(t);
+    return neg ? -n : n;
+  }
+  function f(v) { var n = num(v); return n === null ? 0 : n; }
+  function fmt(n) {
+    if (n === null || n === undefined || n === '') return '';
+    var v = Number(n);
+    if (isNaN(v)) return '';
+    var s = Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    return v < 0 ? '(' + s + ')' : s;
+  }
+  function cur() { return (_state && _state.currency === 'KRW') ? '₩' : '$'; }
+  function mLabel(m) { return m ? (Number(m.slice(5, 7)) + '월') : ''; }
+  function thisMonth() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function monthsOf() { return Object.keys((_state && _state.months) || {}).sort(); }
+  function cell(m) {
+    if (!_state.months[m]) {
+      _state.months[m] = {
+        revenue: null, items: (_state.default_items || []).map(function (d) {
+          return { key: d.key, label: d.label, buy: null, paid: null, balance: null };
+        }), prepaid: null, actual_paid: null, invest: null, note: ''
+      };
+    }
+    return _state.months[m];
+  }
+
+  // ---------------------------------------------------------- CSS
+  function css() {
+    if (document.getElementById('pu-css')) return;
+    var s = document.createElement('style');
+    s.id = 'pu-css';
+    s.textContent = [
+      '.pu-guide{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;background:#F8FAFC;',
+      ' border:1px solid #E4E7EC;border-radius:10px;padding:10px 14px;font-size:12px;color:#475467;margin-bottom:14px}',
+      '.pu-guide b{color:#101828}',
+      '.pu-key{display:inline-flex;align-items:center;gap:6px}',
+      '.pu-key s{text-decoration:none;width:26px;height:15px;border-radius:5px;display:inline-block}',
+      '.pu-key s.in{background:#F4F7FB;border:1px solid #E3E9F1}',
+      '.pu-key s.au{background:#fff;border:1px dashed #B9C4D4}',
+      '.pu-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;align-items:center}',
+      '.pu-chip{font-size:12.5px;font-weight:700;color:#475467;background:#fff;border:1px solid #E4E7EC;',
+      ' border-radius:999px;padding:6px 14px;cursor:pointer}',
+      '.pu-chip:hover{border-color:#B9C4D4}',
+      '.pu-chip.on{background:#0F2C59;border-color:#0F2C59;color:#fff}',
+      '.pu-chip.add{border-style:dashed;color:#0F2C59}',
+      '.pu-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;margin-bottom:16px}',
+      '.pu-card .hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #E4E7EC}',
+      '.pu-card .hd b{font-size:13.5px}',
+      '.pu-card .hd .sub{font-size:11.5px;color:#98A2B3;margin-left:auto}',
+      '.pu-card .bd{padding:12px 16px 16px}',
+      '.pu-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}',
+      '.pu-tbl th{background:#F8FAFC;padding:8px 12px;text-align:right;border-bottom:1px solid #E4E7EC;',
+      ' font-size:11.5px;color:#475467;white-space:nowrap}',
+      '.pu-tbl th:first-child,.pu-tbl td:first-child{text-align:left}',
+      '.pu-tbl td{padding:7px 12px;border-bottom:1px solid #F1F5F9;text-align:right}',
+      '.pu-tbl tr:last-child td{border-bottom:none}',
+      '.pu-tbl td.nm{font-weight:700;color:#101828;white-space:nowrap}',
+      '.pu-in{width:100%;max-width:130px;text-align:right;font-size:12.5px;padding:6px 9px;',
+      ' border-radius:7px;background:#F4F7FB;border:1px solid #E3E9F1;font-variant-numeric:tabular-nums}',
+      '.pu-in:focus{outline:none;border-color:#0F2C59;background:#fff}',
+      '.pu-in.lbl{text-align:left;max-width:200px}',
+      '.pu-in.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA;font-weight:700}',
+      '.pu-au{display:inline-block;min-width:96px;background:#fff;border:1px dashed #B9C4D4;border-radius:7px;',
+      ' padding:6px 9px;text-align:right;color:#475467;font-variant-numeric:tabular-nums}',
+      '.pu-au.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA}',
+      '.pu-au.sum{font-weight:800;color:#0F2C59;border-style:solid;border-color:#D0D5DD;background:#F8FAFC}',
+      '.pu-sc{overflow-x:auto}',
+      '.pu-sc .pu-tbl{min-width:640px}',
+      '.pu-act{display:flex;gap:8px;align-items:center;margin:4px 0 20px}',
+      '.pu-act .sp{margin-left:auto;font-size:11.5px;color:#98A2B3}',
+      '.pu-btn{font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:8px;border:1px solid #D0D5DD;',
+      ' background:#fff;color:#344054;cursor:pointer}',
+      '.pu-btn.pri{background:#0F2C59;border-color:#0F2C59;color:#fff}',
+      '.pu-btn:disabled{opacity:.5;cursor:default}',
+      '.pu-note{width:100%;min-height:56px;font-size:12.5px;padding:8px 10px;border-radius:8px;',
+      ' background:#F4F7FB;border:1px solid #E3E9F1;resize:vertical;font-family:inherit}',
+      '.pu-sel{font-size:12.5px;padding:6px 10px;border-radius:7px;background:#F4F7FB;border:1px solid #E3E9F1}',
+      '.pu-hint{font-size:11.5px;color:#98A2B3;margin-top:8px;line-height:1.6}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  // ---------------------------------------------------------- 그리기
+  function totals(mv) {
+    var t = { buy: 0, paid: 0, bal: 0 };
+    (mv.items || []).forEach(function (it) {
+      var b = f(it.buy), p = f(it.paid);
+      t.buy += b; t.paid += p;
+      t.bal += (it.balance === null || it.balance === undefined || it.balance === '')
+        ? (b - p) : f(it.balance);
+    });
+    return t;
+  }
+
+  function itemRows(mv) {
+    return (mv.items || []).map(function (it, i) {
+      var b = f(it.buy), p = f(it.paid);
+      var autoBal = b - p;
+      var hasBal = !(it.balance === null || it.balance === undefined || it.balance === '');
+      var bal = hasBal ? f(it.balance) : autoBal;
+      var rate = b > 0 ? Math.round(p / b * 1000) / 10 : 0;
+      return '<tr>' +
+        '<td class="nm"><input class="pu-in lbl" data-i="' + i + '" data-k="label" value="' +
+          esc(it.label || '') + '"></td>' +
+        '<td><input class="pu-in" data-i="' + i + '" data-k="buy" value="' + esc(fmt(it.buy)) + '"></td>' +
+        '<td><input class="pu-in" data-i="' + i + '" data-k="paid" value="' + esc(fmt(it.paid)) + '"></td>' +
+        '<td><input class="pu-in' + (bal < 0 ? ' neg' : '') + '" data-i="' + i +
+          '" data-k="balance" placeholder="자동 ' + esc(fmt(autoBal)) + '" value="' +
+          esc(hasBal ? fmt(it.balance) : '') + '"></td>' +
+        '<td><span class="pu-au" data-ro="rate' + i + '">' + rate + '%</span></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function view() {
+    var ms = monthsOf();
+    var mv = cell(_month);
+    var t = totals(mv);
+    var pay = f(mv.prepaid) + f(mv.actual_paid) + f(mv.invest);
+    var rev = f(mv.revenue);
+
+    var chips = ms.map(function (m) {
+      return '<button type="button" class="pu-chip' + (m === _month ? ' on' : '') +
+             '" data-m="' + m + '">' + mLabel(m) + '</button>';
+    }).join('') + '<button type="button" class="pu-chip add" id="pu-add">+ 월 추가</button>';
+
+    var summary = ms.map(function (m) {
+      var v = _state.months[m], s = totals(v);
+      return '<tr><td class="nm">' + mLabel(m) + '</td>' +
+        '<td>' + fmt(f(v.revenue)) + '</td><td>' + fmt(s.buy) + '</td>' +
+        '<td>' + fmt(s.paid) + '</td><td>' + fmt(s.bal) + '</td>' +
+        '<td>' + (s.buy > 0 ? Math.round(s.paid / s.buy * 1000) / 10 : 0) + '%</td></tr>';
+    }).join('');
+    var gt = ms.reduce(function (a, m) {
+      var v = _state.months[m], s = totals(v);
+      a.rev += f(v.revenue); a.buy += s.buy; a.paid += s.paid; a.bal += s.bal; return a;
+    }, { rev: 0, buy: 0, paid: 0, bal: 0 });
+
+    return '' +
+    '<div class="pu-act">' +
+      '<button type="button" class="pu-btn pri" id="pu-save">저장</button>' +
+      '<select class="pu-sel" id="pu-cur">' +
+        '<option value="USD"' + (_state.currency === 'USD' ? ' selected' : '') + '>USD ($)</option>' +
+        '<option value="KRW"' + (_state.currency === 'KRW' ? ' selected' : '') + '>KRW (₩)</option>' +
+      '</select>' +
+      '<span class="sp" id="pu-stat">' + esc(divLabel()) + ' · 앱 “매입 현황” 카드에 그대로 나갑니다</span>' +
+    '</div>' +
+
+    '<div class="pu-guide">' +
+      '<span class="pu-key"><s class="in"></s><b>회색 칸</b> = 직접 입력</span>' +
+      '<span class="pu-key"><s class="au"></s>점선 칸 = 자동 계산</span>' +
+      '<span>잔액을 비우면 <b>매입−지급</b>으로 채웁니다. 표에 적힌 잔액이 다르면 그 값을 적어 주세요.</span>' +
+    '</div>' +
+
+    '<div class="pu-chips">' + chips + '</div>' +
+
+    '<div class="pu-card"><div class="hd"><b>' + mLabel(_month) + ' 매입</b>' +
+      '<span class="sub">단위 ' + cur() + '</span></div><div class="bd">' +
+      '<div class="pu-sc"><table class="pu-tbl">' +
+      '<tr><th>항목</th><th>매입액</th><th>지급액</th><th>잔액</th><th>지급률</th></tr>' +
+      itemRows(mv) +
+      '<tr><td class="nm">합계</td>' +
+        '<td><span class="pu-au sum" data-ro="tbuy">' + fmt(t.buy) + '</span></td>' +
+        '<td><span class="pu-au sum" data-ro="tpaid">' + fmt(t.paid) + '</span></td>' +
+        '<td><span class="pu-au sum' + (t.bal < 0 ? ' neg' : '') + '" data-ro="tbal">' + fmt(t.bal) + '</span></td>' +
+        '<td><span class="pu-au sum" data-ro="trate">' +
+          (t.buy > 0 ? Math.round(t.paid / t.buy * 1000) / 10 : 0) + '%</span></td></tr>' +
+      '</table></div>' +
+      '<div class="pu-hint">항목 이름도 고칠 수 있습니다. 앱에는 여기 적은 이름 그대로 나갑니다.</div>' +
+    '</div></div>' +
+
+    '<div class="pu-card"><div class="hd"><b>매출 · 지급 내역</b>' +
+      '<span class="sub">' + mLabel(_month) + '</span></div><div class="bd">' +
+      '<table class="pu-tbl">' +
+      '<tr><td class="nm">매출액</td><td><input class="pu-in" data-k="revenue" value="' +
+        esc(fmt(mv.revenue)) + '"></td>' +
+        '<td class="nm">매입/매출</td><td><span class="pu-au" data-ro="ratio">' +
+        (rev > 0 ? Math.round(t.buy / rev * 1000) / 10 + '%' : '-') + '</span></td></tr>' +
+      '<tr><td class="nm">선급금</td><td><input class="pu-in" data-k="prepaid" value="' +
+        esc(fmt(mv.prepaid)) + '"></td>' +
+        '<td class="nm">실지급액</td><td><input class="pu-in" data-k="actual_paid" value="' +
+        esc(fmt(mv.actual_paid)) + '"></td></tr>' +
+      '<tr><td class="nm">실비투자</td><td><input class="pu-in" data-k="invest" placeholder="미입력" value="' +
+        esc(fmt(mv.invest)) + '"></td>' +
+        '<td class="nm">지급 합계</td><td><span class="pu-au sum" data-ro="pay">' + fmt(pay) + '</span></td></tr>' +
+      '</table>' +
+      '<div style="margin-top:12px"><textarea class="pu-note" data-k="note" placeholder="비고 (앱에는 안 나갑니다)">' +
+        esc(mv.note || '') + '</textarea></div>' +
+    '</div></div>' +
+
+    '<div class="pu-card"><div class="hd"><b>전체 월</b><span class="sub">저장 전 값 기준</span></div>' +
+      '<div class="bd"><div class="pu-sc"><table class="pu-tbl">' +
+      '<tr><th>월</th><th>매출액</th><th>매입액</th><th>지급액</th><th>잔액</th><th>지급률</th></tr>' +
+      summary +
+      '<tr><td class="nm">누적</td><td><span class="pu-au sum">' + fmt(gt.rev) + '</span></td>' +
+        '<td><span class="pu-au sum">' + fmt(gt.buy) + '</span></td>' +
+        '<td><span class="pu-au sum">' + fmt(gt.paid) + '</span></td>' +
+        '<td><span class="pu-au sum' + (gt.bal < 0 ? ' neg' : '') + '">' + fmt(gt.bal) + '</span></td>' +
+        '<td><span class="pu-au sum">' +
+          (gt.buy > 0 ? Math.round(gt.paid / gt.buy * 1000) / 10 : 0) + '%</span></td></tr>' +
+      '</table></div></div></div>';
+  }
+
+  function repaint() {
+    var c = document.getElementById('v2-content');
+    if (!c) return;
+    c.innerHTML = view();
+    bind();
+  }
+
+  function bind() {
+    var c = document.getElementById('v2-content');
+    if (!c) return;
+    var mv = cell(_month);
+
+    c.querySelectorAll('.pu-chip[data-m]').forEach(function (b) {
+      b.onclick = function () { _month = b.getAttribute('data-m'); repaint(); };
+    });
+    var add = document.getElementById('pu-add');
+    if (add) add.onclick = function () {
+      var d = prompt('추가할 월 (YYYY-MM)', thisMonth());
+      if (!d) return;
+      d = String(d).trim();
+      if (!/^20\d\d-(0[1-9]|1[0-2])$/.test(d)) { alert('YYYY-MM 형식으로 적어 주세요.'); return; }
+      _month = d; cell(d); _dirty = true; repaint();
+    };
+    var cs = document.getElementById('pu-cur');
+    if (cs) cs.onchange = function () { _state.currency = cs.value; _dirty = true; repaint(); };
+
+    c.querySelectorAll('input[data-i]').forEach(function (el) {
+      el.onchange = function () {
+        var i = Number(el.getAttribute('data-i')), k = el.getAttribute('data-k');
+        var it = mv.items[i];
+        if (!it) return;
+        if (k === 'label') { it.label = el.value; }
+        else { it[k] = el.value === '' ? null : num(el.value); }
+        _dirty = true; repaint();
+      };
+    });
+    c.querySelectorAll('input[data-k]:not([data-i]),textarea[data-k]').forEach(function (el) {
+      el.onchange = function () {
+        var k = el.getAttribute('data-k');
+        mv[k] = (k === 'note') ? el.value : (el.value === '' ? null : num(el.value));
+        _dirty = true; repaint();
+      };
+    });
+
+    var sv = document.getElementById('pu-save');
+    if (sv) sv.onclick = save;
+  }
+
+  function save() {
+    var sv = document.getElementById('pu-save');
+    var st = document.getElementById('pu-stat');
+    if (sv) { sv.disabled = true; sv.textContent = '저장 중…'; }
+    fetch('/admin/division/purchase', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        division: _state.division, currency: _state.currency, months: _state.months
+      })
+    }).then(function (r) {
+      if (r.status === 401) throw new Error('로그인이 필요합니다');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) {
+      _state.months = d.months || {};
+      _state.currency = d.currency || 'USD';
+      _dirty = false;
+      if (st) st.textContent = '저장했습니다 · ' + (d.updated_at || '').replace('T', ' ');
+      repaint();
+      var s2 = document.getElementById('pu-stat');
+      if (s2 && st) s2.textContent = st.textContent;
+    }).catch(function (e) {
+      alert('저장하지 못했습니다: ' + e.message);
+    }).then(function () {
+      var b = document.getElementById('pu-save');
+      if (b) { b.disabled = false; b.textContent = '저장'; }
+    });
+  }
+
+  window.renderPurchasePage = function () {
+    css();
+    var c = document.getElementById('v2-content');
+    if (!c) return;
+    var div = divOf();
+    if (!div) { c.innerHTML = '<div class="placeholder"><div class="title">사업부를 먼저 골라 주세요</div></div>'; return; }
+    c.innerHTML = '<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
+    fetch('/admin/division/purchase?div=' + encodeURIComponent(div), { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.status === 401) throw new Error('로그인이 필요합니다');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        _state = {
+          division: div, currency: d.currency || 'USD',
+          months: d.months || {}, default_items: d.default_items || []
+        };
+        var ms = monthsOf();
+        _month = ms.length ? ms[ms.length - 1] : thisMonth();
+        _dirty = false;
+        repaint();
+      })
+      .catch(function (e) {
+        c.innerHTML = '<div class="placeholder"><div class="big">🧾</div>' +
+          '<div class="title">매입 관리</div><div class="sub">' + esc(e.message) + '</div></div>';
+      });
+  };
+})();
+</script>
+
 </body>
 </html>
