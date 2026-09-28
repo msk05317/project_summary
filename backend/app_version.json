@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.42",
-  "latest_version_code": 65,
+  "latest_version": "2.3.41",
+  "latest_version_code": 64,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "PCB사업부에 매입·지급 현황이 생겼습니다.\n\n- 월별 매입액 · 지급률 한 눈에\n- 원소재 · 소모품 · 외주 항목별\n- 매출 대비 매입 추이",
+  "release_notes": "블룸 화면을 더 간단히 했습니다.\n\n- 프로젝트 목록 제거\n- 'N/D 실적까지' 기준으로 표시",
   "force_update": false
 }
