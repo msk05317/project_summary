@@ -21761,6 +21761,32 @@ def _model_key_alias(project_key: str) -> str:
     _alias = {"havaplate": "hrva_plate", "hrvaplate": "hrva_plate", "hrva-plate": "hrva_plate"}
     return _alias.get(project_key.strip().lower(), project_key.strip())
 
+def _merge_process_keep(old, new):
+    """엑셀에서 읽은 공정을 기존 입력 위에 얹는다 — 빈 칸은 덮지 않는다.
+
+    프로세스 엑셀은 아직 안 채운 칸이 그냥 비어 있다. 그걸 그대로 덮어쓰면
+    화면에서 손으로 넣어 둔 예정일·실적일이 통째로 사라진다 (하바플레이트
+    17종이 이렇게 비었다). 엑셀에 값이 있는 칸만 반영하고, 빈 칸은 둔다.
+
+    단계 짝은 key → 이름 순으로 맞춘다. 단계 수가 달라도 있는 만큼만 얹는다.
+    """
+    if not isinstance(old, list) or not old:
+        return new
+    by_key = {str(s.get("key") or ""): s for s in old if isinstance(s, dict)}
+    by_name = {_canon_step(s.get("name")): s for s in old if isinstance(s, dict)}
+    out = []
+    for i, st in enumerate(new or []):
+        st = dict(st or {})
+        prev = by_key.get(str(st.get("key") or "")) \
+            or by_name.get(_canon_step(st.get("name"))) \
+            or (old[i] if i < len(old) and isinstance(old[i], dict) else {})
+        for f in ("expected", "actual", "status"):
+            if not str(st.get(f) or "").strip():
+                st[f] = prev.get(f) or ""
+        out.append(st)
+    return out
+
+
 def _ensure_process(m: dict) -> list:
     proc = m.get("process")
     # process가 이미 있고 리스트면 그대로 사용
@@ -25410,6 +25436,10 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
                     'group': '발주' if i < 3 else ('제작·검사' if i < n_steps - 5 else '승인'),
                     'expected': planned, 'actual': actual, 'status': status,
                 })
+            # 엑셀의 빈 칸이 이미 적어 둔 날짜를 지우면 안 된다.
+            # 하바플레이트에서 17종의 공정 입력이 이렇게 통째로 비워졌다.
+            steps = _merge_process_keep(m.get('process'), steps)
+            done = sum(1 for st in steps if str(st.get('status') or '') == '완료')
             m['process'] = steps
             m['progress'] = round(done / n_steps * 100) if n_steps else 0
             # 파워박스는 CDR/PRR 한 틀로 받는다 (_unify_cdr_prr)
@@ -25459,6 +25489,7 @@ async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
                 st['expected'] = cells[i]['expected']
                 st['actual'] = cells[i]['actual']
                 st['status'] = cells[i]['status']
+            proc = _merge_process_keep(m.get('process'), proc)
             m['process'] = proc
             m['progress'] = _process_progress(proc)
             if m.get('group') != '개발':
