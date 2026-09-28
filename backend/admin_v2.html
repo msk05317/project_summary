@@ -12501,7 +12501,7 @@ window._ovProjectKey = function() {
         }
       })
       .catch(function (e) {
-        alert('엑셀을 읽지 못했습니다: ' + e.message);
+        alert(e.message);      // 서버가 이미 '엑셀을 읽지 못했습니다' 를 붙인다
         repaint();
       });
   }

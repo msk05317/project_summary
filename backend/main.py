@@ -27101,8 +27101,20 @@ async def admin_division_purchase_import(
     raw = await file.read()
     try:
         parsed = _purim.parse_workbook(raw, year=year, sheet=sheet)
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(status_code=400, detail="엑셀을 읽지 못했습니다: %s" % e)
+    except Exception as e:
+        # 어디서 터졌는지 같이 말해 준다. 'BytesIO 어쩌고' 한 줄만 보고
+        # 원인을 찾느라 한참 헤맨 적이 있다.
+        import traceback as _tb
+        tail = _tb.extract_tb(e.__traceback__)
+        where = ""
+        if tail:
+            f = tail[-1]
+            where = " (%s:%d %s)" % (os.path.basename(f.filename), f.lineno, f.name)
+        raise HTTPException(
+            status_code=400,
+            detail="엑셀을 읽지 못했습니다: %s: %s%s" % (type(e).__name__, e, where))
 
     data = _pur_load()
     cur = ((data.get("divisions") or {}).get(div) or {}).get("months") or {}
