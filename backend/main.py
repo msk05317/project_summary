@@ -14345,8 +14345,15 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
         # 보낸 값을 무시하고 서버에 있는 것을 그대로 둔다 — 프로세스를 바꾸는
         # 문은 PUT .../models/{id}/process 하나뿐이어야 한다.
         _proc = old.get("process")
+        # 유형을 '—' 로 비우고 저장하면 지워져야 한다. 빈 값을 '안 보냈다' 로
+        # 보고 옛 값을 되살리면, 화면에서는 비웠는데 저장하면 DEP챔버 가
+        # 되돌아온다 (챔버에서 실제로 그랬다). 키가 왔으면 그 값이 맞다.
+        _sent_dt = "dev_type" in m
+        def _dt_of(mm, oldd):
+            src = mm.get("dev_type") if _sent_dt else oldd.get("dev_type")
+            return str(src or "").strip().upper()
         if group == "개발":
-            dev_type = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
+            dev_type = _dt_of(m, old)
             entry["dev_type"] = dev_type
             # 단계 수는 프로젝트마다 다르다 — 파워박스 15, EMA 14, 메이저모듈 12.
             entry["process"] = _proc if isinstance(_proc, list) and _proc else _default_process()
@@ -14355,9 +14362,12 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             entry["progress"] = _process_progress(entry["process"])
         else:
             # 양산으로 넘어가도 개발 때 쌓인 유형/공정 이력은 지우지 않는다.
-            _dt = str(m.get("dev_type") or old.get("dev_type") or "").strip().upper()
+            # 단, 화면에서 비우고 저장한 것은 지우는 게 맞다.
+            _dt = _dt_of(m, old)
             if _dt:
                 entry["dev_type"] = _dt
+            elif _sent_dt:
+                entry["dev_type"] = ""
             if isinstance(_proc, list) and _proc:
                 entry["process"] = _proc
         normalized.append(entry)
