@@ -27075,3 +27075,57 @@ async def admin_division_purchase_import(
     out["view"] = _pur.for_app(saved, div)
     out["updated_at"] = saved.get("updated_at", "")
     return out
+
+
+# ── 매입 현황 엑셀 올리기 ───────────────────────────────────────
+#
+# preview 로 한 번 보여 주고, commit 이어야 저장한다. 엑셀에 없는 달은
+# 건드리지 않는다 — 4~8월짜리 파일을 올렸다고 9월이 지워지면 안 된다.
+import purchase_import as _purim
+
+
+@app.post("/admin/division/purchase/import-xlsx")
+async def admin_division_purchase_import(
+        div: str = Form(...),
+        file: UploadFile = File(...),
+        year: Optional[int] = Form(None),
+        sheet: Optional[str] = Form(None),
+        mode: str = Form("preview"),
+        _admin: int = Depends(get_admin_session)):
+    div = (div or "").strip()
+    if not div:
+        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
+    name = file.filename or ""
+    if not name.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="xlsx 파일을 올려 주세요.")
+    raw = await file.read()
+    try:
+        parsed = _purim.parse_workbook(raw, year=year, sheet=sheet)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="엑셀을 읽지 못했습니다: %s" % e)
+
+    data = _pur_load()
+    cur = ((data.get("divisions") or {}).get(div) or {}).get("months") or {}
+    merged = _purim.merge(cur, parsed["months"])
+
+    out = {"file": name, "division": div, "mode": mode,
+           "sheet": parsed["sheet"], "sheets": parsed["sheets"],
+           "year": parsed["year"],
+           "months": sorted(parsed["months"]),
+           "kept": sorted(m for m in cur if m not in parsed["months"]),
+           "read": parsed["read"], "warnings": parsed["warnings"],
+           "preview": _pur.for_app(
+               _pur.put_division(data, div,
+                                 {"currency": ((data.get("divisions") or {})
+                                               .get(div) or {}).get("currency", "USD"),
+                                  "months": merged}), div)}
+    if mode != "commit":
+        return out
+
+    saved = _pur.save(PURCHASE_FILE, _pur.put_division(
+        data, div, {"currency": ((data.get("divisions") or {}).get(div) or {})
+                    .get("currency", "USD"), "months": merged}))
+    out["saved"] = True
+    out["updated_at"] = saved.get("updated_at", "")
+    out["state"] = _pur.for_admin(saved, div)
+    return out

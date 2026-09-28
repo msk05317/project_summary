@@ -11949,16 +11949,17 @@ window._ovProjectKey = function() {
 // ============================================================
 // 매입 관리 — 사업부 월별 매입·지급 현황
 //
-// 한 번에 한 달만 보여 준다. 열을 19개 늘어놓으면 어느 칸이 무슨
-// 칸인지 아무도 모른다. 회색 칸이 사람이 넣는 칸, 점선 칸은 자동이다.
-// 잔액은 비워 두면 '매입-지급'으로 채우고, 적으면 적은 값을 쓴다.
+// 엑셀 '월별 매입 현황 분석' 과 같은 모양으로 둔다. 줄이 구분이고
+// 열이 월이다. 엑셀을 보면서 옮겨 적는 사람이 눈을 덜 옮긴다.
+// 회색 칸이 사람이 넣는 칸, 점선 칸은 자동이다.
+//
+// 잔액은 비워 두면 '매입-지급' 으로 채우고, 적으면 적은 값을 쓴다 —
+// 표의 잔액이 매입-지급과 맞지 않는 달이 있어서다.
 // ============================================================
 (function () {
-  var _state = null;   // { division, currency, months:{...} }
-  var _month = '';
-  var _dirty = false;
-  var _file = null;    // 올린 엑셀 (미리보기 → 적용 사이에 들고 있는다)
-  var _prev = null;    // 미리보기 결과
+  var _state = null;     // { division, currency, months:{...}, default_items:[] }
+  var _file = null;      // 올린 엑셀 (미리보기 → 적용에 다시 쓴다)
+  var _imp = null;       // 미리보기 결과
 
   function esc(s) {
     return String(s === null || s === undefined ? '' : s)
@@ -11999,15 +12000,35 @@ window._ovProjectKey = function() {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
   function monthsOf() { return Object.keys((_state && _state.months) || {}).sort(); }
+
+  function blank() {
+    return {
+      revenue: null,
+      items: (_state.default_items || []).map(function (d) {
+        return { key: d.key, label: d.label, buy: null, paid: null, balance: null };
+      }),
+      prepaid: null, actual_paid: null, invest: null, note: ''
+    };
+  }
   function cell(m) {
-    if (!_state.months[m]) {
-      _state.months[m] = {
-        revenue: null, items: (_state.default_items || []).map(function (d) {
-          return { key: d.key, label: d.label, buy: null, paid: null, balance: null };
-        }), prepaid: null, actual_paid: null, invest: null, note: ''
-      };
-    }
-    return _state.months[m];
+    if (!_state.months[m]) _state.months[m] = blank();
+    var mv = _state.months[m];
+    if (!mv.items || !mv.items.length) mv.items = blank().items;
+    return mv;
+  }
+  /** 항목 줄은 모든 달이 같아야 한다 — 첫 달 기준으로 맞춘다. */
+  function itemDefs() {
+    var ms = monthsOf();
+    if (!ms.length) return (_state.default_items || []).slice();
+    var base = cell(ms[0]).items || [];
+    return base.map(function (it) { return { key: it.key, label: it.label }; });
+  }
+  function itemOf(m, key) {
+    var mv = cell(m);
+    for (var i = 0; i < mv.items.length; i++) if (mv.items[i].key === key) return mv.items[i];
+    var it = { key: key, label: key, buy: null, paid: null, balance: null };
+    mv.items.push(it);
+    return it;
   }
 
   // ---------------------------------------------------------- CSS
@@ -12023,59 +12044,55 @@ window._ovProjectKey = function() {
       '.pu-key s{text-decoration:none;width:26px;height:15px;border-radius:5px;display:inline-block}',
       '.pu-key s.in{background:#F4F7FB;border:1px solid #E3E9F1}',
       '.pu-key s.au{background:#fff;border:1px dashed #B9C4D4}',
-      '.pu-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;align-items:center}',
-      '.pu-chip{font-size:12.5px;font-weight:700;color:#475467;background:#fff;border:1px solid #E4E7EC;',
-      ' border-radius:999px;padding:6px 14px;cursor:pointer}',
-      '.pu-chip:hover{border-color:#B9C4D4}',
-      '.pu-chip.on{background:#0F2C59;border-color:#0F2C59;color:#fff}',
-      '.pu-chip.add{border-style:dashed;color:#0F2C59}',
       '.pu-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;margin-bottom:16px}',
       '.pu-card .hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #E4E7EC}',
       '.pu-card .hd b{font-size:13.5px}',
       '.pu-card .hd .sub{font-size:11.5px;color:#98A2B3;margin-left:auto}',
-      '.pu-card .bd{padding:12px 16px 16px}',
-      '.pu-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}',
-      '.pu-tbl th{background:#F8FAFC;padding:8px 12px;text-align:right;border-bottom:1px solid #E4E7EC;',
-      ' font-size:11.5px;color:#475467;white-space:nowrap}',
-      '.pu-tbl th:first-child,.pu-tbl td:first-child{text-align:left}',
-      '.pu-tbl td{padding:7px 12px;border-bottom:1px solid #F1F5F9;text-align:right}',
-      '.pu-tbl tr:last-child td{border-bottom:none}',
-      '.pu-tbl td.nm{font-weight:700;color:#101828;white-space:nowrap}',
-      '.pu-in{width:100%;max-width:130px;text-align:right;font-size:12.5px;padding:6px 9px;',
-      ' border-radius:7px;background:#F4F7FB;border:1px solid #E3E9F1;font-variant-numeric:tabular-nums}',
+      '.pu-card .bd{padding:0}',
+      '.pu-sc{overflow-x:auto}',
+      '.pu-grid{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%}',
+      '.pu-grid th,.pu-grid td{border-bottom:1px solid #F1F5F9;padding:6px 10px;white-space:nowrap}',
+      '.pu-grid thead th{background:#F8FAFC;border-bottom:1px solid #E4E7EC;font-size:11.5px;',
+      ' color:#475467;text-align:right;position:sticky;top:0;z-index:2}',
+      '.pu-grid th.g,.pu-grid td.g{position:sticky;left:0;background:#fff;z-index:3;text-align:left;',
+      ' font-weight:800;color:#101828;border-right:1px solid #EEF2F6;min-width:150px;width:150px}',
+      '.pu-grid thead th.g{background:#F8FAFC;z-index:4}',
+      '.pu-grid th.k,.pu-grid td.k{position:sticky;left:150px;background:#fff;z-index:3;text-align:left;',
+      ' color:#475467;border-right:1px solid #E4E7EC;min-width:74px}',
+      '.pu-grid thead th.k{background:#F8FAFC;z-index:4}',
+      '.pu-grid td{text-align:right}',
+      '.pu-grid tr.grp td.g{vertical-align:middle}',
+      '.pu-grid tr.head td{background:#FBFCFE;font-weight:800;color:#0F2C59}',
+      '.pu-grid tr.sum td{background:#F8FAFC}',
+      '.pu-grid tr.band td.g,.pu-grid tr.band td.k{border-top:1px solid #E4E7EC}',
+      '.pu-grid tr.band td{border-top:1px solid #E4E7EC}',
+      '.pu-in{width:108px;text-align:right;font-size:12.5px;padding:5px 8px;border-radius:6px;',
+      ' background:#F4F7FB;border:1px solid #E3E9F1;font-variant-numeric:tabular-nums}',
       '.pu-in:focus{outline:none;border-color:#0F2C59;background:#fff}',
-      '.pu-in.lbl{text-align:left;max-width:200px}',
       '.pu-in.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA;font-weight:700}',
-      '.pu-au{display:inline-block;min-width:96px;background:#fff;border:1px dashed #B9C4D4;border-radius:7px;',
-      ' padding:6px 9px;text-align:right;color:#475467;font-variant-numeric:tabular-nums}',
+      '.pu-in.lbl{width:130px;text-align:left;font-weight:800;background:#F4F7FB}',
+      '.pu-au{display:inline-block;min-width:96px;background:#fff;border:1px dashed #B9C4D4;',
+      ' border-radius:6px;padding:5px 8px;text-align:right;color:#475467;font-variant-numeric:tabular-nums}',
       '.pu-au.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA}',
       '.pu-au.sum{font-weight:800;color:#0F2C59;border-style:solid;border-color:#D0D5DD;background:#F8FAFC}',
-      '.pu-sc{overflow-x:auto}',
-      '.pu-sc .pu-tbl{min-width:640px}',
-      '.pu-act{display:flex;gap:8px;align-items:center;margin:4px 0 20px}',
+      '.pu-act{display:flex;gap:8px;align-items:center;margin:4px 0 14px;flex-wrap:wrap}',
       '.pu-act .sp{margin-left:auto;font-size:11.5px;color:#98A2B3}',
       '.pu-btn{font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:8px;border:1px solid #D0D5DD;',
       ' background:#fff;color:#344054;cursor:pointer}',
       '.pu-btn.pri{background:#0F2C59;border-color:#0F2C59;color:#fff}',
       '.pu-btn:disabled{opacity:.5;cursor:default}',
-      '.pu-note{width:100%;min-height:56px;font-size:12.5px;padding:8px 10px;border-radius:8px;',
-      ' background:#F4F7FB;border:1px solid #E3E9F1;resize:vertical;font-family:inherit}',
-      '.pu-sel{font-size:12.5px;padding:6px 10px;border-radius:7px;background:#F4F7FB;border:1px solid #E3E9F1}',
-      '.pu-prev{border:1px solid #B2DDFF;background:#F5FAFF;border-radius:12px;padding:13px 16px;margin-bottom:14px}',
-      '.pu-prev b{font-size:13px;color:#0F2C59}',
-      '.pu-prev .rows{margin:9px 0 11px;font-size:12px;color:#344054;line-height:1.85}',
-      '.pu-prev .rows i{font-style:normal;display:inline-block;min-width:44px;font-weight:800}',
-      '.pu-prev .tag{font-size:10.5px;font-weight:800;border-radius:6px;padding:1px 7px;margin-right:7px}',
-      '.pu-prev .tag.new{background:#D1FADF;color:#05603A}',
-      '.pu-prev .tag.update{background:#FEF0C7;color:#B54708}',
-      '.pu-prev .tag.same{background:#EAECF0;color:#667085}',
-      '.pu-prev .warn{font-size:11.5px;color:#B54708;margin-bottom:9px;line-height:1.6}',
-      '.pu-hint{font-size:11.5px;color:#98A2B3;margin-top:8px;line-height:1.6}'
+      '.pu-sel{font-size:12.5px;padding:7px 10px;border-radius:7px;background:#F4F7FB;border:1px solid #E3E9F1}',
+      '.pu-imp{border:1px solid #FDE0C0;background:#FFFBF5;border-radius:10px;padding:12px 14px;',
+      ' margin-bottom:14px;font-size:12px;color:#7A4A12;line-height:1.7}',
+      '.pu-imp b{color:#9A3412}',
+      '.pu-imp .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}',
+      '.pu-warn{color:#B42318}',
+      '.pu-hint{font-size:11.5px;color:#98A2B3;padding:10px 16px 14px;line-height:1.6}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  // ---------------------------------------------------------- 그리기
+  // ---------------------------------------------------------- 계산
   function totals(mv) {
     var t = { buy: 0, paid: 0, bal: 0 };
     (mv.items || []).forEach(function (it) {
@@ -12086,117 +12103,161 @@ window._ovProjectKey = function() {
     });
     return t;
   }
+  function payTotal(mv) { return f(mv.prepaid) + f(mv.actual_paid) + f(mv.invest); }
 
-  function itemRows(mv) {
-    return (mv.items || []).map(function (it, i) {
-      var b = f(it.buy), p = f(it.paid);
-      var autoBal = b - p;
-      var hasBal = !(it.balance === null || it.balance === undefined || it.balance === '');
-      var bal = hasBal ? f(it.balance) : autoBal;
-      var rate = b > 0 ? Math.round(p / b * 1000) / 10 : 0;
-      return '<tr>' +
-        '<td class="nm"><input class="pu-in lbl" data-i="' + i + '" data-k="label" value="' +
-          esc(it.label || '') + '"></td>' +
-        '<td><input class="pu-in" data-i="' + i + '" data-k="buy" value="' + esc(fmt(it.buy)) + '"></td>' +
-        '<td><input class="pu-in" data-i="' + i + '" data-k="paid" value="' + esc(fmt(it.paid)) + '"></td>' +
-        '<td><input class="pu-in' + (bal < 0 ? ' neg' : '') + '" data-i="' + i +
-          '" data-k="balance" placeholder="자동 ' + esc(fmt(autoBal)) + '" value="' +
-          esc(hasBal ? fmt(it.balance) : '') + '"></td>' +
-        '<td><span class="pu-au" data-ro="rate' + i + '">' + rate + '%</span></td>' +
-        '</tr>';
-    }).join('');
+  // ---------------------------------------------------------- 그리드
+  var METRICS = [['buy', '매입액'], ['paid', '지급액'], ['balance', '잔액']];
+
+  function inCell(m, attrs, val, extra) {
+    return '<td><input class="pu-in' + (extra || '') + '" data-m="' + m + '" ' + attrs +
+           ' value="' + esc(val) + '"></td>';
+  }
+  function auCell(v, cls) {
+    return '<td><span class="pu-au' + (cls || '') + (v < 0 ? ' neg' : '') + '">' +
+           fmt(v) + '</span></td>';
   }
 
-  function view() {
+  function grid() {
     var ms = monthsOf();
-    var mv = cell(_month);
-    var t = totals(mv);
-    var pay = f(mv.prepaid) + f(mv.actual_paid) + f(mv.invest);
-    var rev = f(mv.revenue);
+    var defs = itemDefs();
+    var head = '<thead><tr><th class="g">구분</th><th class="k"></th>' +
+      ms.map(function (m) { return '<th>' + mLabel(m) + '</th>'; }).join('') +
+      '<th>합계</th></tr></thead>';
 
-    var chips = ms.map(function (m) {
-      return '<button type="button" class="pu-chip' + (m === _month ? ' on' : '') +
-             '" data-m="' + m + '">' + mLabel(m) + '</button>';
-    }).join('') + '<button type="button" class="pu-chip add" id="pu-add">+ 월 추가</button>';
+    var body = '';
 
-    var summary = ms.map(function (m) {
-      var v = _state.months[m], s = totals(v);
-      return '<tr><td class="nm">' + mLabel(m) + '</td>' +
-        '<td>' + fmt(f(v.revenue)) + '</td><td>' + fmt(s.buy) + '</td>' +
-        '<td>' + fmt(s.paid) + '</td><td>' + fmt(s.bal) + '</td>' +
-        '<td>' + (s.buy > 0 ? Math.round(s.paid / s.buy * 1000) / 10 : 0) + '%</td></tr>';
-    }).join('');
-    var gt = ms.reduce(function (a, m) {
-      var v = _state.months[m], s = totals(v);
-      a.rev += f(v.revenue); a.buy += s.buy; a.paid += s.paid; a.bal += s.bal; return a;
-    }, { rev: 0, buy: 0, paid: 0, bal: 0 });
+    // 매출액
+    body += '<tr class="band"><td class="g">매출</td><td class="k">매출액</td>' +
+      ms.map(function (m) {
+        return inCell(m, 'data-k="revenue"', fmt(cell(m).revenue));
+      }).join('') +
+      (function () {
+        var s = 0; ms.forEach(function (m) { s += f(cell(m).revenue); });
+        return auCell(s, ' sum');
+      })() + '</tr>';
 
+    // 항목별
+    defs.forEach(function (d, di) {
+      METRICS.forEach(function (mt, mi) {
+        var isFirst = mi === 0;
+        body += '<tr' + (isFirst ? ' class="band"' : '') + '>';
+        if (isFirst) {
+          body += '<td class="g" rowspan="3"><input class="pu-in lbl" data-lbl="' +
+            esc(d.key) + '" value="' + esc(d.label) + '"></td>';
+        }
+        body += '<td class="k">' + mt[1] + '</td>';
+        var s = 0;
+        ms.forEach(function (m) {
+          var it = itemOf(m, d.key);
+          var b = f(it.buy), p = f(it.paid);
+          if (mt[0] === 'balance') {
+            var has = !(it.balance === null || it.balance === undefined || it.balance === '');
+            var v = has ? f(it.balance) : (b - p);
+            s += v;
+            body += '<td><input class="pu-in' + (v < 0 ? ' neg' : '') + '" data-m="' + m +
+              '" data-i="' + esc(d.key) + '" data-k="balance" placeholder="자동 ' +
+              esc(fmt(b - p)) + '" value="' + esc(has ? fmt(it.balance) : '') + '"></td>';
+          } else {
+            s += f(it[mt[0]]);
+            body += inCell(m, 'data-i="' + esc(d.key) + '" data-k="' + mt[0] + '"',
+                           fmt(it[mt[0]]));
+          }
+        });
+        body += auCell(s, ' sum') + '</tr>';
+      });
+    });
+
+    // 합계
+    METRICS.forEach(function (mt, mi) {
+      body += '<tr class="sum' + (mi === 0 ? ' band' : '') + '">';
+      if (mi === 0) body += '<td class="g" rowspan="3">합계</td>';
+      body += '<td class="k">' + mt[1] + '</td>';
+      var s = 0;
+      ms.forEach(function (m) {
+        var t = totals(cell(m));
+        var v = mt[0] === 'buy' ? t.buy : (mt[0] === 'paid' ? t.paid : t.bal);
+        s += v;
+        body += auCell(v, ' sum');
+      });
+      body += auCell(s, ' sum') + '</tr>';
+    });
+
+    // 지급 내역
+    [['prepaid', '선급금'], ['actual_paid', '실지급액'], ['invest', '실비투자']]
+      .forEach(function (p, pi) {
+        body += '<tr' + (pi === 0 ? ' class="band"' : '') + '>';
+        if (pi === 0) body += '<td class="g" rowspan="4">지급</td>';
+        body += '<td class="k">' + p[1] + '</td>';
+        var s = 0, any = false;
+        ms.forEach(function (m) {
+          var raw = cell(m)[p[0]];
+          if (raw !== null && raw !== undefined && raw !== '') any = true;
+          s += f(raw);
+          body += inCell(m, 'data-k="' + p[0] + '"', fmt(raw));
+        });
+        body += (any ? auCell(s, ' sum')
+                     : '<td><span class="pu-au sum">–</span></td>') + '</tr>';
+      });
+    body += '<tr class="sum"><td class="k">지급 합계</td>';
+    (function () {
+      var s = 0;
+      ms.forEach(function (m) { var v = payTotal(cell(m)); s += v; body += auCell(v, ' sum'); });
+      body += auCell(s, ' sum');
+    })();
+    body += '</tr>';
+
+    return '<table class="pu-grid">' + head + '<tbody>' + body + '</tbody></table>';
+  }
+
+  // ---------------------------------------------------------- 엑셀 박스
+  function impBox() {
+    if (!_imp) {
+      return '<div class="pu-imp"><b>엑셀로 올리기</b> — ‘월별 매입 현황 분석’ 시트를 그대로 올리면 ' +
+        '월·항목을 찾아 채웁니다. 엑셀에 없는 달은 건드리지 않습니다.' +
+        '<div class="row"><input type="file" id="pu-file" accept=".xlsx,.xlsm">' +
+        '<input class="pu-in" id="pu-year" style="width:84px" placeholder="연도" value="' +
+        new Date().getFullYear() + '">' +
+        '<button type="button" class="pu-btn" id="pu-read">읽어보기</button></div></div>';
+    }
+    var w = (_imp.warnings || []);
+    return '<div class="pu-imp"><b>' + esc(_imp.file) + '</b> · 시트 ' + esc(_imp.sheet) +
+      '<br>읽은 달: <b>' + (_imp.months || []).map(mLabel).join(' · ') + '</b>' +
+      ((_imp.kept || []).length ? '<br>그대로 두는 달: ' + _imp.kept.map(mLabel).join(' · ') : '') +
+      (w.length ? '<br><span class="pu-warn">못 읽은 줄 ' + w.length + '개 — ' +
+        esc(w.slice(0, 3).join(' / ')) + (w.length > 3 ? ' …' : '') + '</span>' : '') +
+      '<div class="row"><button type="button" class="pu-btn pri" id="pu-apply">이대로 넣기</button>' +
+      '<button type="button" class="pu-btn" id="pu-cancel">취소</button>' +
+      ((_imp.sheets || []).length > 1
+        ? '<select class="pu-sel" id="pu-sheet">' + _imp.sheets.map(function (s) {
+            return '<option value="' + esc(s) + '"' + (s === _imp.sheet ? ' selected' : '') +
+                   '>' + esc(s) + '</option>';
+          }).join('') + '</select>' : '') +
+      '</div></div>';
+  }
+
+  // ---------------------------------------------------------- 화면
+  function view() {
     return '' +
     '<div class="pu-act">' +
       '<button type="button" class="pu-btn pri" id="pu-save">저장</button>' +
-      '<label class="pu-btn" style="cursor:pointer;margin:0">📥 매입 엑셀 올리기' +
-        '<input type="file" id="pu-xl" accept=".xlsx,.xlsm" style="display:none"></label>' +
+      '<button type="button" class="pu-btn" id="pu-add">+ 월 추가</button>' +
       '<select class="pu-sel" id="pu-cur">' +
         '<option value="USD"' + (_state.currency === 'USD' ? ' selected' : '') + '>USD ($)</option>' +
         '<option value="KRW"' + (_state.currency === 'KRW' ? ' selected' : '') + '>KRW (₩)</option>' +
       '</select>' +
       '<span class="sp" id="pu-stat">' + esc(divLabel()) + ' · 앱 “매입 현황” 카드에 그대로 나갑니다</span>' +
     '</div>' +
-
+    impBox() +
     '<div class="pu-guide">' +
       '<span class="pu-key"><s class="in"></s><b>회색 칸</b> = 직접 입력</span>' +
       '<span class="pu-key"><s class="au"></s>점선 칸 = 자동 계산</span>' +
       '<span>잔액을 비우면 <b>매입−지급</b>으로 채웁니다. 표에 적힌 잔액이 다르면 그 값을 적어 주세요.</span>' +
     '</div>' +
-
-    previewHTML() +
-    '<div class="pu-chips">' + chips + '</div>' +
-
-    '<div class="pu-card"><div class="hd"><b>' + mLabel(_month) + ' 매입</b>' +
-      '<span class="sub">단위 ' + cur() + '</span></div><div class="bd">' +
-      '<div class="pu-sc"><table class="pu-tbl">' +
-      '<tr><th>항목</th><th>매입액</th><th>지급액</th><th>잔액</th><th>지급률</th></tr>' +
-      itemRows(mv) +
-      '<tr><td class="nm">합계</td>' +
-        '<td><span class="pu-au sum" data-ro="tbuy">' + fmt(t.buy) + '</span></td>' +
-        '<td><span class="pu-au sum" data-ro="tpaid">' + fmt(t.paid) + '</span></td>' +
-        '<td><span class="pu-au sum' + (t.bal < 0 ? ' neg' : '') + '" data-ro="tbal">' + fmt(t.bal) + '</span></td>' +
-        '<td><span class="pu-au sum" data-ro="trate">' +
-          (t.buy > 0 ? Math.round(t.paid / t.buy * 1000) / 10 : 0) + '%</span></td></tr>' +
-      '</table></div>' +
-      '<div class="pu-hint">항목 이름도 고칠 수 있습니다. 앱에는 여기 적은 이름 그대로 나갑니다.</div>' +
-    '</div></div>' +
-
-    '<div class="pu-card"><div class="hd"><b>매출 · 지급 내역</b>' +
-      '<span class="sub">' + mLabel(_month) + '</span></div><div class="bd">' +
-      '<table class="pu-tbl">' +
-      '<tr><td class="nm">매출액</td><td><input class="pu-in" data-k="revenue" value="' +
-        esc(fmt(mv.revenue)) + '"></td>' +
-        '<td class="nm">매입/매출</td><td><span class="pu-au" data-ro="ratio">' +
-        (rev > 0 ? Math.round(t.buy / rev * 1000) / 10 + '%' : '-') + '</span></td></tr>' +
-      '<tr><td class="nm">선급금</td><td><input class="pu-in" data-k="prepaid" value="' +
-        esc(fmt(mv.prepaid)) + '"></td>' +
-        '<td class="nm">실지급액</td><td><input class="pu-in" data-k="actual_paid" value="' +
-        esc(fmt(mv.actual_paid)) + '"></td></tr>' +
-      '<tr><td class="nm">실비투자</td><td><input class="pu-in" data-k="invest" placeholder="미입력" value="' +
-        esc(fmt(mv.invest)) + '"></td>' +
-        '<td class="nm">지급 합계</td><td><span class="pu-au sum" data-ro="pay">' + fmt(pay) + '</span></td></tr>' +
-      '</table>' +
-      '<div style="margin-top:12px"><textarea class="pu-note" data-k="note" placeholder="비고 (앱에는 안 나갑니다)">' +
-        esc(mv.note || '') + '</textarea></div>' +
-    '</div></div>' +
-
-    '<div class="pu-card"><div class="hd"><b>전체 월</b><span class="sub">저장 전 값 기준</span></div>' +
-      '<div class="bd"><div class="pu-sc"><table class="pu-tbl">' +
-      '<tr><th>월</th><th>매출액</th><th>매입액</th><th>지급액</th><th>잔액</th><th>지급률</th></tr>' +
-      summary +
-      '<tr><td class="nm">누적</td><td><span class="pu-au sum">' + fmt(gt.rev) + '</span></td>' +
-        '<td><span class="pu-au sum">' + fmt(gt.buy) + '</span></td>' +
-        '<td><span class="pu-au sum">' + fmt(gt.paid) + '</span></td>' +
-        '<td><span class="pu-au sum' + (gt.bal < 0 ? ' neg' : '') + '">' + fmt(gt.bal) + '</span></td>' +
-        '<td><span class="pu-au sum">' +
-          (gt.buy > 0 ? Math.round(gt.paid / gt.buy * 1000) / 10 : 0) + '%</span></td></tr>' +
-      '</table></div></div></div>';
+    '<div class="pu-card"><div class="hd"><b>월별 매입 현황</b>' +
+      '<span class="sub">단위 ' + cur() + ' · 괄호는 음수</span></div>' +
+      '<div class="bd"><div class="pu-sc">' + grid() + '</div>' +
+      '<div class="pu-hint">엑셀과 같은 모양입니다 — 줄이 구분, 열이 월. ' +
+      '항목 이름을 고치면 앱에도 그 이름으로 나갑니다.</div></div></div>';
   }
 
   function repaint() {
@@ -12209,115 +12270,87 @@ window._ovProjectKey = function() {
   function bind() {
     var c = document.getElementById('v2-content');
     if (!c) return;
-    var mv = cell(_month);
 
-    c.querySelectorAll('.pu-chip[data-m]').forEach(function (b) {
-      b.onclick = function () { _month = b.getAttribute('data-m'); repaint(); };
+    c.querySelectorAll('input[data-m]').forEach(function (el) {
+      el.onchange = function () {
+        var m = el.getAttribute('data-m'), k = el.getAttribute('data-k'),
+            i = el.getAttribute('data-i');
+        var v = el.value === '' ? null : num(el.value);
+        if (i) itemOf(m, i)[k] = v; else cell(m)[k] = v;
+        repaint();
+      };
     });
+    c.querySelectorAll('input[data-lbl]').forEach(function (el) {
+      el.onchange = function () {
+        var key = el.getAttribute('data-lbl');
+        monthsOf().forEach(function (m) { itemOf(m, key).label = el.value; });
+        repaint();
+      };
+    });
+
     var add = document.getElementById('pu-add');
     if (add) add.onclick = function () {
       var d = prompt('추가할 월 (YYYY-MM)', thisMonth());
       if (!d) return;
       d = String(d).trim();
       if (!/^20\d\d-(0[1-9]|1[0-2])$/.test(d)) { alert('YYYY-MM 형식으로 적어 주세요.'); return; }
-      _month = d; cell(d); _dirty = true; repaint();
+      cell(d); repaint();
     };
     var cs = document.getElementById('pu-cur');
-    if (cs) cs.onchange = function () { _state.currency = cs.value; _dirty = true; repaint(); };
-
-    c.querySelectorAll('input[data-i]').forEach(function (el) {
-      el.onchange = function () {
-        var i = Number(el.getAttribute('data-i')), k = el.getAttribute('data-k');
-        var it = mv.items[i];
-        if (!it) return;
-        if (k === 'label') { it.label = el.value; }
-        else { it[k] = el.value === '' ? null : num(el.value); }
-        _dirty = true; repaint();
-      };
-    });
-    c.querySelectorAll('input[data-k]:not([data-i]),textarea[data-k]').forEach(function (el) {
-      el.onchange = function () {
-        var k = el.getAttribute('data-k');
-        mv[k] = (k === 'note') ? el.value : (el.value === '' ? null : num(el.value));
-        _dirty = true; repaint();
-      };
-    });
-
+    if (cs) cs.onchange = function () { _state.currency = cs.value; repaint(); };
     var sv = document.getElementById('pu-save');
     if (sv) sv.onclick = save;
 
-    var xl = document.getElementById('pu-xl');
-    if (xl) xl.onchange = function () {
-      var f = xl.files && xl.files[0];
-      xl.value = '';
-      if (f) upload(f, 'preview');
+    var rd = document.getElementById('pu-read');
+    if (rd) rd.onclick = function () {
+      var fi = document.getElementById('pu-file');
+      if (!fi || !fi.files || !fi.files[0]) { alert('엑셀 파일을 골라 주세요.'); return; }
+      _file = fi.files[0];
+      upload('preview', null);
     };
-    var ok = document.getElementById('pu-apply');
-    if (ok) ok.onclick = function () { if (_file) upload(_file, 'commit'); };
-    var no = document.getElementById('pu-cancel');
-    if (no) no.onclick = function () { _file = null; _prev = null; repaint(); };
+    var ap = document.getElementById('pu-apply');
+    if (ap) ap.onclick = function () { upload('commit', null); };
+    var cn = document.getElementById('pu-cancel');
+    if (cn) cn.onclick = function () { _imp = null; _file = null; repaint(); };
+    var sh = document.getElementById('pu-sheet');
+    if (sh) sh.onchange = function () { upload('preview', sh.value); };
   }
 
-  // ---------------------------------------------------------- 엑셀
-  function upload(f, mode) {
-    var st = document.getElementById('pu-stat');
-    if (st) st.textContent = (mode === 'commit' ? '적용 중…' : '읽는 중…');
+  function upload(mode, sheet) {
+    if (!_file) { alert('엑셀 파일을 다시 골라 주세요.'); return; }
+    var y = document.getElementById('pu-year');
     var fd = new FormData();
-    fd.append('file', f);
     fd.append('div', _state.division);
+    fd.append('file', _file);
     fd.append('mode', mode);
-    fetch('/admin/division/purchase/import-xlsx', {
-      method: 'POST', credentials: 'same-origin', body: fd
-    }).then(function (r) {
-      return r.json().then(function (j) {
-        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
-        return j;
-      });
-    }).then(function (d) {
-      if (mode === 'commit') {
-        _state.months = d.months || {};
-        _file = null; _prev = null; _dirty = false;
-        var ks = monthsOf();
-        if (ks.length) _month = ks[ks.length - 1];
+    if (y && y.value) fd.append('year', y.value);
+    if (sheet) fd.append('sheet', sheet);
+    var st = document.getElementById('pu-stat');
+    if (st) st.textContent = mode === 'commit' ? '넣는 중…' : '읽는 중…';
+    fetch('/admin/division/purchase/import-xlsx',
+          { method: 'POST', credentials: 'same-origin', body: fd })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+          return j;
+        });
+      })
+      .then(function (d) {
+        if (mode === 'commit') {
+          _imp = null; _file = null;
+          _state.months = (d.state && d.state.months) || _state.months;
+          repaint();
+          var s2 = document.getElementById('pu-stat');
+          if (s2) s2.textContent = '엑셀을 넣었습니다 · ' + (d.updated_at || '').replace('T', ' ');
+        } else {
+          _imp = d;
+          repaint();
+        }
+      })
+      .catch(function (e) {
+        alert('엑셀을 읽지 못했습니다: ' + e.message);
         repaint();
-        var s2 = document.getElementById('pu-stat');
-        if (s2) s2.textContent = '엑셀을 반영했습니다 · ' + (d.updated_at || '').replace('T', ' ');
-      } else {
-        _file = f; _prev = d; repaint();
-      }
-    }).catch(function (e) {
-      _file = null; _prev = null; repaint();
-      alert('엑셀을 읽지 못했습니다: ' + e.message);
-    });
-  }
-
-  function previewHTML() {
-    if (!_prev) return '';
-    var rows = (_prev.diff || []).map(function (r) {
-      var m = Number(r.month.slice(5, 7)) + '월';
-      var txt = r.kind === 'new'
-        ? ('새로 들어옴 — 매입 ' + fmt(r.buy) + ' · 지급 ' + fmt(r.paid))
-        : (r.kind === 'update'
-            ? ('매입 ' + fmt(r.was_buy) + ' → ' + fmt(r.buy) +
-               ' · 지급 ' + fmt(r.was_paid) + ' → ' + fmt(r.paid))
-            : '그대로');
-      var lab = r.kind === 'new' ? '신규' : (r.kind === 'update' ? '수정' : '동일');
-      return '<div><span class="tag ' + r.kind + '">' + lab + '</span>' +
-             '<i>' + m + '</i>' + esc(txt) + '</div>';
-    }).join('');
-    var warn = (_prev.warnings || []).length
-      ? '<div class="warn">못 알아본 줄: ' +
-        esc((_prev.warnings || []).join(' · ')) + '</div>' : '';
-    return '<div class="pu-prev">' +
-      '<b>' + esc(_prev.file || '') + ' — 시트 “' + esc(_prev.sheet || '') + '”</b>' +
-      '<div class="rows">' + rows + '</div>' + warn +
-      '<div style="font-size:11.5px;color:#475467;margin-bottom:10px;line-height:1.6">' +
-        '빈 칸과 엑셀에 없는 달은 그대로 둡니다. 항목: ' +
-        esc((_prev.items || []).map(function (i) { return i.label; }).join(' · ')) +
-      '</div>' +
-      '<button type="button" class="pu-btn pri" id="pu-apply">적용</button> ' +
-      '<button type="button" class="pu-btn" id="pu-cancel">취소</button>' +
-      '</div>';
+      });
   }
 
   function save() {
@@ -12337,14 +12370,12 @@ window._ovProjectKey = function() {
     }).then(function (d) {
       _state.months = d.months || {};
       _state.currency = d.currency || 'USD';
-      _dirty = false;
-      if (st) st.textContent = '저장했습니다 · ' + (d.updated_at || '').replace('T', ' ');
+      var when = (d.updated_at || '').replace('T', ' ');
       repaint();
       var s2 = document.getElementById('pu-stat');
-      if (s2 && st) s2.textContent = st.textContent;
+      if (s2) s2.textContent = '저장했습니다 · ' + when;
     }).catch(function (e) {
       alert('저장하지 못했습니다: ' + e.message);
-    }).then(function () {
       var b = document.getElementById('pu-save');
       if (b) { b.disabled = false; b.textContent = '저장'; }
     });
@@ -12355,7 +12386,10 @@ window._ovProjectKey = function() {
     var c = document.getElementById('v2-content');
     if (!c) return;
     var div = divOf();
-    if (!div) { c.innerHTML = '<div class="placeholder"><div class="title">사업부를 먼저 골라 주세요</div></div>'; return; }
+    if (!div) {
+      c.innerHTML = '<div class="placeholder"><div class="title">사업부를 먼저 골라 주세요</div></div>';
+      return;
+    }
     c.innerHTML = '<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
     fetch('/admin/division/purchase?div=' + encodeURIComponent(div), { credentials: 'same-origin' })
       .then(function (r) {
@@ -12368,9 +12402,8 @@ window._ovProjectKey = function() {
           division: div, currency: d.currency || 'USD',
           months: d.months || {}, default_items: d.default_items || []
         };
-        var ms = monthsOf();
-        _month = ms.length ? ms[ms.length - 1] : thisMonth();
-        _dirty = false;
+        _imp = null; _file = null;
+        if (!monthsOf().length) cell(thisMonth());
         repaint();
       })
       .catch(function (e) {
