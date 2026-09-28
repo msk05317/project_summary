@@ -22711,18 +22711,26 @@ def _enrich_model(m: dict, proj_hold: str = "") -> dict:
     return out
 
 @app.get("/home/alerts")
-def get_home_alerts(limit: int = 12):
+def get_home_alerts(limit: int = 12, division: str = "semiconductor"):
     """홈 화면 한 눈 요약 — 모델 기준.
 
     예전 홈은 /dashboard 의 주간보고 카드(RED/YELLOW)로 사업부 상태를 셌다.
     주간보고가 없는 사업부는 아예 집계에서 빠져서 '12개 중 정상 2' 처럼
     나왔고, 프로젝트 안에는 지연이 널려 있는데 홈은 '지연 0' 이었다.
     여기서는 프로젝트 안에서 보는 값과 똑같은 모델 alert 를 그대로 센다.
+
+    세는 범위는 반도체사업부다. 카드에도 '(반도체 기준)' 이라고 적혀 있는데
+    실제로는 전 사업부를 세고 있었다 — 적힌 것과 세는 것이 다르면 숫자를
+    믿을 수 없다. division= 로 다른 사업부를, 빈 값으로 전사를 볼 수 있다.
     """
     import datetime as _dth
     data = _load_models()
+    div = (division or "").strip()
+    scoped = bool(div)
     try:
-        visible = {p.get("id") for p in _cl.get_projects(visible_only=True)}
+        visible = {p.get("id") for p in (
+            _cl.get_projects(div, visible_only=True) if scoped
+            else _cl.get_projects(visible_only=True))}
     except Exception:
         visible = set()
 
@@ -22737,7 +22745,13 @@ def get_home_alerts(limit: int = 12):
     hit_projects = set()
 
     for pk, proj in (data.get("projects") or {}).items():
-        if visible and pk not in visible:
+        # 사업부를 지정했으면 그 목록에 없는 프로젝트는 무조건 뺀다.
+        # 목록을 못 읽었다고 전사를 세면 '반도체 기준' 이라 적힌 카드에
+        # 남의 숫자가 들어간다 — 비는 편이 낫다.
+        if scoped:
+            if pk not in visible:
+                continue
+        elif visible and pk not in visible:
             continue
         models = proj.get("models") or []
         if not models:
