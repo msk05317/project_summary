@@ -158,6 +158,31 @@ def main():
     except ValueError:
         t("이상한 주차는 거부", True)
 
+
+    # 10. 검산은 요일 원본값으로 — 주 평균으로 하면 멀쩡한 곳이 틀려 보인다
+    bad = {"days": {
+        "mon": day(100, 70, 25, ot=(50, 45, 5)),          # 직접+간접=95 ≠ 가용 100
+        "sun": day(100, 70, 30, sp=(40, 30, 5), day_=60, night=35)}}  # 주간+야간=95
+    au = {x["code"]: x for x in OT.audit_division(bad)}
+    t("직접+간접≠가용 을 잡는다", "avail_kind" in au)
+    t("주간+야간≠가용 을 잡는다", "avail_shift" in au)
+    t("특근 직접+간접≠전체 를 잡는다", "special_kind" in au)
+    t("어느 요일인지 말해 준다", au["avail_shift"]["days"] == ["sun"])
+    t("몇 명 차이인지 말해 준다", au["avail_shift"]["min"] == -5)
+    good = {"days": {"mon": day(100, 80, 20, ot=(50, 45, 5), day_=60, night=40)}}
+    t("맞으면 조용하다", OT.audit_division(good) == [])
+
+    # 반올림 때문에 생기는 1명 차이는 검산에 안 걸린다 (요일 값이 맞으니까)
+    rounder = {"days": {d: day(101, 81, 20, ot=(1, 1, 0), day_=61, night=40)
+                        for d in ("mon", "tue", "wed")}}
+    t("반올림 차이는 안 걸린다", OT.audit_division(rounder) == [])
+
+    adm = OT.for_admin(OT.put_week({}, "2026-W39", {"divisions": {"x": bad}}))
+    t("관리 화면이 검산을 같이 준다", adm["audit_count"] == 3)
+    t("관리 화면이 집계도 같이 준다", adm["total"]["available"]["total"] == 100)
+    t("관리 화면이 고칠 원본도 준다",
+      adm["divisions"]["x"]["days"]["mon"]["overtime"]["people"]["total"] == 50)
+
     print("test_overtime: 전부 통과 (%d개)" % ok)
 
 

@@ -27376,11 +27376,25 @@ def admin_overtime_get(w: str = "", _admin: int = Depends(get_admin_session)):
 @app.put("/admin/overtime")
 def admin_overtime_put(payload: dict = Body(...),
                        _admin: int = Depends(get_admin_session)):
-    """주차 하나를 통째로 갈아끼운다 — 다른 주는 건드리지 않는다."""
+    """주차 하나를 통째로 갈아끼운다 — 다른 주는 건드리지 않는다.
+
+    통째 교체라, 화면이 사업부를 덜 들고 저장하면 나머지가 지워진다.
+    모델이 그렇게 68종 날아간 적이 있어서, 줄어드는 저장은 막는다.
+    """
     wk = _ot.week_key((payload or {}).get("week"))
     if not wk:
         raise HTTPException(status_code=400, detail="주차는 2026-W39 처럼 적어 주세요.")
-    saved = _ot.save(OVERTIME_FILE, _ot.put_week(_ot_load(), wk, payload or {}))
+    data = _ot_load()
+    before = set(((data.get("weeks") or {}).get(wk) or {}).get("divisions") or {})
+    after = {_ot.div_key(k) for k in ((payload or {}).get("divisions") or {})}
+    gone = sorted(before - after)
+    if gone and not payload.get("allow_delete"):
+        raise HTTPException(status_code=409, detail=(
+            "이 저장은 %d곳을 지웁니다 (%s%s). 화면이 사업부를 다 들고 있는지 "
+            "확인해 주세요. 정말 지우려면 allow_delete 를 같이 보내세요."
+            % (len(gone), ", ".join(gone[:5]), " 외" if len(gone) > 5 else "")))
+    saved = _ot.save(OVERTIME_FILE, _ot.put_week(data, wk, payload or {}))
+    print("[overtime] 저장 %s (%d곳)" % (wk, len(after)))
     return _ot.for_admin(saved, wk)
 
 

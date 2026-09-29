@@ -205,6 +205,7 @@
     <div class="nav-title">전사</div>
     <nav class="nav">
       <div class="nav-item" data-page="homeadmin"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></span><span>홈 관리</span></div>
+      <div class="nav-item" data-page="overtime"><span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg></span><span>잔·특근</span></div>
     </nav>
     <div class="nav-title">사업부</div>
     <div class="biz-select biz-in-nav">
@@ -891,6 +892,7 @@ window._attachAutoListBehavior = function(el){
 (function(){
   const PAGE_LABEL = {
     homeadmin: '홈 관리',
+    overtime: '잔·특근',
     home: '홈 대시보드',
     revenue: '매출 관리',
     purchase: '매입 관리',
@@ -924,8 +926,15 @@ window._attachAutoListBehavior = function(el){
 
   function renderPage(pg){
     const c = document.getElementById('v2-content');
-    document.body.classList.toggle('scope-all', pg === 'homeadmin');
-    if (pg === 'homeadmin') {
+    var _allScope = (pg === 'homeadmin' || pg === 'overtime');
+    document.body.classList.toggle('scope-all', _allScope);
+    if (_allScope) {
+      var _cb0 = document.getElementById('v2-crumb-biz');
+      if (_cb0) _cb0.textContent = '전사';
+    }
+    if (pg === 'overtime') {
+      window.renderOvertimePage();
+    } else if (pg === 'homeadmin') {
       // 전사 화면이다 — 사이드바에 걸린 사업부 이름을 빵부스러기에 두면
       // 반도체만 보고 있는 줄 안다
       var _cb = document.getElementById('v2-crumb-biz');
@@ -12558,6 +12567,527 @@ window._ovProjectKey = function() {
           '<div class="title">매입 관리</div><div class="sub">'+esc(e.message)+'</div></div>';
       });
   };
+})();
+</script>
+
+<script>
+// ============================================================
+// 잔·특근 관리 — 전사 화면.
+//
+// 여기는 타이핑보다 올리기가 주인공이다. 한 주가 16곳 × 7요일 × 22칸,
+// 2,464 칸이라 손으로 넣을 수 없다. 그래도 한 사업부가 수정본을 보내면
+// 그 칸만은 고칠 수 있어야 해서, 줄을 펼쳐 요일별로 고친다.
+//
+// 기본은 잠금이다. 잠금을 풀어야 입력칸이 열린다.
+//
+// 비율은 화면에서 계산하지 않는다 — 서버가 준 값을 그린다. 가중평균과
+// 반올림 규칙이 두 군데 있으면 앱과 admin 숫자가 갈린다. 입력하는 동안
+// 보여 주는 비율만 인원÷가용으로 즉석에서 낸다 (저장하면 서버 값으로
+// 덮인다).
+// ============================================================
+(function () {
+  var _s = null;        // for_admin 응답
+  var _lock = true;     // 수정 잠금
+  var _open = {};       // 펼친 사업부
+  var _file = null, _imp = null, _showImp = false;
+  var _dirty = false;
+
+  var DAYS = [['mon','월'],['tue','화'],['wed','수'],['thu','목'],
+              ['fri','금'],['sat','토'],['sun','일']];
+  var MET = [['overtime','잔업'],['special','특근']];
+
+  function esc(s){ return String(s===null||s===undefined?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function num(v){
+    if(v===null||v===undefined||v==='') return null;
+    var t=String(v).replace(/[,\s]/g,'');
+    if(t===''||t.toUpperCase()==='X'||isNaN(Number(t))) return null;
+    return Number(t);
+  }
+  function n0(v){ return (v===null||v===undefined) ? '—' : Number(v).toLocaleString(); }
+  function pc(v){ return (v===null||v===undefined) ? '—'
+    : (Math.round(Number(v)*1000)/10).toFixed(1)+'%'; }
+  function wkLabel(w){ return w ? w.slice(5) : ''; }
+
+  // ── 원본 만지기 ─────────────────────────────────────────
+  function divOf(key){
+    var d=_s.divisions[key];
+    if(!d){ d={label:key,days:{},note:'',check:''}; _s.divisions[key]=d; }
+    if(!d.days) d.days={};
+    return d;
+  }
+  function dayOf(key,d){
+    var x=divOf(key).days;
+    if(!x[d]) x[d]={headcount:{},support:{},available:{},direct:{},indirect:{},
+                    overtime:{people:{}},special:{people:{}}};
+    var o=x[d];
+    ['headcount','support','available','direct','indirect'].forEach(function(k){
+      if(!o[k]) o[k]={}; });
+    MET.forEach(function(m){ if(!o[m[0]]) o[m[0]]={people:{}};
+      if(!o[m[0]].people) o[m[0]].people={}; });
+    return o;
+  }
+  function getv(key,d,path){
+    var o=_s.divisions[key], i;
+    if(!o||!o.days||!o.days[d]) return null;
+    o=o.days[d];
+    for(i=0;i<path.length;i++){ o=o&&o[path[i]]; if(o===undefined) return null; }
+    return (o===undefined)?null:o;
+  }
+  function setv(key,d,path,v){
+    var o=dayOf(key,d), i;
+    for(i=0;i<path.length-1;i++){ if(!o[path[i]]) o[path[i]]={}; o=o[path[i]]; }
+    o[path[path.length-1]]=v;
+  }
+  // 입력 중에만 쓰는 즉석 비율 (저장하면 서버 값으로 덮인다)
+  function liveRate(key,d,kind,scope){
+    var p=getv(key,d,[kind,'people',scope]);
+    var base=(scope==='direct')?getv(key,d,['direct','total'])
+            :(scope==='indirect')?getv(key,d,['indirect','total'])
+            :getv(key,d,['available','total']);
+    if(p===null||base===null||!base) return null;
+    return p/base;
+  }
+
+  // ── CSS ─────────────────────────────────────────────────
+  function css(){
+    if(document.getElementById('ot-css')) return;
+    var st=document.createElement('style'); st.id='ot-css';
+    st.textContent=[
+      '.ot-imp{border:1px solid #FDE0C0;background:#FFFBF5;border-radius:10px;',
+      ' padding:13px 15px;margin-bottom:16px;font-size:12.5px;color:#7A4A12;line-height:1.7}',
+      '.ot-imp b{color:#9A3412}',
+      '.ot-imp .cols{display:grid;grid-template-columns:1fr 1fr;gap:2px 28px;margin-top:9px}',
+      '.ot-imp .ck{display:flex;justify-content:space-between;gap:12px;padding:3px 0;',
+      ' border-bottom:1px dashed #F0DCC2;font-variant-numeric:tabular-nums}',
+      '.ot-imp .ck:last-child{border-bottom:none}',
+      '.ot-imp .ck .y{color:#047857;font-weight:700}',
+      '.ot-imp .ck .n{color:#DC2626;font-weight:800}',
+      '.ot-imp .row{display:flex;gap:8px;align-items:center;margin-top:11px;flex-wrap:wrap}',
+      '.ot-imp .warn{color:#B42318}',
+      '.ot-btn{font-size:12.5px;font-weight:700;padding:8px 15px;border-radius:8px;',
+      ' border:1px solid #D0D5DD;background:#fff;color:#334155;cursor:pointer}',
+      '.ot-btn.pri{background:#0B2B5C;border-color:#0B2B5C;color:#fff}',
+      '.ot-btn.on{background:#DBEAFE;border-color:#BFDBFE;color:#1D4ED8}',
+      '.ot-btn:disabled{opacity:.5;cursor:default}',
+      '.ot-sel{font-size:12.5px;font-weight:600;padding:7px 10px;border-radius:8px;',
+      ' background:#fff;border:1px solid #D0D5DD;color:#334155;font-family:inherit}',
+      '.ot-stat{font-size:11.5px;color:#94A3B8;font-weight:600}',
+      '.ot-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;',
+      ' box-shadow:0 1px 2px rgba(15,23,42,.04);margin-bottom:18px;overflow:hidden}',
+      '.ot-card > .hd{display:flex;align-items:center;gap:9px;padding:13px 16px;',
+      ' border-bottom:1px solid #E4E7EC}',
+      '.ot-card > .hd b{font-size:13.5px;font-weight:800}',
+      '.ot-card > .hd .r{margin-left:auto;font-size:11.5px;color:#94A3B8;font-weight:600}',
+      '.ot-isu{display:flex;gap:11px;padding:10px 16px;border-bottom:1px solid #F1F4F9;',
+      ' font-size:12.5px;align-items:flex-start}',
+      '.ot-isu:last-child{border-bottom:none}',
+      '.ot-isu .tg{flex:0 0 auto;font-size:10px;font-weight:800;border-radius:5px;padding:2px 7px}',
+      '.ot-isu .tg.us{background:#FEE4E2;color:#B42318}',
+      '.ot-isu .tg.fl{background:#F1F5F9;color:#64748B}',
+      '.ot-isu .who{flex:0 0 108px;font-weight:800}',
+      '.ot-isu .what{color:#334155}',
+      '.ot-tbl{border-collapse:collapse;font-size:12px;width:100%}',
+      '.ot-tbl thead th{background:#0E2841;color:#fff;font-weight:600;font-size:11px;',
+      ' padding:6px 8px;white-space:nowrap;border-right:1px solid #1E3A63;',
+      ' border-bottom:1px solid #1E3A63;text-align:right}',
+      '.ot-tbl thead th.l{text-align:left}',
+      '.ot-tbl thead th.grp{text-align:center;background:#143454}',
+      '.ot-tbl thead th.sep{border-left:1px solid #2C4C74}',
+      '.ot-tbl tbody td{padding:5px 8px;border-right:1px solid #EEF1F5;',
+      ' border-bottom:1px solid #EEF1F5;white-space:nowrap;text-align:right;',
+      ' font-variant-numeric:tabular-nums}',
+      '.ot-tbl tbody td.l{text-align:left;font-weight:700;background:#F8FAFC;cursor:pointer}',
+      '.ot-tbl tbody tr:hover td{background:#F8FAFC}',
+      '.ot-tbl tbody tr:hover td.l{background:#EEF2F7}',
+      '.ot-tbl tr.foot td{background:#0E2841;color:#fff;font-weight:700}',
+      '.ot-tbl tr.foot td.l{background:#0E2841;color:#fff;cursor:default}',
+      '.ot-tbl td.sep{border-left:1px solid #D7DEE8}',
+      '.ot-tbl .dim{color:#CBD5E1}',
+      '.ot-tbl .over{color:#1D4ED8;font-weight:700}',
+      '.ot-note{color:#6B7280;max-width:210px;white-space:nowrap;overflow:hidden;',
+      ' text-overflow:ellipsis;text-align:left;font-size:11px}',
+      '.ot-pill{font-size:10px;font-weight:800;border-radius:99px;padding:1px 8px}',
+      '.ot-pill.ok{background:#D1FAE5;color:#047857}',
+      '.ot-pill.no{background:#FEE4E2;color:#B42318}',
+      '.ot-caret{color:#94A3B8;font-size:10px;margin-right:3px}',
+      '.ot-exp > td{background:#FBFCFE;padding:0}',
+      '.ot-box{padding:11px 14px 14px;display:flex;flex-direction:column;gap:8px}',
+      '.ot-box .cap{font-size:12px;font-weight:700;color:#334155;display:flex;',
+      ' align-items:center;gap:9px;flex-wrap:wrap}',
+      '.ot-box .cap em{font-style:normal;font-weight:500;color:#94A3B8;',
+      ' font-variant-numeric:tabular-nums}',
+      '.ot-d{border-collapse:collapse;font-size:11.5px}',
+      '.ot-d th{background:#EEF2F7;color:#334155;font-size:10.5px;font-weight:700;',
+      ' padding:5px 10px;border:1px solid #E1E7EF;white-space:nowrap;text-align:right}',
+      '.ot-d th.l{text-align:left}',
+      '.ot-d td{padding:4px 10px;border:1px solid #EEF1F5;text-align:right;',
+      ' font-variant-numeric:tabular-nums;white-space:nowrap}',
+      '.ot-d td.l{text-align:left;font-weight:700;background:#F8FAFC}',
+      '.ot-d tr.sun td{background:#FFF7ED}',
+      '.ot-d tr.sun td.l{background:#FFEFDD}',
+      '.ot-d td.na{color:#CBD5E1}',
+      '.ot-in{width:56px;text-align:right;font-size:11.5px;padding:2px 6px;border-radius:6px;',
+      ' background:#F4F7FB;border:1px solid #E3E9F1;color:#0F172A;font-family:inherit;',
+      ' font-variant-numeric:tabular-nums}',
+      '.ot-in:focus{outline:none;border-color:#0B2B5C;background:#fff}',
+      '.ot-in:disabled{background:transparent;border-color:transparent;color:#0F172A}',
+      '.ot-tx{width:100%;min-height:30px;font-size:11.5px;line-height:1.6;padding:5px 8px;',
+      ' border-radius:6px;background:#FFFCF5;border:1px solid #FDE0C0;color:#7A4A12;',
+      ' resize:vertical;font-family:inherit}',
+      '.ot-tx:disabled{background:transparent;border-color:transparent;color:#6B7280}',
+      '.ot-lgd{display:flex;flex-wrap:wrap;gap:16px;font-size:11.5px;color:#64748B}',
+      '.ot-lgd span{display:inline-flex;align-items:center;gap:6px}',
+      '.ot-lgd i{width:20px;height:11px;border-radius:3px;display:inline-block}',
+      '.ot-lgd i.in{background:#F4F7FB;border:1px solid #E3E9F1}',
+      '.ot-lgd i.sun{background:#FFF7ED;border:1px solid #FBD9B4}',
+      '.ot-wrap{overflow-x:auto}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  // ── 조각 ────────────────────────────────────────────────
+  function headBar(){
+    var ws=(_s.weeks||[]).slice().reverse();
+    return '<div class="ov-page-head">'+
+      '<div><h2 class="ttl">잔·특근</h2>'+
+      '<p class="desc">주간 잔업률(월~토)과 특근률(일) · '+(_s.rows||[]).length+
+      '개 사업부'+(_s.range?' · '+esc(_s.range):'')+
+      (_s.source?' · 원본 '+esc(_s.source):'')+'</p></div>'+
+      '<div class="spacer"></div>'+
+      '<select class="ot-sel" id="ot-week">'+ws.map(function(w){
+        return '<option value="'+w+'"'+(w===_s.week?' selected':'')+'>'+w+'</option>';
+      }).join('')+'</select>'+
+      '<button type="button" class="ot-btn'+(_lock?' on':'')+'" id="ot-lock">'+
+        (_lock?'🔒 수정 잠금':'🔓 수정 중')+'</button>'+
+      (_lock?'':'<button type="button" class="ot-btn pri" id="ot-save">저장</button>')+
+      '<button type="button" class="ot-btn" id="ot-upload">엑셀 올리기</button>'+
+      '<span class="ot-stat" id="ot-stat"></span>'+
+      '</div>';
+  }
+
+  function impBox(){
+    if(!_showImp && !_imp) return '';
+    if(!_imp){
+      return '<div class="ot-imp"><b>엑셀로 올리기</b> — 주간 잔특근 취합 파일을 그대로 올리면 '+
+        '사업부 시트를 찾아 요일별로 넣습니다. [전체_주간현황] 에서 비고·일치확인을, '+
+        '[확인사항] 에서 메모를 같이 읽습니다. 엑셀에 없는 주차는 건드리지 않습니다.'+
+        '<div class="row"><input type="file" id="ot-file" accept=".xlsx,.xlsm">'+
+        '<input class="ot-in" id="ot-year" style="width:76px" placeholder="연도" value="'+
+        new Date().getFullYear()+'">'+
+        '<button type="button" class="ot-btn" id="ot-read">읽어보기</button>'+
+        '<button type="button" class="ot-btn" id="ot-imp-close">닫기</button></div></div>';
+    }
+    var w=_imp.warnings||[], t=(_imp.preview&&_imp.preview.total)||{};
+    var av=(t.available||{}).total, ot=(t.overtime||{}), sp=(t.special||{});
+    var c=(_imp.preview&&_imp.preview.counts)||{};
+    function ck(l,v){ return '<div class="ck"><span>'+l+'</span><span>'+v+'</span></div>'; }
+    return '<div class="ot-imp"><b>'+esc(_imp.file)+'</b> · 사업부 시트 <b>'+
+      (_imp.divisions||[]).length+'장</b> · 확인사항 '+(_imp.issues||[]).length+'건 · '+
+      '못 읽은 줄 <b>'+w.length+'개</b> · <b>'+esc(_imp.week)+
+      (_imp.replaced?' 을 덮어씁니다':' 을 새로 넣습니다')+'</b>'+
+      (w.length?'<br><span class="warn">'+esc(w.slice(0,3).join(' / '))+
+        (w.length>3?' 외 '+(w.length-3)+'건':'')+'</span>':'')+
+      '<div class="cols"><div>'+
+        ck('실제 가용인원', n0(av))+
+        ck('잔업 인원', n0((ot.people||{}).total))+
+        ck('특근 인원', n0((sp.people||{}).total))+
+      '</div><div>'+
+        ck('전사 잔업률', pc((ot.rate||{}).total))+
+        ck('전사 특근률', pc((sp.rate||{}).total))+
+        ck('검산에서 어긋난 곳', (c.audit?'<span class="n">'+c.audit+'곳</span>':'<span class="y">없음</span>'))+
+      '</div></div>'+
+      '<div class="row"><button type="button" class="ot-btn pri" id="ot-apply">이대로 넣기</button>'+
+      '<button type="button" class="ot-btn" id="ot-cancel">취소</button>'+
+      '<span class="ot-stat">넣기 전에는 저장되지 않습니다</span></div></div>';
+  }
+
+  function kpis(){
+    var t=_s.total||{}, a=t.available||{}, h=t.headcount||{}, s=t.support||{};
+    var ot=t.overtime||{}, sp=t.special||{};
+    function one(cls,l,v,sub){
+      return '<div class="ov-kpi'+(cls?' '+cls:'')+'"><div class="k-label">'+l+'</div>'+
+        '<div class="k-value">'+v+'</div><div class="k-sub">'+sub+'</div></div>';
+    }
+    return '<div class="ov-kpis">'+
+      one('','총 보유',n0(h.total),'지원 +'+n0(s['in'])+' / −'+n0(s.out))+
+      one('','실제 가용',n0(a.total),'주간 '+n0(a.day)+' · 야간 '+n0(a.night))+
+      one('','야간비율',pc(t.night_rate),'가용 기준')+
+      one('accent','잔업률 (월~토)',pc((ot.rate||{}).total),
+          n0((ot.people||{}).total)+'명 · 직 '+pc((ot.rate||{}).direct)+
+          ' / 간 '+pc((ot.rate||{}).indirect))+
+      one('warn','특근률 (일)',pc((sp.rate||{}).total),
+          n0((sp.people||{}).total)+'명 · 직 '+pc((sp.rate||{}).direct)+
+          ' / 간 '+pc((sp.rate||{}).indirect))+
+      one('','직접 가용',n0((t.direct||{}).total),'간접 '+n0((t.indirect||{}).total))+
+      '</div>';
+  }
+
+  function issues(){
+    var rows=[];
+    (_s.rows||[]).forEach(function(r){
+      (r.audit||[]).forEach(function(a){
+        rows.push('<div class="ot-isu"><span class="tg us">검산</span>'+
+          '<span class="who">'+esc(r.label||r.key)+'</span>'+
+          '<span class="what">'+esc(a.text)+'</span></div>');
+      });
+    });
+    (_s.issues||[]).forEach(function(x){
+      var i=String(x).indexOf('—');
+      var who=i>0?x.slice(0,i).trim():'';
+      var what=i>0?x.slice(i+1).trim():x;
+      rows.push('<div class="ot-isu"><span class="tg fl">파일</span>'+
+        '<span class="who">'+esc(who)+'</span><span class="what">'+esc(what)+'</span></div>');
+    });
+    if(!rows.length) return '';
+    return '<div class="ot-card"><div class="hd"><b>확인이 필요한 것</b>'+
+      '<span class="r">우리 검산 '+(_s.audit_count||0)+'건 · 파일 확인사항 '+
+      (_s.issues||[]).length+'건</span></div>'+rows.join('')+'</div>';
+  }
+
+  function cells(r, avg){
+    var a=r.available||{}, h=r.headcount||{}, s=r.support||{},
+        ot=r.overtime||{}, sp=r.special||{};
+    function g(v){ return '<td>'+n0(v)+'</td>'; }
+    function p(v,mark){ return '<td class="'+(mark&&v!==null&&avg!==null&&v>avg?'over':'')+'">'+
+      pc(v)+'</td>'; }
+    return '<td class="sep">'+n0(h.total)+'</td>'+g(s['in'])+g(s.out)+g(a.total)+
+      g(a.day)+g(a.night)+'<td>'+pc(r.night_rate)+'</td>'+g((r.direct||{}).total)+
+      '<td class="sep">'+n0((ot.people||{}).total)+'</td>'+g((ot.people||{}).direct)+
+      g((ot.people||{}).indirect)+
+      '<td class="sep'+((ot.rate||{}).total!==null&&avg!==null&&(ot.rate||{}).total>avg?' over':'')+
+        '">'+pc((ot.rate||{}).total)+'</td>'+
+      '<td>'+pc((ot.rate||{}).direct)+'</td><td>'+pc((ot.rate||{}).indirect)+'</td>'+
+      '<td class="sep">'+n0((sp.people||{}).total)+'</td>'+g((sp.people||{}).direct)+
+      g((sp.people||{}).indirect)+
+      '<td class="sep">'+pc((sp.rate||{}).total)+'</td>'+
+      '<td>'+pc((sp.rate||{}).direct)+'</td><td>'+pc((sp.rate||{}).indirect)+'</td>';
+  }
+
+  function dayRows(key){
+    var h='<table class="ot-d"><thead><tr><th class="l">요일</th>'+
+      '<th>가용</th><th>주간</th><th>야간</th><th>직접</th><th>간접</th>'+
+      '<th>잔업 전체</th><th>잔업 직접</th><th>잔업 간접</th><th>잔업률</th>'+
+      '<th>특근 전체</th><th>특근 직접</th><th>특근 간접</th><th>특근률</th>'+
+      '</tr></thead><tbody>';
+    DAYS.forEach(function(d){
+      var dk=d[0], sun=(dk==='sun');
+      h+='<tr'+(sun?' class="sun"':'')+'><td class="l">'+d[1]+'</td>';
+      [['available','total'],['available','day'],['available','night'],
+       ['direct','total'],['indirect','total']].forEach(function(p){
+        h+='<td>'+inp(key,dk,p)+'</td>';
+      });
+      MET.forEach(function(m){
+        var kind=m[0], na=(kind==='overtime')?sun:!sun;
+        ['total','direct','indirect'].forEach(function(sc){
+          h+= na ? '<td class="na">—</td>'
+                 : '<td>'+inp(key,dk,[kind,'people',sc])+'</td>';
+        });
+        h+= na ? '<td class="na">—</td>'
+               : '<td>'+pc(liveRate(key,dk,kind,'total'))+'</td>';
+      });
+      h+='</tr>';
+    });
+    return h+'</tbody></table>';
+  }
+
+  function inp(key,d,path){
+    var v=getv(key,d,path);
+    return '<input class="ot-in" data-k="'+esc(key)+'" data-d="'+d+
+      '" data-p="'+path.join('.')+'" value="'+(v===null?'':v)+'"'+
+      (_lock?' disabled':'')+'>';
+  }
+
+  function table(){
+    var avg=((_s.total||{}).overtime||{}).rate;
+    avg = avg ? avg.total : null;
+    var h='<div class="ot-card"><div class="hd"><b>사업부별</b>'+
+      '<span class="r">줄을 누르면 요일이 펼쳐집니다'+
+      (_lock?'':' · 수정 중 — 저장을 눌러야 반영됩니다')+'</span></div>'+
+      '<div class="ot-wrap"><table class="ot-tbl"><thead>'+
+      '<tr><th class="l" rowspan="2">사업부</th>'+
+      '<th class="grp sep" colspan="8">인원 (주간 평균)</th>'+
+      '<th class="grp sep" colspan="3">잔업 인원</th>'+
+      '<th class="grp sep" colspan="3">잔업률</th>'+
+      '<th class="grp sep" colspan="3">특근 인원</th>'+
+      '<th class="grp sep" colspan="3">특근률</th>'+
+      '<th class="grp sep" rowspan="2">비고</th>'+
+      '<th class="grp sep" rowspan="2">확인</th></tr>'+
+      '<tr><th class="sep">총보유</th><th>지원+</th><th>지원−</th><th>가용</th>'+
+      '<th>주간</th><th>야간</th><th>야간%</th><th>직접</th>'+
+      '<th class="sep">전체</th><th>직접</th><th>간접</th>'+
+      '<th class="sep">전체</th><th>직접</th><th>간접</th>'+
+      '<th class="sep">전체</th><th>직접</th><th>간접</th>'+
+      '<th class="sep">전체</th><th>직접</th><th>간접</th></tr></thead><tbody>';
+
+    h+='<tr class="foot"><td class="l">전체 합계/평균</td>'+cells(_s.total||{},null)+
+       '<td class="sep"></td><td></td></tr>';
+
+    (_s.rows||[]).forEach(function(r){
+      var open=!!_open[r.key];
+      h+='<tr><td class="l" data-open="'+esc(r.key)+'">'+
+        '<span class="ot-caret">'+(open?'▾':'▸')+'</span>'+esc(r.label||r.key)+'</td>'+
+        cells(r,avg)+
+        '<td class="sep ot-note" title="'+esc(r.note)+'">'+esc(r.note)+'</td>'+
+        '<td>'+(r.check==='확인필요'?'<span class="ot-pill no">확인필요</span>'
+              :(r.check?'<span class="ot-pill ok">'+esc(r.check)+'</span>':''))+'</td></tr>';
+      if(!open) return;
+      h+='<tr class="ot-exp"><td colspan="22"><div class="ot-box">'+
+        '<div class="cap">'+esc(r.label||r.key)+' · 요일별 '+
+        '<em>주 평균 가용 '+n0((r.available||{}).total)+
+        ' · 직접 '+n0((r.direct||{}).total)+' · 간접 '+n0((r.indirect||{}).total)+'</em>'+
+        ((r.audit||[]).length?'<span class="ot-pill no">검산 '+r.audit.length+'건</span>':'')+
+        '</div>'+
+        ((r.audit||[]).length?'<div class="ot-lgd"><span class="warn" style="color:#B42318">'+
+          esc(r.audit.map(function(a){return a.text;}).join(' · '))+'</span></div>':'')+
+        dayRows(r.key)+
+        '<div class="cap" style="margin-top:2px">비고</div>'+
+        '<textarea class="ot-tx" data-note="'+esc(r.key)+'"'+(_lock?' disabled':'')+
+        ' placeholder="이 사업부에 붙는 메모">'+esc(divOf(r.key).note)+'</textarea>'+
+        '<div class="ot-lgd">'+
+          '<span><i class="in"></i>회색 칸 = 직접 입력</span>'+
+          '<span><i class="sun"></i>일요일 = 특근</span>'+
+          '<span>비율은 인원 ÷ 가용, 자동</span>'+
+          '<span>— 은 해당 없음 (일요일 잔업 · 평일 특근). 0 이 아닙니다</span>'+
+        '</div></div></td></tr>';
+    });
+    return h+'</tbody></table></div></div>';
+  }
+
+  function view(){
+    if(!_s.rows || !_s.rows.length){
+      return headBar()+impBox()+
+        '<div class="placeholder"><div class="big">🕘</div>'+
+        '<div class="title">아직 올린 주차가 없습니다</div>'+
+        '<div class="sub">주간 잔특근 취합 엑셀을 올리면 여기에 나옵니다.</div></div>';
+    }
+    return headBar()+impBox()+kpis()+issues()+table();
+  }
+
+  function repaint(){
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.innerHTML=view(); bind();
+    var s=document.getElementById('ot-stat');
+    if(s&&_dirty) s.textContent='저장 안 된 수정이 있습니다';
+  }
+
+  // ── 붙이기 ──────────────────────────────────────────────
+  function bind(){
+    var c=document.getElementById('v2-content'); if(!c) return;
+
+    var wk=document.getElementById('ot-week');
+    if(wk) wk.onchange=function(){ load(wk.value); };
+
+    var lk=document.getElementById('ot-lock');
+    if(lk) lk.onclick=function(){
+      if(!_lock && _dirty &&
+         !confirm('저장 안 된 수정이 있습니다. 잠그면 사라집니다. 계속할까요?')) return;
+      if(!_lock && _dirty){ load(_s.week); return; }
+      _lock=!_lock; repaint();
+    };
+
+    var sv=document.getElementById('ot-save'); if(sv) sv.onclick=save;
+
+    var up=document.getElementById('ot-upload');
+    if(up) up.onclick=function(){ _imp=null; _file=null; _showImp=true; repaint(); };
+    var cl=document.getElementById('ot-imp-close');
+    if(cl) cl.onclick=function(){ _showImp=false; repaint(); };
+
+    c.querySelectorAll('td[data-open]').forEach(function(el){
+      el.onclick=function(){
+        var k=el.getAttribute('data-open');
+        if(_open[k]) delete _open[k]; else _open[k]=1;
+        repaint();
+      };
+    });
+
+    c.querySelectorAll('input[data-p]').forEach(function(el){
+      el.onchange=function(){
+        setv(el.getAttribute('data-k'), el.getAttribute('data-d'),
+             el.getAttribute('data-p').split('.'), num(el.value));
+        _dirty=true; repaint();
+      };
+    });
+    c.querySelectorAll('textarea[data-note]').forEach(function(el){
+      el.onchange=function(){ divOf(el.getAttribute('data-note')).note=el.value; _dirty=true; };
+    });
+
+    var rd=document.getElementById('ot-read');
+    if(rd) rd.onclick=function(){
+      var fi=document.getElementById('ot-file');
+      if(!fi||!fi.files||!fi.files[0]){ alert('엑셀 파일을 골라 주세요.'); return; }
+      _file=fi.files[0]; upload('preview');
+    };
+    var ap=document.getElementById('ot-apply');
+    if(ap) ap.onclick=function(){ upload('commit'); };
+    var cn=document.getElementById('ot-cancel');
+    if(cn) cn.onclick=function(){ _imp=null; _file=null; repaint(); };
+  }
+
+
+  function upload(mode){
+    if(!_file){ alert('엑셀 파일을 다시 골라 주세요.'); return; }
+    var y=document.getElementById('ot-year');
+    var fd=new FormData();
+    fd.append('file',_file); fd.append('mode',mode);
+    if(y&&y.value) fd.append('year',y.value);
+    var st=document.getElementById('ot-stat');
+    if(st) st.textContent = (mode==='commit'?'넣는 중…':'읽는 중…');
+    fetch('/admin/overtime/import-xlsx',{method:'POST',credentials:'same-origin',body:fd})
+      .then(function(r){ return r.json().then(function(j){
+        if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); return j; }); })
+      .then(function(d){
+        if(mode==='commit'){
+          _imp=null; _file=null; _showImp=false; _dirty=false;
+          _s=d.state||_s; _open={}; repaint();
+          var s2=document.getElementById('ot-stat');
+          if(s2) s2.textContent='엑셀을 넣었습니다 · '+(d.updated_at||'').replace('T',' ');
+        } else { _imp=d; _showImp=true; repaint(); }
+      })
+      .catch(function(e){ alert(e.message); repaint(); });
+  }
+
+  function save(){
+    var b=document.getElementById('ot-save');
+    if(b){ b.disabled=true; b.textContent='저장 중…'; }
+    fetch('/admin/overtime',{
+      method:'PUT', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({week:_s.week, range:_s.range, source:_s.source,
+                            divisions:_s.divisions, order:_s.order, issues:_s.issues})
+    }).then(function(r){
+      if(r.status===401) throw new Error('로그인이 필요합니다');
+      return r.json().then(function(j){
+        if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); return j; });
+    }).then(function(d){
+      _s=d; _dirty=false; _lock=true; repaint();
+      var s2=document.getElementById('ot-stat');
+      if(s2) s2.textContent='저장했습니다';
+    }).catch(function(e){
+      alert('저장하지 못했습니다: '+e.message);
+      var b2=document.getElementById('ot-save');
+      if(b2){ b2.disabled=false; b2.textContent='저장'; }
+    });
+  }
+
+  function load(week){
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.innerHTML='<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
+    fetch('/admin/overtime'+(week?'?w='+encodeURIComponent(week):''),
+          {credentials:'same-origin'})
+      .then(function(r){
+        if(r.status===401) throw new Error('로그인이 필요합니다');
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      })
+      .then(function(d){ _s=d; _dirty=false; _lock=true; _imp=null; repaint(); })
+      .catch(function(e){
+        c.innerHTML='<div class="placeholder"><div class="big">🕘</div>'+
+          '<div class="title">잔·특근</div><div class="sub">'+esc(e.message)+'</div></div>';
+      });
+  }
+
+  window.renderOvertimePage=function(){ css(); _open={}; _showImp=false; load(''); };
 })();
 </script>
 

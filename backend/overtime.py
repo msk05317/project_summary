@@ -339,6 +339,67 @@ def _sum_div(rows: list) -> dict:
     }
 
 
+# ── 검산 ─────────────────────────────────────────────────────
+#
+# 엑셀에도 '일치확인' 열이 있지만 그 값을 믿지 않고 우리가 다시 센다.
+# W39 는 파일이 OK 라고 한 네트워크에서 '일요일 주간+야간이 가용보다 4명
+# 적다' 가 하나 더 나왔다.
+#
+# 반드시 **요일 원본값**으로 센다. 주 평균으로 세면 요일마다 따로 반올림한
+# 차이 때문에 멀쩡한 사업부가 1명씩 틀린 것처럼 나온다 (W39 에서 시스템·
+# 헬스케어·자동차휠 셋이 그랬다).
+AUDITS = (
+    ("avail_shift", "주간+야간 ≠ 가용", ("available", "day"), ("available", "night"),
+     ("available", "total")),
+    ("avail_kind", "직접+간접 ≠ 가용", ("direct", "total"), ("indirect", "total"),
+     ("available", "total")),
+    ("overtime_kind", "잔업 직접+간접 ≠ 전체",
+     ("overtime", "people", "direct"), ("overtime", "people", "indirect"),
+     ("overtime", "people", "total")),
+    ("special_kind", "특근 직접+간접 ≠ 전체",
+     ("special", "people", "direct"), ("special", "people", "indirect"),
+     ("special", "people", "total")),
+)
+
+
+def _dig(day: dict, path):
+    cur = day
+    for step in path:
+        cur = (cur or {}).get(step)
+    return cur
+
+
+def audit_division(div: dict) -> list:
+    """한 사업부의 안 맞는 곳. 없으면 빈 리스트."""
+    days = (div or {}).get("days") or {}
+    out = []
+    for code, label, a, b, total in AUDITS:
+        hits = []
+        for d in DAYS:
+            one = days.get(d)
+            if not one:
+                continue
+            av, bv, tv = _dig(one, a), _dig(one, b), _dig(one, total)
+            if None in (av, bv, tv):
+                continue
+            gap = round(float(av) + float(bv) - float(tv), 3)
+            if gap:
+                hits.append((d, gap))
+        if not hits:
+            continue
+        gaps = [g for _, g in hits]
+        lo, hi = min(gaps), max(gaps)
+        span = ("%+g명" % lo) if lo == hi else ("%+g~%+g명" % (lo, hi))
+        out.append({
+            "code": code, "label": label,
+            "days": [d for d, _ in hits],
+            "day_labels": "".join(DAY_LABEL[d] for d, _ in hits),
+            "min": lo, "max": hi,
+            "text": "%s (%s · %s)" % (label, "".join(DAY_LABEL[d] for d, _ in hits), span),
+        })
+    return out
+
+
 def _delta(now, before):
     if now is None or before is None:
         return None
@@ -390,6 +451,8 @@ def for_app(data: dict, wk: str = "", kind: str = "overtime",
             "available": (r.get("available") or {}).get("total"),
             "over_avg": bool(v is not None and avg is not None and v > avg),
             "note": r.get("note", ""), "check": r.get("check", ""),
+            "audit": [x["text"] for x in
+                      audit_division((week.get("divisions") or {}).get(k) or {})],
         })
     rated = [x for x in items if x["rate"] is not None]
     rated.sort(key=lambda x: x["rate"], reverse=True)
@@ -416,6 +479,7 @@ def for_app(data: dict, wk: str = "", kind: str = "overtime",
             "up": sum(1 for x in items if (x["delta"] or 0) > 0),
             "down": sum(1 for x in items if (x["delta"] or 0) < 0),
             "check": sum(1 for x in items if x["check"] == CHECK_WARN),
+            "audit": sum(1 for x in items if x["audit"]),
         },
         "items": items,
         "issues": week.get("issues") or [],
@@ -468,16 +532,37 @@ def for_division(data: dict, key: str, wk: str = "") -> dict:
 
 
 def for_admin(data: dict, wk: str = "") -> dict:
+    """관리 화면 한 판 — 고칠 원본과, 보여 줄 집계를 같이 준다.
+
+    집계를 화면에서 다시 계산하게 두면 앱과 숫자가 갈린다. 가중평균과
+    반올림 규칙이 한 군데에만 있어야 한다.
+    """
     weeks = sorted(data.get("weeks") or {})
     wk = week_key(wk) or (weeks[-1] if weeks else "")
     week = (data.get("weeks") or {}).get(wk) or {}
+    divs = week.get("divisions") or {}
+    order = _order_of(data, wk)
+
+    rows, rolled = [], []
+    for k in order:
+        raw = divs[k]
+        one = division_week(raw)
+        rolled.append(one)
+        audit = audit_division(raw)
+        rows.append(dict(one, key=k, audit=audit, audit_count=len(audit)))
+    total = _sum_div(rolled)
+
     return {"week": wk, "weeks": weeks, "range": week.get("range", ""),
             "source": week.get("source", ""),
-            "order": _order_of(data, wk),
-            "divisions": week.get("divisions") or {},
+            "order": order,
+            "divisions": divs,              # 고칠 원본 (요일별 날 것)
+            "rows": rows, "total": total,   # 보여 줄 집계
             "issues": week.get("issues") or [],
+            "audit_count": sum(r["audit_count"] for r in rows),
             "days": [{"key": d, "label": DAY_LABEL[d]} for d in DAYS],
-            "kinds": [{"key": k, "label": KIND_LABEL[k]} for k in KINDS],
+            "weekdays": list(WEEKDAYS), "sunday": SUNDAY,
+            "kinds": [{"key": k, "label": KIND_LABEL[k], "range": KIND_RANGE[k]}
+                      for k in KINDS],
             "scopes": [{"key": s, "label": SCOPE_LABEL[s]} for s in SCOPES]}
 
 
