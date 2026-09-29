@@ -12107,105 +12107,127 @@ window._ovProjectKey = function() {
 
 <script>
 // ============================================================
-// 매입 관리 — 사업부 월별 매입·지급 현황
+// 매입 관리 v2 — 한 달을 합계 / 해외 / 국내 세 열로.
 //
-// 엑셀 '월별 매입 현황 분석' 과 같은 모양으로 둔다. 줄이 구분이고
-// 열이 월이다. 엑셀을 보면서 옮겨 적는 사람이 눈을 덜 옮긴다.
-// 회색 칸이 사람이 넣는 칸, 점선 칸은 자동이다.
+// 엑셀이 그 모양이다. 줄이 구분, 열이 지역. 월은 위 탭으로 고른다 —
+// 월 × 지역을 한 표에 펴면 열이 열다섯이라 아무도 못 읽는다.
 //
-// 잔액은 비워 두면 '매입-지급' 으로 채우고, 적으면 적은 값을 쓴다 —
-// 표의 잔액이 매입-지급과 맞지 않는 달이 있어서다.
+// 회색 칸이 사람이 넣는 칸, 점선 칸은 자동이다. 비고는 줄바꿈을 지킨다.
+// 안 적은 칸은 0 이 아니라 빈 칸으로 남는다 — 해외를 아직 안 나눈 달은
+// 앱에서 '미입력' 이라고 말해야 한다.
 // ============================================================
 (function () {
-  var _state = null;     // { division, currency, months:{...}, default_items:[] }
-  var _file = null;      // 올린 엑셀 (미리보기 → 적용에 다시 쓴다)
-  var _imp = null;       // 미리보기 결과
+  var _s = null;          // { division, currency, months, default_items, stock_rows }
+  var _m = '';            // 보고 있는 월
+  var _file = null, _imp = null;
+  var REG = [['total','합계'],['overseas','해외'],['domestic','국내']];
+  var MET = [['buy','매입액'],['paid','지급액'],['balance','잔액']];
 
-  function esc(s) {
-    return String(s === null || s === undefined ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  function esc(s){ return String(s===null||s===undefined?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function divOf(){ var e=document.getElementById('v2-division-select'); return (e&&e.value)||''; }
+  function divLabel(){ var e=document.getElementById('v2-division-select');
+    if(!e) return ''; var o=e.options[e.selectedIndex]; return (o&&o.text)||e.value||''; }
+  function num(v){
+    if(v===null||v===undefined||v==='') return null;
+    var t=String(v).replace(/[,\s$₩]/g,''), neg=false;
+    if(/^\(.*\)$/.test(t)){ neg=true; t=t.slice(1,-1); }
+    if(t===''||isNaN(Number(t))) return null;
+    var n=Number(t); return neg?-n:n;
   }
-  function divOf() {
-    var s = document.getElementById('v2-division-select');
-    return (s && s.value) || '';
+  function f(v){ var n=num(v); return n===null?0:n; }
+  function fmt(n){
+    if(n===null||n===undefined||n==='') return '';
+    var v=Number(n); if(isNaN(v)) return '';
+    var s=Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:1});
+    return v<0?'('+s+')':s;
   }
-  function divLabel() {
-    var s = document.getElementById('v2-division-select');
-    if (!s) return '';
-    var o = s.options[s.selectedIndex];
-    return (o && o.text) || s.value || '';
-  }
-  function num(v) {
-    if (v === null || v === undefined || v === '') return null;
-    var t = String(v).replace(/[,\s$₩]/g, '');
-    var neg = false;
-    if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
-    if (t === '' || isNaN(Number(t))) return null;
-    var n = Number(t);
-    return neg ? -n : n;
-  }
-  function f(v) { var n = num(v); return n === null ? 0 : n; }
-  // 칸 하나가 이제 숫자가 아니라 {total, overseas, domestic} 이다.
-  // 이 화면은 아직 합계만 다루므로 total 만 읽고 쓴다 — 해외·국내에 적힌
-  // 값은 건드리지 않는다. 옛 모양(숫자 하나)도 그대로 읽는다.
-  function cv(x) { return (x && typeof x === 'object') ? x.total : x; }
-  function sv(o, k, v) {
-    var c = o[k];
-    if (c && typeof c === 'object') { c.total = v; }
-    else { o[k] = { total: v, overseas: null, domestic: null }; }
-  }
-  function fmt(n) {
-    if (n === null || n === undefined || n === '') return '';
-    var v = Number(n);
-    if (isNaN(v)) return '';
-    var s = Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
-    return v < 0 ? '(' + s + ')' : s;
-  }
-  function cur() { return (_state && _state.currency === 'KRW') ? '₩' : '$'; }
-  function mLabel(m) { return m ? (Number(m.slice(5, 7)) + '월') : ''; }
-  function thisMonth() {
-    var d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-  }
-  function monthsOf() { return Object.keys((_state && _state.months) || {}).sort(); }
+  function cur(){ return (_s&&_s.currency==='KRW')?'₩':'$'; }
+  function mLabel(m){ return m?(Number(m.slice(5,7))+'월'):''; }
+  function thisMonth(){ var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function months(){ return Object.keys((_s&&_s.months)||{}).sort(); }
 
-  function blank() {
-    return {
-      revenue: null,
-      items: (_state.default_items || []).map(function (d) {
-        return { key: d.key, label: d.label, buy: null, paid: null, balance: null };
-      }),
-      prepaid: null, actual_paid: null, invest: null, note: ''
-    };
+  // ── 칸 하나 = {total, overseas, domestic} ────────────────
+  function cv(c,r){ if(c===null||c===undefined) return null;
+    if(typeof c==='object') return c[r]; return r==='total'?c:null; }
+  function setc(o,k,r,v){
+    var c=o[k];
+    if(!c||typeof c!=='object'){ c={total:(k&&typeof o[k]==='number')?o[k]:null,overseas:null,domestic:null}; o[k]=c; }
+    c[r]=v;
   }
-  function cell(m) {
-    if (!_state.months[m]) _state.months[m] = blank();
-    var mv = _state.months[m];
-    if (!mv.items || !mv.items.length) mv.items = blank().items;
-    return mv;
+  function blankMonth(){
+    return { revenue:null,
+      items:(_s.default_items||[]).map(function(d){
+        return {key:d.key,label:d.label,buy:null,paid:null,balance:null,note:''};}),
+      prepaid:null, actual_paid:null, invest:null,
+      stock:(_s.stock_rows||[]).map(function(d){ return {key:d.key,label:d.label,value:null,note:''};}),
+      receivable:null, total_buy:null, note:'' };
   }
-  /** 항목 줄은 모든 달이 같아야 한다 — 첫 달 기준으로 맞춘다. */
-  function itemDefs() {
-    var ms = monthsOf();
-    if (!ms.length) return (_state.default_items || []).slice();
-    var base = cell(ms[0]).items || [];
-    return base.map(function (it) { return { key: it.key, label: it.label }; });
+  function mv(m){
+    if(!_s.months[m]) _s.months[m]=blankMonth();
+    var x=_s.months[m];
+    if(!x.items||!x.items.length) x.items=blankMonth().items;
+    if(!x.stock||!x.stock.length) x.stock=blankMonth().stock;
+    return x;
   }
-  function itemOf(m, key) {
-    var mv = cell(m);
-    for (var i = 0; i < mv.items.length; i++) if (mv.items[i].key === key) return mv.items[i];
-    var it = { key: key, label: key, buy: null, paid: null, balance: null };
-    mv.items.push(it);
-    return it;
+  function itemOf(m,key){
+    var x=mv(m);
+    for(var i=0;i<x.items.length;i++) if(x.items[i].key===key) return x.items[i];
+    var it={key:key,label:key,buy:null,paid:null,balance:null,note:''};
+    x.items.push(it); return it;
+  }
+  function stockOf(m,key){
+    var x=mv(m);
+    for(var i=0;i<x.stock.length;i++) if(x.stock[i].key===key) return x.stock[i];
+    var st={key:key,label:key,value:null,note:''};
+    x.stock.push(st); return st;
+  }
+  // 항목 줄은 어느 달에든 한 번이라도 나온 것을 다 보여준다. 첫 달만
+  // 보면 그 달에 없던 항목의 입력 칸이 통째로 사라진다 — 7월에 원소재만
+  // 있다고 8월 소모품·기타·외주를 못 넣는 화면이 됐었다.
+  function itemDefs(){
+    var ms=months(), order=[], seen={};
+    ms.forEach(function(m){
+      ((_s.months[m]||{}).items||[]).forEach(function(it){
+        if(!it||!it.key) return;
+        if(!seen[it.key]){ seen[it.key]=true; order.push({key:it.key,label:it.label||it.key}); }
+        else if(it.label){ order.forEach(function(o){ if(o.key===it.key) o.label=it.label; }); }
+      });
+    });
+    (_s.default_items||[]).forEach(function(d){
+      if(!seen[d.key]){ seen[d.key]=true; order.push({key:d.key,label:d.label}); }
+    });
+    return order;
   }
 
-  // ---------------------------------------------------------- CSS
-  function css() {
-    if (document.getElementById('pu-css')) return;
-    var s = document.createElement('style');
-    s.id = 'pu-css';
-    s.textContent = [
+  // ── 계산 ────────────────────────────────────────────────
+  function itemBal(it,r){
+    var b=f(cv(it.buy,r)), p=f(cv(it.paid,r)), raw=cv(it.balance,r);
+    return (raw===null||raw===undefined||raw==='')?(b-p):f(raw);
+  }
+  function tot(m,r){
+    var x=mv(m), t={buy:0,paid:0,bal:0};
+    (x.items||[]).forEach(function(it){
+      t.buy+=f(cv(it.buy,r)); t.paid+=f(cv(it.paid,r)); t.bal+=itemBal(it,r); });
+    return t;
+  }
+  function payTotal(m,r){ var x=mv(m);
+    return f(cv(x.prepaid,r))+f(cv(x.actual_paid,r))+f(cv(x.invest,r)); }
+  function stockSum(m,r){ var s=0;
+    ['wip','finished'].forEach(function(k){ var v=cv(stockOf(m,k).value,r);
+      if(v!==null&&v!==undefined&&v!=='') s+=f(v); }); return s; }
+  function ratio(m,r){
+    var tb=cv(mv(m).total_buy,r), rev=f(cv(mv(m).revenue,r));
+    if(tb===null||tb===undefined||tb===''||rev<=0) return null;
+    return Math.round(f(tb)/rev*1000)/10;
+  }
+
+  // ── CSS ─────────────────────────────────────────────────
+  function css(){
+    if(document.getElementById('pu2-css')) return;
+    var st=document.createElement('style'); st.id='pu2-css';
+    st.textContent=[
       '.pu-guide{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;background:#F8FAFC;',
       ' border:1px solid #E4E7EC;border-radius:10px;padding:10px 14px;font-size:12px;color:#475467;margin-bottom:14px}',
       '.pu-guide b{color:#101828}',
@@ -12213,37 +12235,41 @@ window._ovProjectKey = function() {
       '.pu-key s{text-decoration:none;width:26px;height:15px;border-radius:5px;display:inline-block}',
       '.pu-key s.in{background:#F4F7FB;border:1px solid #E3E9F1}',
       '.pu-key s.au{background:#fff;border:1px dashed #B9C4D4}',
-      '.pu-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;margin-bottom:16px}',
+      '.pu-key s.ng{background:#FFFBFA;border:1px solid #FDA29B}',
+      '.pu-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;align-items:center}',
+      '.pu-chip{font-size:12.5px;font-weight:700;color:#475467;background:#fff;border:1px solid #E4E7EC;',
+      ' border-radius:999px;padding:6px 15px;cursor:pointer}',
+      '.pu-chip:hover{border-color:#B9C4D4}',
+      '.pu-chip.on{background:#0F2C59;border-color:#0F2C59;color:#fff}',
+      '.pu-chip.add{border-style:dashed;color:#0F2C59}',
+      '.pu-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;margin-bottom:16px;overflow:hidden}',
       '.pu-card .hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #E4E7EC}',
       '.pu-card .hd b{font-size:13.5px}',
       '.pu-card .hd .sub{font-size:11.5px;color:#98A2B3;margin-left:auto}',
-      '.pu-card .bd{padding:0}',
-      '.pu-sc{overflow-x:auto}',
-      '.pu-grid{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%}',
-      '.pu-grid th,.pu-grid td{border-bottom:1px solid #F1F5F9;padding:6px 10px;white-space:nowrap}',
-      '.pu-grid thead th{background:#F8FAFC;border-bottom:1px solid #E4E7EC;font-size:11.5px;',
-      ' color:#475467;text-align:right;position:sticky;top:0;z-index:2}',
-      '.pu-grid th.g,.pu-grid td.g{position:sticky;left:0;background:#fff;z-index:3;text-align:left;',
-      ' font-weight:800;color:#101828;border-right:1px solid #EEF2F6;min-width:150px;width:150px}',
-      '.pu-grid thead th.g{background:#F8FAFC;z-index:4}',
-      '.pu-grid th.k,.pu-grid td.k{position:sticky;left:150px;background:#fff;z-index:3;text-align:left;',
-      ' color:#475467;border-right:1px solid #E4E7EC;min-width:74px}',
-      '.pu-grid thead th.k{background:#F8FAFC;z-index:4}',
-      '.pu-grid td{text-align:right}',
-      '.pu-grid tr.grp td.g{vertical-align:middle}',
-      '.pu-grid tr.head td{background:#FBFCFE;font-weight:800;color:#0F2C59}',
-      '.pu-grid tr.sum td{background:#F8FAFC}',
-      '.pu-grid tr.band td.g,.pu-grid tr.band td.k{border-top:1px solid #E4E7EC}',
-      '.pu-grid tr.band td{border-top:1px solid #E4E7EC}',
-      '.pu-in{width:108px;text-align:right;font-size:12.5px;padding:5px 8px;border-radius:6px;',
+      '.pu-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout:fixed}',
+      '.pu-tbl th{background:#F8FAFC;padding:9px 12px;text-align:right;border-bottom:1px solid #E4E7EC;',
+      ' font-size:11.5px;color:#475467;font-weight:800}',
+      '.pu-tbl th.l,.pu-tbl td.l{text-align:left}',
+      '.pu-tbl td{padding:6px 12px;border-bottom:1px solid #F1F5F9;text-align:right;vertical-align:top}',
+      '.pu-tbl tr:last-child td{border-bottom:none}',
+      '.pu-tbl td.g{font-weight:800;color:#101828;white-space:nowrap;background:#fff}',
+      '.pu-tbl td.k{color:#475467;font-weight:700;white-space:nowrap}',
+      '.pu-tbl tr.band td{border-top:1px solid #E4E7EC}',
+      '.pu-tbl tr.sum td{background:#F8FAFC}',
+      '.pu-tbl tr.sum td.g,.pu-tbl tr.sum td.k{color:#0F2C59}',
+      '.pu-in{width:100%;max-width:150px;text-align:right;font-size:12.5px;padding:6px 9px;border-radius:6px;',
       ' background:#F4F7FB;border:1px solid #E3E9F1;font-variant-numeric:tabular-nums}',
       '.pu-in:focus{outline:none;border-color:#0F2C59;background:#fff}',
       '.pu-in.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA;font-weight:700}',
-      '.pu-in.lbl{width:130px;text-align:left;font-weight:800;background:#F4F7FB}',
-      '.pu-au{display:inline-block;min-width:96px;background:#fff;border:1px dashed #B9C4D4;',
-      ' border-radius:6px;padding:5px 8px;text-align:right;color:#475467;font-variant-numeric:tabular-nums}',
+      '.pu-in.lbl{max-width:150px;text-align:left;font-weight:800}',
+      '.pu-au{display:inline-block;min-width:110px;background:#fff;border:1px dashed #B9C4D4;',
+      ' border-radius:6px;padding:6px 9px;text-align:right;color:#475467;font-variant-numeric:tabular-nums}',
       '.pu-au.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA}',
       '.pu-au.sum{font-weight:800;color:#0F2C59;border-style:solid;border-color:#D0D5DD;background:#F8FAFC}',
+      '.pu-note{width:100%;min-height:34px;font-size:11.5px;line-height:1.6;padding:6px 9px;border-radius:6px;',
+      ' background:#FFFCF5;border:1px solid #FDE0C0;color:#7A4A12;resize:vertical;font-family:inherit}',
+      '.pu-note:focus{outline:none;border-color:#F59E0B;background:#fff}',
+      '.pu-note::placeholder{color:#D6BB94}',
       '.pu-act{display:flex;gap:8px;align-items:center;margin:4px 0 14px;flex-wrap:wrap}',
       '.pu-act .sp{margin-left:auto;font-size:11.5px;color:#98A2B3}',
       '.pu-btn{font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:8px;border:1px solid #D0D5DD;',
@@ -12258,327 +12284,267 @@ window._ovProjectKey = function() {
       '.pu-warn{color:#B42318}',
       '.pu-hint{font-size:11.5px;color:#98A2B3;padding:10px 16px 14px;line-height:1.6}'
     ].join('');
-    document.head.appendChild(s);
+    document.head.appendChild(st);
   }
 
-  // ---------------------------------------------------------- 계산
-  function totals(mv) {
-    var t = { buy: 0, paid: 0, bal: 0 };
-    (mv.items || []).forEach(function (it) {
-      var b = f(cv(it.buy)), p = f(cv(it.paid));
-      t.buy += b; t.paid += p;
-      var _rb = cv(it.balance);
-      t.bal += (_rb === null || _rb === undefined || _rb === '') ? (b - p) : f(_rb);
+  // ── 표 ──────────────────────────────────────────────────
+  function inCell(m, path, r, val){
+    var neg = (val!==''&&val!==null&&String(val).indexOf('(')===0);
+    return '<td><input class="pu-in'+(neg?' neg':'')+'" data-m="'+esc(m)+'" data-p="'+esc(path)+
+           '" data-r="'+r+'" value="'+esc(val)+'"></td>';
+  }
+  function auCell(v, strong){
+    if(v===null||v===undefined) return '<td><span class="pu-au'+(strong?' sum':'')+'">—</span></td>';
+    return '<td><span class="pu-au'+(strong?' sum':'')+(v<0?' neg':'')+'">'+fmt(v)+'</span></td>';
+  }
+  function noteCell(path, val, ph){
+    return '<td class="l"><textarea class="pu-note" data-m="'+esc(_m)+'" data-note="'+esc(path)+
+           '" placeholder="'+esc(ph||'비고 — 줄을 나눠 적으면 그대로 보입니다')+'">'+esc(val||'')+'</textarea></td>';
+  }
+  function rowIn(grp, sub, path, note, cls){
+    var h='<tr'+(cls?' class="'+cls+'"':'')+'><td class="g">'+esc(grp||'')+'</td><td class="k">'+esc(sub)+'</td>';
+    REG.forEach(function(rg){
+      var v = path.indexOf('item:')===0
+        ? cv(itemOf(_m, path.split(':')[1])[path.split(':')[2]], rg[0])
+        : (path.indexOf('stock:')===0 ? cv(stockOf(_m, path.split(':')[1]).value, rg[0])
+                                      : cv(mv(_m)[path], rg[0]));
+      h += inCell(_m, path, rg[0], fmt(v));
     });
-    return t;
+    h += note===null ? '<td></td>' : noteCell(note.path, note.val, note.ph);
+    return h+'</tr>';
   }
-  function payTotal(mv) { return f(cv(mv.prepaid)) + f(cv(mv.actual_paid)) + f(cv(mv.invest)); }
-
-  // ---------------------------------------------------------- 그리드
-  var METRICS = [['buy', '매입액'], ['paid', '지급액'], ['balance', '잔액']];
-
-  function inCell(m, attrs, val, extra) {
-    return '<td><input class="pu-in' + (extra || '') + '" data-m="' + m + '" ' + attrs +
-           ' value="' + esc(val) + '"></td>';
-  }
-  function auCell(v, cls) {
-    return '<td><span class="pu-au' + (cls || '') + (v < 0 ? ' neg' : '') + '">' +
-           fmt(v) + '</span></td>';
+  function rowAuto(grp, sub, fn, cls){
+    var h='<tr class="sum'+(cls?' '+cls:'')+'"><td class="g">'+esc(grp||'')+'</td><td class="k">'+esc(sub)+'</td>';
+    REG.forEach(function(rg){ h += auCell(fn(rg[0]), true); });
+    return h+'<td></td></tr>';
   }
 
-  function grid() {
-    var ms = monthsOf();
-    var defs = itemDefs();
-    var head = '<thead><tr><th class="g">구분</th><th class="k"></th>' +
-      ms.map(function (m) { return '<th>' + mLabel(m) + '</th>'; }).join('') +
-      '<th>합계</th></tr></thead>';
+  function grid(){
+    var defs=itemDefs(), x=mv(_m);
+    var h='<table class="pu-tbl"><colgroup><col style="width:92px"><col style="width:168px">'+
+          '<col style="width:176px"><col style="width:176px"><col style="width:176px"><col></colgroup>';
+    h+='<thead><tr><th class="l">구분</th><th class="l">세부항목</th>'+
+       REG.map(function(r){ return '<th>'+r[1]+'</th>'; }).join('')+'<th class="l">비고</th></tr></thead><tbody>';
 
-    var body = '';
+    h+=rowIn('매출','매출액','revenue',null,'band');
 
-    // 매출액
-    body += '<tr class="band"><td class="g">매출</td><td class="k">매출액</td>' +
-      ms.map(function (m) {
-        return inCell(m, 'data-k="revenue"', fmt(cv(cell(m).revenue)));
-      }).join('') +
-      (function () {
-        var s = 0; ms.forEach(function (m) { s += f(cv(cell(m).revenue)); });
-        return auCell(s, ' sum');
-      })() + '</tr>';
-
-    // 항목별
-    defs.forEach(function (d, di) {
-      METRICS.forEach(function (mt, mi) {
-        var isFirst = mi === 0;
-        body += '<tr' + (isFirst ? ' class="band"' : '') + '>';
-        if (isFirst) {
-          body += '<td class="g" rowspan="3"><input class="pu-in lbl" data-lbl="' +
-            esc(d.key) + '" value="' + esc(d.label) + '"></td>';
-        }
-        body += '<td class="k">' + mt[1] + '</td>';
-        var s = 0;
-        ms.forEach(function (m) {
-          var it = itemOf(m, d.key);
-          var b = f(cv(it.buy)), p = f(cv(it.paid));
-          if (mt[0] === 'balance') {
-            var _b = cv(it.balance);
-            var has = !(_b === null || _b === undefined || _b === '');
-            var v = has ? f(_b) : (b - p);
-            s += v;
-            body += '<td><input class="pu-in' + (v < 0 ? ' neg' : '') + '" data-m="' + m +
-              '" data-i="' + esc(d.key) + '" data-k="balance" placeholder="자동 ' +
-              esc(fmt(b - p)) + '" value="' + esc(has ? fmt(_b) : '') + '"></td>';
-          } else {
-            s += f(cv(it[mt[0]]));
-            body += inCell(m, 'data-i="' + esc(d.key) + '" data-k="' + mt[0] + '"',
-                           fmt(cv(it[mt[0]])));
-          }
-        });
-        body += auCell(s, ' sum') + '</tr>';
+    defs.forEach(function(d,di){
+      MET.forEach(function(mt,mi){
+        var note = mi===2 ? {path:'item:'+d.key, val:itemOf(_m,d.key).note} : null;
+        h+=rowIn(mi===0?(di===0?'매입':''):'',
+                 (mi===0? d.label+' · ':'  ')+mt[1],
+                 'item:'+d.key+':'+mt[0], note, mi===0?'band':'');
       });
     });
 
-    // 합계
-    METRICS.forEach(function (mt, mi) {
-      body += '<tr class="sum' + (mi === 0 ? ' band' : '') + '">';
-      if (mi === 0) body += '<td class="g" rowspan="3">합계</td>';
-      body += '<td class="k">' + mt[1] + '</td>';
-      var s = 0;
-      ms.forEach(function (m) {
-        var t = totals(cell(m));
-        var v = mt[0] === 'buy' ? t.buy : (mt[0] === 'paid' ? t.paid : t.bal);
-        s += v;
-        body += auCell(v, ' sum');
-      });
-      body += auCell(s, ' sum') + '</tr>';
+    h+=rowAuto('합계','매입액',function(r){ return tot(_m,r).buy; },'band');
+    h+=rowAuto('','지급액',function(r){ return tot(_m,r).paid; });
+    h+=rowAuto('','잔액',function(r){ return tot(_m,r).bal; });
+
+    h+=rowIn('지급','선급금','prepaid',null,'band');
+    h+=rowIn('','실지급액','actual_paid',null);
+    h+=rowIn('','설비투자','invest',null);
+    h+=rowAuto('','지급 합계',function(r){ return payTotal(_m,r); });
+
+    (_s.stock_rows||[]).forEach(function(sr,i){
+      h+=rowIn(i===0?'재고':'', sr.label, 'stock:'+sr.key,
+               {path:'stock:'+sr.key, val:stockOf(_m,sr.key).note}, i===0?'band':'');
     });
+    h+=rowAuto('','재공+완제품 합계',function(r){ return stockSum(_m,r); });
 
-    // 지급 내역
-    [['prepaid', '선급금'], ['actual_paid', '실지급액'], ['invest', '실비투자']]
-      .forEach(function (p, pi) {
-        body += '<tr' + (pi === 0 ? ' class="band"' : '') + '>';
-        if (pi === 0) body += '<td class="g" rowspan="4">지급</td>';
-        body += '<td class="k">' + p[1] + '</td>';
-        var s = 0, any = false;
-        ms.forEach(function (m) {
-          var raw = cv(cell(m)[p[0]]);
-          if (raw !== null && raw !== undefined && raw !== '') any = true;
-          s += f(raw);
-          body += inCell(m, 'data-k="' + p[0] + '"', fmt(raw));
-        });
-        body += (any ? auCell(s, ' sum')
-                     : '<td><span class="pu-au sum">–</span></td>') + '</tr>';
-      });
-    body += '<tr class="sum"><td class="k">지급 합계</td>';
-    (function () {
-      var s = 0;
-      ms.forEach(function (m) { var v = payTotal(cell(m)); s += v; body += auCell(v, ' sum'); });
-      body += auCell(s, ' sum');
-    })();
-    body += '</tr>';
+    h+=rowIn('합계','외상 매출 (미수금)','receivable',null,'band');
+    h+=rowIn('','총 매입액','total_buy',null);
+    h+='<tr class="sum"><td class="g"></td><td class="k">매출 대비 매입비율</td>';
+    REG.forEach(function(rg){ var v=ratio(_m,rg[0]);
+      h+='<td><span class="pu-au sum">'+(v===null?'—':v+'%')+'</span></td>'; });
+    h+=noteCell('month', x.note, '이 달 전체에 붙는 메모')+'</tr>';
 
-    return '<table class="pu-grid">' + head + '<tbody>' + body + '</tbody></table>';
+    return h+'</tbody></table>';
   }
 
-  // ---------------------------------------------------------- 엑셀 박스
-  function impBox() {
-    if (!_imp) {
-      return '<div class="pu-imp"><b>엑셀로 올리기</b> — ‘월별 매입 현황 분석’ 시트를 그대로 올리면 ' +
-        '월·항목을 찾아 채웁니다. 엑셀에 없는 달은 건드리지 않습니다.' +
-        '<div class="row"><input type="file" id="pu-file" accept=".xlsx,.xlsm">' +
-        '<input class="pu-in" id="pu-year" style="width:84px" placeholder="연도" value="' +
-        new Date().getFullYear() + '">' +
+  // ── 엑셀 박스 ───────────────────────────────────────────
+  function impBox(){
+    if(!_imp){
+      return '<div class="pu-imp"><b>엑셀로 올리기</b> — ‘월별 매입 현황 분석’ 시트를 그대로 올리면 '+
+        '월·항목을 찾아 <b>합계 열</b>에 채웁니다. 해외·국내는 아래 표에서 직접 넣습니다. '+
+        '엑셀에 없는 달은 건드리지 않습니다.'+
+        '<div class="row"><input type="file" id="pu-file" accept=".xlsx,.xlsm">'+
+        '<input class="pu-in" id="pu-year" style="width:84px" placeholder="연도" value="'+
+        new Date().getFullYear()+'">'+
         '<button type="button" class="pu-btn" id="pu-read">읽어보기</button></div></div>';
     }
-    var w = (_imp.warnings || []);
-    return '<div class="pu-imp"><b>' + esc(_imp.file) + '</b> · 시트 ' + esc(_imp.sheet) +
-      '<br>읽은 달: <b>' + (_imp.months || []).map(mLabel).join(' · ') + '</b>' +
-      ((_imp.kept || []).length ? '<br>그대로 두는 달: ' + _imp.kept.map(mLabel).join(' · ') : '') +
-      (w.length ? '<br><span class="pu-warn">못 읽은 줄 ' + w.length + '개 — ' +
-        esc(w.slice(0, 3).join(' / ')) + (w.length > 3 ? ' …' : '') + '</span>' : '') +
-      '<div class="row"><button type="button" class="pu-btn pri" id="pu-apply">이대로 넣기</button>' +
-      '<button type="button" class="pu-btn" id="pu-cancel">취소</button>' +
-      ((_imp.sheets || []).length > 1
-        ? '<select class="pu-sel" id="pu-sheet">' + _imp.sheets.map(function (s) {
-            return '<option value="' + esc(s) + '"' + (s === _imp.sheet ? ' selected' : '') +
-                   '>' + esc(s) + '</option>';
-          }).join('') + '</select>' : '') +
+    var w=_imp.warnings||[];
+    return '<div class="pu-imp"><b>'+esc(_imp.file)+'</b> · 시트 '+esc(_imp.sheet)+
+      '<br>읽은 달: <b>'+(_imp.months||[]).map(mLabel).join(' · ')+'</b>'+
+      ((_imp.kept||[]).length?'<br>그대로 두는 달: '+_imp.kept.map(mLabel).join(' · '):'')+
+      (w.length?'<br><span class="pu-warn">못 읽은 줄 '+w.length+'개 — '+
+        esc(w.slice(0,3).join(' / '))+(w.length>3?' …':'')+'</span>':'')+
+      '<div class="row"><button type="button" class="pu-btn pri" id="pu-apply">이대로 넣기</button>'+
+      '<button type="button" class="pu-btn" id="pu-cancel">취소</button>'+
+      ((_imp.sheets||[]).length>1
+        ? '<select class="pu-sel" id="pu-sheet">'+_imp.sheets.map(function(s){
+            return '<option value="'+esc(s)+'"'+(s===_imp.sheet?' selected':'')+'>'+esc(s)+'</option>';
+          }).join('')+'</select>':'')+
       '</div></div>';
   }
 
-  // ---------------------------------------------------------- 화면
-  function view() {
-    return '' +
-    '<div class="pu-act">' +
-      '<button type="button" class="pu-btn pri" id="pu-save">저장</button>' +
-      '<button type="button" class="pu-btn" id="pu-add">+ 월 추가</button>' +
-      '<select class="pu-sel" id="pu-cur">' +
-        '<option value="USD"' + (_state.currency === 'USD' ? ' selected' : '') + '>USD ($)</option>' +
-        '<option value="KRW"' + (_state.currency === 'KRW' ? ' selected' : '') + '>KRW (₩)</option>' +
-      '</select>' +
-      '<span class="sp" id="pu-stat">' + esc(divLabel()) + ' · 앱 “매입 현황” 카드에 그대로 나갑니다</span>' +
-    '</div>' +
-    impBox() +
-    '<div class="pu-guide">' +
-      '<span class="pu-key"><s class="in"></s><b>회색 칸</b> = 직접 입력</span>' +
-      '<span class="pu-key"><s class="au"></s>점선 칸 = 자동 계산</span>' +
-      '<span>잔액을 비우면 <b>매입−지급</b>으로 채웁니다. 표에 적힌 잔액이 다르면 그 값을 적어 주세요.</span>' +
-    '</div>' +
-    '<div class="pu-card"><div class="hd"><b>월별 매입 현황</b>' +
-      '<span class="sub">단위 ' + cur() + ' · 괄호는 음수</span></div>' +
-      '<div class="bd"><div class="pu-sc">' + grid() + '</div>' +
-      '<div class="pu-hint">엑셀과 같은 모양입니다 — 줄이 구분, 열이 월. ' +
-      '항목 이름을 고치면 앱에도 그 이름으로 나갑니다.</div></div></div>';
+  function view(){
+    var ms=months();
+    var chips=ms.map(function(m){
+      return '<button type="button" class="pu-chip'+(m===_m?' on':'')+'" data-m="'+m+'">'+mLabel(m)+'</button>';
+    }).join('')+'<button type="button" class="pu-chip add" id="pu-add">+ 월 추가</button>';
+
+    return ''+
+    '<div class="pu-act">'+
+      '<button type="button" class="pu-btn pri" id="pu-save">저장</button>'+
+      '<select class="pu-sel" id="pu-cur">'+
+        '<option value="USD"'+(_s.currency==='USD'?' selected':'')+'>USD ($)</option>'+
+        '<option value="KRW"'+(_s.currency==='KRW'?' selected':'')+'>KRW (₩)</option>'+
+      '</select>'+
+      '<span class="sp" id="pu-stat">'+esc(divLabel())+' · 앱 “매입 현황” 카드에 그대로 나갑니다</span>'+
+    '</div>'+
+    impBox()+
+    '<div class="pu-chips">'+chips+'</div>'+
+    '<div class="pu-guide">'+
+      '<span class="pu-key"><s class="in"></s><b>회색 칸</b> = 직접 입력</span>'+
+      '<span class="pu-key"><s class="au"></s>점선 칸 = 자동 계산</span>'+
+      '<span class="pu-key"><s class="ng"></s>빨간 칸 = 음수</span>'+
+      '<span>해외 + 국내 = 합계. 안 나눈 달은 <b>합계만</b> 적으면 됩니다 — 빈 칸은 앱에서 ‘미입력’ 입니다.</span>'+
+    '</div>'+
+    '<div class="pu-card"><div class="hd"><b>'+mLabel(_m)+' 매입 현황</b>'+
+      '<span class="sub">단위 '+cur()+' · 괄호는 음수</span></div>'+
+      grid()+
+      '<div class="pu-hint">엑셀과 같은 모양입니다 — 줄이 구분, 열이 지역. '+
+      '비고는 줄을 나눠 적으면 앱에도 그대로 줄로 보입니다.</div></div>';
   }
 
-  function repaint() {
-    var c = document.getElementById('v2-content');
-    if (!c) return;
-    c.innerHTML = view();
-    bind();
+  function repaint(){
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.innerHTML=view(); bind();
   }
 
-  function bind() {
-    var c = document.getElementById('v2-content');
-    if (!c) return;
+  function bind(){
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.querySelectorAll('.pu-chip[data-m]').forEach(function(b){
+      b.onclick=function(){ _m=b.getAttribute('data-m'); repaint(); };
+    });
+    var add=document.getElementById('pu-add');
+    if(add) add.onclick=function(){
+      var d=prompt('추가할 월 (YYYY-MM)', thisMonth()); if(!d) return;
+      d=String(d).trim();
+      if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(d)){ alert('YYYY-MM 형식으로 적어 주세요.'); return; }
+      _m=d; mv(d); repaint();
+    };
+    var cs=document.getElementById('pu-cur');
+    if(cs) cs.onchange=function(){ _s.currency=cs.value; repaint(); };
+    var sv=document.getElementById('pu-save'); if(sv) sv.onclick=save;
 
-    c.querySelectorAll('input[data-m]').forEach(function (el) {
-      el.onchange = function () {
-        var m = el.getAttribute('data-m'), k = el.getAttribute('data-k'),
-            i = el.getAttribute('data-i');
-        var v = el.value === '' ? null : num(el.value);
-        if (i) sv(itemOf(m, i), k, v); else sv(cell(m), k, v);
+    c.querySelectorAll('input[data-p]').forEach(function(el){
+      el.onchange=function(){
+        var m=el.getAttribute('data-m'), p=el.getAttribute('data-p'), r=el.getAttribute('data-r');
+        var v=el.value===''?null:num(el.value);
+        if(p.indexOf('item:')===0){ var a=p.split(':'); setc(itemOf(m,a[1]), a[2], r, v); }
+        else if(p.indexOf('stock:')===0){ setc(stockOf(m,p.split(':')[1]), 'value', r, v); }
+        else setc(mv(m), p, r, v);
         repaint();
       };
     });
-    c.querySelectorAll('input[data-lbl]').forEach(function (el) {
-      el.onchange = function () {
-        var key = el.getAttribute('data-lbl');
-        monthsOf().forEach(function (m) { itemOf(m, key).label = el.value; });
-        repaint();
+    c.querySelectorAll('textarea[data-note]').forEach(function(el){
+      el.onchange=function(){
+        var m=el.getAttribute('data-m'), p=el.getAttribute('data-note');
+        if(p==='month') mv(m).note=el.value;
+        else if(p.indexOf('item:')===0) itemOf(m,p.split(':')[1]).note=el.value;
+        else if(p.indexOf('stock:')===0) stockOf(m,p.split(':')[1]).note=el.value;
       };
     });
 
-    var add = document.getElementById('pu-add');
-    if (add) add.onclick = function () {
-      var d = prompt('추가할 월 (YYYY-MM)', thisMonth());
-      if (!d) return;
-      d = String(d).trim();
-      if (!/^20\d\d-(0[1-9]|1[0-2])$/.test(d)) { alert('YYYY-MM 형식으로 적어 주세요.'); return; }
-      cell(d); repaint();
+    var rd=document.getElementById('pu-read');
+    if(rd) rd.onclick=function(){
+      var fi=document.getElementById('pu-file');
+      if(!fi||!fi.files||!fi.files[0]){ alert('엑셀 파일을 골라 주세요.'); return; }
+      _file=fi.files[0]; upload('preview', null);
     };
-    var cs = document.getElementById('pu-cur');
-    if (cs) cs.onchange = function () { _state.currency = cs.value; repaint(); };
-    var sv = document.getElementById('pu-save');
-    if (sv) sv.onclick = save;
-
-    var rd = document.getElementById('pu-read');
-    if (rd) rd.onclick = function () {
-      var fi = document.getElementById('pu-file');
-      if (!fi || !fi.files || !fi.files[0]) { alert('엑셀 파일을 골라 주세요.'); return; }
-      _file = fi.files[0];
-      upload('preview', null);
-    };
-    var ap = document.getElementById('pu-apply');
-    if (ap) ap.onclick = function () { upload('commit', null); };
-    var cn = document.getElementById('pu-cancel');
-    if (cn) cn.onclick = function () { _imp = null; _file = null; repaint(); };
-    var sh = document.getElementById('pu-sheet');
-    if (sh) sh.onchange = function () { upload('preview', sh.value); };
+    var ap=document.getElementById('pu-apply'); if(ap) ap.onclick=function(){ upload('commit', null); };
+    var cn=document.getElementById('pu-cancel');
+    if(cn) cn.onclick=function(){ _imp=null; _file=null; repaint(); };
+    var sh=document.getElementById('pu-sheet');
+    if(sh) sh.onchange=function(){ upload('preview', sh.value); };
   }
 
-  function upload(mode, sheet) {
-    if (!_file) { alert('엑셀 파일을 다시 골라 주세요.'); return; }
-    var y = document.getElementById('pu-year');
-    var fd = new FormData();
-    fd.append('div', _state.division);
-    fd.append('file', _file);
-    fd.append('mode', mode);
-    if (y && y.value) fd.append('year', y.value);
-    if (sheet) fd.append('sheet', sheet);
-    var st = document.getElementById('pu-stat');
-    if (st) st.textContent = mode === 'commit' ? '넣는 중…' : '읽는 중…';
-    fetch('/admin/division/purchase/import-xlsx',
-          { method: 'POST', credentials: 'same-origin', body: fd })
-      .then(function (r) {
-        return r.json().then(function (j) {
-          if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
-          return j;
-        });
-      })
-      .then(function (d) {
-        if (mode === 'commit') {
-          _imp = null; _file = null;
-          _state.months = (d.state && d.state.months) || _state.months;
+  function upload(mode, sheet){
+    if(!_file){ alert('엑셀 파일을 다시 골라 주세요.'); return; }
+    var y=document.getElementById('pu-year');
+    var fd=new FormData();
+    fd.append('div', _s.division); fd.append('file', _file); fd.append('mode', mode);
+    if(y&&y.value) fd.append('year', y.value);
+    if(sheet) fd.append('sheet', sheet);
+    var st=document.getElementById('pu-stat');
+    if(st) st.textContent = mode==='commit'?'넣는 중…':'읽는 중…';
+    fetch('/admin/division/purchase/import-xlsx',{method:'POST',credentials:'same-origin',body:fd})
+      .then(function(r){ return r.json().then(function(j){
+        if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); return j; }); })
+      .then(function(d){
+        if(mode==='commit'){
+          _imp=null; _file=null;
+          _s.months=(d.state&&d.state.months)||_s.months;
+          if(!_s.months[_m]){ var k=months(); _m=k.length?k[k.length-1]:thisMonth(); }
           repaint();
-          var s2 = document.getElementById('pu-stat');
-          if (s2) s2.textContent = '엑셀을 넣었습니다 · ' + (d.updated_at || '').replace('T', ' ');
-        } else {
-          _imp = d;
-          repaint();
-        }
+          var s2=document.getElementById('pu-stat');
+          if(s2) s2.textContent='엑셀을 넣었습니다 · '+(d.updated_at||'').replace('T',' ');
+        } else { _imp=d; repaint(); }
       })
-      .catch(function (e) {
-        alert(e.message);      // 서버가 이미 '엑셀을 읽지 못했습니다' 를 붙인다
-        repaint();
-      });
+      .catch(function(e){ alert(e.message); repaint(); });
   }
 
-  function save() {
-    var sv = document.getElementById('pu-save');
-    var st = document.getElementById('pu-stat');
-    if (sv) { sv.disabled = true; sv.textContent = '저장 중…'; }
-    fetch('/admin/division/purchase', {
-      method: 'PUT', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        division: _state.division, currency: _state.currency, months: _state.months
-      })
-    }).then(function (r) {
-      if (r.status === 401) throw new Error('로그인이 필요합니다');
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+  function save(){
+    var sv=document.getElementById('pu-save');
+    if(sv){ sv.disabled=true; sv.textContent='저장 중…'; }
+    fetch('/admin/division/purchase',{
+      method:'PUT', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({division:_s.division, currency:_s.currency, months:_s.months})
+    }).then(function(r){
+      if(r.status===401) throw new Error('로그인이 필요합니다');
+      if(!r.ok) throw new Error('HTTP '+r.status);
       return r.json();
-    }).then(function (d) {
-      _state.months = d.months || {};
-      _state.currency = d.currency || 'USD';
-      var when = (d.updated_at || '').replace('T', ' ');
+    }).then(function(d){
+      _s.months=d.months||{}; _s.currency=d.currency||'USD';
+      var when=(d.updated_at||'').replace('T',' ');
+      if(!_s.months[_m]){ var k=months(); _m=k.length?k[k.length-1]:thisMonth(); }
       repaint();
-      var s2 = document.getElementById('pu-stat');
-      if (s2) s2.textContent = '저장했습니다 · ' + when;
-    }).catch(function (e) {
-      alert('저장하지 못했습니다: ' + e.message);
-      var b = document.getElementById('pu-save');
-      if (b) { b.disabled = false; b.textContent = '저장'; }
+      var s2=document.getElementById('pu-stat');
+      if(s2) s2.textContent='저장했습니다 · '+when;
+    }).catch(function(e){
+      alert('저장하지 못했습니다: '+e.message);
+      var b=document.getElementById('pu-save');
+      if(b){ b.disabled=false; b.textContent='저장'; }
     });
   }
 
-  window.renderPurchasePage = function () {
+  window.renderPurchasePage=function(){
     css();
-    var c = document.getElementById('v2-content');
-    if (!c) return;
-    var div = divOf();
-    if (!div) {
-      c.innerHTML = '<div class="placeholder"><div class="title">사업부를 먼저 골라 주세요</div></div>';
-      return;
-    }
-    c.innerHTML = '<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
-    fetch('/admin/division/purchase?div=' + encodeURIComponent(div), { credentials: 'same-origin' })
-      .then(function (r) {
-        if (r.status === 401) throw new Error('로그인이 필요합니다');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+    var c=document.getElementById('v2-content'); if(!c) return;
+    var div=divOf();
+    if(!div){ c.innerHTML='<div class="placeholder"><div class="title">사업부를 먼저 골라 주세요</div></div>'; return; }
+    c.innerHTML='<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
+    fetch('/admin/division/purchase?div='+encodeURIComponent(div),{credentials:'same-origin'})
+      .then(function(r){
+        if(r.status===401) throw new Error('로그인이 필요합니다');
+        if(!r.ok) throw new Error('HTTP '+r.status);
         return r.json();
       })
-      .then(function (d) {
-        _state = {
-          division: div, currency: d.currency || 'USD',
-          months: d.months || {}, default_items: d.default_items || []
-        };
-        _imp = null; _file = null;
-        if (!monthsOf().length) cell(thisMonth());
+      .then(function(d){
+        _s={ division:div, currency:d.currency||'USD', months:d.months||{},
+             default_items:d.default_items||[], stock_rows:d.stock_rows||[] };
+        _imp=null; _file=null;
+        var ms=months();
+        _m = ms.length ? ms[ms.length-1] : thisMonth();
+        if(!ms.length) mv(_m);
         repaint();
       })
-      .catch(function (e) {
-        c.innerHTML = '<div class="placeholder"><div class="big">🧾</div>' +
-          '<div class="title">매입 관리</div><div class="sub">' + esc(e.message) + '</div></div>';
+      .catch(function(e){
+        c.innerHTML='<div class="placeholder"><div class="big">🧾</div>'+
+          '<div class="title">매입 관리</div><div class="sub">'+esc(e.message)+'</div></div>';
       });
   };
 })();
