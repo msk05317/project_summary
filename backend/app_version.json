@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.44",
-  "latest_version_code": 67,
+  "latest_version": "2.3.45",
+  "latest_version_code": 68,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "매입 현황에서 월별 숫자를 볼 수 있습니다.\n\n- 월별 추이 막대를 누르면 그 달 숫자 표시",
+  "release_notes": "전사 잔·특근 현황이 생겼습니다.\n\n- 홈에서 잔업률·특근률과 전주 대비\n- 탭하면 사업부 16곳 순위\n- 사업부를 누르면 요일별 현황",
   "force_update": false
 }
