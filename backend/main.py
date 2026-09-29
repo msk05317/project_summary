@@ -27058,9 +27058,13 @@ def _pur_load() -> dict:
 
 
 @app.get("/division/{div}/purchase")
-def get_division_purchase(div: str):
-    """앱 카드 한 장이 필요한 전부 — 월별 + 누적."""
-    return _pur.for_app(_pur_load(), (div or "").strip())
+def get_division_purchase(div: str, region: str = "total"):
+    """앱 카드 한 장이 필요한 전부 — 월별 + 누적.
+
+    region: total(합계) · overseas(해외) · domestic(국내).
+    안 주면 합계다 — 예전 앱은 이 인자를 모르므로 지금과 똑같이 본다.
+    """
+    return _pur.for_app(_pur_load(), (div or "").strip(), region)
 
 
 @app.get("/admin/division/purchase")

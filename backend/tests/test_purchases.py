@@ -109,6 +109,60 @@ def main():
     t("잔액만 있어도 남는다",
       len(P.for_app(z2, "pcb")["months"][0]["items"]) == 1)
 
+
+    # 8. 해외/국내 · 재고 · 비고 (v2)
+    v2 = P.put_division({}, "pcb", {"currency": "USD", "months": {"2026-08": {
+        "revenue": {"total": 7610417, "overseas": 476059, "domestic": 7134358},
+        "items": [{"key": "raw", "label": "원소재",
+                   "buy": {"total": 8776516, "overseas": 3510607, "domestic": 5265910},
+                   "paid": {"total": 3385301, "overseas": 2166593, "domestic": 1218708},
+                   "balance": {"total": 4307358, "overseas": 2295111, "domestic": 2012247},
+                   "note": "· EMC PO 취소\n· 생익 PO 취소"}],
+        "stock": {"available": {"value": {"total": 1833674}},
+                  "dead": {"value": {"total": 1889828}, "note": "재고금액에서 제외"},
+                  "wip": {"value": {"total": 2084915}},
+                  "finished": {"value": {"total": 2286364}, "note": "실물 확인 필요"}},
+        "receivable": {"total": 1112019, "domestic": 1112019},
+        "total_buy": {"total": 6953311, "overseas": 1419098, "domestic": 5534213}}}})
+
+    a = P.for_app(v2, "pcb")["months"][0]
+    t("합계 매출", a["revenue"] == 7610417)
+    t("매출 대비 매입비율 자동", a["buy_over_revenue"] == 91.4)
+    o = P.for_app(v2, "pcb", "overseas")["months"][0]
+    t("해외 매출", o["revenue"] == 476059)
+    t("해외 비율 298%", o["buy_over_revenue"] == 298.1)
+    d = P.for_app(v2, "pcb", "domestic")["months"][0]
+    t("국내 비율 78%", d["buy_over_revenue"] == 77.6)
+
+    t("비고는 줄바꿈을 지킨다", a["items"][0]["note"].count("\n") == 1)
+    t("재고 4줄", [x["label"] for x in a["stock"]] ==
+      ["가용 원재고", "불용 원자재", "재공 재고", "완제품 재고"])
+    t("재공+완제품 합계", a["stock_total"] == 2084915 + 2286364)
+    t("불용은 합계에서 뺀다", a["stock_total"] != sum(
+        x["value"] for x in a["stock"] if x["value"] is not None))
+    t("미수금 해외는 미입력", o["receivable"] is None)
+    t("미수금 국내", d["receivable"] == 1112019)
+
+    # 안 적은 지역은 0 이 아니라 '미입력' 로 남는다
+    only_total = P.put_division({}, "pcb", {"months": {"2026-08": {
+        "revenue": 1000, "items": [{"key": "raw", "label": "원소재",
+                                    "buy": 500, "paid": 200}]}}})
+    t("숫자 하나면 합계로 읽는다", P.for_app(only_total, "pcb")["months"][0]["buy"] == 500)
+    t("안 적은 해외는 채워진 적 없음",
+      P.for_app(only_total, "pcb")["regions_filled"]["overseas"] is False)
+    t("해외 탭은 비어 보인다",
+      P.for_app(only_total, "pcb", "overseas")["months"][0]["items"] == [])
+
+    # 누적: 재고는 더하지 않고 마지막 달을 쓴다 (시점 값이라 더하면 없는 숫자가 된다)
+    two = P.put_division({}, "pcb", {"months": {
+        "2026-07": {"items": [{"key": "raw", "label": "원소재", "buy": 100, "paid": 40}],
+                    "stock": {"wip": {"value": 10}}},
+        "2026-08": {"items": [{"key": "raw", "label": "원소재", "buy": 200, "paid": 60}],
+                    "stock": {"wip": {"value": 30}}}}})
+    tv = P.for_app(two, "pcb")["total"]
+    t("누적 매입은 더한다", tv["buy"] == 300)
+    t("누적 재고는 마지막 달", tv["stock_total"] == 30)
+
     print("test_purchases: 전부 통과")
 
 
