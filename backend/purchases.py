@@ -127,7 +127,6 @@ def normalize_item(raw, idx: int) -> dict:
     out = {
         "key": _key(raw.get("key"), dk),
         "label": (_s(raw.get("label")) or dl)[:MAX_LABEL],
-        "note": _note(raw.get("note")),
     }
     for m in METRICS:
         out[m] = cell(raw.get(m))
@@ -152,9 +151,51 @@ def normalize_stock(raw) -> list:
         r = rows.get(k)
         r = r if isinstance(r, dict) else {}
         out.append({"key": k, "label": label,
-                    "value": cell(r.get("value")),
-                    "note": _note(r.get("note"))})
+                    "value": cell(r.get("value"))})
     return out
+
+
+MAX_NOTES = 80
+_NOTE_PATH = re.compile(r"^(revenue|prepaid|actual_paid|invest|receivable|total_buy"
+                        r"|item:[a-z0-9_]{1,24}:(buy|paid|balance)"
+                        r"|stock:(available|dead|wip|finished)"
+                        r"|sum:(buy|paid|balance)|month)$")
+
+
+def normalize_notes(raw, items_raw, stock_raw) -> dict:
+    """비고는 줄마다 하나다 — 매출액·매입액·지급액·잔액에 각각 적는다.
+
+    한 항목에 하나만 달 수 있던 때 잔액 줄에 몰아 적었다. 옛 데이터의
+    그 비고는 그 항목의 잔액 줄로 옮긴다.
+    """
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            k = _s(k)
+            if _NOTE_PATH.match(k):
+                t = _note(v)
+                if t:
+                    out[k] = t
+    # 옛 모양: 항목·재고에 직접 붙어 있던 비고
+    if isinstance(items_raw, list):
+        for it in items_raw:
+            if not isinstance(it, dict):
+                continue
+            t = _note(it.get("note"))
+            k = _key(it.get("key"), "")
+            if t and k:
+                out.setdefault("item:%s:balance" % k, t)
+    if isinstance(stock_raw, (list, dict)):
+        rows = stock_raw.values() if isinstance(stock_raw, dict) else stock_raw
+        keys = list(stock_raw.keys()) if isinstance(stock_raw, dict) else None
+        for i, r in enumerate(rows):
+            if not isinstance(r, dict):
+                continue
+            k = _s(r.get("key")) or (keys[i] if keys else "")
+            t = _note(r.get("note"))
+            if t and k:
+                out.setdefault("stock:%s" % k, t)
+    return dict(list(out.items())[:MAX_NOTES])
 
 
 def normalize_month(raw) -> dict:
@@ -171,6 +212,9 @@ def normalize_month(raw) -> dict:
         it["key"] = k[:24]
         seen.add(it["key"])
         clean.append(it)
+    notes = normalize_notes(raw.get("notes"), raw.get("items"), raw.get("stock"))
+    if _note(raw.get("note")):
+        notes.setdefault("month", _note(raw.get("note")))
     return {
         "revenue": cell(raw.get("revenue")),
         "items": clean,
@@ -180,7 +224,7 @@ def normalize_month(raw) -> dict:
         "stock": normalize_stock(raw.get("stock")),
         "receivable": cell(raw.get("receivable")),     # 외상 매출 (미수금)
         "total_buy": cell(raw.get("total_buy")),       # 총 매입액 (표의 값)
-        "note": _note(raw.get("note")),
+        "notes": notes,
     }
 
 
@@ -230,6 +274,7 @@ def save(path: Path, data: dict) -> dict:
 
 def _resolve(mv: dict, region: str) -> dict:
     """한 달치를 앱이 그릴 수 있는 형태로 푼다. 한 지역만 본다."""
+    notes = mv.get("notes") or {}
     items, buy, paid, bal = [], 0.0, 0.0, 0.0
     for it in mv.get("items") or []:
         b = _f(cell_get(it.get("buy"), region))
@@ -243,7 +288,11 @@ def _resolve(mv: dict, region: str) -> dict:
             "buy": b, "paid": p, "balance": r,
             "balance_auto": raw_bal is None,
             "pay_rate": round(p / b * 100, 1) if b > 0 else 0.0,
-            "note": it.get("note", ""),
+            "notes": {m: notes.get("item:%s:%s" % (it.get("key", ""), m), "")
+                      for m in METRICS},
+            "note": "\n".join(t for t in
+                              (notes.get("item:%s:%s" % (it.get("key", ""), m), "")
+                               for m in METRICS) if t),
             "by_region": {rg: {m: cell_get(it.get(m), rg) for m in METRICS}
                           for rg in REGIONS},
         })
@@ -261,7 +310,7 @@ def _resolve(mv: dict, region: str) -> dict:
         v = cell_get(r.get("value"), region)
         stock.append({"key": r.get("key"), "label": r.get("label"),
                       "value": None if v is None else float(v),
-                      "note": r.get("note", "")})
+                      "note": notes.get("stock:%s" % r.get("key", ""), "")})
         if r.get("key") in ("wip", "finished") and v is not None:
             stock_sum += float(v)
 
@@ -284,7 +333,8 @@ def _resolve(mv: dict, region: str) -> dict:
         "receivable": None if receivable is None else float(receivable),
         "total_buy": None if total_buy is None else float(total_buy),
         "buy_over_revenue": ratio,
-        "note": mv.get("note", ""),
+        "notes": dict(notes),
+        "note": notes.get("month", ""),
         "has_data": any(cell_has(mv.get(k)) for k in
                         ("revenue", "prepaid", "actual_paid", "invest",
                          "receivable", "total_buy"))

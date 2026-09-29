@@ -12161,12 +12161,14 @@ window._ovProjectKey = function() {
       items:(_s.default_items||[]).map(function(d){
         return {key:d.key,label:d.label,buy:null,paid:null,balance:null,note:''};}),
       prepaid:null, actual_paid:null, invest:null,
-      stock:(_s.stock_rows||[]).map(function(d){ return {key:d.key,label:d.label,value:null,note:''};}),
-      receivable:null, total_buy:null, note:'' };
+      stock:(_s.stock_rows||[]).map(function(d){ return {key:d.key,label:d.label,value:null};}),
+      receivable:null, total_buy:null, notes:{} };
   }
+  function notesOf(m){ var x=mv(m); if(!x.notes||typeof x.notes!=='object') x.notes={}; return x.notes; }
   function mv(m){
     if(!_s.months[m]) _s.months[m]=blankMonth();
     var x=_s.months[m];
+    if(!x.notes||typeof x.notes!=='object') x.notes={};
     if(!x.items||!x.items.length) x.items=blankMonth().items;
     if(!x.stock||!x.stock.length) x.stock=blankMonth().stock;
     return x;
@@ -12174,13 +12176,13 @@ window._ovProjectKey = function() {
   function itemOf(m,key){
     var x=mv(m);
     for(var i=0;i<x.items.length;i++) if(x.items[i].key===key) return x.items[i];
-    var it={key:key,label:key,buy:null,paid:null,balance:null,note:''};
+    var it={key:key,label:key,buy:null,paid:null,balance:null};
     x.items.push(it); return it;
   }
   function stockOf(m,key){
     var x=mv(m);
     for(var i=0;i<x.stock.length;i++) if(x.stock[i].key===key) return x.stock[i];
-    var st={key:key,label:key,value:null,note:''};
+    var st={key:key,label:key,value:null};
     x.stock.push(st); return st;
   }
   // 항목 줄은 어느 달에든 한 번이라도 나온 것을 다 보여준다. 첫 달만
@@ -12267,9 +12269,12 @@ window._ovProjectKey = function() {
       '.pu-au.neg{color:#B42318;border-color:#FDA29B;background:#FFFBFA}',
       '.pu-au.sum{font-weight:800;color:#0F2C59;border-style:solid;border-color:#D0D5DD;background:#F8FAFC}',
       '.pu-note{width:100%;min-height:34px;font-size:11.5px;line-height:1.6;padding:6px 9px;border-radius:6px;',
-      ' background:#FFFCF5;border:1px solid #FDE0C0;color:#7A4A12;resize:vertical;font-family:inherit}',
+      ' background:#FFFCF5;border:1px solid #FDE0C0;color:#7A4A12;resize:vertical;font-family:inherit;'+
+      ' overflow:hidden}',
       '.pu-note:focus{outline:none;border-color:#F59E0B;background:#fff}',
       '.pu-note::placeholder{color:#D6BB94}',
+      '.pu-note.empty{background:#FCFCFD;border-color:#EAECF0;min-height:30px}',
+      '.pu-note.empty:focus{background:#fff;border-color:#F59E0B}',
       '.pu-act{display:flex;gap:8px;align-items:center;margin:4px 0 14px;flex-wrap:wrap}',
       '.pu-act .sp{margin-left:auto;font-size:11.5px;color:#98A2B3}',
       '.pu-btn{font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:8px;border:1px solid #D0D5DD;',
@@ -12297,11 +12302,16 @@ window._ovProjectKey = function() {
     if(v===null||v===undefined) return '<td><span class="pu-au'+(strong?' sum':'')+'">—</span></td>';
     return '<td><span class="pu-au'+(strong?' sum':'')+(v<0?' neg':'')+'">'+fmt(v)+'</span></td>';
   }
-  function noteCell(path, val, ph){
-    return '<td class="l"><textarea class="pu-note" data-m="'+esc(_m)+'" data-note="'+esc(path)+
-           '" placeholder="'+esc(ph||'비고 — 줄을 나눠 적으면 그대로 보입니다')+'">'+esc(val||'')+'</textarea></td>';
+  // 줄마다 비고 하나. 매출액·매입액·지급액·잔액에 따로 적는다.
+  function noteCell(path){
+    var v = notesOf(_m)[path] || '';
+    // 줄 수만큼 칸을 키운다 — 두 줄짜리 비고가 한 줄에 잘려 보이면
+    // 뭐가 더 있는지 눈치채지 못한다
+    var rows = Math.min(6, Math.max(1, String(v).split('\n').length));
+    return '<td class="l"><textarea class="pu-note'+(v?'':' empty')+'" data-m="'+esc(_m)+
+           '" data-note="'+esc(path)+'" placeholder="비고" rows="'+rows+'">'+esc(v)+'</textarea></td>';
   }
-  function rowIn(grp, sub, path, note, cls){
+  function rowIn(grp, sub, path, cls){
     var h='<tr'+(cls?' class="'+cls+'"':'')+'><td class="g">'+esc(grp||'')+'</td><td class="k">'+esc(sub)+'</td>';
     REG.forEach(function(rg){
       var v = path.indexOf('item:')===0
@@ -12310,54 +12320,51 @@ window._ovProjectKey = function() {
                                       : cv(mv(_m)[path], rg[0]));
       h += inCell(_m, path, rg[0], fmt(v));
     });
-    h += note===null ? '<td></td>' : noteCell(note.path, note.val, note.ph);
-    return h+'</tr>';
+    return h + noteCell(path) + '</tr>';
   }
-  function rowAuto(grp, sub, fn, cls){
+  function rowAuto(grp, sub, fn, notePath, cls){
     var h='<tr class="sum'+(cls?' '+cls:'')+'"><td class="g">'+esc(grp||'')+'</td><td class="k">'+esc(sub)+'</td>';
     REG.forEach(function(rg){ h += auCell(fn(rg[0]), true); });
-    return h+'<td></td></tr>';
+    return h + (notePath ? noteCell(notePath) : '<td></td>') + '</tr>';
   }
 
   function grid(){
-    var defs=itemDefs(), x=mv(_m);
+    var defs=itemDefs(); mv(_m);
     var h='<table class="pu-tbl"><colgroup><col style="width:92px"><col style="width:168px">'+
           '<col style="width:176px"><col style="width:176px"><col style="width:176px"><col></colgroup>';
     h+='<thead><tr><th class="l">구분</th><th class="l">세부항목</th>'+
        REG.map(function(r){ return '<th>'+r[1]+'</th>'; }).join('')+'<th class="l">비고</th></tr></thead><tbody>';
 
-    h+=rowIn('매출','매출액','revenue',null,'band');
+    h+=rowIn('매출','매출액','revenue','band');
 
     defs.forEach(function(d,di){
       MET.forEach(function(mt,mi){
-        var note = mi===2 ? {path:'item:'+d.key, val:itemOf(_m,d.key).note} : null;
         h+=rowIn(mi===0?(di===0?'매입':''):'',
                  (mi===0? d.label+' · ':'  ')+mt[1],
-                 'item:'+d.key+':'+mt[0], note, mi===0?'band':'');
+                 'item:'+d.key+':'+mt[0], mi===0?'band':'');
       });
     });
 
-    h+=rowAuto('합계','매입액',function(r){ return tot(_m,r).buy; },'band');
-    h+=rowAuto('','지급액',function(r){ return tot(_m,r).paid; });
-    h+=rowAuto('','잔액',function(r){ return tot(_m,r).bal; });
+    h+=rowAuto('합계','매입액',function(r){ return tot(_m,r).buy; },'sum:buy','band');
+    h+=rowAuto('','지급액',function(r){ return tot(_m,r).paid; },'sum:paid');
+    h+=rowAuto('','잔액',function(r){ return tot(_m,r).bal; },'sum:balance');
 
-    h+=rowIn('지급','선급금','prepaid',null,'band');
-    h+=rowIn('','실지급액','actual_paid',null);
-    h+=rowIn('','설비투자','invest',null);
-    h+=rowAuto('','지급 합계',function(r){ return payTotal(_m,r); });
+    h+=rowIn('지급','선급금','prepaid','band');
+    h+=rowIn('','실지급액','actual_paid');
+    h+=rowIn('','설비투자','invest');
+    h+=rowAuto('','지급 합계',function(r){ return payTotal(_m,r); }, null);
 
     (_s.stock_rows||[]).forEach(function(sr,i){
-      h+=rowIn(i===0?'재고':'', sr.label, 'stock:'+sr.key,
-               {path:'stock:'+sr.key, val:stockOf(_m,sr.key).note}, i===0?'band':'');
+      h+=rowIn(i===0?'재고':'', sr.label, 'stock:'+sr.key, i===0?'band':'');
     });
-    h+=rowAuto('','재공+완제품 합계',function(r){ return stockSum(_m,r); });
+    h+=rowAuto('','재공+완제품 합계',function(r){ return stockSum(_m,r); }, null);
 
-    h+=rowIn('합계','외상 매출 (미수금)','receivable',null,'band');
-    h+=rowIn('','총 매입액','total_buy',null);
+    h+=rowIn('합계','외상 매출 (미수금)','receivable','band');
+    h+=rowIn('','총 매입액','total_buy');
     h+='<tr class="sum"><td class="g"></td><td class="k">매출 대비 매입비율</td>';
     REG.forEach(function(rg){ var v=ratio(_m,rg[0]);
       h+='<td><span class="pu-au sum">'+(v===null?'—':v+'%')+'</span></td>'; });
-    h+=noteCell('month', x.note, '이 달 전체에 붙는 메모')+'</tr>';
+    h+=noteCell('month')+'</tr>';
 
     return h+'</tbody></table>';
   }
@@ -12450,11 +12457,15 @@ window._ovProjectKey = function() {
       };
     });
     c.querySelectorAll('textarea[data-note]').forEach(function(el){
+      el.oninput=function(){
+        el.rows = Math.min(6, Math.max(1, String(el.value).split('\n').length));
+      };
       el.onchange=function(){
         var m=el.getAttribute('data-m'), p=el.getAttribute('data-note');
-        if(p==='month') mv(m).note=el.value;
-        else if(p.indexOf('item:')===0) itemOf(m,p.split(':')[1]).note=el.value;
-        else if(p.indexOf('stock:')===0) stockOf(m,p.split(':')[1]).note=el.value;
+        var n=notesOf(m);
+        if(String(el.value).trim()) n[p]=el.value; else delete n[p];
+        el.classList.toggle('empty', !String(el.value).trim());
+        el.rows = Math.min(6, Math.max(1, String(el.value).split('\n').length));
       };
     });
 

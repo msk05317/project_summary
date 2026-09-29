@@ -134,7 +134,8 @@ def main():
     d = P.for_app(v2, "pcb", "domestic")["months"][0]
     t("국내 비율 78%", d["buy_over_revenue"] == 77.6)
 
-    t("비고는 줄바꿈을 지킨다", a["items"][0]["note"].count("\n") == 1)
+    t("비고는 줄바꿈을 지킨다",
+      a["items"][0]["notes"]["balance"].count("\n") == 1)
     t("재고 4줄", [x["label"] for x in a["stock"]] ==
       ["가용 원재고", "불용 원자재", "재공 재고", "완제품 재고"])
     t("재공+완제품 합계", a["stock_total"] == 2084915 + 2286364)
@@ -171,11 +172,12 @@ def main():
     round1 = P.put_division(v2, "pcb", {"currency": "USD", "months": st})
     r1 = round1["divisions"]["pcb"]["months"]["2026-08"]
     t("왕복: 해외 값 유지", r1["items"][0]["buy"]["overseas"] == 3510607)
-    t("왕복: 비고 줄 유지", r1["items"][0]["note"].count("\n") == 1)
+    t("왕복: 비고 줄 유지",
+      r1["notes"]["item:raw:balance"].count("\n") == 1)
     t("왕복: 재고 4줄 유지",
       [x["key"] for x in r1["stock"]] == ["available", "dead", "wip", "finished"])
     t("왕복: 재고 값 유지", r1["stock"][2]["value"]["total"] == 2084915)
-    t("왕복: 재고 비고 유지", r1["stock"][3]["note"] == "실물 확인 필요")
+    t("왕복: 재고 비고 유지", r1["notes"]["stock:finished"] == "실물 확인 필요")
     t("왕복: 미수금 유지", r1["receivable"]["domestic"] == 1112019)
     t("왕복: 총 매입액 유지", r1["total_buy"]["overseas"] == 1419098)
 
@@ -187,7 +189,39 @@ def main():
     r3 = again["divisions"]["pcb"]["months"]["2026-08"]
     t("네 번 저장해도 그대로", r3["stock"][2]["value"]["domestic"] is None
       or r3["stock"][2]["value"]["total"] == 2084915)
-    t("네 번 저장해도 비고 그대로", r3["items"][0]["note"].count("\n") == 1)
+    t("네 번 저장해도 비고 그대로",
+      r3["notes"]["item:raw:balance"].count("\n") == 1)
+
+
+    # 10. 비고는 줄마다 하나 (매출액·매입액·지급액·잔액에 각각)
+    nv = P.put_division({}, "pcb", {"months": {"2026-08": {
+        "revenue": {"total": 100},
+        "items": [{"key": "raw", "label": "원소재",
+                   "buy": {"total": 10}, "paid": {"total": 4}, "balance": {"total": 6},
+                   "note": "옛 모양 비고"}],
+        "stock": {"wip": {"value": {"total": 1}, "note": "옛 재고 비고"}},
+        "notes": {"revenue": "매출 줄", "item:raw:buy": "매입 줄\n둘째 줄",
+                  "item:raw:paid": "지급 줄", "sum:buy": "합계 줄",
+                  "stock:dead": "재고 줄", "월:이상한키": "버려야 함"}}}})
+    n = nv["divisions"]["pcb"]["months"]["2026-08"]["notes"]
+    t("줄별 비고 저장", n["revenue"] == "매출 줄" and n["item:raw:paid"] == "지급 줄")
+    t("합계 줄에도 붙는다", n["sum:buy"] == "합계 줄")
+    t("옛 항목 비고는 잔액 줄로", n["item:raw:balance"] == "옛 모양 비고")
+    t("옛 재고 비고도 옮겨짐", n["stock:wip"] == "옛 재고 비고")
+    t("이상한 키는 버린다", "월:이상한키" not in n)
+
+    nva = P.for_app(nv, "pcb")["months"][0]
+    t("앱: 항목 비고 3칸",
+      nva["items"][0]["notes"] == {"buy": "매입 줄\n둘째 줄", "paid": "지급 줄",
+                                   "balance": "옛 모양 비고"})
+    t("앱: 재고 비고", [x["note"] for x in nva["stock"] if x["key"] == "dead"] == ["재고 줄"])
+    t("앱: 월 전체 비고 map", nva["notes"]["revenue"] == "매출 줄")
+
+    # 왕복해도 안 사라진다
+    import copy as _c2
+    rt = P.put_division(nv, "pcb", {"months": _c2.deepcopy(P.for_admin(nv, "pcb")["months"])})
+    t("왕복: 줄별 비고 유지",
+      rt["divisions"]["pcb"]["months"]["2026-08"]["notes"]["item:raw:buy"].count("\n") == 1)
 
     print("test_purchases: 전부 통과")
 
