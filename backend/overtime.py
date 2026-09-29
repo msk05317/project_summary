@@ -470,6 +470,9 @@ def for_app(data: dict, wk: str = "", kind: str = "overtime",
         "scopes": [{"key": s, "label": SCOPE_LABEL[s]} for s in SCOPES],
         "weeks": weeks,
         "total": total,
+        # 앱 홈 카드가 잔업·특근 두 지표의 증감을 같이 보여 준다. 전주 합계를
+        # 같이 주면 화면이 뺄셈 한 번으로 끝낸다 — 집계를 다시 하지 않는다.
+        "prev_total": ptotal,
         "avg": avg, "avg_prev": pavg, "avg_delta": _delta(avg, pavg),
         "counts": {
             "divisions": len(items),

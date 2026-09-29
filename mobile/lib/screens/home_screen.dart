@@ -26,6 +26,10 @@ import '../services/favorites_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/progress_service.dart';
 import '../services/overview_service.dart';
+import '../services/overtime_service.dart';
+import '../models/overtime.dart';
+import '../widgets/overtime_home_card.dart';
+import 'overtime_screen.dart';
 import '../services/revenue_service.dart';
 import '../services/home_alerts_service.dart';
 import '../services/offline_store.dart';
@@ -84,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 경영 요약(이번 달 매출/출하) — 홈 최상단 카드용
   late Future<OverviewSummary> _overviewFuture;
+  late Future<OvertimeWeek> _overtimeFuture;
   late Future<RevenueMonth> _revenueFuture;
 
   /// 홈 한 눈 요약. 프로젝트 안에서 보는 값과 같은 모델 alert 를 받는다.
@@ -245,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _overviewFuture = OverviewService.fetch(onFresh: (v) => _swap(() {
           _overviewFuture = Future.value(v);
         }));
+    _overtimeFuture = OvertimeService.fetchWeek();
     _revenueFuture = RevenueService.fetch(onFresh: (v) => _swap(() {
           _revenueFuture = Future.value(v);
         }));
@@ -867,6 +873,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     rev.data?.month ?? snap.data?.month ?? ''),
                               );
                             },
+                          );
+                        },
+                      ),
+                    ),
+
+                    // 전사 잔·특근 — 16개 사업부짜리 자료라 위 '전체 현황'
+                    // (반도체) 과 범위가 다르다. 제목에 '전사업부' 를 붙인다.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.x4,
+                        0,
+                        AppSpacing.x4,
+                        AppSpacing.x3,
+                      ),
+                      child: FutureBuilder<OvertimeWeek>(
+                        future: _overtimeFuture,
+                        builder: (context, ot) {
+                          final w = ot.data ?? OvertimeWeek.empty;
+                          final waiting =
+                              ot.connectionState == ConnectionState.waiting;
+                          // 한 주도 안 올렸으면 카드를 통째로 감춘다
+                          if (!waiting && !w.hasData) {
+                            return const SizedBox.shrink();
+                          }
+                          return OvertimeHomeCard(
+                            week: w,
+                            loading: waiting,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    OvertimeScreen(initialWeek: w.week),
+                              ),
+                            ),
                           );
                         },
                       ),
