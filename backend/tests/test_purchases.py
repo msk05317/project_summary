@@ -163,6 +163,32 @@ def main():
     t("누적 매입은 더한다", tv["buy"] == 300)
     t("누적 재고는 마지막 달", tv["stock_total"] == 30)
 
+
+    # 9. 저장 → 다시 읽기 → 저장을 되풀이해도 아무것도 안 사라진다
+    #    (재고를 리스트로 저장해 놓고 dict 만 읽던 버그가 여기서 잡혔다)
+    import copy as _copy
+    st = _copy.deepcopy(P.for_admin(v2, "pcb")["months"])
+    round1 = P.put_division(v2, "pcb", {"currency": "USD", "months": st})
+    r1 = round1["divisions"]["pcb"]["months"]["2026-08"]
+    t("왕복: 해외 값 유지", r1["items"][0]["buy"]["overseas"] == 3510607)
+    t("왕복: 비고 줄 유지", r1["items"][0]["note"].count("\n") == 1)
+    t("왕복: 재고 4줄 유지",
+      [x["key"] for x in r1["stock"]] == ["available", "dead", "wip", "finished"])
+    t("왕복: 재고 값 유지", r1["stock"][2]["value"]["total"] == 2084915)
+    t("왕복: 재고 비고 유지", r1["stock"][3]["note"] == "실물 확인 필요")
+    t("왕복: 미수금 유지", r1["receivable"]["domestic"] == 1112019)
+    t("왕복: 총 매입액 유지", r1["total_buy"]["overseas"] == 1419098)
+
+    again = round1
+    for _ in range(3):
+        again = P.put_division(again, "pcb", {"currency": "USD",
+                                              "months": _copy.deepcopy(
+                                                  P.for_admin(again, "pcb")["months"])})
+    r3 = again["divisions"]["pcb"]["months"]["2026-08"]
+    t("네 번 저장해도 그대로", r3["stock"][2]["value"]["domestic"] is None
+      or r3["stock"][2]["value"]["total"] == 2084915)
+    t("네 번 저장해도 비고 그대로", r3["items"][0]["note"].count("\n") == 1)
+
     print("test_purchases: 전부 통과")
 
 

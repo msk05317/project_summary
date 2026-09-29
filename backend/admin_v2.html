@@ -12146,6 +12146,15 @@ window._ovProjectKey = function() {
     return neg ? -n : n;
   }
   function f(v) { var n = num(v); return n === null ? 0 : n; }
+  // 칸 하나가 이제 숫자가 아니라 {total, overseas, domestic} 이다.
+  // 이 화면은 아직 합계만 다루므로 total 만 읽고 쓴다 — 해외·국내에 적힌
+  // 값은 건드리지 않는다. 옛 모양(숫자 하나)도 그대로 읽는다.
+  function cv(x) { return (x && typeof x === 'object') ? x.total : x; }
+  function sv(o, k, v) {
+    var c = o[k];
+    if (c && typeof c === 'object') { c.total = v; }
+    else { o[k] = { total: v, overseas: null, domestic: null }; }
+  }
   function fmt(n) {
     if (n === null || n === undefined || n === '') return '';
     var v = Number(n);
@@ -12256,14 +12265,14 @@ window._ovProjectKey = function() {
   function totals(mv) {
     var t = { buy: 0, paid: 0, bal: 0 };
     (mv.items || []).forEach(function (it) {
-      var b = f(it.buy), p = f(it.paid);
+      var b = f(cv(it.buy)), p = f(cv(it.paid));
       t.buy += b; t.paid += p;
-      t.bal += (it.balance === null || it.balance === undefined || it.balance === '')
-        ? (b - p) : f(it.balance);
+      var _rb = cv(it.balance);
+      t.bal += (_rb === null || _rb === undefined || _rb === '') ? (b - p) : f(_rb);
     });
     return t;
   }
-  function payTotal(mv) { return f(mv.prepaid) + f(mv.actual_paid) + f(mv.invest); }
+  function payTotal(mv) { return f(cv(mv.prepaid)) + f(cv(mv.actual_paid)) + f(cv(mv.invest)); }
 
   // ---------------------------------------------------------- 그리드
   var METRICS = [['buy', '매입액'], ['paid', '지급액'], ['balance', '잔액']];
@@ -12289,10 +12298,10 @@ window._ovProjectKey = function() {
     // 매출액
     body += '<tr class="band"><td class="g">매출</td><td class="k">매출액</td>' +
       ms.map(function (m) {
-        return inCell(m, 'data-k="revenue"', fmt(cell(m).revenue));
+        return inCell(m, 'data-k="revenue"', fmt(cv(cell(m).revenue)));
       }).join('') +
       (function () {
-        var s = 0; ms.forEach(function (m) { s += f(cell(m).revenue); });
+        var s = 0; ms.forEach(function (m) { s += f(cv(cell(m).revenue)); });
         return auCell(s, ' sum');
       })() + '</tr>';
 
@@ -12309,18 +12318,19 @@ window._ovProjectKey = function() {
         var s = 0;
         ms.forEach(function (m) {
           var it = itemOf(m, d.key);
-          var b = f(it.buy), p = f(it.paid);
+          var b = f(cv(it.buy)), p = f(cv(it.paid));
           if (mt[0] === 'balance') {
-            var has = !(it.balance === null || it.balance === undefined || it.balance === '');
-            var v = has ? f(it.balance) : (b - p);
+            var _b = cv(it.balance);
+            var has = !(_b === null || _b === undefined || _b === '');
+            var v = has ? f(_b) : (b - p);
             s += v;
             body += '<td><input class="pu-in' + (v < 0 ? ' neg' : '') + '" data-m="' + m +
               '" data-i="' + esc(d.key) + '" data-k="balance" placeholder="자동 ' +
-              esc(fmt(b - p)) + '" value="' + esc(has ? fmt(it.balance) : '') + '"></td>';
+              esc(fmt(b - p)) + '" value="' + esc(has ? fmt(_b) : '') + '"></td>';
           } else {
-            s += f(it[mt[0]]);
+            s += f(cv(it[mt[0]]));
             body += inCell(m, 'data-i="' + esc(d.key) + '" data-k="' + mt[0] + '"',
-                           fmt(it[mt[0]]));
+                           fmt(cv(it[mt[0]])));
           }
         });
         body += auCell(s, ' sum') + '</tr>';
@@ -12350,7 +12360,7 @@ window._ovProjectKey = function() {
         body += '<td class="k">' + p[1] + '</td>';
         var s = 0, any = false;
         ms.forEach(function (m) {
-          var raw = cell(m)[p[0]];
+          var raw = cv(cell(m)[p[0]]);
           if (raw !== null && raw !== undefined && raw !== '') any = true;
           s += f(raw);
           body += inCell(m, 'data-k="' + p[0] + '"', fmt(raw));
@@ -12436,7 +12446,7 @@ window._ovProjectKey = function() {
         var m = el.getAttribute('data-m'), k = el.getAttribute('data-k'),
             i = el.getAttribute('data-i');
         var v = el.value === '' ? null : num(el.value);
-        if (i) itemOf(m, i)[k] = v; else cell(m)[k] = v;
+        if (i) sv(itemOf(m, i), k, v); else sv(cell(m), k, v);
         repaint();
       };
     });

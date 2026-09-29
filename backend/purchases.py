@@ -135,11 +135,21 @@ def normalize_item(raw, idx: int) -> dict:
 
 
 def normalize_stock(raw) -> list:
-    raw = raw if isinstance(raw, dict) else {}
-    rows = raw if not isinstance(raw, list) else {}
+    """저장은 리스트로 하고 입력은 dict 로도 받는다.
+
+    한 번 저장한 뒤 다시 읽을 때 리스트를 못 알아보면 재고가 통째로
+    비워진다 — 실제로 그렇게 한 번 날렸다.
+    """
+    rows = {}
+    if isinstance(raw, dict):
+        rows = raw
+    elif isinstance(raw, list):
+        for r in raw:
+            if isinstance(r, dict) and _s(r.get("key")):
+                rows[_s(r.get("key"))] = r
     out = []
     for k, label in STOCK_ROWS:
-        r = rows.get(k) if isinstance(rows, dict) else None
+        r = rows.get(k)
         r = r if isinstance(r, dict) else {}
         out.append({"key": k, "label": label,
                     "value": cell(r.get("value")),
