@@ -27343,3 +27343,98 @@ def admin_models_restore_missing(payload: dict = Body(...),
           % (name, ", ".join(report), total, filled))
     out["saved"] = True
     return out
+
+# ── 전사 사업부별 잔업·특근 ────────────────────────────────────
+#
+# 주 단위다. 한 주에 사업부 16곳, 각 곳이 요일 7줄. 지표는 잔업률(월~토)과
+# 특근률(일) 둘이고 각각 전체/직접/간접으로 갈린다.
+#
+# 앱은 지표 하나 · 범위 하나씩만 받아 간다. 한 화면에 96칸을 내려보내면
+# 폰에서 읽을 방법이 없다.
+import overtime as _ot
+import overtime_import as _otim
+
+OVERTIME_FILE = DATA_DIR / "overtime.json"
+
+
+def _ot_load():
+    return _ot.load(OVERTIME_FILE)
+
+
+@app.get("/overtime/week")
+def overtime_week(w: str = "", kind: str = "overtime", scope: str = "total"):
+    """전사 화면 — 주차 하나, 지표 하나, 범위 하나."""
+    return _ot.for_app(_ot_load(), w, kind, scope)
+
+
+@app.get("/overtime/week/{div}")
+def overtime_division(div: str, w: str = ""):
+    """사업부 하나 — 요일별까지."""
+    out = _ot.for_division(_ot_load(), div, w)
+    if not out.get("has_data"):
+        raise HTTPException(status_code=404, detail="그 주에 그 사업부가 없습니다.")
+    return out
+
+
+@app.get("/admin/overtime")
+def admin_overtime_get(w: str = "", _admin: int = Depends(get_admin_session)):
+    return _ot.for_admin(_ot_load(), w)
+
+
+@app.put("/admin/overtime")
+def admin_overtime_put(payload: dict = Body(...),
+                       _admin: int = Depends(get_admin_session)):
+    """주차 하나를 통째로 갈아끼운다 — 다른 주는 건드리지 않는다."""
+    wk = _ot.week_key((payload or {}).get("week"))
+    if not wk:
+        raise HTTPException(status_code=400, detail="주차는 2026-W39 처럼 적어 주세요.")
+    saved = _ot.save(OVERTIME_FILE, _ot.put_week(_ot_load(), wk, payload or {}))
+    return _ot.for_admin(saved, wk)
+
+
+@app.post("/admin/overtime/import-xlsx")
+async def admin_overtime_import(
+        file: UploadFile = File(...),
+        year: Optional[int] = Form(None),
+        week: Optional[str] = Form(None),
+        mode: str = Form("preview"),
+        _admin: int = Depends(get_admin_session)):
+    """취합 엑셀 올리기. preview 로 먼저 보여 주고 commit 이어야 저장한다."""
+    name = file.filename or ""
+    if not name.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="xlsx 파일을 올려 주세요.")
+    raw = await file.read()
+    try:
+        parsed = _otim.parse_workbook(raw, year=year, week=week)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="엑셀을 읽지 못했습니다: %s" % e)
+
+    wk = _ot.week_key(parsed["week"])
+    if not wk:
+        raise HTTPException(status_code=400, detail="주차를 알 수 없습니다: %s"
+                            % parsed.get("week"))
+    data = _ot_load()
+    payload = {"range": parsed.get("range", ""), "source": name,
+               "divisions": parsed["divisions"], "order": parsed["order"],
+               "issues": parsed.get("issues") or []}
+    merged = _ot.put_week(data, wk, payload)
+
+    out = {"file": name, "week": wk, "range": parsed.get("range", ""),
+           "mode": mode, "sheets": parsed.get("sheets") or [],
+           "divisions": parsed["order"],
+           "read": parsed.get("read") or [],
+           "warnings": parsed.get("warnings") or [],
+           "issues": parsed.get("issues") or [],
+           "replaced": wk in (data.get("weeks") or {}),
+           "kept": sorted(x for x in (data.get("weeks") or {}) if x != wk),
+           "preview": _ot.for_app(merged, wk)}
+    if mode != "commit":
+        return out
+
+    saved = _ot.save(OVERTIME_FILE, merged)
+    print("[overtime] %s ← %s (%d개 사업부)"
+          % (wk, name, len(parsed["divisions"])))
+    out["saved"] = True
+    out["updated_at"] = saved.get("updated_at", "")
+    out["state"] = _ot.for_admin(saved, wk)
+    return out
