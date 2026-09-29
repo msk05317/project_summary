@@ -14,6 +14,12 @@
 
 비고는 줄바꿈을 그대로 지킨다. '/' 로 이어 붙이면 몇 건인지 세려고
 눈으로 훑어야 한다.
+
+누적(summary)은 달들을 더해서 만들지 않고 따로 담는다. 엑셀의 '합계'
+열이 달 합과 안 맞는 줄이 있다 — 매출 합계가 4~8월 합보다 31만 크다.
+어느 쪽이 맞는지는 표를 쓴 사람이 안다. 게다가 해외/국내는 달별로
+안 나눠져 있고 누적에만 있다. 그래서 적힌 값을 적힌 대로 둔다.
+누적이 없으면 예전처럼 달을 더해서 보여 준다.
 """
 from __future__ import annotations
 
@@ -159,7 +165,7 @@ MAX_NOTES = 80
 _NOTE_PATH = re.compile(r"^(revenue|prepaid|actual_paid|invest|receivable|total_buy"
                         r"|item:[a-z0-9_]{1,24}:(buy|paid|balance)"
                         r"|stock:(available|dead|wip|finished)"
-                        r"|sum:(buy|paid|balance)|month)$")
+                        r"|sum:(buy|paid|balance)|ratio|month)$")
 
 
 def normalize_notes(raw, items_raw, stock_raw) -> dict:
@@ -228,6 +234,37 @@ def normalize_month(raw) -> dict:
     }
 
 
+def summary_has_data(sv) -> bool:
+    """누적에 쓸 만한 숫자가 하나라도 있는지."""
+    if not isinstance(sv, dict):
+        return False
+    for k in ("revenue", "prepaid", "actual_paid", "invest",
+              "receivable", "total_buy"):
+        if cell_has(sv.get(k)):
+            return True
+    for it in sv.get("items") or []:
+        if any(cell_has((it or {}).get(m)) for m in METRICS):
+            return True
+    for r in sv.get("stock") or []:
+        if cell_has((r or {}).get("value")):
+            return True
+    return bool(sv.get("notes"))
+
+
+def normalize_summary(raw, months=None) -> dict:
+    """누적 한 칸. 달 한 칸과 모양이 같고 어느 구간인지만 더 붙는다."""
+    raw = raw if isinstance(raw, dict) else {}
+    out = normalize_month(raw)
+    keys = sorted(months or {})
+    a = _month(raw.get("from")) or (keys[0] if keys else "")
+    b = _month(raw.get("to")) or (keys[-1] if keys else "")
+    out["from"], out["to"] = a, b
+    out["label"] = (_s(raw.get("label")) or
+                    ("%s~%s 누적" % (month_label(a), month_label(b))
+                     if a and b else "누적"))[:MAX_LABEL]
+    return out
+
+
 def normalize(data) -> dict:
     data = data if isinstance(data, dict) else {}
     divs_raw = data.get("divisions")
@@ -250,6 +287,9 @@ def normalize(data) -> dict:
                     months.pop(mk, None)
             divs[div] = {"currency": cur if cur in CURRENCIES else "USD",
                          "months": months}
+            summary = normalize_summary(body.get("summary"), months)
+            if summary_has_data(summary):
+                divs[div]["summary"] = summary
     return {"version": 2, "updated_at": _s(data.get("updated_at")), "divisions": divs}
 
 
@@ -399,17 +439,30 @@ def _sum_months(months: list) -> dict:
     return tot
 
 
-def region_filled(body: dict) -> dict:
-    """어느 지역이 한 번이라도 적혔는지. 앱이 탭을 흐리게 할 때 쓴다."""
+def _fill_regions(mv: dict, out: dict) -> dict:
+    for c in ([mv.get("revenue"), mv.get("prepaid"), mv.get("actual_paid"),
+               mv.get("invest"), mv.get("receivable"), mv.get("total_buy")]
+              + [it.get(m) for it in (mv.get("items") or []) for m in METRICS]
+              + [r.get("value") for r in (mv.get("stock") or [])]):
+        for r in REGIONS:
+            if (c or {}).get(r) is not None:
+                out[r] = True
+    return out
+
+
+def region_filled(body: dict, scope: str = "all") -> dict:
+    """어느 지역이 한 번이라도 적혔는지. 앱이 탭을 흐리게 할 때 쓴다.
+
+    scope="months" 는 달별, "summary" 는 누적만 본다. 이 엑셀은 해외/국내가
+    누적에만 있어서, 둘을 뭉쳐 보면 앱이 '해외 탭에 달별 숫자가 있다'고
+    잘못 알아듣는다.
+    """
     out = {r: False for r in REGIONS}
-    for mv in (body.get("months") or {}).values():
-        for c in ([mv.get("revenue"), mv.get("prepaid"), mv.get("actual_paid"),
-                   mv.get("invest"), mv.get("receivable"), mv.get("total_buy")]
-                  + [it.get(m) for it in (mv.get("items") or []) for m in METRICS]
-                  + [r.get("value") for r in (mv.get("stock") or [])]):
-            for r in REGIONS:
-                if (c or {}).get(r) is not None:
-                    out[r] = True
+    if scope in ("all", "months"):
+        for mv in (body.get("months") or {}).values():
+            _fill_regions(mv, out)
+    if scope in ("all", "summary") and isinstance(body.get("summary"), dict):
+        _fill_regions(body["summary"], out)
     return out
 
 
@@ -424,20 +477,32 @@ def for_app(data: dict, div: str, region: str = "total") -> dict:
         v["month"] = m
         v["label"] = month_label(m)
         months.append(v)
-    total = _sum_months(months)
+    summary = body.get("summary") if isinstance(body.get("summary"), dict) else None
+    if summary and summary_has_data(summary):
+        total = _resolve(summary, region)
+        total["source"] = "sheet"        # 표에 적힌 합계
+        a, b = _s(summary.get("from")), _s(summary.get("to"))
+        total["range"] = ("%s~%s" % (month_label(a), month_label(b))
+                          if a and b else "")
+    else:
+        total = _sum_months(months)
+        total["source"] = "sum"         # 달을 더한 값
+        total["range"] = ("%s~%s" % (month_label(keys[0]), month_label(keys[-1]))
+                          if keys else "")
     total["month"] = "total"
     total["label"] = "누적"
     total["region"] = region
     total["region_label"] = REGION_LABEL.get(region, region)
-    total["range"] = ("%s~%s" % (month_label(keys[0]), month_label(keys[-1]))
-                      if keys else "")
     return {
         "division": div,
         "currency": body.get("currency") or "USD",
         "region": region,
         "regions": [{"key": r, "label": REGION_LABEL[r]} for r in REGIONS],
         "regions_filled": region_filled(body),
-        "has_data": bool(keys),
+        "months_regions_filled": region_filled(body, "months"),
+        "summary_regions_filled": region_filled(body, "summary"),
+        "has_summary": bool(summary and summary_has_data(summary)),
+        "has_data": bool(keys) or bool(summary and summary_has_data(summary)),
         "latest": keys[-1] if keys else "",
         "months": months,
         "total": total,
@@ -451,6 +516,8 @@ def for_admin(data: dict, div: str) -> dict:
         "division": div,
         "currency": body.get("currency") or "USD",
         "months": {m: months_raw[m] for m in sorted(months_raw)},
+        "summary": (body.get("summary")
+                    if isinstance(body.get("summary"), dict) else None),
         "default_items": [{"key": k, "label": l} for k, l in DEFAULT_ITEMS],
         "stock_rows": [{"key": k, "label": l} for k, l in STOCK_ROWS],
         "regions": [{"key": r, "label": REGION_LABEL[r]} for r in REGIONS],
@@ -461,6 +528,7 @@ def put_division(data: dict, div: str, payload: dict) -> dict:
     """한 사업부 통째로 갈아끼운다 — 화면이 전체를 들고 있다."""
     out = normalize(data)
     payload = payload if isinstance(payload, dict) else {}
+    old_summary = (out.get("divisions") or {}).get(div, {}).get("summary")
     months = payload.get("months") if isinstance(payload.get("months"), dict) else {}
     cur = _s(payload.get("currency")).upper()
     clean = {}
@@ -470,4 +538,12 @@ def put_division(data: dict, div: str, payload: dict) -> dict:
             clean[mk] = normalize_month(mv)
     out["divisions"][div] = {"currency": cur if cur in CURRENCIES else "USD",
                              "months": clean}
+    # 누적은 'summary' 를 보내올 때만 바꾼다. 안 보내면 있던 걸 지키는
+    # 쪽이 맞다 — 화면이 안 들고 있는 걸 저장했다가 통째로 날린 적이 있다.
+    if "summary" in payload:
+        summary = normalize_summary(payload.get("summary"), clean)
+        if summary_has_data(summary):
+            out["divisions"][div]["summary"] = summary
+    elif isinstance(old_summary, dict):
+        out["divisions"][div]["summary"] = old_summary
     return out

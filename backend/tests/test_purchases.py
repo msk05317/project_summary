@@ -223,6 +223,99 @@ def main():
     t("왕복: 줄별 비고 유지",
       rt["divisions"]["pcb"]["months"]["2026-08"]["notes"]["item:raw:buy"].count("\n") == 1)
 
+
+    # 11. 누적(summary) — 달을 더하지 않고 표에 적힌 합계를 쓴다
+    #
+    # 이 엑셀은 매출 합계가 4~8월 합보다 크다(31만). 어느 쪽이 맞는지는
+    # 표를 쓴 사람이 안다. 그리고 해외/국내는 누적에만 있다.
+    sv = P.put_division({}, "pcb", {
+        "currency": "USD",
+        "months": {
+            "2026-07": {"revenue": {"total": 1438651.3},
+                        "items": [{"key": "raw", "label": "원소재",
+                                   "buy": {"total": 3873320.6},
+                                   "paid": {"total": 182815.3},
+                                   "balance": {"total": 3690505.3}}]},
+            "2026-08": {"revenue": {"total": 1006562.6},
+                        "items": [{"key": "raw", "label": "원소재",
+                                   "buy": {"total": 1427312.2},
+                                   "paid": {"total": 946360.5},
+                                   "balance": {"total": 480951.7}}]},
+        },
+        "summary": {
+            "revenue": {"total": 7610417.5, "overseas": 476059.0,
+                        "domestic": 7134358.4},
+            "items": [{"key": "raw", "label": "원소재",
+                       "buy": {"total": 8776516.3, "overseas": 3510606.5,
+                               "domestic": 5265909.8},
+                       "paid": {"total": 3385301.2, "overseas": 2166592.8,
+                                "domestic": 1218708.4},
+                       "balance": {"total": 4307358.0, "overseas": 2295111.0,
+                                   "domestic": 2012247.0}}],
+            "stock": [{"key": "wip", "value": {"total": 2084915.0,
+                                               "overseas": 806184.0,
+                                               "domestic": 1278731.0}},
+                      {"key": "finished", "value": {"total": 2286364.0,
+                                                    "overseas": 955765.0,
+                                                    "domestic": 1330599.0}}],
+            "receivable": {"total": 1112019.0, "overseas": 0, "domestic": 1112019.0},
+            "total_buy": {"total": 6953310.6, "overseas": 1419097.6,
+                          "domestic": 5534213.0},
+            "notes": {"ratio": "비율 줄 비고", "month": "추가 분석 필요"},
+        },
+    })
+    sb = sv["divisions"]["pcb"]
+    t("누적은 따로 저장", isinstance(sb.get("summary"), dict))
+    t("누적 구간", sb["summary"]["from"] == "2026-07" and sb["summary"]["to"] == "2026-08")
+    t("비율 줄 비고도 남는다", sb["summary"]["notes"]["ratio"] == "비율 줄 비고")
+
+    sa = P.for_app(sv, "pcb")
+    t("누적은 표의 값", sa["total"]["revenue"] == 7610417.5)
+    t("달 합(2,445,213.9)이 아니다", sa["total"]["revenue"] != 2445213.9)
+    t("어디서 온 값인지 말해 준다", sa["total"]["source"] == "sheet")
+    t("누적 구간 표시", sa["total"]["range"] == "7월~8월")
+    t("누적 미수금", sa["total"]["receivable"] == 1112019.0)
+    t("누적 재공+완제품", sa["total"]["stock_total"] == 4371279.0)
+    t("매출 대비 매입 91.4%", sa["total"]["buy_over_revenue"] == 91.4)
+    t("누적 비고", sa["total"]["note"] == "추가 분석 필요")
+    t("has_summary", sa["has_summary"] is True)
+
+    so = P.for_app(sv, "pcb", "overseas")
+    t("해외 누적 매출", so["total"]["revenue"] == 476059.0)
+    t("해외 비율 298.1%", so["total"]["buy_over_revenue"] == 298.1)
+    sd = P.for_app(sv, "pcb", "domestic")
+    t("국내 비율 77.6%", sd["total"]["buy_over_revenue"] == 77.6)
+
+    # 해외/국내가 달별로는 없다 — 앱이 달 탭을 흐리게 할 수 있게 갈라서 준다
+    t("달별 해외는 비어 있다", sa["months_regions_filled"]["overseas"] is False)
+    t("누적 해외는 있다", sa["summary_regions_filled"]["overseas"] is True)
+    t("해외 탭 자체는 켠다", sa["regions_filled"]["overseas"] is True)
+
+    # summary 를 안 보내면 있던 누적을 지킨다 (화면이 안 들고 있을 수 있다)
+    keep = P.put_division(sv, "pcb", {"months": P.for_admin(sv, "pcb")["months"]})
+    t("안 보내면 누적 유지",
+      keep["divisions"]["pcb"]["summary"]["revenue"]["total"] == 7610417.5)
+    # 빈 누적을 명시해서 보내면 지운다
+    gone = P.put_division(sv, "pcb", {"months": {}, "summary": {}})
+    t("빈 누적을 보내면 지운다", "summary" not in gone["divisions"]["pcb"])
+
+    # 왕복 — for_admin 이 누적을 같이 주고, 그걸 그대로 저장해도 같다
+    rt2 = P.put_division(sv, "pcb", {
+        "months": P.for_admin(sv, "pcb")["months"],
+        "summary": P.for_admin(sv, "pcb")["summary"]})
+    t("왕복: 누적 해외 유지",
+      rt2["divisions"]["pcb"]["summary"]["items"][0]["buy"]["overseas"] == 3510606.5)
+    t("왕복: 누적 재고 유지",
+      rt2["divisions"]["pcb"]["summary"]["stock"][2]["value"]["total"] == 2084915.0)
+
+    # 누적이 없으면 예전처럼 달을 더한다
+    nosum = P.put_division({}, "pcb", {"months": {
+        "2026-07": {"revenue": {"total": 10}},
+        "2026-08": {"revenue": {"total": 20}}}})
+    na = P.for_app(nosum, "pcb")
+    t("누적 없으면 달을 더한다",
+      na["total"]["revenue"] == 30 and na["total"]["source"] == "sum")
+
     print("test_purchases: 전부 통과")
 
 

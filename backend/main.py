@@ -27096,6 +27096,9 @@ def admin_division_purchase_save(payload: dict = Body(...),
 #
 # preview 로 한 번 보여 주고, commit 이어야 저장한다. 엑셀에 없는 달은
 # 건드리지 않는다 — 4~8월짜리 파일을 올렸다고 9월이 지워지면 안 된다.
+#
+# '합계 · 해외 · 국내' 세 열은 누적(summary)으로 따로 들어간다. 엑셀에
+# 그 열이 없으면 summary 를 보내지 않는다 — 안 보내면 있던 누적을 지킨다.
 import purchase_import as _purim
 
 
@@ -27116,47 +27119,36 @@ async def admin_division_purchase_import(
     raw = await file.read()
     try:
         parsed = _purim.parse_workbook(raw, year=year, sheet=sheet)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="엑셀을 읽지 못했습니다: %s" % e)
     except Exception as e:
-        # 어디서 터졌는지 같이 말해 준다. 'BytesIO 어쩌고' 한 줄만 보고
-        # 원인을 찾느라 한참 헤맨 적이 있다.
-        import traceback as _tb
-        tail = _tb.extract_tb(e.__traceback__)
-        where = ""
-        if tail:
-            f = tail[-1]
-            where = " (%s:%d %s)" % (os.path.basename(f.filename), f.lineno, f.name)
-        raise HTTPException(
-            status_code=400,
-            detail="엑셀을 읽지 못했습니다: %s: %s%s" % (type(e).__name__, e, where))
+        raise HTTPException(status_code=400, detail="엑셀을 읽지 못했습니다: %s" % e)
 
     data = _pur_load()
-    cur = ((data.get("divisions") or {}).get(div) or {}).get("months") or {}
+    body = (data.get("divisions") or {}).get(div) or {}
+    cur = body.get("months") or {}
     merged = _purim.merge(cur, parsed["months"])
+    payload = {"currency": body.get("currency", "USD"), "months": merged}
+    summary = _purim.merge_summary(body.get("summary"), parsed.get("summary"))
+    if summary:
+        payload["summary"] = summary
 
     out = {"file": name, "division": div, "mode": mode,
            "sheet": parsed["sheet"], "sheets": parsed["sheets"],
            "year": parsed["year"],
            "months": sorted(parsed["months"]),
            "kept": sorted(m for m in cur if m not in parsed["months"]),
+           "regions": parsed.get("regions") or [],
+           "has_summary": bool(parsed.get("summary")),
+           "notes": sorted((parsed.get("summary") or {}).get("notes") or {}),
            "read": parsed["read"], "warnings": parsed["warnings"],
-           "preview": _pur.for_app(
-               _pur.put_division(data, div,
-                                 {"currency": ((data.get("divisions") or {})
-                                               .get(div) or {}).get("currency", "USD"),
-                                  "months": merged}), div)}
+           "preview": _pur.for_app(_pur.put_division(data, div, payload), div)}
     if mode != "commit":
         return out
 
-    saved = _pur.save(PURCHASE_FILE, _pur.put_division(
-        data, div, {"currency": ((data.get("divisions") or {}).get(div) or {})
-                    .get("currency", "USD"), "months": merged}))
+    saved = _pur.save(PURCHASE_FILE, _pur.put_division(data, div, payload))
     out["saved"] = True
     out["updated_at"] = saved.get("updated_at", "")
     out["state"] = _pur.for_admin(saved, div)
     return out
-
 
 # ── 사업부 매출 (매출 관리 화면이 반도체 아닌 사업부를 열 때) ─────
 #
