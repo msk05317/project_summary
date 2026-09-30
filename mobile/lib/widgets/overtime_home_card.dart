@@ -108,7 +108,6 @@ class OvertimeHomeCard extends StatelessWidget {
 
     final t = week.total;
     final avail = t.available.total;
-    final attention = week.counts.attention;
 
     return _shell(
       onTap: onTap,
@@ -166,25 +165,6 @@ class OvertimeHomeCard extends StatelessWidget {
             style: AppText.caption
                 .copyWith(fontSize: 11, color: AppColors.textMute),
           ),
-          if (attention > 0) ...[
-            const SizedBox(height: 9),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF7ED),
-                borderRadius: BorderRadius.circular(9),
-                border: Border.all(color: const Color(0xFFFED7AA)),
-              ),
-              child: Text(
-                '⚠ 확인 필요 $attention건',
-                style: AppText.caption.copyWith(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF9A3412)),
-              ),
-            ),
-          ],
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,

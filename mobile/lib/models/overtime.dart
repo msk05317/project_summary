@@ -177,46 +177,57 @@ class OvSummary {
   bool get needsCheck => check == '확인필요';
 }
 
-/// 순위 목록 한 줄
+/// 순위 목록 한 줄.
+///
+/// 지표(잔업/특근) × 범위(전체/직접/간접) 여섯 칸을 다 들고 온다. 토글할
+/// 때마다 서버를 다시 부르면 매번 로딩이 돌아서 화면이 끊긴다.
 class OvItem {
   final String key;
   final String label;
-  final double? rate;
-  final double? delta;
-  final int? people;
   final int? available;
-  final bool overAvg;
   final String note;
   final String check;
   final List<String> audit;
+  final Map<String, OvScoped> rates;
+  final Map<String, OvScoped> deltas;
+  final Map<String, OvScoped> peopleBy;
 
   const OvItem({
     required this.key,
     required this.label,
-    required this.rate,
-    required this.delta,
-    required this.people,
     required this.available,
-    required this.overAvg,
     required this.note,
     required this.check,
     required this.audit,
+    required this.rates,
+    required this.deltas,
+    required this.peopleBy,
   });
+
+  static Map<String, OvScoped> _matrix(dynamic j) {
+    final out = <String, OvScoped>{};
+    if (j is Map) {
+      j.forEach((k, v) => out['$k'] = OvScoped.fromJson(v));
+    }
+    return out;
+  }
 
   factory OvItem.fromJson(Map<String, dynamic> j) => OvItem(
         key: '${j['key'] ?? ''}',
         label: '${j['label'] ?? ''}',
-        rate: _dn(j['rate']),
-        delta: _dn(j['delta']),
-        people: _in(j['people']),
         available: _in(j['available']),
-        overAvg: j['over_avg'] == true,
         note: '${j['note'] ?? ''}',
         check: '${j['check'] ?? ''}',
         audit: ((j['audit'] as List?) ?? const []).map((e) => '$e').toList(),
+        rates: _matrix(j['rates']),
+        deltas: _matrix(j['deltas']),
+        peopleBy: _matrix(j['people_by']),
       );
 
-  bool get hasRate => rate != null;
+  double? rateOf(String kind, String scope) => rates[kind]?.of(scope);
+  double? deltaOf(String kind, String scope) => deltas[kind]?.of(scope);
+  int? peopleOf(String kind, String scope) => peopleBy[kind]?.of(scope)?.round();
+
   bool get needsCheck => check == '확인필요' || audit.isNotEmpty;
 }
 

@@ -1,11 +1,14 @@
-// 전사 잔·특근 — 주차 하나, 지표 하나.
+// 전사 잔업·특근 — 주차 하나, 지표 하나.
 //
 // 사업부 16곳 × 잔업/특근 × 전체/직접/간접 = 96칸이다. 토글로 하나씩
 // 보여 주지 않으면 폰에서 읽을 방법이 없다.
 //
-// 순위는 값순이 기본이고 증감순으로 바꿀 수 있다. "누가 제일 높나" 와
-// "어디가 갑자기 뛰었나" 는 다른 질문이고, W39 는 후자가 더 중요했다 —
-// 헬스케어가 한 주에 +19.7%p 올랐다.
+// 한 주치를 한 번만 받는다. 지표·범위를 바꿀 때는 서버를 다시 부르지
+// 않는다 — 전에는 토글할 때마다 다시 불러서 매번 로딩이 돌았다. 여섯
+// 칸이 다 들어 있으니 화면에서 골라 그리면 된다. 주차를 바꿀 때만 받는다.
+//
+// '확인이 필요한 것' 은 여기 두지 않는다. 고칠 수 있는 사람이 보는
+// 화면은 admin 이고, 앱에서 보는 사람은 고칠 수 없다.
 import 'package:flutter/material.dart';
 
 import '../design/design.dart';
@@ -64,15 +67,25 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   void initState() {
     super.initState();
     _week = widget.initialWeek;
-    _future = _load();
+    _future = OvertimeService.fetchWeek(week: _week);
   }
 
-  Future<OvertimeWeek> _load() =>
-      OvertimeService.fetchWeek(week: _week, kind: _kind, scope: _scope);
-
-  void _reload() => setState(() => _future = _load());
+  /// 주차를 바꿀 때만 다시 받는다.
+  void _goWeek(String w) => setState(() {
+        _week = w;
+        _future = OvertimeService.fetchWeek(week: w);
+      });
 
   Color get _tone => _kind == 'special' ? kSpColor : kOtColor;
+
+  double? _avgOf(OvertimeWeek w) => w.total.kind(_kind).rate.of(_scope);
+
+  double? _avgDeltaOf(OvertimeWeek w) {
+    final now = _avgOf(w);
+    final was = w.prevTotal?.kind(_kind).rate.of(_scope);
+    if (now == null || was == null) return null;
+    return now - was;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -104,26 +117,19 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
               ),
             );
           }
-          return RefreshIndicator(
-            onRefresh: () async => _reload(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
-              children: [
-                _weekNav(w),
-                const SizedBox(height: 10),
-                _kindToggle(w),
-                const SizedBox(height: 10),
-                _hero(w),
-                const SizedBox(height: 10),
-                _counts(w),
-                if (w.issues.isNotEmpty || w.counts.audit > 0) ...[
-                  const SizedBox(height: 10),
-                  _issues(w),
-                ],
-                const SizedBox(height: 10),
-                _ranking(w),
-              ],
-            ),
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+            children: [
+              _weekNav(w),
+              const SizedBox(height: 10),
+              _kindToggle(w),
+              const SizedBox(height: 10),
+              _hero(w),
+              const SizedBox(height: 10),
+              _summaryLines(w),
+              const SizedBox(height: 10),
+              _ranking(w),
+            ],
           );
         },
       ),
@@ -143,12 +149,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_left_rounded, size: 22),
             color: hasPrev ? AppColors.textSub : AppColors.statusGray,
-            onPressed: hasPrev
-                ? () => setState(() {
-                      _week = weeks[at - 1];
-                      _future = _load();
-                    })
-                : null,
+            onPressed: hasPrev ? () => _goWeek(weeks[at - 1]) : null,
           ),
           Text(w.weekLabel,
               style: AppText.bodyStrong
@@ -161,19 +162,14 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
           IconButton(
             icon: const Icon(Icons.chevron_right_rounded, size: 22),
             color: hasNext ? AppColors.textSub : AppColors.statusGray,
-            onPressed: hasNext
-                ? () => setState(() {
-                      _week = weeks[at + 1];
-                      _future = _load();
-                    })
-                : null,
+            onPressed: hasNext ? () => _goWeek(weeks[at + 1]) : null,
           ),
         ],
       ),
     );
   }
 
-  // ── 지표 · 범위 토글 ─────────────────────────────────────
+  // ── 지표 · 범위 토글 (서버를 다시 부르지 않는다) ─────────
   Widget _kindToggle(OvertimeWeek w) {
     final kinds = w.kinds.isEmpty
         ? const [
@@ -181,6 +177,13 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
             OvLabel(key: 'special', label: '특근률', range: '일'),
           ]
         : w.kinds;
+    final scopes = w.scopes.isEmpty
+        ? const [
+            OvLabel(key: 'total', label: '전체'),
+            OvLabel(key: 'direct', label: '직접'),
+            OvLabel(key: 'indirect', label: '간접'),
+          ]
+        : w.scopes;
     return Column(
       children: [
         Container(
@@ -195,13 +198,11 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
               final tone = k.key == 'special' ? kSpColor : kOtColor;
               return Expanded(
                 child: GestureDetector(
-                  onTap: on
-                      ? null
-                      : () => setState(() {
-                            _kind = k.key;
-                            _future = _load();
-                          }),
-                  child: Container(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: on ? null : () => setState(() => _kind = k.key),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
                       color: on ? Colors.white : Colors.transparent,
@@ -233,25 +234,19 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
         const SizedBox(height: 8),
         Row(
           children: [
-            for (final s in (w.scopes.isEmpty
-                ? const [
-                    OvLabel(key: 'total', label: '전체'),
-                    OvLabel(key: 'direct', label: '직접'),
-                    OvLabel(key: 'indirect', label: '간접'),
-                  ]
-                : w.scopes))
+            for (final s in scopes)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: s.key == _scope
                       ? null
-                      : () => setState(() {
-                            _scope = s.key;
-                            _future = _load();
-                          }),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 13, vertical: 6),
+                      : () => setState(() => _scope = s.key),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
                     decoration: BoxDecoration(
                       color: s.key == _scope
                           ? AppColors.headerNavy
@@ -267,9 +262,8 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                       style: AppText.caption.copyWith(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: s.key == _scope
-                            ? Colors.white
-                            : AppColors.textSub,
+                        color:
+                            s.key == _scope ? Colors.white : AppColors.textSub,
                       ),
                     ),
                   ),
@@ -284,25 +278,28 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   // ── 히어로 ──────────────────────────────────────────────
   Widget _hero(OvertimeWeek w) {
     final k = w.total.kind(_kind);
+    final avg = _avgOf(w);
+    final delta = _avgDeltaOf(w);
     final people = k.people.of(_scope)?.round();
+    final label = _kind == 'special' ? '특근' : '잔업';
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text('전사 ${w.kindLabel}률',
+              Text('전사 $label률',
                   style: AppText.bodyStrong
                       .copyWith(fontSize: 13, color: AppColors.textMain)),
               const SizedBox(width: 6),
-              Text(w.scopeLabel,
+              Text(_scopeLabel(w),
                   style: AppText.caption.copyWith(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: _tone)),
               const Spacer(),
-              if (w.prevLabel.isNotEmpty)
-                Text('${w.prevLabel} ${ovPct(w.avg == null || w.avgDelta == null ? null : w.avg! - w.avgDelta!)}',
+              if (w.prevLabel.isNotEmpty && avg != null && delta != null)
+                Text('${w.prevLabel} ${ovPct(avg - delta)}',
                     style: AppText.caption
                         .copyWith(fontSize: 11, color: AppColors.textHint)),
             ],
@@ -312,12 +309,11 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                w.avg == null ? '—' : (w.avg! * 100).toStringAsFixed(1),
+                avg == null ? '—' : (avg * 100).toStringAsFixed(1),
                 style: AppText.h1.copyWith(
                   fontSize: 32,
                   height: 1.05,
                   color: AppColors.textMain,
-                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
               Padding(
@@ -332,15 +328,16 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (w.avgDelta != null)
+                    if (delta != null)
                       Text(
-                        '${w.avgDelta! > 0 ? '▲' : (w.avgDelta! < 0 ? '▼' : '')} ${ovDelta(w.avgDelta).replaceAll('+', '').replaceAll('−', '')}%p',
+                        '${delta > 0 ? '▲' : (delta < 0 ? '▼' : '')} '
+                        '${(delta.abs() * 100).toStringAsFixed(1)}%p',
                         style: AppText.caption.copyWith(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
-                            color: ovDeltaColor(w.avgDelta)),
+                            color: ovDeltaColor(delta)),
                       ),
-                    Text('${w.kindLabel} ${ovNum(people)}명',
+                    Text('$label ${ovNum(people)}명',
                         style: AppText.caption.copyWith(
                             fontSize: 11, color: AppColors.textMute)),
                   ],
@@ -361,6 +358,17 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
     );
   }
 
+  String _scopeLabel(OvertimeWeek w) {
+    for (final s in w.scopes) {
+      if (s.key == _scope) return s.label;
+    }
+    return _scope == 'direct'
+        ? '직접'
+        : _scope == 'indirect'
+            ? '간접'
+            : '전체';
+  }
+
   Widget _split(String label, double? v, Color color) {
     return Expanded(
       child: Column(
@@ -373,153 +381,115 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                       .copyWith(fontSize: 11, color: AppColors.textMute)),
               const Spacer(),
               Text(ovPct(v),
-                  style: AppText.captionStrong.copyWith(
-                      fontSize: 11.5,
-                      color: AppColors.textMain,
-                      fontFeatures: const [FontFeature.tabularFigures()])),
+                  style: AppText.captionStrong
+                      .copyWith(fontSize: 11.5, color: AppColors.textMain)),
             ],
           ),
           const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(5),
-            child: LinearProgressIndicator(
-              value: (v ?? 0).clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: const Color(0xFFE6EAF0),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
+          _bar((v ?? 0).clamp(0.0, 1.0), color, 8),
         ],
       ),
     );
   }
 
-  // ── 몇 곳이 넘었나 ──────────────────────────────────────
-  Widget _counts(OvertimeWeek w) {
-    final c = w.counts;
-    Widget one(String label, int n, Color color) => Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            decoration: BoxDecoration(
-              color: AppColors.bgCard,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: AppColors.borderDefault),
-            ),
-            child: Column(
-              children: [
-                Text('$n',
-                    style: AppText.bodyStrong.copyWith(
-                        fontSize: 16,
-                        color: color,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-                const SizedBox(height: 1),
-                Text(label,
-                    style: AppText.caption
-                        .copyWith(fontSize: 10, color: AppColors.textMute)),
-              ],
-            ),
-          ),
-        );
-    return Row(
-      children: [
-        one('전사 초과', c.over, AppColors.statusRed),
-        const SizedBox(width: 7),
-        one('이하', c.under, AppColors.textSub),
-        const SizedBox(width: 7),
-        one('전주보다 ↑', c.up, AppColors.statusRed),
-        const SizedBox(width: 7),
-        one('↓', c.down, AppColors.statusGreen),
-      ],
+  /// 값이 바뀌면 길이가 미끄러지듯 움직인다 — 토글이 끊겨 보이지 않게.
+  Widget _bar(double value, Color color, double height) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(5),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: value),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+        builder: (_, t, _) => LinearProgressIndicator(
+          value: t,
+          minHeight: height,
+          backgroundColor: const Color(0xFFE6EAF0),
+          valueColor: AlwaysStoppedAnimation<Color>(color),
+        ),
+      ),
     );
   }
 
-  // ── 확인이 필요한 것 ────────────────────────────────────
-  Widget _issues(OvertimeWeek w) {
-    final rows = <Widget>[];
+  // ── 두 줄 요약 ──────────────────────────────────────────
+  //
+  // 전에는 '전사 초과 / 이하 / 전주보다 ↑ / ↓' 네 칸에 숫자만 있었다.
+  // 무엇의 몇 곳인지가 안 적혀 있어서 뜻이 안 읽혔다. 문장으로 적고
+  // 분모(전체 몇 곳)를 같이 보여 준다.
+  Widget _summaryLines(OvertimeWeek w) {
+    final avg = _avgOf(w);
+    var over = 0, up = 0, rated = 0;
     for (final it in w.items) {
-      for (final a in it.audit) {
-        rows.add(_issueRow('검산', it.label, a, true));
-      }
+      final v = it.rateOf(_kind, _scope);
+      if (v == null) continue;
+      rated++;
+      if (avg != null && v > avg) over++;
+      final d = it.deltaOf(_kind, _scope);
+      if (d != null && d > 0) up++;
     }
-    for (final s in w.issues) {
-      final i = s.indexOf('—');
-      rows.add(_issueRow('파일', i > 0 ? s.substring(0, i).trim() : '',
-          i > 0 ? s.substring(i + 1).trim() : s, false));
-    }
-    if (rows.isEmpty) return const SizedBox.shrink();
+    final label = _kind == 'special' ? '특근률' : '잔업률';
     return _card(
-      pad: EdgeInsets.zero,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: Text('확인이 필요한 것',
-                style: AppText.bodyStrong
-                    .copyWith(fontSize: 13, color: AppColors.textMain)),
-          ),
-          ...rows,
-          const SizedBox(height: 6),
+          _summaryLine('$label이 전사 평균(${ovPct(avg)})보다 높은 곳', over, rated),
+          const SizedBox(height: 11),
+          _summaryLine(
+              w.prevLabel.isEmpty ? '지난주보다 오른 곳' : '${w.prevLabel}보다 오른 곳',
+              up,
+              rated),
         ],
       ),
     );
   }
 
-  Widget _issueRow(String tag, String who, String what, bool ours) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 5, 14, 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-            decoration: BoxDecoration(
-              color: ours
-                  ? AppColors.statusRedSoft
-                  : AppColors.statusGraySoft,
-              borderRadius: BorderRadius.circular(5),
+  Widget _summaryLine(String label, int n, int of) {
+    final frac = of <= 0 ? 0.0 : (n / of).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text(label,
+                  style: AppText.caption
+                      .copyWith(fontSize: 12, color: AppColors.textSub)),
             ),
-            child: Text(tag,
-                style: AppText.caption.copyWith(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    color:
-                        ours ? const Color(0xFFB42318) : AppColors.textMute)),
-          ),
-          const SizedBox(width: 8),
-          if (who.isNotEmpty) ...[
-            SizedBox(
-              width: 72,
-              child: Text(who,
-                  style: AppText.captionStrong
-                      .copyWith(fontSize: 11.5, color: AppColors.textMain)),
-            ),
-            const SizedBox(width: 4),
-          ],
-          Expanded(
-            child: Text(what,
+            const SizedBox(width: 8),
+            Text('$n',
+                style: AppText.bodyStrong.copyWith(
+                    fontSize: 16, color: AppColors.textMain, height: 1.1)),
+            Text(' / $of곳',
                 style: AppText.caption
-                    .copyWith(fontSize: 11.5, color: AppColors.textSub)),
-          ),
-        ],
-      ),
+                    .copyWith(fontSize: 11, color: AppColors.textMute)),
+          ],
+        ),
+        const SizedBox(height: 5),
+        _bar(frac, _tone.withValues(alpha: .55), 6),
+      ],
     );
   }
 
   // ── 사업부 순위 ─────────────────────────────────────────
   Widget _ranking(OvertimeWeek w) {
+    final avg = _avgOf(w);
     final items = List<OvItem>.from(w.items);
-    if (_sort == _Sort.delta) {
-      items.sort((a, b) {
-        final x = a.delta, y = b.delta;
-        if (x == null && y == null) return 0;
-        if (x == null) return 1;
-        if (y == null) return -1;
-        return y.compareTo(x);
-      });
+    int cmp(double? x, double? y) {
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return y.compareTo(x);
     }
-    final max = items.fold<double>(
-        0, (p, e) => (e.rate ?? 0) > p ? (e.rate ?? 0) : p);
+
+    items.sort((a, b) => _sort == _Sort.delta
+        ? cmp(a.deltaOf(_kind, _scope), b.deltaOf(_kind, _scope))
+        : cmp(a.rateOf(_kind, _scope), b.rateOf(_kind, _scope)));
+
+    var max = 0.0;
+    for (final it in items) {
+      final v = it.rateOf(_kind, _scope) ?? 0;
+      if (v > max) max = v;
+    }
     final scale = max <= 0 ? 1.0 : max;
 
     return _card(
@@ -535,17 +505,17 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                     style: AppText.bodyStrong
                         .copyWith(fontSize: 13, color: AppColors.textMain)),
                 const Spacer(),
-                _sortChip('값순', _Sort.value),
+                _sortChip('높은 순', _Sort.value),
                 const SizedBox(width: 5),
-                _sortChip('증감순', _Sort.delta),
+                _sortChip('많이 오른 순', _Sort.delta),
               ],
             ),
           ),
-          for (final it in items) _rankRow(w, it, scale),
+          for (final it in items) _rankRow(w, it, scale, avg),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
             child: Text(
-              '점선 = 전사 ${ovPct(w.avg)} · 진한 막대 = 전사 초과',
+              '세로 선 = 전사 평균 ${ovPct(avg)} · 진한 막대는 평균보다 높은 곳',
               style: AppText.caption
                   .copyWith(fontSize: 10.5, color: AppColors.textHint),
             ),
@@ -558,8 +528,10 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
   Widget _sortChip(String label, _Sort s) {
     final on = _sort == s;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _sort = s),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: on ? AppColors.headerNavy : AppColors.bgCard,
@@ -576,10 +548,12 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
     );
   }
 
-  Widget _rankRow(OvertimeWeek w, OvItem it, double scale) {
-    final frac = ((it.rate ?? 0) / scale).clamp(0.0, 1.0);
-    final avgFrac =
-        w.avg == null ? null : (w.avg! / scale).clamp(0.0, 1.0);
+  Widget _rankRow(OvertimeWeek w, OvItem it, double scale, double? avg) {
+    final rate = it.rateOf(_kind, _scope);
+    final delta = it.deltaOf(_kind, _scope);
+    final over = rate != null && avg != null && rate > avg;
+    final frac = ((rate ?? 0) / scale).clamp(0.0, 1.0);
+    final avgFrac = avg == null ? null : (avg / scale).clamp(0.0, 1.0);
     return InkWell(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => OvertimeDivisionScreen(
@@ -594,26 +568,12 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
           children: [
             SizedBox(
               width: 78,
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(it.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.captionStrong.copyWith(
-                            fontSize: 11.5,
-                            color: it.overAvg
-                                ? AppColors.textMain
-                                : AppColors.textSub)),
-                  ),
-                  if (it.needsCheck)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 3),
-                      child: Icon(Icons.error_outline_rounded,
-                          size: 11, color: AppColors.statusRed),
-                    ),
-                ],
-              ),
+              child: Text(it.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.captionStrong.copyWith(
+                      fontSize: 11.5,
+                      color: over ? AppColors.textMain : AppColors.textSub)),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -627,14 +587,18 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                     ),
-                    FractionallySizedBox(
-                      widthFactor: frac,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: it.overAvg
-                              ? _tone
-                              : _tone.withValues(alpha: .28),
-                          borderRadius: BorderRadius.circular(6),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween<double>(begin: 0, end: frac),
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      builder: (_, t, _) => FractionallySizedBox(
+                        widthFactor: t,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color:
+                                over ? _tone : _tone.withValues(alpha: .28),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
                         ),
                       ),
                     ),
@@ -657,20 +621,15 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(ovPct(it.rate),
-                      style: AppText.captionStrong.copyWith(
-                          fontSize: 11.5,
-                          color: AppColors.textMain,
-                          fontFeatures: const [FontFeature.tabularFigures()])),
-                  if (it.delta != null)
-                    Text(ovDelta(it.delta),
+                  Text(ovPct(rate),
+                      style: AppText.captionStrong
+                          .copyWith(fontSize: 11.5, color: AppColors.textMain)),
+                  if (delta != null)
+                    Text(ovDelta(delta),
                         style: AppText.caption.copyWith(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w700,
-                            color: ovDeltaColor(it.delta),
-                            fontFeatures: const [
-                              FontFeature.tabularFigures()
-                            ])),
+                            color: ovDeltaColor(delta))),
                 ],
               ),
             ),

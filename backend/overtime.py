@@ -444,12 +444,26 @@ def for_app(data: dict, wk: str = "", kind: str = "overtime",
         v = (r.get(kind) or {}).get("rate", {}).get(scope)
         b = ((before.get(k) or {}).get(kind) or {}).get("rate", {}).get(scope) \
             if k in before else None
+        # 지표(잔업/특근) × 범위(전체/직접/간접) 여섯 칸을 한 번에 내려보낸다.
+        # 앱에서 토글할 때마다 서버를 다시 부르면 매번 로딩이 돌아서, 화면이
+        # 끊긴다. 한 사업부당 열여덟 개 숫자라 무게도 거의 없다.
+        rates, deltas, people = {}, {}, {}
+        for kd in KINDS:
+            rates[kd], deltas[kd], people[kd] = {}, {}, {}
+            for sc in SCOPES:
+                now = (r.get(kd) or {}).get("rate", {}).get(sc)
+                was = ((before.get(k) or {}).get(kd) or {}).get("rate", {}).get(sc) \
+                    if k in before else None
+                rates[kd][sc] = now
+                deltas[kd][sc] = _delta(now, was)
+                people[kd][sc] = (r.get(kd) or {}).get("people", {}).get(sc)
         items.append({
             "key": k, "label": r.get("label") or k,
             "rate": v, "delta": _delta(v, b),
             "people": (r.get(kind) or {}).get("people", {}).get(scope),
             "available": (r.get("available") or {}).get("total"),
             "over_avg": bool(v is not None and avg is not None and v > avg),
+            "rates": rates, "deltas": deltas, "people_by": people,
             "note": r.get("note", ""), "check": r.get("check", ""),
             "audit": [x["text"] for x in
                       audit_division((week.get("divisions") or {}).get(k) or {})],
