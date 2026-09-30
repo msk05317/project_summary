@@ -331,7 +331,7 @@ class _OvertimeScreenState extends State<OvertimeScreen> {
                     if (delta != null)
                       Text(
                         '${delta > 0 ? '▲' : (delta < 0 ? '▼' : '')} '
-                        '${(delta.abs() * 100).toStringAsFixed(1)}%p',
+                        '${(delta.abs() * 100).toStringAsFixed(1)}%',
                         style: AppText.caption.copyWith(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,

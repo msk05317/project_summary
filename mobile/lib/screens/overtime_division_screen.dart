@@ -370,7 +370,7 @@ class _OvertimeDivisionScreenState extends State<OvertimeDivisionScreen> {
               if (delta != null && delta.abs() >= 0.0005)
                 Padding(
                   padding: const EdgeInsets.only(right: 7),
-                  child: Text('${ovDelta(delta)}%p',
+                  child: Text('${ovDelta(delta)}%',
                       style: AppText.caption.copyWith(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,

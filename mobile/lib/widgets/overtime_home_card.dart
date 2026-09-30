@@ -1,10 +1,15 @@
 // 홈 · 전사 잔·특근 카드.
 //
 // 첫 화면 구조는 건드리지 않고 매출 카드 밑에 한 장만 얹는다. 16개
-// 사업부짜리 자료라 홈의 '전체 현황'(반도체) 과 범위가 달라서, 제목 옆에
-// '전사업부' 를 붙여 같은 화면에서 '전체' 의 뜻이 둘이 되지 않게 한다.
+// 사업부짜리 자료라 홈의 '전체 현황'(반도체) 과 범위가 달라서, 제목에
+// '전사업부' 를 박아 같은 화면에서 '전체' 의 뜻이 둘이 되지 않게 한다.
 //
-// 잔업률과 특근률은 한 숫자로 못 합친다. 나란히 둔다.
+// 껍데기는 다른 홈 카드(ExecRevenueCard)와 같다 — 흰 바탕, radius lg,
+// 패딩 16. 전에는 혼자 회색 바탕에 다른 반경이라 홈에서 튀었다.
+//
+// 잔업률과 특근률은 한 숫자로 못 합친다. 좌우로 나누고 가운데 가는 선을
+// 둔다. 숫자 밑 게이지는 '69.9% 가 얼마나 높은가' 를 읽게 해 준다 —
+// 퍼센트만 있으면 크고 작음이 안 잡힌다.
 import 'package:flutter/material.dart';
 
 import '../design/design.dart';
@@ -25,79 +30,12 @@ class OvertimeHomeCard extends StatelessWidget {
   static const Color _ot = Color(0xFF2A78D6);   // 잔업
   static const Color _sp = Color(0xFFEB6834);   // 특근
 
-  String _pc(double? v) =>
-      v == null ? '—' : (v * 100).toStringAsFixed(1);
-
-  String _delta(double? v) {
-    if (v == null) return '';
-    final p = (v * 100);
-    if (p.abs() < 0.05) return '전주와 같음';
-    return '${p > 0 ? '▲' : '▼'} ${p.abs().toStringAsFixed(1)}%p';
-  }
-
-  Color _deltaColor(double? v) {
-    if (v == null || v.abs() < 0.0005) return AppColors.textHint;
-    return v > 0 ? AppColors.statusRed : AppColors.statusGreen;
-  }
-
-  Widget _metric(String label, String range, double? rate, double? delta,
-      Color color) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$label ($range)',
-            style: AppText.caption.copyWith(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                _pc(rate),
-                style: AppText.h1.copyWith(
-                  fontSize: 25,
-                  height: 1.1,
-                  color: AppColors.textMain,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-              Text(
-                '%',
-                style: AppText.caption.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textMute,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 1),
-          Text(
-            _delta(delta),
-            style: AppText.caption.copyWith(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: _deltaColor(delta),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (loading) {
       return _shell(
         child: SizedBox(
-          height: 96,
+          height: 92,
           child: Center(
             child: Text('불러오는 중…',
                 style: AppText.caption.copyWith(color: AppColors.textHint)),
@@ -116,69 +54,141 @@ class OvertimeHomeCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('전사 잔·특근',
-                  style: AppText.bodyStrong.copyWith(
-                      fontSize: 13.5, color: AppColors.headerNavy)),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0xFFD6E2F2)),
-                ),
-                child: Text('전사업부',
-                    style: AppText.caption.copyWith(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.headerNavy)),
+              Expanded(
+                child: Text('전사업부 잔·특근',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.h2),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
-                week.weekLabel.isEmpty
-                    ? ''
-                    : '${week.weekLabel}${week.range.isEmpty ? '' : ' · ${week.range}'}',
+                [
+                  if (week.weekLabel.isNotEmpty) week.weekLabel,
+                  if (week.range.isNotEmpty) week.range,
+                ].join(' · '),
                 style: AppText.caption
-                    .copyWith(fontSize: 11, color: AppColors.textHint),
+                    .copyWith(fontSize: 11.5, color: AppColors.textHint),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _metric('잔업률', t.overtime.range.isEmpty ? '월~토' : t.overtime.range,
-                  t.overtime.rate.total, week.deltaOf('overtime'), _ot),
-              const SizedBox(width: 12),
-              _metric('특근률', t.special.range.isEmpty ? '일' : t.special.range,
-                  t.special.rate.total, week.deltaOf('special'), _sp),
-            ],
+          const SizedBox(height: 14),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _metric('잔업', t.overtime.range.isEmpty ? '월~토' : t.overtime.range,
+                      t.overtime.rate.total, week.deltaOf('overtime'), _ot),
+                ),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 14),
+                  color: AppColors.borderSoft,
+                ),
+                Expanded(
+                  child: _metric('특근', t.special.range.isEmpty ? '일' : t.special.range,
+                      t.special.rate.total, week.deltaOf('special'), _sp),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: 14),
+          Container(height: 1, color: AppColors.borderSoft),
           const SizedBox(height: 10),
-          Text(
-            [
-              if (avail != null) '가용 ${_comma(avail)}명',
-              '${week.counts.divisions}개 사업부',
-              if (week.counts.up > 0) '전주 대비 ${week.counts.up}곳 증가',
-            ].join(' · '),
-            style: AppText.caption
-                .copyWith(fontSize: 11, color: AppColors.textMute),
-          ),
-          const SizedBox(height: 8),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('탭하면 사업부별로',
+              Expanded(
+                child: Text(
+                  [
+                    if (avail != null) '가용 ${_comma(avail)}명',
+                    '${week.counts.divisions}개 사업부',
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AppText.caption
-                      .copyWith(fontSize: 11, color: AppColors.textHint)),
-              const SizedBox(width: 3),
+                      .copyWith(fontSize: 12, color: AppColors.textMute),
+                ),
+              ),
               Icon(Icons.chevron_right_rounded,
-                  size: 15, color: AppColors.textHint),
+                  size: 18, color: AppColors.textMute),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _metric(
+      String label, String range, double? rate, double? delta, Color color) {
+    final v = (rate ?? 0).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration:
+                  BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(label,
+                style: AppText.captionStrong
+                    .copyWith(fontSize: 12, color: AppColors.textSub)),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(range,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption
+                      .copyWith(fontSize: 11, color: AppColors.textHint)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              rate == null ? '—' : (rate * 100).toStringAsFixed(1),
+              style: AppText.h1.copyWith(
+                  fontSize: 27, height: 1.05, color: AppColors.textMain),
+            ),
+            Text('%',
+                style: AppText.bodyStrong
+                    .copyWith(fontSize: 13, color: AppColors.textMute)),
+            if (delta != null && delta.abs() >= 0.0005) ...[
+              const SizedBox(width: 6),
+              Text(
+                '${delta > 0 ? '▲' : '▼'}${(delta.abs() * 100).toStringAsFixed(1)}%',
+                style: AppText.caption.copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: delta > 0
+                        ? AppColors.statusRed
+                        : AppColors.statusGreen),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: v),
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeOutCubic,
+            builder: (_, t, _) => LinearProgressIndicator(
+              value: t,
+              minHeight: 5,
+              backgroundColor: const Color(0xFFEDF0F4),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -193,21 +203,21 @@ class OvertimeHomeCard extends StatelessWidget {
   }
 
   Widget _shell({required Widget child, VoidCallback? onTap}) {
-    return Material(
-      color: const Color(0xFFEFF4FB),
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: const Color(0xFFD6E2F2)),
-          ),
-          child: child,
-        ),
+    final box = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.borderDefault),
       ),
+      child: child,
+    );
+    if (onTap == null) return box;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: box,
     );
   }
 }
