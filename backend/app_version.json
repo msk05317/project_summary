@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.46",
-  "latest_version_code": 69,
+  "latest_version": "2.3.47",
+  "latest_version_code": 70,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "잔·특근 화면을 다듬었습니다.\n\n- 잔업/특근·전체/직접/간접 전환이 바로 됩니다\n- 몇 곳이 평균보다 높은지 문장으로 표시",
+  "release_notes": "잔·특근 표시를 정리했습니다.\n\n- 홈 카드를 다른 카드와 같은 모양으로\n- 요일별 막대가 칸 밖으로 넘치던 것 수정\n- 전주 대비를 %p 대신 % 로 표기",
   "force_update": false
 }
