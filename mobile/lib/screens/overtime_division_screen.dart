@@ -112,12 +112,30 @@ class _OvertimeDivisionScreenState extends State<OvertimeDivisionScreen> {
       );
 
   // ── 요일별 막대 ─────────────────────────────────────────
+  //
+  // 값 라벨을 막대와 같은 칸에 넣었더니 90% 넘는 요일에서 칸 밖으로
+  // 넘쳤다(OVERFLOWED BY 5px). 라벨 줄 · 막대 줄 · 요일 줄을 따로 쌓는다.
+  // 주 평균은 선만 긋고 글자는 아래 범례로 뺀다 — 선 옆에 두면 제일 높은
+  // 막대와 겹친다.
+  static const double _plotH = 74;
+
   Widget _dayChart(OvertimeDivision d) {
     final days = d.byDay;
-    final max = days.fold<double>(
-        0, (p, e) => (e.rate ?? 0) > p ? (e.rate ?? 0) : p);
-    final top = max <= 0 ? 1.0 : (max * 1.25).clamp(0.05, 1.0);
+    var max = 0.0;
+    for (final e in days) {
+      if ((e.rate ?? 0) > max) max = e.rate ?? 0;
+    }
+    final top = max <= 0 ? 1.0 : (max * 1.18).clamp(0.05, 1.0);
     final otAvg = d.summary.overtime.rate.total;
+
+    Widget spread(List<Widget> cells) => Row(
+          children: [
+            for (var i = 0; i < cells.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(child: cells[i]),
+            ],
+          ],
+        );
 
     return _card(
       child: Column(
@@ -134,71 +152,73 @@ class _OvertimeDivisionScreenState extends State<OvertimeDivisionScreen> {
                       .copyWith(fontSize: 11, color: AppColors.textHint)),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
+
+          // 값 — 막대 위, 따로 한 줄
+          spread([
+            for (final e in days)
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(e.rate == null ? '' : ovPct(e.rate),
+                    maxLines: 1,
+                    style: AppText.caption.copyWith(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textSub)),
+              ),
+          ]),
+          const SizedBox(height: 3),
+
+          // 막대
           SizedBox(
-            height: 82,
+            height: _plotH,
             child: Stack(
               children: [
+                spread([for (final e in days) _bar(e, top)]),
+                // 평균선은 막대 위에 긋는다 — 뒤에 두면 막대에 가려 안 보인다
                 if (otAvg != null && otAvg > 0)
                   Positioned(
                     left: 0,
                     right: 0,
-                    bottom: (otAvg / top * 82).clamp(0.0, 82.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                              height: 1, color: const Color(0xFFB0BCCB)),
-                        ),
-                        const SizedBox(width: 4),
-                        Text('주 평균 ${ovPct(otAvg)}',
-                            style: AppText.caption.copyWith(
-                                fontSize: 9, color: AppColors.textHint)),
-                      ],
-                    ),
+                    bottom: (otAvg / top * _plotH).clamp(0.0, _plotH - 1),
+                    child: Container(height: 1.2, color: const Color(0xFF64748B)),
                   ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (var i = 0; i < days.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 6),
-                      Expanded(child: _bar(days[i], top)),
-                    ],
-                  ],
-                ),
               ],
             ),
           ),
           const SizedBox(height: 5),
-          Row(
-            children: [
-              for (var i = 0; i < days.length; i++) ...[
-                if (i > 0) const SizedBox(width: 6),
-                Expanded(
-                  child: Text(days[i].label,
-                      textAlign: TextAlign.center,
-                      style: AppText.caption.copyWith(
-                          fontSize: 10,
-                          fontWeight: days[i].isSunday
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: days[i].isSunday
-                              ? kSpColor
-                              : AppColors.textHint)),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 9),
-          Row(
+
+          // 요일
+          spread([
+            for (final e in days)
+              Text(e.label,
+                  textAlign: TextAlign.center,
+                  style: AppText.caption.copyWith(
+                      fontSize: 10,
+                      fontWeight:
+                          e.isSunday ? FontWeight.w700 : FontWeight.w500,
+                      color: e.isSunday ? kSpColor : AppColors.textHint)),
+          ]),
+          const SizedBox(height: 10),
+
+          Wrap(
+            spacing: 14,
+            runSpacing: 5,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _key(kOtColor, '잔업 (월~토)'),
-              const SizedBox(width: 14),
               _key(kSpColor, '특근 (일)'),
-              const Spacer(),
-              Text('— 은 해당 없음',
-                  style: AppText.caption
-                      .copyWith(fontSize: 10, color: AppColors.textHint)),
+              if (otAvg != null && otAvg > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 11, height: 1, color: const Color(0xFFB0BCCB)),
+                    const SizedBox(width: 5),
+                    Text('주 평균 ${ovPct(otAvg)}',
+                        style: AppText.caption.copyWith(
+                            fontSize: 10.5, color: AppColors.textMute)),
+                  ],
+                ),
             ],
           ),
         ],
@@ -207,27 +227,19 @@ class _OvertimeDivisionScreenState extends State<OvertimeDivisionScreen> {
   }
 
   Widget _bar(OvDay d, double top) {
-    final h = ((d.rate ?? 0) / top * 82).clamp(0.0, 82.0);
+    final h = d.rate == null
+        ? 2.0
+        : ((d.rate! / top) * _plotH).clamp(2.0, _plotH);
     final color = d.isSunday ? kSpColor : kOtColor;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        if (d.rate != null)
-          Text(ovPct(d.rate),
-              style: AppText.caption.copyWith(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSub,
-                  fontFeatures: const [FontFeature.tabularFigures()])),
-        const SizedBox(height: 2),
-        Container(
-          height: d.rate == null ? 2 : h,
-          decoration: BoxDecoration(
-            color: d.rate == null ? AppColors.statusGray : color,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-          ),
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        height: h,
+        decoration: BoxDecoration(
+          color: d.rate == null ? AppColors.statusGray : color,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
         ),
-      ],
+      ),
     );
   }
 
