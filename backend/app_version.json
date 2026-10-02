@@ -1,8 +1,8 @@
 {
-  "latest_version": "2.3.49",
-  "latest_version_code": 72,
+  "latest_version": "2.3.50",
+  "latest_version_code": 73,
   "download_url": "/app/download",
   "apk_url": "/app/download",
-  "release_notes": "매입 누적이 어디서 온 값인지 보입니다.\n\n- 달들을 더한 값이면 '달 합산' 이라고 붙습니다\n- 엑셀 누적 줄이 있으면 그 값을 그대로 씁니다",
+  "release_notes": "블룸 계획 대비 실적을 달별로 봅니다.\n\n- 9월 · 10월 눌러 지난 달도 봅니다\n- 제목의 달이 자료와 어긋나던 것 수정\n- 매출은 그 시트의 달을 같이 적습니다",
   "force_update": false
 }
