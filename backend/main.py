@@ -14274,6 +14274,29 @@ def admin_delete_model(project_key: str, model_id: str, _admin: int = Depends(ge
     return {"ok": True, "project_key": _key, "removed": before - after, "total": after}
 
 
+#: 화면에서도 고치고 엑셀로도 들어오는 칸. 둘이 부딪히는 자리다.
+_SAVE_GUARDED = ("price", "material_cost", "po_qty", "shipped_qty")
+
+
+def _save_untouched(f, sent, base) -> bool:
+    """보낸 값이 '열 때 받은 값' 과 같은가 = 사람이 안 건드린 칸인가.
+
+    화면은 숫자를 '1,117' 처럼 쉼표를 넣어 보여주고 보낼 때 떼는데, 떼는
+    자리가 한 군데가 아니라서 글자로 올 수도 숫자로 올 수도 있다. 숫자로
+    읽히면 숫자끼리, 아니면 글자끼리 본다.
+    """
+    def num(v):
+        try:
+            return float(str(v if v is not None else "").replace(",", "").strip() or 0)
+        except (TypeError, ValueError):
+            return None
+
+    a, b = num(sent), num(base)
+    if a is not None and b is not None:
+        return abs(a - b) < 0.005
+    return str(sent or "").strip() == str(base or "").strip()
+
+
 @app.put("/admin/projects/{project_key}/models")
 def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depends(get_admin_session)):
     """admin용 모델 목록 저장 (전체 교체) - dev_type/process/weekly_plan/status_note 보존"""
@@ -14287,6 +14310,11 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
     raw_models = payload.get("models") or []
     if not isinstance(raw_models, list):
         raise HTTPException(status_code=400, detail="models는 배열이어야 합니다.")
+
+    # 화면이 열릴 때 받아 둔 값. 없으면(옛 화면) 예전처럼 보낸 값을 다 쓴다.
+    base_map = payload.get("base")
+    if not isinstance(base_map, dict):
+        base_map = {}
 
     data = _load_models()
     projects = data.setdefault("projects", {})
@@ -14355,6 +14383,23 @@ def admin_put_project_models(project_key: str, payload: dict, _admin: int = Depe
             # 이슈와 별개로 자유롭게 적는 비고(메모)
             "note": str(m.get("note") or ""),
         })
+        # 화면을 연 뒤 다른 곳(엑셀 업로드·주차 입력)에서 들어간 값을 지킨다.
+        #
+        # 저장은 화면이 들고 있던 목록을 통째로 보낸다. 그 사본은 화면을 열
+        # 때 받은 것이라, 그 사이에 엑셀로 들어온 PO·판가를 모른다. 사람이
+        # 안 건드린 칸까지 보낸 값으로 쓰면 그게 옛 값으로 되돌아간다.
+        #
+        # 판가는 여기서 되돌려야 한다 — 아래 _apply_price_change 가
+        # entry 와 old 를 비교하므로, 되돌려 두면 '안 바뀐 것' 이 되어
+        # 쓸데없는 판가 구간이 안 생긴다.
+        _b = base_map.get(mid)
+        if isinstance(_b, dict):
+            for _f in _SAVE_GUARDED:
+                if _f not in _b or _f not in old:
+                    continue
+                if _save_untouched(_f, m.get(_f), _b.get(_f)):
+                    entry[_f] = old[_f]
+
         # 이 화면에서 편집하지 않는 묶음은 서버에 있는 것을 그대로 둔다.
         #
         # 예전에는 보낸 값을 먼저 봤다. 목록 화면은 열 때 받아 둔 사본을

@@ -6103,6 +6103,21 @@ window.renderAdminV2ByDivision = function(){
   document.head.appendChild(style);
 
   window._modelsData = [];
+  // 화면을 열 때 받은 값. 저장할 때 같이 보내서 '사람이 안 건드린 칸' 을
+  // 서버가 알아보게 한다 — 그래야 그 사이 엑셀로 들어온 값이 안 지워진다.
+  window._modelsBase = {};
+  window._mdlSnapBase = function(list, reset) {
+    var F = ['price', 'material_cost', 'po_qty', 'shipped_qty'];
+    if (reset) window._modelsBase = {};
+    var out = window._modelsBase || (window._modelsBase = {});
+    (list || []).forEach(function(m) {
+      if (!m || !m.id) return;
+      var o = {};
+      F.forEach(function(f) { o[f] = (m[f] === undefined || m[f] === null) ? 0 : m[f]; });
+      out[m.id] = o;
+    });
+    return out;
+  };
   var _projTypes = [];
 
   function loadProjectTypes(projectKey) {
@@ -7381,12 +7396,14 @@ window.renderAdminV2ByDivision = function(){
         var fresh = (d && d.models) || [];
         if (mode === 'all') {
           window._modelsData = fresh;
+          window._mdlSnapBase(fresh, true);
         } else if (mode === 'one' && modelId) {
           var f = fresh.filter(function(x) { return x.id === modelId; })[0];
           var list = window._modelsData || [];
           for (var i = 0; i < list.length; i++) {
             if (list[i].id === modelId) { if (f) list[i] = f; break; }
           }
+          if (f) window._mdlSnapBase([f]);
         }
         window._mdlAlerts = (d && d.alerts) || {};
         if (box.querySelector('.mdl-proc-head')) return;  // 아직 Process 입력 화면
@@ -7826,6 +7843,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     }).then(function(r) { return r.json(); })
       .then(function(d) {
         window._modelsData = (d && d.models) || [];
+        window._mdlSnapBase(window._modelsData, true);
         window._mdlDidDelete = false;
         // 지연 여부는 서버가 앱과 같은 규칙으로 계산해 따로 준다.
         // 모델 안에 섞여 있으면 저장할 때 models.json 에 눌러앉는다.
@@ -7910,6 +7928,7 @@ if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ models: window._modelsData, price_mode: mode,
+                               base: window._modelsBase || {},
                                allow_delete: !!window._mdlDidDelete })
       });
     };
