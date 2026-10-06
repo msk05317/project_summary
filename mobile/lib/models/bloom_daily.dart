@@ -262,6 +262,15 @@ class BloomDailyBoard {
   final String title;
   final String reportDate;
   final String fileName;
+
+  /// 이 보드가 어느 달 것인가 ('2026-10'). 서버가 날짜로 가려서 준다.
+  final String month;
+
+  /// 올라와 있는 달 전부 ('2026-09', '2026-10'). 달을 바꿔 볼 수 있다.
+  final List<String> months;
+
+  /// 어느 프로젝트의 보드인가. 달을 바꿀 때 다시 부르려면 필요하다.
+  final String projectKey;
   final List<String> dates;
   final List<BloomItem> items;
   final List<BloomNote> notes;
@@ -276,6 +285,9 @@ class BloomDailyBoard {
     this.title = '',
     this.reportDate = '',
     this.fileName = '',
+    this.month = '',
+    this.months = const [],
+    this.projectKey = '',
     this.dates = const [],
     this.items = const [],
     this.notes = const [],
@@ -294,6 +306,11 @@ class BloomDailyBoard {
       title: _s(j['title']),
       reportDate: _s(j['report_date']),
       fileName: _s(j['file_name']),
+      month: _s(j['month']),
+      months: ((j['months'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      projectKey: _s(j['project_key']),
       dates: ((j['dates'] as List?) ?? const []).map((e) => e.toString()).toList(),
       items: ((j['items'] as List?) ?? const [])
           .whereType<Map>()
@@ -307,6 +324,14 @@ class BloomDailyBoard {
       prev: prevRaw is Map ? BloomDaySummary.fromJson(prevRaw) : null,
       money: BloomMoney.fromJson(j['money']),
     );
+  }
+
+  /// '2026-10' → '10월'. 못 읽으면 빈 문자열.
+  static String monthLabel(String ym) {
+    final p = ym.split('-');
+    if (p.length < 2) return '';
+    final m = int.tryParse(p[1]);
+    return m == null ? '' : '$m월';
   }
 
   /// 오늘 할 일이 있는 품목만, 많은 순.

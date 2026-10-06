@@ -53,13 +53,17 @@ class BriefingApp extends StatefulWidget {
   State<BriefingApp> createState() => _BriefingAppState();
 }
 
-class _BriefingAppState extends State<BriefingApp> {
+class _BriefingAppState extends State<BriefingApp>
+    with WidgetsBindingObserver {
   // 업데이트 안내 다이얼로그를 띄울 때 사용할 글로벌 네비 키.
   final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
+  DateTime? _lastUpdateCheck;   // 다시 볼 때마다 묻지 않으려고
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 첫 프레임이 그려진 직후, 잠깐 뒤에 업데이트 안내를 시도합니다.
     FcmService.onUpdateNotificationTap = (data) async {
       await Future.delayed(const Duration(milliseconds: 500));
@@ -71,14 +75,45 @@ class _BriefingAppState extends State<BriefingApp> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(seconds: 1));
-      final ctx = _navKey.currentContext;
-      if (ctx != null && ctx.mounted) {
-        if (FcmService.pendingOpenData != null) {
-          FcmService.pendingOpenData = null;
-        }
-        await AppUpdater.instance.checkAndPromptUpdate(ctx);
-      }
+      await _tryUpdateCheck();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 켤 때 한 번만 보던 것을 다시 볼 때도 본다. 앱을 끄지 않고 계속
+  // 쓰는 기기(패드가 그렇다)는 새 버전이 나와도 영영 몰랐다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_tryUpdateCheck());
+    }
+  }
+
+  Future<void> _tryUpdateCheck() async {
+    if (_checkingUpdate) return;
+    // 잠깐 다른 앱 보고 온 것까지 물으면 성가시다 — 30분에 한 번.
+    final last = _lastUpdateCheck;
+    if (last != null &&
+        DateTime.now().difference(last) < const Duration(minutes: 30)) {
+      return;
+    }
+    _checkingUpdate = true;
+    try {
+      final ctx = _navKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      if (FcmService.pendingOpenData != null) {
+        FcmService.pendingOpenData = null;
+      }
+      _lastUpdateCheck = DateTime.now();
+      await AppUpdater.instance.checkAndPromptUpdate(ctx);
+    } finally {
+      _checkingUpdate = false;
+    }
   }
 
   @override

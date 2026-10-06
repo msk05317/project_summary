@@ -183,16 +183,29 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
         child: child,
       );
 
-  Widget _head(String title, String right) => Row(
+  Widget _head(String title, String right, {Widget? tag}) => Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
           Text(title,
               style: const TextStyle(
                   fontSize: 14.5, fontWeight: FontWeight.w800, color: _kT1)),
+          if (tag != null) ...[const SizedBox(width: 6), tag],
           const Spacer(),
           Text(right, style: const TextStyle(fontSize: 11, color: _kT3)),
         ],
+      );
+
+  // 제목 옆 작은 꼬리표. 지금은 누적이 달 합산일 때만 붙는다.
+  Widget _tag(String s) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F4F7),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(s,
+            style: const TextStyle(
+                fontSize: 10.5, fontWeight: FontWeight.w700, color: _kT3)),
       );
 
   // ------------------------------------------------------------ 히어로
@@ -202,7 +215,8 @@ class _PurchaseStatusCardState extends State<PurchaseStatusCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _head('${m.label} 매입', m.isTotal ? m.range : ''),
+          _head('${m.label} 매입', m.isTotal ? m.range : '',
+              tag: m.isSummed ? _tag('달 합산') : null),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,

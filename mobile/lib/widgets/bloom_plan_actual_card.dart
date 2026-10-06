@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../design/colors.dart';
 import '../models/bloom_daily.dart';
+import '../services/bloom_service.dart';
 
 const _kGood = Color(0xFF059669);
 const _kWarn = Color(0xFFEA580C);
@@ -61,6 +62,59 @@ String _itemName(String s) => s.replaceAll(RegExp(r'\s*\(\d+\s*품목\)\s*$'), '
 
 const List<String> _kGroups = ['NCT', '조립', '출하'];
 
+/// 달 고르는 줄 — '9월 | 10월'.
+class _MonthBar extends StatelessWidget {
+  final List<String> months;
+  final String picked;
+  final bool busy;
+  final ValueChanged<String> onPick;
+  const _MonthBar({
+    required this.months,
+    required this.picked,
+    required this.busy,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 28,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: months.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final ym = months[i];
+          final on = ym == picked;
+          return InkWell(
+            onTap: busy ? null : () => onPick(ym),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: on ? _kNavy : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: on ? _kNavy : AppColors.borderDefault),
+              ),
+              child: Text(
+                BloomDailyBoard.monthLabel(ym),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Colors.white : AppColors.textSub,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+
 class BloomPlanActualCard extends StatefulWidget {
   final BloomDailyBoard board;
   const BloomPlanActualCard({super.key, required this.board});
@@ -73,14 +127,61 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
   bool _daily = false;
   ScrollController? _chips;
 
+  /// 지난 달을 골랐을 때 받아온 보드. 이번 달이면 null.
+  BloomDailyBoard? _other;
+  bool _loading = false;
+
   @override
   void dispose() {
     _chips?.dispose();
     super.dispose();
   }
+
+  @override
+  void didUpdateWidget(covariant BloomPlanActualCard old) {
+    super.didUpdateWidget(old);
+    // 당겨서 새로고침하면 이번 달이 새로 온다 — 보던 달은 그대로 두되,
+    // 이번 달을 보고 있었으면 새 것으로 바꾼다.
+    if (_other == null) return;
+    if (_other!.month == widget.board.month) setState(() => _other = null);
+  }
+
   String? _day;
 
-  BloomDailyBoard get b => widget.board;
+  BloomDailyBoard get b => _other ?? widget.board;
+
+  /// 날짜 칩 줄을 처음부터 다시 그리게 한다 (달을 바꾸면 날짜가 달라진다).
+  void _resetChips() {
+    _chips?.dispose();
+    _chips = null;
+  }
+
+  /// 달을 바꾼다. 이번 달로 돌아오면 부모가 준 보드를 그대로 쓴다.
+  Future<void> _pickMonth(String ym) async {
+    if (ym == b.month || _loading) return;
+    if (ym == widget.board.month) {
+      setState(() {
+        _other = null;
+        _day = null;
+        _resetChips();
+      });
+      return;
+    }
+    setState(() => _loading = true);
+    final got = await BloomService.board(
+      projectKey_: widget.board.projectKey.isEmpty
+          ? BloomService.projectKey
+          : widget.board.projectKey,
+      month: ym,
+    );
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _day = null;
+      _resetChips();
+      if (got.hasBoard) _other = got;
+    });
+  }
 
   /// 공정 묶음 하나의 월 합계 (품목 안에서 같은 묶음이 둘일 수도 있다)
   static ({int plan, int actual, int? ptd}) _sum(BloomItem it, String g) {
@@ -166,6 +267,18 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
               child: Text(_asOf(),
                   style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
             ),
+          // 올라와 있는 달이 둘 이상이면 골라 볼 수 있게. 달이 바뀌었다고
+          // 지난 달이 없어지는 게 아니다.
+          if (widget.board.months.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _MonthBar(
+                months: widget.board.months,
+                picked: b.month,
+                busy: _loading,
+                onPick: _pickMonth,
+              ),
+            ),
           const SizedBox(height: 12),
           if (_daily) _dailyView() else _monthView(),
         ],
@@ -173,14 +286,27 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
     );
   }
 
+  /// 이 카드가 보여주는 달 ('10'). 보드가 말하는 달을 그대로 쓴다.
+  ///
+  /// 예전에는 '금액 실적' 시트의 달을 먼저 썼다. 그 시트는 9월인데 일
+  /// 보고는 10월이라, 제목은 '9월 계획 대비 실적' 인데 그 밑에는
+  /// '10/2 보고' 라고 적히는 일이 생겼다. 둘은 서로 다른 것이다.
   String _monthOf() {
-    final m = b.money?.month ?? '';
-    if (m.isNotEmpty) return m;
+    final lab = BloomDailyBoard.monthLabel(b.month);
+    if (lab.isNotEmpty) return lab.replaceAll('월', '');
     // 10/1 보고는 9/30 실적 — 달은 보고일이 아니라 실적 날짜로 잡는다
     final d = _lastActual() ??
-        (b.reportDate.isNotEmpty ? b.reportDate : (b.dates.isNotEmpty ? b.dates.last : ''));
+        (b.dates.isNotEmpty ? b.dates.last : b.reportDate);
     final p = d.split('-');
     return p.length == 3 ? '${int.tryParse(p[1]) ?? p[1]}' : '';
+  }
+
+  /// 금액 실적 시트의 달이 이 카드의 달과 다른가. 다르면 그 달을 적는다.
+  String _moneyLabel() {
+    final mm = (b.money?.month ?? '').trim();
+    if (mm.isEmpty) return '매출';
+    final cur = _monthOf();
+    return (cur.isEmpty || mm == cur) ? '매출' : '$mm월 매출';
   }
 
   // ── 월간 ────────────────────────────────────────────────────
@@ -202,7 +328,7 @@ class _BloomPlanActualCardState extends State<BloomPlanActualCard> {
           if (money != null) ...[
             Expanded(
               child: _Kpi(
-                label: '매출',
+                label: _moneyLabel(),
                 value: _man(money.doneUsd),
                 of: '/ ${_man(money.planUsd)}',
                 pct: money.pct,

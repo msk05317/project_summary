@@ -62,6 +62,9 @@ class PurchaseMonth {
   final String month;   // '2026-08' 또는 'total'
   final String label;   // '8월' / '누적'
   final String range;   // 누적일 때 '4월~8월'
+  /// 'sheet' = 엑셀 누적 줄에 적힌 값, 'sum' = 달들을 더한 값.
+  /// 달별 자료가 덜 올라왔으면 'sum' 은 실제보다 작다 — 화면이 그걸 말해야 한다.
+  final String source;
   final double revenue;
   final double buy;
   final double paid;
@@ -74,6 +77,7 @@ class PurchaseMonth {
     required this.month,
     required this.label,
     required this.range,
+    this.source = 'sum',
     required this.revenue,
     required this.buy,
     required this.paid,
@@ -85,6 +89,9 @@ class PurchaseMonth {
 
   bool get isTotal => month == 'total';
 
+  /// 누적이 달들을 더해서 만들어진 값인가.
+  bool get isSummed => isTotal && source != 'sheet';
+
   /// 매입/매출 비율 (매출이 없으면 null)
   double? get buyOverRevenue =>
       revenue > 0 ? (buy / revenue * 100) : null;
@@ -93,6 +100,7 @@ class PurchaseMonth {
         month: '${j['month'] ?? ''}',
         label: '${j['label'] ?? ''}',
         range: '${j['range'] ?? ''}',
+        source: '${j['source'] ?? 'sum'}',
         revenue: PurchaseItem._d(j['revenue']),
         buy: PurchaseItem._d(j['buy']),
         paid: PurchaseItem._d(j['paid']),
