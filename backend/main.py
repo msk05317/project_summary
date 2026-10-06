@@ -28468,8 +28468,22 @@ def admin_weekly_template(project_key: str, month: str = "", months: int = 1,
 import plan_export as _pex
 
 
+@app.get("/admin/projects/{project_key}/plan-export/months")
+def admin_plan_export_months(project_key: str, year: int = 0,
+                             _admin: int = Depends(get_admin_session)):
+    """그 해에 주차 숫자가 적힌 달. 고르는 창의 기본 체크에 쓴다."""
+    import datetime as _dt
+
+    key = _model_key_alias((project_key or "").strip())
+    y = int(year or 0) or _dt.date.today().year
+    proj = (_load_models().get("projects") or {}).get(key) or {}
+    models = [m for m in (proj.get("models") or []) if isinstance(m, dict)]
+    return {"ok": True, "year": y,
+            "has": _pex.months_with_weeks(models, y)}
+
+
 @app.get("/admin/projects/{project_key}/plan-export")
-def admin_plan_export(project_key: str, year: int = 0, months: str = "",
+def admin_plan_export(project_key: str, year: int = 0, months: str = None,
                       _admin: int = Depends(get_admin_session)):
     """그 프로젝트 한 해치 주차별 계획·실적 엑셀.
 
@@ -28495,10 +28509,14 @@ def admin_plan_export(project_key: str, year: int = 0, months: str = "",
     except Exception:
         label = key
 
-    want = [x.strip() for x in (months or "").split(",") if x.strip()]
+    # months 를 아예 안 보내면 자동(숫자 있는 달). 비워서 보내면 전부 접는다.
+    if months is None:
+        want = None
+    else:
+        want = [x.strip() for x in months.split(",") if x.strip()]
     data = _pex.build_year_export(label, y, models,
                                   sheet_name=key.replace("-", "_").upper(),
-                                  expand=want or None)
+                                  expand=want)
     fname = "%s_%d_주차별계획.xlsx" % (label or key, y)
     return Response(
         content=data,

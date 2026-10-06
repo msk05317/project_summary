@@ -236,7 +236,29 @@ ok("get_admin_session" in _body, "라우트에 관리자 확인이 없다")
 
 AV2 = (BACK / "admin_v2.html").read_text(encoding="utf-8")
 ok("plan-export?year=" in AV2, "화면이 연간 내보내기를 안 부른다")
-ok("months: str" in SRC, "라우트가 펼칠 달을 안 받는다")
+ok("months: str = None" in SRC,
+   "months 기본값이 None 이 아니다 — '안 보냄' 과 '비워서 보냄' 이 안 갈린다")
+ok('@app.get("/admin/projects/{project_key}/plan-export/months")' in SRC,
+   "어느 달에 숫자가 있는지 알려주는 자리가 없다")
+
+# 전부 해제하고 받으면 **전부 접혀야** 한다. 서버가 알아서 고르면
+# 사람이 전부 해제한 뜻과 달라진다.
+d3 = pe.build_year_export("T", YEAR, MODELS, sheet_name="S", expand=[])
+w3 = load_workbook(BytesIO(d3))["S"]
+h3 = hidden_cols(w3)
+for m in range(1, 13):
+    mon = "%d-%02d" % (YEAR, m)
+    ok(set(week_cols_of(w3, mon)) <= h3, "전부 해제했는데 %s 가 펴져 있다" % mon)
+
+# 고르는 창
+for frag, why in [
+    ("_yrExport", "고르는 창이 없다"),
+    ("plan-export/months?year=", "창이 '자료 있음' 을 안 물어본다"),
+    ("&months=", "창이 고른 달을 안 보낸다"),
+    ("yr-all", "전체 선택이 없다"),
+    ("yr-none", "전체 해제가 없다"),
+]:
+    ok(frag in AV2, why)
 ok("wp-year" in AV2, "연간 내보내기 버튼이 없다")
 
 
