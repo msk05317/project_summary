@@ -6102,6 +6102,49 @@ window.renderAdminV2ByDivision = function(){
   ].join(' ');
   document.head.appendChild(style);
 
+  // 못 읽은 줄 — 접어 두되 펼칠 수 있게.
+  //
+  // 세 줄만 보여주고 나머지를 감추면, 엑셀 모양이 바뀌어 한 블록이 통째로
+  // 안 읽혀도 '그러려니' 하고 넣게 된다. 파서가 적어 둔 말 그대로
+  // '조용히 빠진 줄이 제일 위험하다'.
+  window._impWarnBlock = function(warns, cls) {
+    var w = warns || [];
+    if (!w.length) return '';
+    function esc(s) {
+      return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    var id = 'impw-' + Math.random().toString(36).slice(2, 9);
+    var head = '<span class="' + (cls || 'warn') + '">못 읽은 줄 ' + w.length + '개</span>';
+    if (w.length <= 3) {
+      return '<br>' + head + ' — ' + esc(w.join(' / '));
+    }
+    return '<br>' + head + ' — ' + esc(w.slice(0, 3).join(' / ')) +
+      ' <button type="button" class="imp-warn-more" data-for="' + id + '"' +
+        ' style="border:0;background:none;color:#1D4ED8;font-size:12px;' +
+        'font-weight:700;cursor:pointer;padding:0 2px;text-decoration:underline">' +
+        '나머지 ' + (w.length - 3) + '개 보기</button>' +
+      '<div id="' + id + '" hidden style="margin:6px 0 0;padding:8px 10px;' +
+        'background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;' +
+        'max-height:200px;overflow:auto;font-size:11.5px;line-height:1.75">' +
+        w.map(function(x, i) {
+          return '<div>' + (i + 1) + '. ' + esc(x) + '</div>';
+        }).join('') +
+      '</div>';
+  };
+
+  // 버튼이 다시 그려져도 따라붙게 문서 한 곳에서 받는다
+  document.addEventListener('click', function(e) {
+    var b = e.target && e.target.closest && e.target.closest('.imp-warn-more');
+    if (!b) return;
+    var box = document.getElementById(b.dataset.for);
+    if (!box) return;
+    box.hidden = !box.hidden;
+    b.textContent = box.hidden ? ('나머지 ' + (box.children.length - 3) + '개 보기')
+                               : '접기';
+  });
+
   window._modelsData = [];
   // 화면을 열 때 받은 값. 저장할 때 같이 보내서 '사람이 안 건드린 칸' 을
   // 서버가 알아보게 한다 — 그래야 그 사이 엑셀로 들어온 값이 안 지워진다.
@@ -12967,8 +13010,7 @@ window._ovProjectKey = function() {
       ((_imp.kept||[]).length?'<br>그대로 두는 달: '+_imp.kept.map(ymLabel).join(' · '):'')+
       (_imp.year?'<br>연도 <b>'+esc(_imp.year)+'</b> 로 읽었습니다 — 다르면 위 연도 칸을 고치고 다시 읽어 주세요.':'')+
       (_imp.has_summary?'<br>누적(합계·해외·국내) 줄도 찾았습니다 — 넣으면 누적 탭에 <b>시트값</b>으로 들어갑니다.':'')+
-      (w.length?'<br><span class="pu-warn">못 읽은 줄 '+w.length+'개 — '+
-        esc(w.slice(0,3).join(' / '))+(w.length>3?' …':'')+'</span>':'')+
+      window._impWarnBlock(w, 'pu-warn')+
       '<div class="row"><button type="button" class="pu-btn pri" id="pu-apply">이대로 넣기</button>'+
       '<button type="button" class="pu-btn" id="pu-cancel">취소</button>'+
       ((_imp.sheets||[]).length>1
@@ -13396,10 +13438,9 @@ window._ovProjectKey = function() {
     function ck(l,v){ return '<div class="ck"><span>'+l+'</span><span>'+v+'</span></div>'; }
     return '<div class="ot-imp"><b>'+esc(_imp.file)+'</b> · 사업부 시트 <b>'+
       (_imp.divisions||[]).length+'장</b> · 확인사항 '+(_imp.issues||[]).length+'건 · '+
-      '못 읽은 줄 <b>'+w.length+'개</b> · <b>'+esc(_imp.week)+
+      '<b>'+esc(_imp.week)+
       (_imp.replaced?' 을 덮어씁니다':' 을 새로 넣습니다')+'</b>'+
-      (w.length?'<br><span class="warn">'+esc(w.slice(0,3).join(' / '))+
-        (w.length>3?' 외 '+(w.length-3)+'건':'')+'</span>':'')+
+      window._impWarnBlock(w, 'warn')+
       '<div class="cols"><div>'+
         ck('실제 가용인원', n0(av))+
         ck('잔업 인원', n0((ot.people||{}).total))+
