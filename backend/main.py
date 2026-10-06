@@ -15528,6 +15528,54 @@ async def admin_auto_import_apply(
             "projects": sorted(touched), "skipped": len(drop)}
 
 
+@app.post("/admin/projects/{project_key}/models/alias")
+def admin_add_model_alias(project_key: str,
+                          model_id: str = Form(...),
+                          alias: str = Form(...),
+                          _admin: int = Depends(get_admin_session)):
+    """'이 품번도 그 모델이다' 를 적어 둔다.
+
+    엑셀에 적힌 품번이 우리 쪽 등록 품번과 다를 때 쓴다. 안 적어 두면
+    올릴 때마다 같은 물건이 새 모델로 하나씩 더 생긴다.
+    """
+    key = _model_key_alias((project_key or "").strip())
+    want = str(alias or "").strip()
+    mid = str(model_id or "").strip()
+    if not want or not mid:
+        raise HTTPException(status_code=400, detail="품번과 모델을 지정해 주세요.")
+
+    data = _load_models()
+    proj = (data.get("projects") or {}).get(key)
+    if not proj:
+        raise HTTPException(status_code=404, detail="사업부를 찾지 못했습니다.")
+
+    target, taken = None, None
+    for m in proj.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("id") or "") == mid:
+            target = m
+        # 이미 등록된 품번을 남의 별칭으로 붙이면 둘 다 그 줄로 끌려간다
+        if str(m.get("id") or "").strip() == want or \
+                str(m.get("part_number") or "").strip() == want:
+            taken = m
+    if target is None:
+        raise HTTPException(status_code=404, detail="그 모델을 찾지 못했습니다.")
+    if taken is not None and taken is not target:
+        raise HTTPException(
+            status_code=400,
+            detail="%s 는 이미 등록된 모델입니다. 별칭 대신 그 줄을 지워 주세요."
+                   % want)
+
+    alts = [str(a).strip() for a in (target.get("aliases") or []) if str(a).strip()]
+    if want not in alts:
+        alts.append(want)
+    target["aliases"] = alts
+    _save_models(data)
+    print(f"[alias] {key} {mid} ← {want}")
+    return {"ok": True, "model_id": mid, "aliases": alts}
+
+
 @app.post("/admin/projects/{project_key}/plan-file/preview")
 async def admin_plan_file_preview(
     project_key: str,

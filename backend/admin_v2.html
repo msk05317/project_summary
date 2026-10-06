@@ -9264,6 +9264,28 @@ window._ovProjectKey = function() {
         function val(v) { return (v === null || v === undefined || v === '') ? '—' : v; }
         var html = '';
 
+        // 새 모델로 들어가려는 줄. 사실은 기존 모델의 다른 품번인 경우가
+        // 있다 (복사본 엑셀의 853-800575-009 = 우리 714-025898-009).
+        // 저장하기 전 이 자리에서 묶어야 한다 — 저장하고 나면 같은 물건이
+        // 두 줄이 되고, 보드 합계가 두 번 세어진다.
+        function _pfAliasPick(name) {
+          var list = (window._modelsData || []).map(function(m) {
+            return '<option value="' + _pfE(m.id) + '">' + _pfE(m.id) +
+                   (m.dev_type ? ' · ' + _pfE(m.dev_type) : '') + '</option>';
+          }).join('');
+          if (!list) return '';
+          return '<div style="margin:5px 0 0 2px;display:flex;align-items:center;' +
+            'gap:6px;flex-wrap:wrap">' +
+            '<span style="color:#15803D">기존 모델의 다른 품번인가요?</span>' +
+            '<select class="pf-alias-sel" data-name="' + _pfE(name) + '"' +
+              ' style="height:28px;border:1px solid #BBF7D0;border-radius:6px;' +
+              'font-size:12px;max-width:230px">' +
+              '<option value="">— 새 모델로 둔다 —</option>' + list + '</select>' +
+            '<button type="button" class="ov-btn pf-alias-go" data-name="' +
+              _pfE(name) + '" style="height:28px;font-size:12px">같은 모델로 묶기</button>' +
+            '</div>';
+        }
+
         var cr = d.model_created || [];
         if (cr.length) {
           html += '<div style="margin:14px 16px 0;padding:10px 12px;background:#F0FDF4;' +
@@ -9279,6 +9301,7 @@ window._ovProjectKey = function() {
                      (m.part_number ? ' <span style="color:#15803D">(' +
                         _pfE(m.part_number) + ')</span>' : '') +
                      (bits ? ' <span style="color:#166534">— ' + _pfE(bits) + '</span>' : '') +
+                     _pfAliasPick(m.name) +
                      '</li>';
             }).join('') + '</ul></div>';
         }
@@ -9348,6 +9371,36 @@ window._ovProjectKey = function() {
         }
         return html;
     }
+
+    // 고른 파일 하나로 미리보기를 다시 연다 (별칭을 묶은 뒤).
+    window._pfRerun = function(pk, f) {
+      var msel = document.getElementById('wp-month-sel');
+      var btn = document.getElementById('pf-upload');
+      var fd = new FormData();
+      fd.append('file', f);
+      fd.append('month', (msel && msel.value) || '');
+      if (btn) { btn.disabled = true; btn.textContent = '읽는 중...'; }
+      fetch('/admin/projects/' + encodeURIComponent(pk) + '/plan-file/preview',
+            { method: 'POST', credentials: 'same-origin', body: fd })
+        .then(function(r) {
+          return r.json().then(function(j) { return { ok: r.ok, j: j || {} }; });
+        })
+        .then(function(x) {
+          if (btn) { btn.disabled = false; btn.textContent = '📁 엑셀 올리기'; }
+          if (!x.ok || !x.j.ok) {
+            alert('읽기 실패: ' + (x.j.detail || '알 수 없는 오류'));
+            return;
+          }
+          if (x.j.kind === 'status') { _pfStatusImport(pk, f, x.j.sheets, btn); return; }
+          if (x.j.kind === 'process') { _pfProcess(pk, f, x.j); return; }
+          if (x.j.kind === 'models') { _pfModelsOnly(pk, f, x.j); return; }
+          _pfPreview(pk, f, x.j);
+        })
+        .catch(function(e) {
+          if (btn) { btn.disabled = false; btn.textContent = '📁 엑셀 올리기'; }
+          alert('읽기 실패: ' + e.message);
+        });
+    };
 
     function _pfPreview(pk, f, d) {
       var weeks = d.weeks || [];
@@ -9471,6 +9524,45 @@ window._ovProjectKey = function() {
       function close() { back.remove(); }
       back.querySelector('#pf-cancel').onclick = close;
       back.onclick = function(e) { if (e.target === back) close(); };
+      // 묶고 나면 **같은 파일로 미리보기를 다시** 띄운다. 새 모델이던
+      // 줄이 이제 기존 모델로 붙으니, 무엇이 들어가는지 다시 보고 저장해야
+      // 한다. '다시 올려 주세요' 로 끝내면 거기서 그만두게 된다.
+      back.querySelectorAll('.pf-alias-go').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var nm = btn.dataset.name;
+          var sel = back.querySelector('.pf-alias-sel[data-name="' +
+                      nm.replace(/"/g, '\\"') + '"]');
+          var mid = sel && sel.value;
+          if (!mid) { alert('묶을 모델을 고르세요'); return; }
+          btn.disabled = true; btn.textContent = '묶는 중...';
+          var fd = new FormData();
+          fd.append('model_id', mid);
+          fd.append('alias', nm);
+          fetch('/admin/projects/' + encodeURIComponent(pk) + '/models/alias',
+                { method: 'POST', credentials: 'same-origin', body: fd })
+            .then(function(r) { return r.json().then(function(j) {
+              return { ok: r.ok, j: j }; }); })
+            .then(function(x) {
+              if (!x.ok || !x.j.ok) {
+                btn.disabled = false; btn.textContent = '같은 모델로 묶기';
+                alert('묶지 못했습니다: ' + (x.j.detail || '알 수 없는 오류'));
+                return;
+              }
+              if (window.mdlToast) window.mdlToast(nm + ' → ' + mid + ' 로 묶었습니다');
+              close();
+              if (typeof window.loadModelList === 'function') {
+                var _ms = document.getElementById('wp-month-sel');
+                window.loadModelList(_ms ? _ms.value : null);
+              }
+              if (typeof window._pfRerun === 'function') window._pfRerun(pk, f);
+            })
+            .catch(function(e) {
+              btn.disabled = false; btn.textContent = '같은 모델로 묶기';
+              alert('묶지 못했습니다: ' + e.message);
+            });
+        });
+      });
+
       var _nm = back.querySelector('#pf-newmodel');
       if (_nm) _nm.onclick = function() {
         window.location.href = '/admin/models/template?project_key=' +

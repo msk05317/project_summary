@@ -327,10 +327,19 @@ class Matcher:
         self.prefix = []          # ('575B68653', model) — 뒤가 X 로 채워진 계열 품번
         for m in models:
             raw_id, raw_name = _s(m.get("id")), _s(m.get("name"))
-            self._add_id(_norm(raw_id), m)
-            for pn in PN_RE.findall(raw_id) + PN_RE.findall(raw_name):
+            # 파트넘버 칸. '파트넘버로 찾는다' 고 적어 두고 정작 이 칸을
+            # 안 보고 있었다 — id·모델명만 봤다.
+            raw_pn = _s(m.get("part_number"))
+            # 별칭 — 같은 물건을 거래처마다 다른 품번으로 부른다.
+            # 복사본 엑셀의 853-800575-009 가 우리 714-025898-009 다.
+            alts = [_s(a) for a in (m.get("aliases") or []) if _s(a)]
+
+            blob = " ".join([raw_id, raw_name, raw_pn] + alts)
+            for one in [raw_id, raw_pn] + alts:
+                self._add_id(_norm(one), m)
+            for pn in PN_RE.findall(blob):
                 self._add_id(_norm(pn), m)
-            for d in re.findall(r"\b\d{6,9}\b", raw_id + " " + raw_name):
+            for d in re.findall(r"\b\d{6,9}\b", blob):
                 self._add_id(_norm(d), m)
             n = _norm(raw_name)
             if n:
