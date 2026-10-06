@@ -177,6 +177,11 @@
     .bd-tbl .bd-ok{ color:#15803D; font-weight:600; }
     .bd-tbl .bd-dim{ color:#CBD5E1; }
     .bd-tbl tr.bd-foot td{ background:#0E2841; color:#fff; font-weight:700; }
+    .bd-mon{ display:flex; gap:6px; padding:0 0 10px; }
+    .bd-mon button{ height:28px; padding:0 12px; font-size:12px; font-weight:700;
+      color:#4B5563; background:#fff; border:1px solid #D8DEE7; border-radius:14px;
+      cursor:pointer; }
+    .bd-mon button.on{ color:#fff; background:#0F2C59; border-color:#0F2C59; }
     .bd-legend{ display:flex; flex-wrap:wrap; gap:14px; padding:10px 12px; font-size:12px;
       color:#6B7280; background:#F8FAFC; border:1px solid #E5E7EB; border-top:none;
       border-radius:0 0 8px 8px; }
@@ -206,6 +211,7 @@
     <nav class="nav">
       <div class="nav-item" data-page="homeadmin"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg></span><span>홈 관리</span></div>
       <div class="nav-item" data-page="overtime"><span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg></span><span>잔·특근</span></div>
+      <div class="nav-item" data-page="backup"><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 7.5c0-1.4 3.6-2.5 8-2.5s8 1.1 8 2.5-3.6 2.5-8 2.5-8-1.1-8-2.5z"/><path d="M4 7.5v9c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-9"/><path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"/></svg></span><span>백업</span></div>
     </nav>
     <div class="nav-title">사업부</div>
     <div class="biz-select biz-in-nav">
@@ -893,6 +899,7 @@ window._attachAutoListBehavior = function(el){
   const PAGE_LABEL = {
     homeadmin: '홈 관리',
     overtime: '잔·특근',
+    backup: '백업',
     home: '홈 대시보드',
     revenue: '매출 관리',
     purchase: '매입 관리',
@@ -926,7 +933,7 @@ window._attachAutoListBehavior = function(el){
 
   function renderPage(pg){
     const c = document.getElementById('v2-content');
-    var _allScope = (pg === 'homeadmin' || pg === 'overtime');
+    var _allScope = (pg === 'homeadmin' || pg === 'overtime' || pg === 'backup');
     document.body.classList.toggle('scope-all', _allScope);
     if (_allScope) {
       var _cb0 = document.getElementById('v2-crumb-biz');
@@ -934,6 +941,8 @@ window._attachAutoListBehavior = function(el){
     }
     if (pg === 'overtime') {
       window.renderOvertimePage();
+    } else if (pg === 'backup') {
+      window.renderBackupPage();
     } else if (pg === 'homeadmin') {
       // 전사 화면이다 — 사이드바에 걸린 사업부 이름을 빵부스러기에 두면
       // 반도체만 보고 있는 줄 안다
@@ -5488,17 +5497,6 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-status.err { color: #DC2626; }',
     '.mdl-empty { text-align: center; padding: 40px; color: #9CA3AF; font-size: 14px; }',
     '.mdl-group-sep td { background: #F9FAFB; font-weight: 700; font-size: 12px; color: #374151; padding: 8px 14px; }',
-    '.mdl-weekly-section { margin-top: 24px; padding-top: 20px; border-top: 2px solid #E5E7EB; }',
-    '.mdl-weekly-section h3 { font-size: 16px; font-weight: 700; color: #111827; margin: 0 0 12px 0; }',
-    '.mdl-weekly-status { font-size: 13px; color: #6B7280; margin-bottom: 12px; }',
-    '.mdl-weekly-status.ok { color: #059669; }',
-    '.mdl-weekly-status.err { color: #DC2626; }',
-    '.mdl-weekly-actions { display: flex; gap: 8px; margin-bottom: 16px; }',
-    '.mdl-weekly-preview { background: #F9FAFB; border-radius: 8px; padding: 12px; max-height: 300px; overflow: auto; }',
-    '.mdl-weekly-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }',
-    '.mdl-weekly-preview th { background: #E5E7EB; padding: 6px 8px; text-align: left; font-weight: 600; }',
-    '.mdl-weekly-preview td { padding: 6px 8px; border-bottom: 1px solid #E5E7EB; min-width: 40px; }',
-    '.mdl-weekly-preview td:empty { background: #F3F4F6; }',
     '.mdl-wrap { padding: 4px 0; }',
     '.mdl-head { margin-bottom: 16px; }',
     '.mdl-title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }',
@@ -5527,13 +5525,42 @@ window.renderAdminV2ByDivision = function(){
     '.mdl-pick-card .bar i { display:block; height:100%; background:#156082; border-radius:999px; }',
     '.mdl-pick-card .pct { margin-top:6px; font-size:11.5px; font-weight:800; color:#156082; }',
     '.mdl-pick-empty { padding:60px 20px; text-align:center; color:#94A3B8; font-size:14px; }',
+    // 블룸처럼 '올리는 곳' 이 따로 있는 사업부 — 기존 카드 토큰만 조합했다
+    '.mdl-pick-card.is-lead { border-color:#0F2C59; box-shadow:0 6px 18px rgba(15,44,89,.10); }',
+    '.mdl-pick-card .nm { display:flex; align-items:center; gap:7px; }',
+    '.mdl-pick-tag { flex:0 0 auto; font-size:10px; font-weight:800; padding:2px 8px; border-radius:999px;',
+    ' background:#0F2C59; color:#fff; letter-spacing:.02em; }',
+    '.mdl-pick-tag.ro { background:#F1F5F9; color:#64748B; border:1px solid #E2E8F0; }',
+    '.mdl-pick-sep { grid-column:1/-1; display:flex; align-items:center; gap:10px; margin:6px 0 2px; }',
+    '.mdl-pick-sep span { font-size:11.5px; font-weight:800; color:#94A3B8; white-space:nowrap; }',
+    '.mdl-pick-sep i { flex:1; height:1px; background:#E8ECF2; }',
+    // 빈 화면 3단계
+    '.bd-empty { padding:34px 20px 30px; text-align:center; }',
+    '.bd-empty .ttl { font-size:15px; font-weight:800; color:#0F172A; }',
+    '.bd-empty .sub { font-size:12.5px; color:#94A3B8; margin-top:6px; }',
+    '.bd-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; max-width:760px;',
+    ' margin:22px auto 0; text-align:left; }',
+    '.bd-step3 { background:#F8FAFC; border:1px solid #E8ECF2; border-radius:12px; padding:14px 15px; }',
+    '.bd-step3 .n { display:inline-block; width:19px; height:19px; line-height:19px; text-align:center;',
+    ' border-radius:999px; background:#0F2C59; color:#fff; font-size:11px; font-weight:800; margin-bottom:7px; }',
+    '.bd-step3 .h { font-size:12.5px; font-weight:800; color:#0F172A; }',
+    '.bd-step3 .d { font-size:11.5px; color:#7A8699; line-height:1.65; margin-top:4px; }',
+    '.bd-safe { margin-top:18px; display:inline-flex; align-items:center; gap:7px; background:#ECFDF3;',
+    ' border:1px solid #C4E7D6; border-radius:999px; padding:7px 14px; font-size:12px;',
+    ' font-weight:700; color:#027A48; }',
+    // 품목 화면의 보기 전용 안내줄
+    '.bd-ro { display:flex; align-items:center; gap:12px; background:#F8FAFC; border:1px solid #E4E7EC;',
+    ' border-radius:10px; padding:12px 15px; margin-bottom:16px; }',
+    '.bd-ro .ic { width:26px; height:26px; border-radius:8px; background:#EEF2F7; color:#0F2C59;',
+    ' display:flex; align-items:center; justify-content:center; font-size:13px; flex:0 0 auto; }',
+    '.bd-ro .tx { font-size:12.5px; color:#475569; line-height:1.6; }',
+    '.bd-ro .tx b { color:#0F172A; }',
     '.mdl-tab { padding: 11px 4px; margin-right: 22px; border: none; background: none; font-size: 14px; font-weight: 700; color: #94A3B8; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .13s; letter-spacing:-0.01em; }',
     '.mdl-tab:hover { color: #475569; }',
     '.mdl-tab.is-active { color: #0F172A; border-bottom-color: #0F172A; }',
     '.mdl-badge { display: inline-flex; align-items:center; justify-content:center; min-width: 21px; height:19px; padding: 0 6px; background: #EEF2F7; color: #64748B; border-radius: 99px; font-size: 11px; font-weight: 800; margin-left: 5px; }',
     '.mdl-tab.is-active .mdl-badge { background:#0F172A; color:#fff; }',
     '.mdl-wrap { max-width: 1320px !important; }',
-    '.mdl-weekly-preview img { max-width:100%; border:1px solid #E4E7EC; border-radius:10px; background:#fff; }',
     '.mdl-pane { padding-top: 16px; }',
     '.mdl-actions { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }',
     '.mdl-save-msg { font-size: 13px; font-weight: 600; }',
@@ -5762,6 +5789,11 @@ window.renderAdminV2ByDivision = function(){
     '.ov-menu button { display:flex; width:100%; align-items:center; gap:8px; padding:9px 10px; border:0; border-radius:7px; background:transparent; font-size:13px; font-weight:600; color:#334155; text-align:left; cursor:pointer; }',
     '.ov-menu button:hover { background:#F1F5F9; }',
     '.ov-menu .sep { height:1px; margin:6px 4px; background:#EDF0F4; }',
+    '.mdl-goplan { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; '
+      + 'padding:11px 13px; background:#F8FAFC; border:1px solid #E4E7EC; border-radius:9px; '
+      + 'font-size:12.5px; color:#475569; line-height:1.6; }',
+    '.mdl-goplan b { color:#0F172A; }',
+    '.mdl-goplan .ov-btn { margin-left:auto; height:32px; font-size:12.5px; }',
     '.ov-menu .danger { color:#DC2626; }',
     '.ov-menu .danger:hover { background:#FEF2F2; }',
     /* 검색·필터 */
@@ -5871,6 +5903,7 @@ window.renderAdminV2ByDivision = function(){
     // 판가 확인 필요 표시 — 같은 우선순위 규칙끼리는 뒤에 온 쪽이 이긴다.
     '.mdl-input-warn { border-color:#DC2626 !important; background:#FEF2F2 !important; }',
     '.mdl-price-warn { margin-top:3px; font-size:10px; font-weight:700; color:#DC2626; text-align:right; cursor:help; }',
+    // 자동차사업부 화면이 아직 쓴다 ('원가가 판가 이상인 제품 N개')
     '.mdl-warn-bar { margin:0 0 10px; padding:9px 12px; border:1px solid #FECACA; background:#FEF2F2;' +
       ' border-radius:8px; font-size:12px; color:#7F1D1D; }',
     // ── 자동차사업부 제품 화면 (이 사업부에만 적용) ──
@@ -6982,6 +7015,14 @@ window.renderAdminV2ByDivision = function(){
         '<span><i class="mdl-sw mdl-sw-auto"></i> 점선 칸 = 자동 계산 (못 고침)</span>' +
         '<span><i class="mdl-sw mdl-sw-late"></i> 왼쪽 빨간 띠 = 일정 지연</span>' +
         '<span>모델명 옆 칩을 눌러 상태(정상 · 주의 · 지연 · 보류 · 드롭예정)를 바꿉니다</span>' +
+      '</div>' +
+      // 올리는 자리는 한 곳이다. 여기서 찾다가 못 찾고 헤매지 않게 길을 적는다.
+      '<div class="mdl-goplan">' +
+        '<span><b>엑셀은 주차별 계획 탭에서 받고 거기서 올립니다.</b> ' +
+        '받은 파일에는 지금 숫자가 채워져 있습니다 — 이번 주 칸만 더 적어 ' +
+        '그대로 올리시면 됩니다. 개발 프로세스 일정표도 같은 자리에 올리면 ' +
+        '알아서 갈라 읽습니다.</span>' +
+        '<button type="button" class="ov-btn" id="mdl-goplan-btn">주차별 계획으로 →</button>' +
       '</div></div>' +
       '<table class="mdl-table"><thead>' +
       '<tr class="mdl-grp-row">' +
@@ -7155,11 +7196,9 @@ window.renderAdminV2ByDivision = function(){
     });
 
     html += '</tbody></table>';
-    if (_priceWarnCount) {
-      html = '<div class="mdl-warn-bar">판가를 확인해 주세요 — ' + _priceWarnCount +
-             '개 모델. 판가가 틀리면 매출이 조용히 작게 잡힙니다. ' +
-             '<b>확인 필요</b> 표시에 마우스를 올리면 이유가 나옵니다.</div>' + html;
-    }
+    // 표 위의 빨간 띠는 뺐다. 어느 줄인지는 그 줄의 '확인 필요' 가 말한다 —
+    // 띠는 같은 말을 한 번 더 크게 하면서 화면만 밀어냈다.
+    // (_priceWarnCount 는 세는 것만 남겨 둔다)
     if (!window._modelsData.length) {
       html = '<div class="mdl-empty">등록된 모델이 없습니다.</div>';
     } else if (!_visible.length) {
@@ -8047,12 +8086,13 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<button type="button" class="ov-btn" id="mdl-import-btn" aria-haspopup="true" aria-expanded="false">📁 엑셀 ▾</button>' +
               '<div class="ov-menu" id="mdl-import-menu" hidden>' +
                 '<button type="button" id="mdl-bloom-btn" hidden>📊 일 보고 자료 올리기</button>' +
-                '<button type="button" id="mdl-excel-btn">📥 모델·주간보고 엑셀 올리기</button>' +
-                '<button type="button" id="mdl-proc-excel-btn">📅 개발 프로세스 엑셀 올리기</button>' +
-                '<div class="sep"></div>' +
+                // 이 메뉴에는 '여기서 실제로 일어나는 것' 만 둔다. 양식 받기와
+                // 엑셀 올리기는 주차별 계획 탭 한 곳이고, 그쪽으로 가는 안내는
+                // 아래 '이 표는 무엇인가요' 에 한 줄로 둔다 — 메뉴에 두면
+                // 올리는 자리가 두 곳인 것처럼 읽힌다.
+                // 개발 프로세스 엑셀도 주차별 계획 탭의 '엑셀 올리기' 가 받는다.
+                // 올리는 버튼이 하나뿐이면 어느 엑셀이든 거기 올리면 된다.
                 '<button type="button" id="mdl-lead-btn">⏱ 단계별 표준 소요 (주)</button>' +
-                '<div class="sep"></div>' +
-                '<button type="button" id="mdl-excel-tpl-btn">📄 모델 양식 내려받기</button>' +
               '</div>' +
             '</div>' +
             '<input type="file" id="auto-import-file" accept=".xlsx,.xlsm" style="display:none;">' +
@@ -8095,21 +8135,16 @@ var sidebarSel = document.getElementById('v2-division-select');
               '<span class="ov-card-sub" id="wb-sub">자동 계산</span>' +
               '<span class="spacer"></span>' +
               '<input type="file" id="pf-file" accept=".xlsx,.xlsm" style="display:none">' +
+              // 블룸 전용 (일 보고 양식). 주차 양식은 바로 아래 wp-form.
+              '<button type="button" class="ov-btn" id="pf-form" style="display:none">📄 양식 받기</button>' +
+              '<button type="button" class="ov-btn" id="wp-form" ' +
+                'title="지금 보고 있는 달의 주차 계획·실적·미달 사유가 채워진 엑셀입니다. ' +
+                      '이번 주 칸만 더 적어 그대로 다시 올리시면 됩니다.">' +
+                '📥 엑셀로 받기</button>' +
               '<button type="button" class="ov-btn" id="pf-upload">📁 엑셀 올리기</button>' +
               '<button type="button" class="ov-btn" id="wb-edit">PO · 실적 · 증감 입력</button>' +
             '</div>' +
             '<div id="wb-board"></div>' +
-          '</div>' +
-          '<div class="ov-card" id="wp-src-card">' +
-            '<div class="ov-card-head">' +
-              '<span class="ov-card-title">주차별 계획 원본</span>' +
-              '<span id="mdl-weekly-status" class="mdl-weekly-status">로딩 중...</span>' +
-              '<span class="spacer"></span>' +
-              '<input type="file" id="mdl-weekly-file" accept=".xlsx,.xls,.xlsm" style="display:none">' +
-              '<button type="button" class="ov-btn" id="mdl-weekly-upload">📁 엑셀 올리기</button>' +
-              '<button type="button" class="ov-btn ov-btn-danger" id="mdl-weekly-delete" style="display:none">삭제</button>' +
-            '</div>' +
-            '<div id="mdl-weekly-preview" class="mdl-weekly-preview"></div>' +
           '</div>' +
           // 주차별 매출 요약 카드 (하바플레이트)
           '<div id="mdl-revenue-card" class="ov-card" style="display:none;"></div>' +
@@ -8192,6 +8227,22 @@ var sidebarSel = document.getElementById('v2-division-select');
         box.innerHTML = '<div class="mdl-pick-empty">이 사업부에 등록된 프로젝트가 없습니다.</div>';
         return;
       }
+      // 올리는 곳이 따로 있는 사업부(블룸)는 그 카드를 맨 앞 한 줄로 뗀다.
+      // 품목이 여덟인데 어디서 올리는지 안 보이면 매번 고민하게 된다.
+      var _lead = (window.UPLOAD_LEAD_PROJECT || {});
+      var _leadKey = '';
+      for (var _i = 0; _i < projects.length; _i++) {
+        if (_lead[projects[_i].id]) { _leadKey = projects[_i].id; break; }
+      }
+      if (_leadKey) {
+        projects = projects.slice().sort(function(a, b) {
+          if (a.id === _leadKey) return -1;
+          if (b.id === _leadKey) return 1;
+          return 0;
+        });
+      }
+      var _sepDone = false;
+
       box.innerHTML =
         '<div class="mdl-pick-head"><b>프로젝트를 선택하세요</b>' +
           '<span class="cnt">' + projects.length + '개</span></div>' +
@@ -8217,8 +8268,25 @@ var sidebarSel = document.getElementById('v2-division-select');
               wide = pg || 0;
               pct = pg === null ? '진행률 -' : '진행률 ' + pg + '%';
             }
-            return '<button type="button" class="mdl-pick-card" data-pk="' + p.id + '">' +
-              '<span class="nm">' + (p.label || p.id) + '</span>' +
+            var _isLead = (p.id === _leadKey);
+            var _tag = '';
+            var _pre = '';
+            if (_leadKey) {
+              if (_isLead) {
+                _tag = '<i class="mdl-pick-tag">' + (_lead[p.id].tag || '자료 올리는 곳') + '</i>';
+              } else {
+                _tag = '<i class="mdl-pick-tag ro">보기</i>';
+                if (!_sepDone) {
+                  _sepDone = true;
+                  _pre = '<div class="mdl-pick-sep"><span>' +
+                         (_lead[_leadKey].rest || '품목별 — 보기만') + '</span><i></i></div>';
+                }
+              }
+            }
+            return _pre +
+              '<button type="button" class="mdl-pick-card' + (_isLead ? ' is-lead' : '') +
+                '" data-pk="' + p.id + '">' +
+              '<span class="nm">' + (p.label || p.id) + _tag + '</span>' +
               '<span class="sub">' + sub + '</span>' +
               '<span class="bar"><i style="width:' + wide + '%"></i></span>' +
               '<span class="pct">' + pct + '</span>' +
@@ -8278,11 +8346,6 @@ var sidebarSel = document.getElementById('v2-division-select');
 
     const sel = document.getElementById('mdl-proj-select');
     const tableBox = document.getElementById('mdl-table-box');
-    const weeklyStatus = document.getElementById('mdl-weekly-status');
-    const weeklyPreview = document.getElementById('mdl-weekly-preview');
-    const weeklyFileInput = document.getElementById('mdl-weekly-file');
-    const weeklyUploadBtn = document.getElementById('mdl-weekly-upload');
-    const weeklyDeleteBtn = document.getElementById('mdl-weekly-delete');
     const saveBtn = document.getElementById('mdl-save-btn');
     const saveMsg = document.getElementById('mdl-save-msg');
     const addBtn = document.getElementById('mdl-add-btn');
@@ -8386,119 +8449,38 @@ var sidebarSel = document.getElementById('v2-division-select');
         .catch(function(){ revCard.innerHTML = '<div style="color:#DC2626;text-align:center;">로드 실패</div>'; });
     };
 
-    function loadWeeklyPlan(projectKey) {
+    // 원본 사진 카드는 걷어냈지만 두 가지는 남는다 — 매출 카드와,
+    // 보드에서 빨간 테두리를 칠 '표시 주차'. 둘 다 화면이 아니라 데이터다.
+    function loadWeekMarks(projectKey) {
       window.renderRevenueCard(projectKey, null);
-      if (!projectKey) {
-        weeklyStatus.textContent = '프로젝트를 선택하세요';
-        weeklyStatus.className = 'mdl-weekly-status';
-        weeklyPreview.innerHTML = '';
-        weeklyDeleteBtn.style.display = 'none';
-        return;
-      }
-      weeklyStatus.textContent = '불러오는 중...';
-      weeklyStatus.className = 'mdl-weekly-status';
+      if (!projectKey) return;
       fetch('/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
           window._markedWeeks = d.marked_weeks || [];
           window.renderRevenueCard(projectKey, null);
-          if (d.has_plan && d.url) {
-            weeklyStatus.textContent = '✅ ' + (d.file_name || '엑셀 파일') + ' (' + (d.uploaded_at || '').substring(0, 10) + ')';
-            weeklyStatus.className = 'mdl-weekly-status ok';
-            weeklyDeleteBtn.style.display = 'inline-block';
-            weeklyPreview.innerHTML = '<img src="' + d.url + '" style="max-width:100%;border:1px solid #E5E7EB;border-radius:8px;background:#fff;cursor:zoom-in;" alt="weekly plan" onerror="this.parentNode.textContent=&#39;이미지 로드 실패&#39;;this.remove();">';
-          } else {
-            weeklyStatus.textContent = '등록된 주차별 계획이 없습니다';
-            weeklyStatus.className = 'mdl-weekly-status';
-            weeklyPreview.innerHTML = '';
-            weeklyDeleteBtn.style.display = 'none';
-          }
         })
-        .catch(function(e) {
-          weeklyStatus.textContent = '❌ 로드 실패: ' + e.message;
-          weeklyStatus.className = 'mdl-weekly-status err';
-        });
+        .catch(function() { window._markedWeeks = []; });
     }
 
-    weeklyUploadBtn.addEventListener('click', function() {
+    // 엑셀로 받기 — 지금 고른 프로젝트 · 지금 고른 달.
+    //
+    // 모델 칸뿐 아니라 **주차 숫자와 미달 사유까지** 채워서 내려준다.
+    // 셋을 한 버튼으로 둔 이유 —
+    //   · 내보내기  : 그 프로젝트의 주차 현황을 엑셀로 가진다
+    //   · 받기      : 그 파일에 이번 주만 더 적어 그대로 올린다
+    //   · 확인      : 올라간 숫자가 맞는지 엑셀에서 눈으로 본다
+    //
+    // 모델 칸을 채우는 이유는 따로 있다. 매주 품번 수십 개를 손으로 적게
+    // 하면 언젠가 하나를 다르게 적고, 다르게 적힌 줄은 어느 모델에도 안
+    // 붙어 조용히 사라진다.
+    var weeklyFormBtn = document.getElementById('wp-form');
+    if (weeklyFormBtn) weeklyFormBtn.addEventListener('click', function() {
       if (!sel.value) { alert('프로젝트를 먼저 선택하세요'); return; }
-      weeklyFileInput.click();
-    });
-
-    weeklyFileInput.addEventListener('change', function() {
-      const file = weeklyFileInput.files[0];
-      if (!file) return;
-      const projectKey = sel.value;
-      if (!projectKey) { alert('프로젝트를 먼저 선택하세요'); weeklyFileInput.value = ''; return; }
-      weeklyStatus.textContent = '⏳ 업로드 중...';
-      weeklyStatus.className = 'mdl-weekly-status';
-      const fd = new FormData();
-      fd.append('file', file);
-      fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', {
-        method: 'POST', credentials: 'same-origin', body: fd
-      })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
-        .then(function(res) {
-          if (res.ok && res.d.ok) {
-            weeklyStatus.textContent = '✅ ' + (res.d.file_name || file.name);
-            weeklyStatus.className = 'mdl-weekly-status ok';
-            var ap = res.d.applied;
-            if (ap) {
-              var msg = '';
-              if (ap.matched && ap.matched.length) {
-                msg += '모델 ' + ap.matched.length + '건 반영: ' +
-                       ap.matched.map(function(x){ return x.model; }).join(', ');
-              }
-              if (ap.created && ap.created.length) {
-                msg += (msg ? ' · ' : '') + '신규 모델 ' + ap.created.length + '건 등록: ' +
-                       ap.created.join(', ');
-              }
-              if (ap.unmatched && ap.unmatched.length) {
-                msg += (msg ? ' · ' : '') + '합계로만 반영: ' + ap.unmatched.join(', ');
-              }
-              if (msg && window.mdlToast) window.mdlToast(msg);
-              else if (msg) console.log('[weekly-plan]', msg);
-            }
-            loadWeeklyPlan(projectKey);
-            if (typeof window.loadModelList === 'function') {
-              var msel2 = document.getElementById('wp-month-sel');
-              window.loadModelList(msel2 ? msel2.value : null);
-            }
-            // 하바플레이트는 기존 위치기반 요약 임포터를 순차로 한 번 더 태운다
-            if (projectKey === 'hrva_plate') {
-              var fd2 = new FormData();
-              fd2.append('file', file);
-              fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-summary-import', {
-                method: 'POST', credentials: 'same-origin', body: fd2
-              }).then(function(r) { return r.json(); })
-                .then(function(d) { console.log('summary-import:', d); window.renderRevenueCard(projectKey, null); })
-                .catch(function(e) { console.warn('summary-import 실패:', e); });
-            }
-          } else {
-            weeklyStatus.textContent = '❌ ' + (res.d.detail || '업로드 실패');
-            weeklyStatus.className = 'mdl-weekly-status err';
-          }
-        })
-        .catch(function(e) {
-          weeklyStatus.textContent = '❌ ' + e.message;
-          weeklyStatus.className = 'mdl-weekly-status err';
-        })
-        .finally(function() { weeklyFileInput.value = ''; });
-    });
-
-    weeklyDeleteBtn.addEventListener('click', function() {
-      const projectKey = sel.value;
-      if (!projectKey) return;
-      if (!confirm('주차별 계획을 삭제하시겠습니까?')) return;
-      fetch('/admin/projects/' + encodeURIComponent(projectKey) + '/weekly-plan', {
-        method: 'DELETE', credentials: 'same-origin'
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.ok) loadWeeklyPlan(projectKey);
-          else alert('삭제 실패: ' + (d.detail || ''));
-        })
-        .catch(function(e) { alert('삭제 실패: ' + e.message); });
+      var ms = document.getElementById('wp-month-sel');
+      var mon = (ms && ms.value) || '';
+      window.location = '/admin/projects/' + encodeURIComponent(sel.value) +
+        '/weekly-template' + (mon ? '?month=' + encodeURIComponent(mon) : '');
     });
 
     saveBtn.addEventListener('click', function() {
@@ -8506,7 +8488,17 @@ var sidebarSel = document.getElementById('v2-division-select');
       saveModels(saveMsg);
     });
 
-    // ── 엑셀 메뉴 (버튼 5개를 하나로 묶음) ──
+    // '주차별 계획' 탭으로 보낸다. 거기서 받고 거기서 올린다.
+    var goPlanBtn = document.getElementById('mdl-goplan-btn');
+    if (goPlanBtn) goPlanBtn.addEventListener('click', function() {
+      var menu = document.getElementById('mdl-import-menu');
+      if (menu) menu.hidden = true;
+      var tab = document.getElementById('mdl-tab-plan');
+      if (tab) tab.click();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ── 엑셀 메뉴 ──
     var importBtn = document.getElementById('mdl-import-btn');
     var importMenu = document.getElementById('mdl-import-menu');
     if (importBtn && importMenu) {
@@ -8684,7 +8676,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
           .catch(function() { window._mdlRenderPicker(projects, {}, _isAuto ? 'auto' : ''); });
         window._mdlShowPicker(!sel.value);
         loadModels(sel.value, tableBox);
-        loadWeeklyPlan(sel.value);
+        loadWeekMarks(sel.value);
         loadStatusNote(sel.value);
       })
       .catch(function(e) {
@@ -8700,7 +8692,7 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
         return;
       }
       loadModels(sel.value, tableBox);
-      loadWeeklyPlan(sel.value); loadStatusNote(sel.value);
+      loadWeekMarks(sel.value); loadStatusNote(sel.value);
     });
   }
 
@@ -9135,6 +9127,10 @@ window._ovProjectKey = function() {
           var msg = d.applied_sheet + ' 기준 · 모델 ' + d.updated + '개 갱신';
           if ((d.created || []).length) msg += ' · 신규 ' + d.created.length + '개 추가';
           if (d.history_weeks) msg += ' · PO증감 ' + d.history_weeks + '주차 반영';
+          // 파일 맨 아래 주차표에서 같이 들어온 것
+          (d.weeks_in_file || []).forEach(function(x) {
+            if (x.applied) msg += ' · ' + x.month + ' 주차계획 ' + x.applied + '행';
+          });
           if ((d.group_diff || []).length) {
             msg += '\n구분이 엑셀과 다른 모델 ' + d.group_diff.length + '개는 그대로 뒀습니다: ' +
                    d.group_diff.slice(0, 5).join(', ');
@@ -9152,20 +9148,239 @@ window._ovProjectKey = function() {
         });
     }
 
+    // 개발 프로세스 일정표. 올리는 버튼이 하나라 여기로도 들어온다.
+    function _pfProcess(pk, f, d) {
+      var steps = d.steps || [];
+      if (!confirm('개발 프로세스 일정표로 읽었습니다.\n' +
+                   d.file_name + ' · ' + (d.sheet || '') + ' 시트\n' +
+                   '모델 ' + (d.rows || 0) + '줄 · 단계 ' + steps.length + '개' +
+                   (steps.length ? '\n  ' + steps.slice(0, 6).join(' · ') +
+                     (steps.length > 6 ? ' 외 ' + (steps.length - 6) + '개' : '') : '') +
+                   '\n\n계획·실적 일정을 반영할까요?')) return;
+      var fd = new FormData();
+      fd.append('file', f);
+      var btn = document.getElementById('pf-upload');
+      if (btn) { btn.disabled = true; btn.textContent = '반영 중...'; }
+      fetch('/admin/projects/' + encodeURIComponent(pk) + '/process/import-xlsx',
+            { method: 'POST', credentials: 'same-origin', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (btn) { btn.disabled = false; btn.textContent = '📁 엑셀 올리기'; }
+          if (!res.ok) { alert('반영 실패: ' + (res.detail || '알 수 없는 오류')); return; }
+          var msg = '개발 프로세스 ' + (res.applied || 0) + '건 반영';
+          if (res.skipped) msg += ' · 못 찾은 줄 ' + res.skipped + '개';
+          if (window.mdlToast) window.mdlToast(msg);
+          if (typeof window.loadModelList === 'function') {
+            var ms = document.getElementById('wp-month-sel');
+            window.loadModelList(ms ? ms.value : null);
+          }
+        })
+        .catch(function(e) {
+          if (btn) { btn.disabled = false; btn.textContent = '📁 엑셀 올리기'; }
+          alert('반영 실패: ' + e.message);
+        });
+    }
+
+    // 주차표가 없는 파일. 올리는 곳이 하나라서 여기로도 들어온다 —
+    // 옛 모델 등록 양식처럼 모델 값만 있는 파일이다.
+    function _pfModelsOnly(pk, f, d) {
+      var ch = d.model_changed || [], cr = d.model_created || [];
+      if (!ch.length && !cr.length) {
+        alert('이 파일에서 바뀌는 모델 값이 없습니다.\n' +
+              '(' + (d.sheet || '') + ' 시트 ' + (d.rows || 0) + '줄을 읽었습니다)');
+        return;
+      }
+      var lines = ['주차표가 없는 파일입니다 — 모델 값만 반영합니다.',
+                   d.file_name + ' · ' + (d.sheet || '') + ' 시트 ' + (d.rows || 0) + '줄',
+                   ''];
+      if (cr.length) {
+        lines.push('새로 등록될 모델 ' + cr.length + '개');
+        cr.slice(0, 10).forEach(function(m) { lines.push('  · ' + m.name); });
+        if (cr.length > 10) lines.push('  · 외 ' + (cr.length - 10) + '개');
+      }
+      if (ch.length) {
+        lines.push('값이 바뀌는 모델 ' + ch.length + '개');
+        ch.slice(0, 10).forEach(function(m) {
+          lines.push('  · ' + m.name + ' — ' + Object.keys(m.fields || {}).join(', '));
+        });
+        if (ch.length > 10) lines.push('  · 외 ' + (ch.length - 10) + '개');
+      }
+      lines.push('', '빈 칸은 그대로 둡니다. 저장할까요?');
+      if (!confirm(lines.join('\n'))) return;
+
+      var fd = new FormData();
+      fd.append('file', f);
+      var btn = document.getElementById('pf-upload');
+      if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+      fetch('/admin/projects/' + encodeURIComponent(pk) + '/plan-file/apply',
+            { method: 'POST', credentials: 'same-origin', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (btn) { btn.disabled = false; btn.textContent = '📁 엑셀 올리기'; }
+          if (!res.ok) { alert('반영 실패: ' + (res.detail || '알 수 없는 오류')); return; }
+          var msg = '모델 값 ' + (res.model_updated || 0) + '건';
+          if ((res.model_created || []).length) {
+            msg += ' · 신규 ' + res.model_created.length + '개';
+          }
+          if (window.mdlToast) window.mdlToast(msg);
+          if (typeof window.loadModelList === 'function') {
+            var ms = document.getElementById('wp-month-sel');
+            window.loadModelList(ms ? ms.value : null);
+          }
+          if (window.wbRefresh) window.wbRefresh();
+        })
+        .catch(function(e) {
+          if (btn) { btn.disabled = false; btn.textContent = '📁 엑셀 올리기'; }
+          alert('반영 실패: ' + e.message);
+        });
+    }
+
+    // 주차 숫자 말고 같이 들어오는 것들 — 모델 값 · 새 모델 · 미달 사유.
+    //
+    // 양식을 한 장으로 합쳤으니 한 번 올리면 세 가지가 같이 들어간다.
+    // 무엇이 들어가는지 보여주지 않으면 사람은 주차 숫자만 바뀌는 줄 안다.
+    function _pfExtra(d) {
+        var _FL = { dev_type: '유형', group: '구분', price: '판가',
+                    material_cost: '재료비', po_qty: 'PO수량', shipped_qty: '실적수량' };
+        function val(v) { return (v === null || v === undefined || v === '') ? '—' : v; }
+        var html = '';
+
+        var cr = d.model_created || [];
+        if (cr.length) {
+          html += '<div style="margin:14px 16px 0;padding:10px 12px;background:#F0FDF4;' +
+            'border:1px solid #BBF7D0;border-radius:8px;font-size:12px;color:#14532D">' +
+            '<b>새로 등록될 모델 ' + cr.length + '개</b>' +
+            '<ul style="margin:6px 0 0 16px">' +
+            cr.map(function(m) {
+              var f = m.fields || {};
+              var bits = Object.keys(f).map(function(k) {
+                return (_FL[k] || k) + ' ' + val(f[k]);
+              }).join(' · ');
+              return '<li>' + _pfE(m.name) +
+                     (m.part_number ? ' <span style="color:#15803D">(' +
+                        _pfE(m.part_number) + ')</span>' : '') +
+                     (bits ? ' <span style="color:#166534">— ' + _pfE(bits) + '</span>' : '') +
+                     '</li>';
+            }).join('') + '</ul></div>';
+        }
+
+        // 모델 칸은 두 가지다. 비어 있던 칸을 채우는 것과, 값이 있는 칸을
+        // 덮어쓰는 것. 앞은 잃을 게 없어서 늘 넣고, 뒤는 체크해야 넣는다 —
+        // 두 달 전 파일을 다시 올렸다고 손으로 고친 판가가 돌아가면 안 된다.
+        var ch = d.model_changed || [];
+        function _pfSplit(wantFill) {
+          var out = [];
+          ch.forEach(function(m) {
+            var f = m.fields || {}, keep = {};
+            Object.keys(f).forEach(function(k) {
+              if (!!f[k].fill === wantFill) keep[k] = f[k];
+            });
+            if (Object.keys(keep).length) out.push({ name: m.name, fields: keep });
+          });
+          return out;
+        }
+        function _pfBits(f) {
+          return Object.keys(f).map(function(k) {
+            var was = f[k].fill ? '<span style="color:#94A3B8">(비어 있음)</span>'
+                     : '<span style="color:#CBD5E1;text-decoration:line-through">' +
+                       val(f[k].from) + '</span>';
+            return (_FL[k] || k) + ' ' + was + ' → <b>' + val(f[k].to) + '</b>';
+          }).join(' · ');
+        }
+        function _pfRows(list, max) {
+          return '<ul style="margin:6px 0 0 16px">' +
+            list.slice(0, max).map(function(m) {
+              return '<li>' + _pfE(m.name) + ' — ' + _pfBits(m.fields) + '</li>';
+            }).join('') +
+            (list.length > max ? '<li>외 ' + (list.length - max) + '건</li>' : '') +
+            '</ul>';
+        }
+
+        var fills = _pfSplit(true), overs = _pfSplit(false);
+        if (fills.length) {
+          html += '<div style="margin:14px 16px 0;padding:10px 12px;background:#F8FAFC;' +
+            'border:1px solid #E2E8F0;border-radius:8px;font-size:12px;color:#334155">' +
+            '<b>비어 있던 칸을 채웁니다 — ' + fills.length + '줄</b>' +
+            _pfRows(fills, 8) + '</div>';
+        }
+        if (overs.length) {
+          html += '<div style="margin:14px 16px 0;padding:10px 12px;background:#FFFBEB;' +
+            'border:1px solid #FDE68A;border-radius:8px;font-size:12px;color:#78350F">' +
+            '<b>이미 값이 있는 칸 ' + overs.length + '줄 — 기본은 그대로 둡니다</b>' +
+            _pfRows(overs, 8) +
+            '<label style="display:flex;align-items:center;gap:7px;margin-top:9px;' +
+              'font-weight:700;cursor:pointer">' +
+              '<input type="checkbox" id="pf-over">' +
+              '이 칸들도 엑셀 값으로 덮어쓰기</label>' +
+            '</div>';
+        }
+
+        var wn = d.week_notes || {};
+        var wk = Object.keys(wn);
+        if (wk.length) {
+          html += '<div style="margin:14px 16px 0;padding:10px 12px;background:#FFFBEB;' +
+            'border:1px solid #FDE68A;border-radius:8px;font-size:12px;color:#78350F">' +
+            '<b>미달 사유 ' + wk.length + '주차</b> ' +
+            '<span style="color:#92400E">— 보드의 \'계획 미달\' 칸에 그대로 들어갑니다</span>' +
+            '<ul style="margin:6px 0 0 16px">' +
+            wk.sort().map(function(w) {
+              return '<li><code>' + _pfE(w) + '</code> ' + _pfE(wn[w]) + '</li>';
+            }).join('') + '</ul></div>';
+        }
+        return html;
+    }
+
     function _pfPreview(pk, f, d) {
       var weeks = d.weeks || [];
       var rows = d.rows || [];
       var nChg = 0;
       rows.forEach(function(r) { if (r.changed > 0) nChg++; });
 
+      // 한 파일에 여러 달이 들어 있으면 전부 반영된다. 표는 맨 앞 달만
+      // 그리니까, 나머지 달에 무엇이 들어가는지는 따로 적어 준다 — 안
+      // 보이는 채로 저장하게 두면 안 된다.
+      var mons = d.months || [];
+      function _pfMonths() {
+        if (mons.length < 2) return '';
+        var li = mons.map(function(m, i) {
+          return '<li' + (i === 0 ? ' style="font-weight:700"' : '') + '>' +
+            _pfE(m.month) + ' <span style="color:#64748B">· ' +
+            (m.weeks || []).length + '주차 · ' + m.rows + '줄' +
+            (m.changed ? ' (바뀜 ' + m.changed + ')' : ' (바뀌는 것 없음)') +
+            ' · 계획 ' + m.plan + ' · 실적 ' + m.actual +
+            (m.notes ? ' · 사유 ' + m.notes + '주차' : '') +
+            '</span>' + (i === 0 ? ' <span style="color:#1D4ED8">← 아래 표</span>' : '') +
+            '</li>';
+        }).join('');
+        return '<div style="margin:14px 16px 0;padding:10px 12px;background:#EFF6FF;' +
+          'border:1px solid #BFDBFE;border-radius:8px;font-size:12px;color:#1E3A8A">' +
+          '<b>이 파일에 든 ' + mons.length + '개 달이 모두 들어갑니다</b>' +
+          '<ul style="margin:6px 0 0 16px">' + li + '</ul></div>';
+      }
+
+      // 한 칸에 계획과 실적 두 줄.
+      //
+      // 예전에는 '0/0 → 20 / 12' 한 줄이었다. 어느 쪽이 계획인지 머리글을
+      // 봐야 알 수 있었고, 저장 버튼을 누르기 직전에 그걸 되짚게 만들면
+      // 안 된다. 칸마다 이름을 붙인다.
+      function _pfLine(lab, was, now) {
+        if (was === now) {
+          return '<div style="color:#9CA3AF">' +
+                 '<span style="display:inline-block;width:30px">' + lab + '</span>' +
+                 now + '</div>';
+        }
+        return '<div><span style="display:inline-block;width:30px;color:#94A3B8">' + lab +
+               '</span><span style="color:#CBD5E1;text-decoration:line-through">' + was +
+               '</span> <b style="color:#156082">' + now + '</b></div>';
+      }
+
       function td(c) {
         var o = c.old, n = c['new'];
-        if (o.plan === n.plan && o.actual === n.actual) {
-          return '<td style="text-align:right;color:#9CA3AF">' + n.plan + ' / ' + n.actual + '</td>';
-        }
-        return '<td style="text-align:right;color:#156082;font-weight:700">' +
-               '<span style="color:#CBD5E1;text-decoration:line-through;font-weight:500">' +
-               o.plan + '/' + o.actual + '</span> → ' + n.plan + ' / ' + n.actual + '</td>';
+        var same = (o.plan === n.plan && o.actual === n.actual);
+        return '<td style="text-align:right;font-size:11.5px;line-height:1.6' +
+               (same ? ';opacity:.55' : '') + '">' +
+               _pfLine('계획', o.plan, n.plan) +
+               _pfLine('실적', o.actual, n.actual) + '</td>';
       }
 
       var body = rows.map(function(r) {
@@ -9191,19 +9406,31 @@ window._ovProjectKey = function() {
       back.innerHTML =
         '<div class="ph-box" style="width:min(1180px,96vw)">' +
           '<div class="ph-hd">' +
-            '<h3>출하계획 파일 반영 · ' + _pfE(d.month) + '</h3>' +
+            '<h3>출하계획 파일 반영 · ' + _pfE(d.month) +
+              (mons.length > 1 ? ' 외 ' + (mons.length - 1) + '개 달' : '') + '</h3>' +
             '<p><b>' + _pfE(d.file_name) + '</b> — 시트 <b>' + _pfE(d.sheet) + '</b> · ' +
               weeks.join(', ') + '<br>' +
               '읽은 행 <b>' + rows.length + '</b>개 중 <b>' + nChg + '</b>개가 지금 값과 다릅니다. ' +
               '계획 합계 <b>' + (tot.plan || 0) + '</b> · 실적 합계 <b>' + (tot.actual || 0) + '</b> ' +
               '(시트의 TOTAL 열은 쓰지 않고 주차 값을 직접 더한 숫자입니다)<br>' +
-              '<b>주차 계획·실적만</b> 바꿉니다. PO 수량·판가·재료비는 그대로 둡니다.</p>' +
+              '<b>빈 칸은 그대로 둡니다.</b> 적힌 칸만 바뀝니다 — ' +
+              '안 적은 판가·재료비·PO 는 지금 값이 남습니다.</p>' +
           '</div>' +
+          _pfMonths() +
+          _pfExtra(d) +
           (un
             ? '<div style="margin:0 16px;padding:10px 12px;background:#FEF2F2;border:1px solid #FECACA;' +
               'border-radius:8px;font-size:12px;color:#7F1D1D">' +
               '<b>등록되지 않아 건너뛰는 행 ' + (d.unmatched || []).length + '개</b>' +
-              '<ul style="margin:6px 0 0 16px">' + un + '</ul></div>'
+              '<ul style="margin:6px 0 0 16px">' + un + '</ul>' +
+              // 여기서 막다른 길을 만들면 안 된다. 주차 양식에는 판가·재료비
+              // 칸이 없어서 새 모델을 여기서 등록할 수 없다 — 등록 양식으로
+              // 바로 갈 수 있게 버튼을 놓는다.
+              '<div style="margin-top:9px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+                '<span>이 줄들은 아직 등록된 모델이 아닙니다. 판가·재료비가 필요해서 ' +
+                '주차 양식으로는 못 넣습니다 — 모델 등록 양식으로 먼저 넣어 주세요.</span>' +
+                '<button type="button" class="ov-btn" id="pf-newmodel">📄 모델 등록 양식 받기</button>' +
+              '</div></div>'
             : '') +
           '<div style="padding:14px 16px;overflow:auto;max-height:56vh">' +
             '<table class="wb-tbl"><thead><tr>' +
@@ -9211,7 +9438,7 @@ window._ovProjectKey = function() {
               '<th style="min-width:210px">엑셀 행</th>' +
               '<th style="min-width:160px">맞춘 모델</th>' +
               weeks.map(function(w) {
-                return '<th style="min-width:126px">' + w + ' 계획/실적</th>';
+                return '<th style="min-width:118px">' + w + '</th>';
               }).join('') +
             '</tr></thead><tbody>' + body + '</tbody></table>' +
           '</div>' +
@@ -9225,6 +9452,11 @@ window._ovProjectKey = function() {
       function close() { back.remove(); }
       back.querySelector('#pf-cancel').onclick = close;
       back.onclick = function(e) { if (e.target === back) close(); };
+      var _nm = back.querySelector('#pf-newmodel');
+      if (_nm) _nm.onclick = function() {
+        window.location.href = '/admin/models/template?project_key=' +
+                               encodeURIComponent(pk);
+      };
       back.querySelector('#pf-all').onchange = function() {
         var v = this.checked;
         back.querySelectorAll('.pf-ck').forEach(function(el) { el.checked = v; });
@@ -9239,6 +9471,8 @@ window._ovProjectKey = function() {
         fd.append('file', f);
         fd.append('month', d.month);
         fd.append('skip', skip.join('|'));
+        var _ov = back.querySelector('#pf-over');
+        if (_ov && _ov.checked) fd.append('overwrite', '1');
         btn.disabled = true;
         btn.textContent = '저장 중...';
         fetch('/admin/projects/' + encodeURIComponent(pk) + '/plan-file/apply',
@@ -9248,9 +9482,32 @@ window._ovProjectKey = function() {
             close();
             if (!res.ok) { alert('반영 실패: ' + (res.detail || '알 수 없는 오류')); return; }
             if (window.mdlToast) {
-              window.mdlToast(res.month + ' · 모델 ' + res.applied + '개 반영');
+              var _ms2 = res.months || [];
+              var msg = (_ms2.length > 1
+                         ? _ms2.length + '개 달 (' + _ms2[0].month + ' ~ ' +
+                           _ms2[_ms2.length - 1].month + ')'
+                         : res.month) + ' · 주차 ' + res.applied + '행';
+              if (res.model_updated) {
+                msg += ' · 모델 값 ' + res.model_updated + '건';
+                var _bits = [];
+                if (res.model_filled) _bits.push('채움 ' + res.model_filled);
+                if (res.model_over) _bits.push('덮어씀 ' + res.model_over);
+                if (_bits.length) msg += ' (' + _bits.join(' · ') + ')';
+              }
+              if ((res.model_created || []).length) {
+                msg += ' · 신규 ' + res.model_created.length + '개';
+              }
+              if (res.week_notes) msg += ' · 사유 ' + res.week_notes + '주차';
+              window.mdlToast(msg);
             }
             if (window.wbRefresh) window.wbRefresh();
+            // 모델 값이 바뀌었으면 모델 목록도 다시 그린다
+            if (res.model_updated || (res.model_created || []).length) {
+              if (typeof window.loadModelList === 'function') {
+                var _ms = document.getElementById('wp-month-sel');
+                window.loadModelList(_ms ? _ms.value : null);
+              }
+            }
           })
           .catch(function(e) { close(); alert('반영 실패: ' + e.message); });
       };
@@ -9429,6 +9686,9 @@ window._ovProjectKey = function() {
               return;
             }
             if (x.j.kind === 'status') { _pfStatusImport(pk, f, x.j.sheets, pfUp); return; }
+            // 주차표가 없는 파일 — 모델 값만 들어간다 (옛 모델 등록 양식 등)
+            if (x.j.kind === 'process') { _pfProcess(pk, f, x.j); return; }
+            if (x.j.kind === 'models') { _pfModelsOnly(pk, f, x.j); return; }
             _pfPreview(pk, f, x.j);
           })
           .catch(function(e) {
@@ -9679,7 +9939,6 @@ window._ovProjectKey = function() {
 
   // 보드가 엑셀 원본과 같은 표를 데이터로 그리는 프로젝트.
   // 여기서는 '주차별 계획 원본'(엑셀 이미지) 카드를 숨긴다 — 같은 표가 두 번 나올 이유가 없다.
-  var WB_REPLACES_SRC = ['hrva_plate', 'havaplate'];
 
   // ── 섹션형 보드 (구분 | 행 | 현황 | PO | 실적 | 잔량 | 월… | 비고) ──
   function _wbRenderSections(box, pk, d) {
@@ -10194,6 +10453,38 @@ window._ovProjectKey = function() {
   window.DAILY_BOARD_PROJECTS = ['bloom_main', 'bloom_yfp', 'bloom_corva_kpe',
     'bloom_sl7', 'bloom_tc', 'bloom_wdm', 'bloom_bop', 'bloom_bop_assy'];
 
+  // 자료를 올리는 곳. 파일 하나에 품목이 전부 들어 있어서 품목마다 올릴
+  // 일이 없는데, 여덟 개가 나란히 있으면 매번 어디서 올릴지 고민하게 된다.
+  // 한 곳으로 못박고 나머지는 보기 전용으로 둔다.
+  window.UPLOAD_LEAD_PROJECT = {
+    bloom_main: { tag: '자료 올리는 곳', rest: '품목별 — 보기만', label: '블룸 (전체)' }
+  };
+  window._bdLeadOf = function(pk) {
+    // 그 프로젝트가 속한 묶음의 '올리는 곳' 키. 자기 자신이면 '' 를 준다.
+    if (!window._bdIsDaily(pk)) return '';
+    var m = window.UPLOAD_LEAD_PROJECT || {};
+    for (var k in m) { if (m.hasOwnProperty(k)) return (k === pk) ? '' : k; }
+    return '';
+  };
+  window._bdGoLead = function(pk) {
+    var s2 = document.getElementById('mdl-proj-select');
+    if (!s2) return;
+    var has = false;
+    for (var i = 0; i < s2.options.length; i++) {
+      if (s2.options[i].value === pk) { has = true; break; }
+    }
+    if (!has) {
+      var o = document.createElement('option');
+      o.value = pk;
+      o.textContent = ((window.UPLOAD_LEAD_PROJECT || {})[pk] || {}).label || pk;
+      s2.appendChild(o);
+    }
+    s2.value = pk;
+    window._currentProjectKey = pk;
+    s2.dispatchEvent(new Event('change', { bubbles: true }));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   window._bdIsDaily = function(pk) {
     return (window.DAILY_BOARD_PROJECTS || []).indexOf(pk) >= 0;
   };
@@ -10221,7 +10512,7 @@ window._ovProjectKey = function() {
   window._bdSyncMenu = function(pk) {
     var daily = window._bdIsDaily(pk);
     var bloomBtn = document.getElementById('mdl-bloom-btn');
-    ['mdl-excel-btn', 'mdl-proc-excel-btn', 'mdl-excel-tpl-btn']
+    ['mdl-lead-btn']
       .forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.hidden = daily;
@@ -10244,22 +10535,77 @@ window._ovProjectKey = function() {
     }
   };
 
+  // 보고 있는 달. 프로젝트를 바꾸면 비운다 (= 가장 최근 달).
+  window._bdMonth = '';
+
+  // 올라와 있는 달이 둘 이상일 때만 그린다. 달이 바뀌었다고 지난 달이
+  // 없어지는 게 아니다 — 10월이 되고 9월 실적을 못 보던 일이 있었다.
+  window._bdMonthBar = function(d) {
+    var ms = (d && d.months) || [];
+    if (ms.length < 2) return '';
+    var cur = (d && d.month) || ms[ms.length - 1];
+    var h = '<div class="bd-mon">';
+    for (var i = 0; i < ms.length; i++) {
+      var ym = String(ms[i]);
+      var lab = (parseInt(ym.slice(5, 7), 10) || ym) + '월';
+      h += '<button type="button" data-bdmon="' + _bdEsc(ym) + '"' +
+           (ym === cur ? ' class="on"' : '') + '>' + _bdEsc(lab) + '</button>';
+    }
+    return h + '</div>';
+  };
+
+  window._bdWireMonthBar = function(pk, box) {
+    var bs = box.querySelectorAll('[data-bdmon]');
+    for (var i = 0; i < bs.length; i++) {
+      bs[i].onclick = function() {
+        window._bdMonth = this.getAttribute('data-bdmon') || '';
+        window.renderDailyBoard(pk, box);
+      };
+    }
+  };
+
   window.renderDailyBoard = function(pk, box) {
     box = box || document.getElementById('wb-board');
     if (!box) return;
     box.innerHTML = '<div style="padding:18px;text-align:center;color:#9CA3AF;font-size:13px;">불러오는 중...</div>';
-    fetch('/projects/' + encodeURIComponent(pk) + '/daily-board', { credentials: 'same-origin' })
+    var _q = window._bdMonth ? ('?month=' + encodeURIComponent(window._bdMonth)) : '';
+    fetch('/projects/' + encodeURIComponent(pk) + '/daily-board' + _q, { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         window._bdData = d;
         if (!d.has_board) {
+          var _lead = window._bdLeadOf(pk);
+          if (_lead) {
+            // 품목 화면이다. 여기서는 올릴 수 없으니 어디로 가야 하는지만 말한다.
+            box.innerHTML =
+              '<div class="bd-empty"><div class="ttl">아직 올린 자료가 없습니다</div>' +
+              '<div class="sub">블룸 자료는 <b>블룸 (전체)</b> 에서 한 번만 올립니다</div></div>';
+            return;
+          }
           box.innerHTML =
-            '<div style="padding:44px 20px;text-align:center;color:#9CA3AF;font-size:13px;line-height:1.7;">' +
-            '아직 올린 일 보고 자료가 없습니다.<br>' +
-            "위 <b>엑셀 올리기</b> 로 '대표님 일 보고 자료' 파일을 올려주세요.</div>";
+            '<div class="bd-empty">' +
+              '<div class="ttl">아직 올린 자료가 없습니다</div>' +
+              '<div class="sub">대표님 일 보고 자료 엑셀을 올리면 아래 표가 채워집니다</div>' +
+              '<div class="bd-steps">' +
+                '<div class="bd-step3"><span class="n">1</span>' +
+                  '<div class="h">📄 양식 받기 로 엑셀을 받습니다</div>' +
+                  '<div class="d">품목 칸이 채워진 빈 양식입니다.<br>쓰시던 파일이 있으면 그걸 그대로 올리셔도 됩니다</div></div>' +
+                '<div class="bd-step3"><span class="n">2</span>' +
+                  '<div class="h">📁 엑셀 올리기 를 누릅니다</div>' +
+                  '<div class="d">오른쪽 위 버튼입니다.<br>파일을 고르면 미리보기가 뜹니다</div></div>' +
+                '<div class="bd-step3"><span class="n">3</span>' +
+                  '<div class="h">확인하고 이대로 넣기</div>' +
+                  '<div class="d">무엇을 읽었는지 보고 나서<br>누르셔야 저장됩니다</div></div>' +
+              '</div>' +
+              '<div class="bd-safe">🛟 넣기 전 상태는 자동으로 백업됩니다 — 잘못 올려도 되돌릴 수 있습니다</div>' +
+            '</div>';
+          box.insertAdjacentHTML('afterbegin', window._bdMonthBar(d));
+          window._bdWireMonthBar(pk, box);
           return;
         }
         _bdRender(box, d);
+        box.insertAdjacentHTML('afterbegin', window._bdMonthBar(d));
+        window._bdWireMonthBar(pk, box);
       })
       .catch(function(e) {
         box.innerHTML = '<div style="padding:20px;color:#DC2626;font-size:13px;">보드 로드 실패: ' +
@@ -10354,6 +10700,56 @@ window._ovProjectKey = function() {
   }
 
   // 업로드 — 미리보기 먼저, 확인하면 저장
+  // 올리는 곳이 따로 있으면 품목 화면에서는 올리기 버튼을 감추고,
+  // 어디로 가야 하는지와 가는 버튼을 띄운다. 막다른 길을 만들지 않는다.
+  window._bdApplyLeadUI = function(pk) {
+    var card = document.getElementById('wb-card');
+    var up = document.getElementById('pf-upload');
+    var lead = window._bdLeadOf(pk);
+    var old = document.getElementById('bd-ro-bar');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (up) up.style.display = lead ? 'none' : '';
+    var fm = document.getElementById('pf-form');
+    if (fm) fm.style.display = (!lead && window._bdIsDaily(pk)) ? '' : 'none';
+    var wfm = document.getElementById('wp-form');
+    if (wfm) wfm.style.display = 'none';   // 블룸은 주차 양식을 안 쓴다
+    if (!lead || !card || !card.parentNode) return;
+    var meta = (window.UPLOAD_LEAD_PROJECT || {})[lead] || {};
+    var bar = document.createElement('div');
+    bar.id = 'bd-ro-bar';
+    bar.className = 'bd-ro';
+    bar.innerHTML =
+      '<span class="ic">👁</span>' +
+      '<span class="tx"><b>보기 전용 화면입니다.</b> 블룸 자료는 품목마다 따로 올리지 않습니다 — ' +
+        '파일 하나에 품목이 전부 들어 있어서 <b>' + (meta.label || lead) + '</b> 에서 한 번만 올립니다.</span>' +
+      '<span class="spacer" style="flex:1"></span>' +
+      '<button type="button" class="ov-btn ov-btn-primary" id="bd-go-lead">' +
+        (meta.label || lead) + ' 에서 올리기 →</button>';
+    card.parentNode.insertBefore(bar, card);
+    var go = document.getElementById('bd-go-lead');
+    if (go) go.onclick = function() { window._bdGoLead(lead); };
+  };
+
+  // 양식 받기 — 지금 보고 있는 달의 빈 양식.
+  window._bdWireForm = function() {
+    var fm = document.getElementById('pf-form');
+    if (!fm || fm.dataset.bdwired) return;
+    fm.dataset.bdwired = '1';
+    fm.onclick = function() {
+      var pk = window._ovProjectKey && window._ovProjectKey();
+      if (!pk) return;
+      var mon = '';
+      try {
+        var d = window._bdData || {};
+        var ds = d.dates || [];
+        mon = (ds.length ? String(ds[ds.length - 1]) : String(d.report_date || '')).slice(0, 7);
+      } catch (e) { mon = ''; }
+      var q = mon && /^\d{4}-\d{2}$/.test(mon) ? '?month=' + mon : '';
+      window.location = '/admin/projects/' + encodeURIComponent(pk) +
+                        '/bloom-template' + q;
+    };
+  };
+
   window._bdWireUpload = function() {
     var up = document.getElementById('pf-upload');
     var fl = document.getElementById('pf-file');
@@ -10429,11 +10825,9 @@ window._ovProjectKey = function() {
     pk = pk || window._ovProjectKey();
     if (!pk) { box.innerHTML = ''; return; }
 
-    var srcCard = document.getElementById('wp-src-card');
     // 블룸은 '날짜 x 품목 x 공정' 이라 주차 보드가 아니라 일 보드를 그린다
     if (window._bdSyncMenu) window._bdSyncMenu(pk);
     if (window._bdIsDaily(pk)) {
-      if (srcCard) srcCard.style.display = 'none';
       var msel0 = document.getElementById('wp-month-sel');
       if (msel0) msel0.style.display = 'none';
       var _tab = document.getElementById('mdl-tab-plan');
@@ -10444,11 +10838,17 @@ window._ovProjectKey = function() {
       if (_sb) _sb.textContent = '날짜별 계획 · 실적';
       var _we = document.getElementById('wb-edit');
       if (_we) _we.style.display = 'none';
+      window._bdApplyLeadUI(pk);
       window._bdWireUpload();
+      window._bdWireForm();
+      window._bdMonth = '';          // 프로젝트를 바꾸면 가장 최근 달부터
       window.renderDailyBoard(pk, box);
       return;
     }
-    if (srcCard) srcCard.style.display = (WB_REPLACES_SRC.indexOf(pk) >= 0) ? 'none' : '';
+    var _pfm = document.getElementById('pf-form');
+    if (_pfm) _pfm.style.display = 'none';
+    var _wpf = document.getElementById('wp-form');
+    if (_wpf) _wpf.style.display = '';     // 주차 양식은 반도체 쪽에서만
     var _msel1 = document.getElementById('wp-month-sel');
     if (_msel1) _msel1.style.display = '';
     var _tab1 = document.getElementById('mdl-tab-plan');
@@ -12129,6 +12529,7 @@ window._ovProjectKey = function() {
   var _s = null;          // { division, currency, months, default_items, stock_rows }
   var _m = '';            // 보고 있는 월
   var _file = null, _imp = null;
+  var _sumDirty = false;  // 누적을 건드렸나 — 안 건드렸으면 저장 때 빼고 보낸다
   var REG = [['total','합계'],['overseas','해외'],['domestic','국내']];
   var MET = [['buy','매입액'],['paid','지급액'],['balance','잔액']];
 
@@ -12152,7 +12553,11 @@ window._ovProjectKey = function() {
     return v<0?'('+s+')':s;
   }
   function cur(){ return (_s&&_s.currency==='KRW')?'₩':'$'; }
-  function mLabel(m){ return m?(Number(m.slice(5,7))+'월'):''; }
+  function isSum(m){ return m==='total'; }
+  function mLabel(m){ return isSum(m)?'누적':(m?(Number(m.slice(5,7))+'월'):''); }
+  // 미리보기는 연도까지 찍는다 — 연도 칸을 잘못 넣어도 '9월' 만 보이면
+  // 작년 파일이 올해로 들어간 걸 알 수가 없었다.
+  function ymLabel(m){ return m?(m.slice(0,4)+'년 '+Number(m.slice(5,7))+'월'):''; }
   function thisMonth(){ var d=new Date();
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
   function months(){ return Object.keys((_s&&_s.months)||{}).sort(); }
@@ -12174,7 +12579,18 @@ window._ovProjectKey = function() {
       receivable:null, total_buy:null, notes:{} };
   }
   function notesOf(m){ var x=mv(m); if(!x.notes||typeof x.notes!=='object') x.notes={}; return x.notes; }
+  // 누적은 달 한 칸과 모양이 같고 from/to 만 더 붙는다. _m==='total' 이면
+  // 같은 표가 _s.summary 를 본다 — 표 코드는 한 줄도 안 고쳤다.
+  function blankSummary(){ var b=blankMonth(); b.from=''; b.to=''; return b; }
   function mv(m){
+    if(isSum(m)){
+      if(!_s.summary||typeof _s.summary!=='object') _s.summary=blankSummary();
+      var y=_s.summary;
+      if(!y.notes||typeof y.notes!=='object') y.notes={};
+      if(!y.items||!y.items.length) y.items=blankMonth().items;
+      if(!y.stock||!y.stock.length) y.stock=blankMonth().stock;
+      return y;
+    }
     if(!_s.months[m]) _s.months[m]=blankMonth();
     var x=_s.months[m];
     if(!x.notes||typeof x.notes!=='object') x.notes={};
@@ -12232,6 +12648,41 @@ window._ovProjectKey = function() {
     var tb=cv(mv(m).total_buy,r), rev=f(cv(mv(m).revenue,r));
     if(tb===null||tb===undefined||tb===''||rev<=0) return null;
     return Math.round(f(tb)/rev*1000)/10;
+  }
+
+  // ── 누적 ────────────────────────────────────────────────
+  function cellHas(c){
+    if(c===null||c===undefined||c==='') return false;
+    if(typeof c==='object'){
+      for(var i=0;i<REG.length;i++){ var v=c[REG[i][0]];
+        if(v!==null&&v!==undefined&&v!=='') return true; }
+      return false;
+    }
+    return true;
+  }
+  // 서버 summary_has_data 와 같은 판단이어야 한다. 여기서 '있다'고 한 걸
+  // 서버가 '없다'고 버리면 화면과 앱이 어긋난다.
+  function sumHasData(){
+    var y=_s&&_s.summary; if(!y||typeof y!=='object') return false;
+    var ks=['revenue','prepaid','actual_paid','invest','receivable','total_buy'], i;
+    for(i=0;i<ks.length;i++) if(cellHas(y[ks[i]])) return true;
+    var its=y.items||[];
+    for(i=0;i<its.length;i++)
+      if(cellHas(its[i].buy)||cellHas(its[i].paid)||cellHas(its[i].balance)) return true;
+    var sk=y.stock||[];
+    for(i=0;i<sk.length;i++) if(cellHas(sk[i].value)) return true;
+    return !!(y.notes&&Object.keys(y.notes).length);
+  }
+  function sumHead(){
+    var on=sumHasData(), y=(_s.summary||{}), ms=months();
+    var a=ms.length?ms[0]:'2026-01', b=ms.length?ms[ms.length-1]:'2026-12';
+    return '<span class="pu-badge'+(on?' sheet':'')+'">'+(on?'시트값':'달 합산')+'</span>'+
+      '<span class="pu-range">'+
+        '<input class="pu-in mo" id="pu-from" placeholder="'+a+'" value="'+esc(y.from||'')+'">'+
+        '<i>~</i>'+
+        '<input class="pu-in mo" id="pu-to" placeholder="'+b+'" value="'+esc(y.to||'')+'">'+
+      '</span>'+
+      (on?'<button type="button" class="pu-btn sm" id="pu-sum-clear">시트값 지우기</button>':'');
   }
 
   // ── CSS ─────────────────────────────────────────────────
@@ -12296,7 +12747,17 @@ window._ovProjectKey = function() {
       '.pu-imp b{color:#9A3412}',
       '.pu-imp .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}',
       '.pu-warn{color:#B42318}',
-      '.pu-hint{font-size:11.5px;color:#98A2B3;padding:10px 16px 14px;line-height:1.6}'
+      '.pu-hint{font-size:11.5px;color:#98A2B3;padding:10px 16px 14px;line-height:1.6}',
+      '.pu-hint b{color:#475467}',
+      '.pu-chip.sum{border-style:dashed;border-color:#B9C4D4;color:#0F2C59}',
+      '.pu-chip.sum.on{border-style:solid;background:#0F2C59;border-color:#0F2C59;color:#fff}',
+      '.pu-badge{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;',
+      ' background:#F2F4F7;color:#667085;border:1px solid #E4E7EC}',
+      '.pu-badge.sheet{background:#FFF6ED;color:#9A3412;border-color:#FDE0C0}',
+      '.pu-range{display:inline-flex;align-items:center;gap:5px}',
+      '.pu-range i{font-style:normal;color:#98A2B3;font-size:12px}',
+      '.pu-in.mo{width:92px;max-width:92px;text-align:center;padding:5px 6px;font-size:11.5px}',
+      '.pu-btn.sm{font-size:11.5px;padding:5px 11px;border-radius:7px}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -12391,8 +12852,10 @@ window._ovProjectKey = function() {
     }
     var w=_imp.warnings||[];
     return '<div class="pu-imp"><b>'+esc(_imp.file)+'</b> · 시트 '+esc(_imp.sheet)+
-      '<br>읽은 달: <b>'+(_imp.months||[]).map(mLabel).join(' · ')+'</b>'+
-      ((_imp.kept||[]).length?'<br>그대로 두는 달: '+_imp.kept.map(mLabel).join(' · '):'')+
+      '<br>읽은 달: <b>'+(_imp.months||[]).map(ymLabel).join(' · ')+'</b>'+
+      ((_imp.kept||[]).length?'<br>그대로 두는 달: '+_imp.kept.map(ymLabel).join(' · '):'')+
+      (_imp.year?'<br>연도 <b>'+esc(_imp.year)+'</b> 로 읽었습니다 — 다르면 위 연도 칸을 고치고 다시 읽어 주세요.':'')+
+      (_imp.has_summary?'<br>누적(합계·해외·국내) 줄도 찾았습니다 — 넣으면 누적 탭에 <b>시트값</b>으로 들어갑니다.':'')+
       (w.length?'<br><span class="pu-warn">못 읽은 줄 '+w.length+'개 — '+
         esc(w.slice(0,3).join(' / '))+(w.length>3?' …':'')+'</span>':'')+
       '<div class="row"><button type="button" class="pu-btn pri" id="pu-apply">이대로 넣기</button>'+
@@ -12408,7 +12871,9 @@ window._ovProjectKey = function() {
     var ms=months();
     var chips=ms.map(function(m){
       return '<button type="button" class="pu-chip'+(m===_m?' on':'')+'" data-m="'+m+'">'+mLabel(m)+'</button>';
-    }).join('')+'<button type="button" class="pu-chip add" id="pu-add">+ 월 추가</button>';
+    }).join('')+
+      '<button type="button" class="pu-chip sum'+(isSum(_m)?' on':'')+'" data-m="total">누적</button>'+
+      '<button type="button" class="pu-chip add" id="pu-add">+ 월 추가</button>';
 
     return ''+
     '<div class="pu-act">'+
@@ -12428,10 +12893,15 @@ window._ovProjectKey = function() {
       '<span>해외 + 국내 = 합계. 안 나눈 달은 <b>합계만</b> 적으면 됩니다 — 빈 칸은 앱에서 ‘미입력’ 입니다.</span>'+
     '</div>'+
     '<div class="pu-card"><div class="hd"><b>'+mLabel(_m)+' 매입 현황</b>'+
+      (isSum(_m)?sumHead():'')+
       '<span class="sub">단위 '+cur()+' · 괄호는 음수</span></div>'+
       grid()+
-      '<div class="pu-hint">엑셀과 같은 모양입니다 — 줄이 구분, 열이 지역. '+
-      '비고는 줄을 나눠 적으면 앱에도 그대로 줄로 보입니다.</div></div>';
+      '<div class="pu-hint">'+(isSum(_m)
+        ? '<b>비워 두는 게 보통입니다.</b> 비어 있으면 앱이 달들을 더해서 누적을 만들고, '+
+          '달이 늘면 따라 늘어납니다. 엑셀 누적이 달 합계와 다를 때(전년 이월·기초재고 등)만 '+
+          '여기에 적으세요 — 적어 두면 달이 늘어도 이 값이 그대로 나갑니다.'
+        : '엑셀과 같은 모양입니다 — 줄이 구분, 열이 지역. '+
+          '비고는 줄을 나눠 적으면 앱에도 그대로 줄로 보입니다.')+'</div></div>';
   }
 
   function repaint(){
@@ -12455,6 +12925,21 @@ window._ovProjectKey = function() {
     if(cs) cs.onchange=function(){ _s.currency=cs.value; repaint(); };
     var sv=document.getElementById('pu-save'); if(sv) sv.onclick=save;
 
+    ['from','to'].forEach(function(k){
+      var el=document.getElementById('pu-'+k); if(!el) return;
+      el.onchange=function(){
+        var t=String(el.value||'').trim();
+        if(t&&!/^20\d\d-(0[1-9]|1[0-2])$/.test(t)){
+          alert('YYYY-MM 형식으로 적어 주세요.'); el.value=mv('total')[k]||''; return; }
+        mv('total')[k]=t; _sumDirty=true; repaint();
+      };
+    });
+    var sc=document.getElementById('pu-sum-clear');
+    if(sc) sc.onclick=function(){
+      if(!confirm('누적에 적힌 값을 지웁니다.\n앱은 다시 달들을 더해서 보여줍니다.')) return;
+      _s.summary=blankSummary(); _sumDirty=true; repaint();
+    };
+
     c.querySelectorAll('input[data-p]').forEach(function(el){
       el.onchange=function(){
         var m=el.getAttribute('data-m'), p=el.getAttribute('data-p'), r=el.getAttribute('data-r');
@@ -12462,6 +12947,7 @@ window._ovProjectKey = function() {
         if(p.indexOf('item:')===0){ var a=p.split(':'); setc(itemOf(m,a[1]), a[2], r, v); }
         else if(p.indexOf('stock:')===0){ setc(stockOf(m,p.split(':')[1]), 'value', r, v); }
         else setc(mv(m), p, r, v);
+        if(isSum(m)) _sumDirty=true;
         repaint();
       };
     });
@@ -12473,6 +12959,7 @@ window._ovProjectKey = function() {
         var m=el.getAttribute('data-m'), p=el.getAttribute('data-note');
         var n=notesOf(m);
         if(String(el.value).trim()) n[p]=el.value; else delete n[p];
+        if(isSum(m)) _sumDirty=true;
         el.classList.toggle('empty', !String(el.value).trim());
         el.rows = Math.min(6, Math.max(1, String(el.value).split('\n').length));
       };
@@ -12507,7 +12994,10 @@ window._ovProjectKey = function() {
         if(mode==='commit'){
           _imp=null; _file=null;
           _s.months=(d.state&&d.state.months)||_s.months;
-          if(!_s.months[_m]){ var k=months(); _m=k.length?k[k.length-1]:thisMonth(); }
+          if(d.state&&('summary' in d.state))
+            _s.summary=(d.state.summary&&typeof d.state.summary==='object')?d.state.summary:null;
+          _sumDirty=false;
+          if(!isSum(_m)&&!_s.months[_m]){ var k=months(); _m=k.length?k[k.length-1]:thisMonth(); }
           repaint();
           var s2=document.getElementById('pu-stat');
           if(s2) s2.textContent='엑셀을 넣었습니다 · '+(d.updated_at||'').replace('T',' ');
@@ -12516,21 +13006,31 @@ window._ovProjectKey = function() {
       .catch(function(e){ alert(e.message); repaint(); });
   }
 
+  // 누적은 건드렸을 때만 보낸다. 안 보내면 서버가 있던 걸 지킨다 —
+  // 화면이 안 들고 있는 걸 저장했다가 통째로 날린 적이 있다.
+  function payload(){
+    var p={division:_s.division, currency:_s.currency, months:_s.months};
+    if(_sumDirty) p.summary = sumHasData()?_s.summary:null;
+    return p;
+  }
+
   function save(){
     var sv=document.getElementById('pu-save');
     if(sv){ sv.disabled=true; sv.textContent='저장 중…'; }
     fetch('/admin/division/purchase',{
       method:'PUT', credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({division:_s.division, currency:_s.currency, months:_s.months})
+      body: JSON.stringify(payload())
     }).then(function(r){
       if(r.status===401) throw new Error('로그인이 필요합니다');
       if(!r.ok) throw new Error('HTTP '+r.status);
       return r.json();
     }).then(function(d){
       _s.months=d.months||{}; _s.currency=d.currency||'USD';
+      if('summary' in d) _s.summary=(d.summary&&typeof d.summary==='object')?d.summary:null;
+      _sumDirty=false;
       var when=(d.updated_at||'').replace('T',' ');
-      if(!_s.months[_m]){ var k=months(); _m=k.length?k[k.length-1]:thisMonth(); }
+      if(!isSum(_m)&&!_s.months[_m]){ var k=months(); _m=k.length?k[k.length-1]:thisMonth(); }
       repaint();
       var s2=document.getElementById('pu-stat');
       if(s2) s2.textContent='저장했습니다 · '+when;
@@ -12555,8 +13055,9 @@ window._ovProjectKey = function() {
       })
       .then(function(d){
         _s={ division:div, currency:d.currency||'USD', months:d.months||{},
+             summary:(d.summary&&typeof d.summary==='object')?d.summary:null,
              default_items:d.default_items||[], stock_rows:d.stock_rows||[] };
-        _imp=null; _file=null;
+        _imp=null; _file=null; _sumDirty=false;
         var ms=months();
         _m = ms.length ? ms[ms.length-1] : thisMonth();
         if(!ms.length) mv(_m);
@@ -13088,6 +13589,306 @@ window._ovProjectKey = function() {
   }
 
   window.renderOvertimePage=function(){ css(); _open={}; _showImp=false; load(''); };
+})();
+</script>
+
+<script>
+// ============================================================
+// 백업 — 하루 한 벌, 그날의 데이터 전부.
+//
+// 여기서 할 일은 셋뿐이다: 있는지 보고, 받아 두고, 되돌린다.
+// 되돌리기가 제일 무서운 버튼이라 기본은 '파일 하나만' 이다. 통째로
+// 되돌리면 그 사이에 제대로 들어간 것까지 같이 잃는다.
+// ============================================================
+(function () {
+  var _d = null;          // { backups, usage, policy, plan, sources, has_today }
+  var _sel = '';          // 펼쳐 둔 백업 이름
+  var _pick = {};         // 되돌릴 파일 체크 상태
+
+  function esc(s){ return String(s===null||s===undefined?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function kb(n){
+    n=Number(n)||0;
+    if(n>=1048576) return (n/1048576).toFixed(1)+' MB';
+    if(n>=1024) return Math.round(n/1024)+' KB';
+    return n+' B';
+  }
+  function dayLabel(name){
+    var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(name||''); if(!m) return name;
+    var d=new Date(+m[1],+m[2]-1,+m[3]);
+    var wd=['일','월','화','수','목','금','토'][d.getDay()];
+    var lab=m[1].slice(2)+'.'+m[2]+'.'+m[3]+' ('+wd+')';
+    var tail=String(name).slice(10).replace(/\.tar\.gz$/,'').replace(/^_/,'');
+    if(/^\d{6}_/.test(tail)) tail=tail.slice(7);
+    return lab + (tail?' · '+tail.replace(/-/g,' '):'');
+  }
+  function whyTag(w){
+    var c={'일간':'d','주간':'w','월간':'m','바닥':'f'}[w]||'x';
+    return '<span class="bk-why '+c+'">'+esc(w)+'</span>';
+  }
+  function ago(iso){
+    if(!iso) return '';
+    var t=new Date(String(iso).replace(' ','T')); if(isNaN(t)) return '';
+    var s=Math.floor((Date.now()-t.getTime())/1000);
+    if(s<90) return '방금';
+    if(s<5400) return Math.round(s/60)+'분 전';
+    if(s<172800) return Math.round(s/3600)+'시간 전';
+    return Math.round(s/86400)+'일 전';
+  }
+
+  function css(){
+    if(document.getElementById('bk-css')) return;
+    var st=document.createElement('style'); st.id='bk-css';
+    st.textContent=[
+      '.bk-act{display:flex;gap:8px;align-items:center;margin:4px 0 14px;flex-wrap:wrap}',
+      '.bk-act .sp{margin-left:auto;font-size:11.5px;color:#98A2B3}',
+      '.bk-btn{font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:8px;',
+      ' border:1px solid #D0D5DD;background:#fff;color:#344054;cursor:pointer}',
+      '.bk-btn.pri{background:#0F2C59;border-color:#0F2C59;color:#fff}',
+      '.bk-btn.sm{font-size:11.5px;padding:5px 11px;border-radius:7px}',
+      '.bk-btn.warn{border-color:#FDA29B;color:#B42318}',
+      '.bk-btn:disabled{opacity:.5;cursor:default}',
+      '.bk-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}',
+      '.bk-kpi{background:#fff;border:1px solid #E4E7EC;border-radius:12px;padding:13px 15px}',
+      '.bk-kpi .k{font-size:11.5px;color:#667085;font-weight:700}',
+      '.bk-kpi .v{font-size:22px;font-weight:800;color:#0F2C59;margin-top:4px;line-height:1.15}',
+      '.bk-kpi .s{font-size:11px;color:#98A2B3;margin-top:3px}',
+      '.bk-kpi.bad .v{color:#B42318}',
+      '.bk-note{border:1px solid #FDE0C0;background:#FFFBF5;border-radius:10px;',
+      ' padding:12px 14px;margin-bottom:14px;font-size:12px;color:#7A4A12;line-height:1.7}',
+      '.bk-note b{color:#9A3412}',
+      '.bk-card{background:#fff;border:1px solid #E4E7EC;border-radius:12px;overflow:hidden;margin-bottom:16px}',
+      '.bk-card .hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #E4E7EC}',
+      '.bk-card .hd b{font-size:13.5px}',
+      '.bk-card .hd .sub{font-size:11.5px;color:#98A2B3;margin-left:auto}',
+      '.bk-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}',
+      '.bk-tbl th{background:#0B2B5C;color:#fff;padding:9px 12px;text-align:left;',
+      ' font-size:11.5px;font-weight:800;white-space:nowrap}',
+      '.bk-tbl th.r,.bk-tbl td.r{text-align:right}',
+      '.bk-tbl td{padding:8px 12px;border-bottom:1px solid #F1F5F9;vertical-align:middle}',
+      '.bk-tbl tr:last-child td{border-bottom:none}',
+      '.bk-tbl tr.on td{background:#F8FAFC}',
+      '.bk-tbl tr.drop td{color:#98A2B3}',
+      '.bk-tbl .nm{font-weight:700;color:#101828;cursor:pointer}',
+      '.bk-tbl .nm:hover{text-decoration:underline}',
+      '.bk-why{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 8px;',
+      ' border-radius:999px;border:1px solid #E4E7EC;background:#F2F4F7;color:#667085}',
+      '.bk-why.d{background:#ECF3FF;border-color:#C7DBFF;color:#1849A9}',
+      '.bk-why.w{background:#EEF8F3;border-color:#C4E7D6;color:#027A48}',
+      '.bk-why.m{background:#FFF6ED;border-color:#FDE0C0;color:#9A3412}',
+      '.bk-why.x{background:#FEF3F2;border-color:#FECDCA;color:#B42318}',
+      '.bk-det{background:#F8FAFC;border-top:1px solid #E4E7EC}',
+      '.bk-det .in{padding:12px 16px}',
+      '.bk-files{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}',
+      '.bk-f{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;',
+      ' border:1px solid #E4E7EC;background:#fff;border-radius:8px;padding:5px 10px;cursor:pointer}',
+      '.bk-f.on{border-color:#0F2C59;background:#ECF3FF;color:#0F2C59;font-weight:700}',
+      '.bk-f .b{color:#98A2B3;font-size:10.5px}',
+      '.bk-hint{font-size:11.5px;color:#98A2B3;line-height:1.7}',
+      '.bk-hint b{color:#475467}',
+      '.bk-src{display:flex;flex-wrap:wrap;gap:6px}',
+      '.bk-src span{font-size:11.5px;border:1px solid #E4E7EC;background:#fff;',
+      ' border-radius:999px;padding:4px 11px;color:#475467}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  function whyOf(name){
+    var p=(_d&&_d.plan)||{};
+    var hit=(p.keep||[]).filter(function(x){return x.name===name;})[0];
+    if(hit) return hit.why;
+    var out=(p.drop||[]).filter(function(x){return x.name===name;})[0];
+    return out?out.why:'';
+  }
+
+  function kpis(){
+    var u=(_d.usage||{}), disk=(u.disk||{});
+    var pol=_d.policy||{};
+    var free = disk.free||0, total = disk.total||0;
+    var pct = total? Math.round((total-free)/total*100) : 0;
+    var rows=_d.backups||[];
+    var broken=rows.filter(function(r){return r.broken;}).length;
+    return '<div class="bk-kpis">'+
+      '<div class="bk-kpi'+(_d.has_today?'':' bad')+'"><div class="k">오늘 백업</div>'+
+        '<div class="v">'+(_d.has_today?'있음':'없음')+'</div>'+
+        '<div class="s">'+(rows.length?esc(ago(rows[0].at))+' · '+esc(rows[0].name):'아직 없습니다')+'</div></div>'+
+      '<div class="bk-kpi"><div class="k">보관 중</div><div class="v">'+rows.length+'<span style="font-size:13px"> 벌</span></div>'+
+        '<div class="s">'+kb(u.bytes)+' 사용</div></div>'+
+      '<div class="bk-kpi"><div class="k">디스크</div><div class="v">'+pct+'%</div>'+
+        '<div class="s">'+kb(free)+' 남음 / '+kb(total)+'</div></div>'+
+      '<div class="bk-kpi'+(broken?' bad':'')+'"><div class="k">'+(broken?'깨진 백업':'보관 기간')+'</div>'+
+        '<div class="v">'+(broken? broken+'벌' : (pol.daily_days||30)+'일')+'</div>'+
+        '<div class="s">'+(broken?'열리지 않습니다':
+          '주간 '+(pol.weekly_weeks||12)+'주 · 월간 '+(pol.monthly_months||24)+'개월')+'</div></div>'+
+    '</div>';
+  }
+
+  function detail(r){
+    var files=r.files||[];
+    var picked=_pick[r.name]||{};
+    var anyPicked=Object.keys(picked).filter(function(k){return picked[k];}).length;
+    return '<tr class="bk-det"><td colspan="5"><div class="in">'+
+      '<div class="bk-hint">되돌릴 파일을 고르세요. <b>안 고르면 전부</b> 되돌립니다 — '+
+      '통째로 되돌리면 그 사이에 제대로 들어간 것까지 같이 잃습니다.</div>'+
+      '<div class="bk-files">'+ files.map(function(f){
+          return '<span class="bk-f'+(picked[f]?' on':'')+'" data-pick="'+esc(r.name)+'" data-f="'+esc(f)+'">'+
+                 esc(f)+'</span>'; }).join('') +'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+        '<button type="button" class="bk-btn warn" data-restore="'+esc(r.name)+'">'+
+          (anyPicked? '고른 '+anyPicked+'개 되돌리기' : '전부 되돌리기')+'</button>'+
+        '<a class="bk-btn" href="/admin/backups/download?name='+encodeURIComponent(r.name)+'">내려받기</a>'+
+        '<span class="bk-hint">되돌리기 전 상태도 자동으로 한 벌 남습니다.</span>'+
+      '</div></div></td></tr>';
+  }
+
+  function view(){
+    var rows=_d.backups||[];
+    var body = rows.length ? rows.map(function(r){
+      var why=whyOf(r.name);
+      var open=(_sel===r.name);
+      var h='<tr class="'+(open?'on':'')+(why==='기간 지남'?' drop':'')+'">'+
+        '<td><span class="nm" data-open="'+esc(r.name)+'">'+esc(dayLabel(r.name))+'</span>'+
+          (r.broken?' <span class="bk-why x">깨짐</span>':'')+'</td>'+
+        '<td>'+whyTag(why||'—')+'</td>'+
+        '<td class="r">'+kb(r.bytes)+'</td>'+
+        '<td class="r">'+(r.files||[]).length+'개</td>'+
+        '<td class="r" style="color:#98A2B3">'+esc(ago(r.at))+'</td></tr>';
+      return h + (open? detail(r) : '');
+    }).join('') : '<tr><td colspan="5" style="padding:28px;text-align:center;color:#98A2B3">'+
+                  '아직 백업이 없습니다. 위 ‘지금 백업’ 을 눌러 주세요.</td></tr>';
+
+    return ''+
+    '<div class="bk-act">'+
+      '<button type="button" class="bk-btn pri" id="bk-run">지금 백업</button>'+
+      '<button type="button" class="bk-btn" id="bk-prune">오래된 것 정리</button>'+
+      '<span class="sp" id="bk-stat">하루 한 벌, 그날의 데이터 전부를 담습니다</span>'+
+    '</div>'+
+    (_d.has_today?'':'<div class="bk-note"><b>오늘 백업이 아직 없습니다.</b> '+
+      '누군가 앱이나 admin 을 열면 그때 자동으로 생깁니다. 지금 만들려면 ‘지금 백업’ 을 누르세요.</div>')+
+    kpis()+
+    '<div class="bk-card"><div class="hd"><b>백업</b>'+
+      '<span class="sub">이름을 누르면 안을 봅니다</span></div>'+
+      '<table class="bk-tbl"><thead><tr>'+
+        '<th>날짜</th><th>남기는 이유</th><th class="r">크기</th>'+
+        '<th class="r">파일</th><th class="r">만든 때</th>'+
+      '</tr></thead><tbody>'+body+'</tbody></table>'+
+      '<div class="bk-hint" style="padding:10px 16px 14px">'+
+        '<b>일간</b> 최근 '+( _d.policy.daily_days)+'일 · '+
+        '<b>주간</b> 각 주의 첫 백업 '+(_d.policy.weekly_weeks)+'주 · '+
+        '<b>월간</b> 각 달의 첫 백업 '+(_d.policy.monthly_months)+'개월. '+
+        '그 밖은 정리합니다. 아무리 오래돼도 '+(_d.policy.min_keep)+'벌은 남깁니다.'+
+      '</div></div>'+
+    '<div class="bk-card"><div class="hd"><b>담는 파일</b>'+
+      '<span class="sub">'+(_d.sources||[]).length+'개 · DATA_DIR 의 .json 전부</span></div>'+
+      '<div style="padding:13px 16px"><div class="bk-src">'+
+        (_d.sources||[]).map(function(s){ return '<span>'+esc(s)+'</span>'; }).join('')+
+      '</div><div class="bk-hint" style="margin-top:10px">'+
+        'APK(60MB)와 <b>.auto_ · .bak</b> 파일은 뺍니다 — 다시 만들 수 있거나 백업의 백업입니다. '+
+        '메모 첨부(note_assets)는 바뀌지 않아서 <b>주 1회</b>만 따로 묶습니다.'+
+      '</div></div></div>';
+  }
+
+  function repaint(){
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.innerHTML=view(); bind();
+  }
+  function stat(t){ var e=document.getElementById('bk-stat'); if(e) e.textContent=t; }
+
+  function bind(){
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.querySelectorAll('[data-open]').forEach(function(el){
+      el.onclick=function(){
+        var n=el.getAttribute('data-open');
+        _sel = (_sel===n)?'':n; repaint();
+      };
+    });
+    c.querySelectorAll('[data-pick]').forEach(function(el){
+      el.onclick=function(){
+        var n=el.getAttribute('data-pick'), f=el.getAttribute('data-f');
+        _pick[n]=_pick[n]||{}; _pick[n][f]=!_pick[n][f]; repaint();
+      };
+    });
+    var run=document.getElementById('bk-run');
+    if(run) run.onclick=function(){
+      run.disabled=true; stat('백업하는 중…');
+      fetch('/admin/backups/run',{method:'POST',credentials:'same-origin',
+            headers:{'Content-Type':'application/json'},body:'{}'})
+        .then(function(r){ return r.json().then(function(j){
+          if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); return j; }); })
+        .then(function(j){
+          load(function(){ stat('백업했습니다 · '+j.name+' ('+kb(j.bytes)+', 파일 '+j.files+'개)'); });
+        })
+        .catch(function(e){ alert(e.message); run.disabled=false; });
+    };
+    var pr=document.getElementById('bk-prune');
+    if(pr) pr.onclick=function(){
+      pr.disabled=true; stat('정리할 것을 보는 중…');
+      fetch('/admin/backups/prune',{method:'POST',credentials:'same-origin',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({dry_run:true})})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          var drop=((j.plan||{}).drop||[]);
+          pr.disabled=false;
+          if(!drop.length){ stat('정리할 것이 없습니다'); return; }
+          if(!confirm('보관 기간이 지난 '+drop.length+'벌을 지웁니다.\n\n'+
+                      drop.slice(0,8).map(function(x){return '· '+x.name;}).join('\n')+
+                      (drop.length>8?'\n… 외 '+(drop.length-8)+'벌':''))) { stat('그대로 둡니다'); return; }
+          pr.disabled=true; stat('정리하는 중…');
+          return fetch('/admin/backups/prune',{method:'POST',credentials:'same-origin',
+                 headers:{'Content-Type':'application/json'},body:'{}'})
+            .then(function(r){ return r.json(); })
+            .then(function(k){
+              load(function(){ stat((k.removed||[]).length+'벌 지웠습니다 · '+kb(k.freed_bytes)+' 확보'); });
+            });
+        })
+        .catch(function(e){ alert(e.message); pr.disabled=false; });
+    };
+    c.querySelectorAll('[data-restore]').forEach(function(el){
+      el.onclick=function(){
+        var n=el.getAttribute('data-restore');
+        var picked=Object.keys(_pick[n]||{}).filter(function(k){return _pick[n][k];});
+        var what = picked.length? picked.join(', ') : '이 백업의 파일 전부';
+        if(!confirm(dayLabel(n)+' 로 되돌립니다.\n\n바꿀 것: '+what+
+                    '\n\n지금 상태는 되돌리기 전에 한 벌 남습니다.')) return;
+        el.disabled=true; stat('되돌리는 중…');
+        fetch('/admin/backups/restore',{method:'POST',credentials:'same-origin',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({name:n, files:picked})})
+          .then(function(r){ return r.json().then(function(j){
+            if(!r.ok) throw new Error(j.detail||('HTTP '+r.status)); return j; }); })
+          .then(function(j){
+            _pick[n]={};
+            var msg='되돌렸습니다 · '+(j.restored||[]).join(', ');
+            if((j.skipped||[]).length) msg+=' · 건너뜀 '+j.skipped.length+'개';
+            load(function(){ stat(msg); alert(msg+'\n\n되돌리기 전 상태: '+(j.pre_backup||'—')); });
+          })
+          .catch(function(e){ alert(e.message); el.disabled=false; });
+      };
+    });
+  }
+
+  function load(after){
+    fetch('/admin/backups',{credentials:'same-origin'})
+      .then(function(r){
+        if(r.status===401) throw new Error('로그인이 필요합니다');
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      })
+      .then(function(d){ _d=d; repaint(); if(after) after(); })
+      .catch(function(e){
+        var c=document.getElementById('v2-content');
+        if(c) c.innerHTML='<div class="placeholder"><div class="big">💾</div>'+
+          '<div class="title">백업</div><div class="sub">'+esc(e.message)+'</div></div>';
+      });
+  }
+
+  window.renderBackupPage=function(){
+    css();
+    var c=document.getElementById('v2-content'); if(!c) return;
+    c.innerHTML='<div style="padding:40px;color:#94A3B8;font-size:13px;">불러오는 중…</div>';
+    _sel=''; _pick={};
+    load();
+  };
 })();
 </script>
 

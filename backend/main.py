@@ -5823,16 +5823,26 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
                 continue
             t = str(v).strip()
             k = t.replace(" ", "").replace(".", "").lower()
-            if t in ("모델", "모델명"):
+            if k in ("모델", "모델명"):
                 header_row = r
                 col_map["name"] = c
-            elif t == "구분":
+            elif k == "구분":
                 col_map["group"] = c
-            elif t == "유형" or t == "개발 유형":
+            elif k in ("유형", "개발유형", "type", "devtype"):
+                # 예전에는 여기만 원문을 그대로 비교해서, '개발유형' 처럼
+                # 공백이 없거나 셀에 공백이 낀 머리글을 통째로 놓쳤다.
+                # 놓치면 dev_type 이 빈 채로 들어가고, 그 모델은 주차 보드
+                # 어느 줄에도 안 잡힌다.
                 col_map["dev_type"] = c
-            elif t.startswith("판가"):
+            elif "비율" in k:
+                # '재료비율' 은 양식에서 수식 칸이다. 읽으면 안 된다 —
+                # 그런데 '재료비' 로 시작해서 아래 가지에 먼저 걸리면
+                # 재료비 자리를 빼앗고, 수식 칸이라 값이 None 이라
+                # 재료비가 통째로 0 이 됐다. 그래서 먼저 걸러낸다.
+                continue
+            elif k.startswith("판가"):
                 col_map["price"] = c
-            elif t.startswith("재료비"):
+            elif k.startswith("재료비"):
                 col_map["material_cost"] = c
             elif k in ("파트넘버", "파트번호", "품번", "partno", "partnumber"):
                 col_map["part_number"] = c
@@ -5887,11 +5897,20 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
             by_pn[_p] = m
 
     added, updated, skipped = 0, 0, 0
+    skipped_rows = []
     for r in range(header_row + 1, ws.max_row + 1):
         name_v = ws.cell(row=r, column=col_map["name"]).value
         pn_v = ws.cell(row=r, column=col_map["part_number"]).value if col_map.get("part_number") else None
         pn = str(pn_v).strip() if pn_v is not None else ""
         if (name_v is None or not str(name_v).strip()) and not pn:
+            # 모델명도 파트넘버도 없는 줄. 양식의 남는 빈 줄이 대부분이라
+            # 조용히 넘기되, 뭔가 적혀 있던 줄이면 세어서 알려준다.
+            if any(ws.cell(row=r, column=c).value not in (None, "")
+                   for c in col_map.values()):
+                skipped += 1
+                if len(skipped_rows) < 20:
+                    skipped_rows.append(
+                        {"row": r, "why": "모델명과 파트넘버가 둘 다 비었습니다"})
             continue
         name = str(name_v).strip() if name_v is not None else pn
         group = str(ws.cell(row=r, column=col_map.get("group", 0)).value or "").strip() if col_map.get("group") else ""
@@ -5907,6 +5926,18 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
             except Exception:
                 return 0
 
+        def _filled(col):
+            """그 칸에 사람이 뭔가 적었나.
+
+            빈 칸은 '그대로 둬라' 다. 예전에는 빈 칸이 0 으로 들어가서,
+            양식을 받아 PO 만 고쳐 올리면 판가가 전부 0 이 됐다. 정말
+            0 으로 만들고 싶으면 0 을 적으면 된다.
+            """
+            if not col:
+                return False
+            v = ws.cell(row=r, column=col).value
+            return v is not None and str(v).strip() != ""
+
         price = _num(col_map.get("price"))
         mcost = _num(col_map.get("material_cost"))
         _note = ""
@@ -5920,11 +5951,15 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
             existing = by_name.get(name.lower())
 
         if existing is not None:
-            existing["group"] = group
+            # 적은 칸만 바꾼다. 빈 칸은 지금 값을 지킨다.
+            if _filled(col_map.get("group")):
+                existing["group"] = group
             if dev_type:
                 existing["dev_type"] = dev_type
-            existing["price"] = price
-            existing["material_cost"] = mcost
+            if _filled(col_map.get("price")):
+                existing["price"] = price
+            if _filled(col_map.get("material_cost")):
+                existing["material_cost"] = mcost
             if pn:
                 existing["part_number"] = pn
                 existing["name"] = name
@@ -5957,9 +5992,9 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
 
         # 수량은 열이 있을 때만 건드린다. 열이 없는데 0 으로 덮으면
         # 이미 쌓인 PO·출하가 사라진다.
-        if col_map.get("po_qty"):
+        if _filled(col_map.get("po_qty")):
             existing["po_qty"] = int(_num(col_map["po_qty"]))
-        if col_map.get("shipped_qty"):
+        if _filled(col_map.get("shipped_qty")):
             existing["shipped_qty"] = int(_num(col_map["shipped_qty"]))
 
     models.sort(key=lambda m: 0 if m.get("group") == "양산" else 1)
@@ -5980,6 +6015,8 @@ async def admin_models_import(project_key: str, file: UploadFile = File(...), _a
     print(f"[models-import] {_key}: +{added} 신규, {updated} 갱신, {skipped} 건너뜀"
           + (f", 유형 추가 {_new_types}" if _new_types else ""))
     return {"ok": True, "added": added, "updated": updated, "total": len(models),
+            "skipped": skipped, "skipped_rows": skipped_rows,
+            "columns": sorted(col_map.keys()),
             "types": _types, "types_added": _new_types}
 
 
@@ -6660,7 +6697,13 @@ def admin_config_projects(division_id: str | None = None):
     division_id 가 주어지면 해당 사업부의 프로젝트만 반환.
     """
     try:
-        items = _cl.get_projects(division_id=division_id, visible_only=True)
+        # 앱·홈에 안 띄우기로 한 프로젝트라도, admin 에서 자료를 올려야 하는
+        # 자리는 여기엔 나와야 한다. 블룸이 그랬다 — 품목 파일이 전부
+        # bloom_main 으로 저장되는데 visible:false 라 화면에 올릴 곳이
+        # 아예 없었고, 사람들은 품목 일곱 개 중 하나를 골라 올리고 있었다.
+        items = _cl.get_projects(division_id=division_id, visible_only=False)
+        items = [p for p in items
+                 if p.get("visible", True) or p.get("admin_only")]
         return {
             "division_id": division_id,
             "projects": [
@@ -6670,6 +6713,7 @@ def admin_config_projects(division_id: str | None = None):
                     "badge_label": p.get("badge_label"),
                     "group": p.get("group"),
                     "order": p.get("order"),
+                    "admin_only": bool(p.get("admin_only")),
                 }
                 for p in items
             ]
@@ -14634,6 +14678,259 @@ async def admin_upload_weekly_plan(
 # 그리고 저장하기 전에 무엇이 무엇으로 바뀌는지 먼저 보여준다.
 
 
+#: 주차 양식 왼쪽 칸 머리글 → 모델 필드
+_PLAN_MODEL_COLS = {
+    "파트넘버": "part_number", "파트번호": "part_number", "품번": "part_number",
+    "모델명": "name", "모델": "name",
+    "유형": "dev_type", "개발유형": "dev_type",
+    "구분": "group",
+    "판가": "price", "판가($)": "price",
+    "재료비": "material_cost", "재료비($)": "material_cost",
+    "po수량": "po_qty", "po": "po_qty",
+    "실적수량": "shipped_qty",
+}
+#: 목록이 여기서 끝난다
+_PLAN_STOP = ("합계", "미달사유", "총합계", "소계")
+
+
+def _plan_sheet_models(ws) -> list:
+    """주차 양식의 왼쪽 칸에서 모델 정보를 읽는다.
+
+    우리 양식은 한 줄이 한 모델이다 — 누구인지(파트넘버·모델명·유형·구분)
+    와 그 모델 값(판가·재료비·PO·실적)이 주차 칸 왼쪽에 같이 있다.
+    남이 만든 파일에는 이 머리글이 없으니 빈 목록이 나오고, 그러면
+    예전처럼 주차 숫자만 들어간다.
+    """
+    def _s2(v):
+        return "" if v is None else str(v).strip()
+
+    hdr, col = None, {}
+    for r in range(1, min(ws.max_row, 10) + 1):
+        got = {}
+        for c in range(1, min(ws.max_column, 16) + 1):
+            k = _s2(ws.cell(r, c).value).replace(" ", "").lower()
+            if not k or k.startswith("w"):
+                continue
+            f = _PLAN_MODEL_COLS.get(k)
+            if f and f not in got:
+                got[f] = c
+        if "name" in got:
+            hdr, col = r, got
+            break
+    if not hdr or len(col) < 2:
+        return []
+
+    out = []
+    for r in range(hdr + 1, ws.max_row + 1):
+        head = "".join(_s2(ws.cell(r, c).value)
+                       for c in range(1, min(col.get("name", 1) + 1, 5) + 1))
+        if head.replace(" ", "") in _PLAN_STOP:
+            break
+        name = _s2(ws.cell(r, col["name"]).value)
+        if not name:
+            continue
+        row = {"row": r, "name": name}
+        for f, c in col.items():
+            if f == "name":
+                continue
+            v = ws.cell(r, c).value
+            if f in ("part_number", "dev_type", "group"):
+                row[f] = _s2(v)
+            else:
+                # 빈 칸은 '그대로 둬라' 다. 0 으로 바꾸면 매주 여는 파일에서
+                # 안 적은 칸이 지금 값을 지워 버린다.
+                row[f] = (_as_int(v, None) if f in ("po_qty", "shipped_qty")
+                          else _as_money(v, None))
+        out.append(row)
+    return out
+
+
+def _plan_models_anywhere(wb) -> tuple:
+    """어느 시트든 모델 줄이 있는 곳 → (시트이름, [줄]).
+
+    주차 머리글이 없는 파일(옛 모델 등록 양식)도 올리는 곳 하나로 받으려고
+    쓴다. 모델 줄이 가장 많은 시트를 고른다.
+    """
+    best = ("", [])
+    for ws in wb.worksheets:
+        try:
+            rows = _plan_sheet_models(ws)
+        except Exception:
+            rows = []
+        if len(rows) > len(best[1]):
+            best = (ws.title, rows)
+    return best
+
+
+def _plan_process_peek(wb):
+    """개발 프로세스 일정표인가 → {'sheet','rows','steps'} 또는 None.
+
+    단계 머리글('01 FA PO' 처럼 숫자로 시작)이 둘 이상이면 일정표로 본다.
+    주차 양식에는 그런 머리글이 없어서 서로 헷갈리지 않는다.
+    """
+    import process_import as _pi
+
+    best = None
+    for ws in wb.worksheets:
+        try:
+            head, pn, steps, _c = _pi.find_layout(ws)
+        except Exception:
+            continue
+        if not head or not pn or len(steps) < 2:
+            continue
+        rows = 0
+        for r in range(head + 2, ws.max_row + 1):
+            if str(ws.cell(r, pn).value or "").strip():
+                rows += 1
+        if rows and (best is None or rows > best["rows"]):
+            best = {"sheet": ws.title, "rows": rows,
+                    "steps": [s[1] for s in steps]}
+    return best
+
+
+#: 엑셀이 건드릴 수 있는 모델 칸
+_PLAN_FIELDS = ("dev_type", "group", "price", "material_cost",
+                "po_qty", "shipped_qty")
+
+
+def _plan_over(v) -> bool:
+    """'덮어쓰기' 체크를 눌렀는가. 안 보내면 False (= 빈 칸만 채움)."""
+    return str(v or "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def _plan_field_empty(old, f) -> bool:
+    """그 칸이 '비어 있는가'.
+
+    숫자 칸은 0 도 비어 있는 것으로 본다. PO 0 은 'PO 가 없다' 지
+    '0 대를 받았다' 가 아니고, 화면에서도 빈 칸처럼 보인다.
+    """
+    if f in ("price", "material_cost", "po_qty", "shipped_qty"):
+        try:
+            return not float(old or 0)
+        except (TypeError, ValueError):
+            return True
+    return not str(old or "").strip()
+
+
+def _plan_model_changes(proj, mrows):
+    """등록된 모델과 대조 → (바뀌는 줄, 새로 생길 줄).
+
+    빈 칸은 '그대로 둬라' 다. 매주 여는 파일에 원가가 같이 있으니,
+    실수로 비운 칸이 값을 지우면 안 된다.
+    """
+    import pbx_plan_import as _pbx
+
+    models = proj.get("models") or []
+    matcher = _pbx.Matcher(models)
+    changed, created = [], []
+    for row in mrows:
+        m, _how = matcher.match(row["name"])
+        fields = {}
+        for f in ("dev_type", "group", "price", "material_cost", "po_qty", "shipped_qty"):
+            v = row.get(f)
+            if v in (None, "", 0) and f not in ("po_qty", "shipped_qty"):
+                continue
+            if v in (None, ""):
+                continue
+            fields[f] = v
+        if m is None:
+            created.append({"name": row["name"], "row": row["row"],
+                            "part_number": row.get("part_number") or "",
+                            "fields": fields})
+            continue
+        diff = {}
+        for f, v in fields.items():
+            old = m.get(f)
+            if f in ("price", "material_cost"):
+                same = abs(float(old or 0) - float(v or 0)) < 0.005
+            elif f in ("po_qty", "shipped_qty"):
+                same = int(old or 0) == int(v or 0)
+            else:
+                same = str(old or "").strip() == str(v).strip()
+            if not same:
+                # fill  : 비어 있던 칸을 채운다 → 늘 적용한다
+                # 아니면: 값이 있던 칸을 덮어쓴다 → 골라야 적용한다
+                diff[f] = {"from": old, "to": v,
+                           "fill": _plan_field_empty(old, f)}
+        if diff:
+            changed.append({"name": m.get("name") or m.get("id"),
+                            "model_id": m.get("id"), "row": row["row"], "fields": diff})
+    return changed, created
+
+
+def _plan_apply_models(proj, mrows, overwrite=False):
+    """모델 값을 넣는다. 없는 모델은 만든다 → {'updated','created','filled','over'}
+
+    overwrite=False (기본) 면 **비어 있던 칸만** 채운다. 값이 있는 칸은
+    건드리지 않는다 — 옛 파일을 다시 올려도 손으로 고친 값이 안 돌아간다.
+    덮어쓰려면 미리보기에서 골라야 한다.
+    """
+    import pbx_plan_import as _pbx
+
+    models = proj.setdefault("models", [])
+    matcher = _pbx.Matcher(models)
+    updated, created = 0, []
+    n_fill, n_over = 0, 0
+    for row in mrows:
+        m, _how = matcher.match(row["name"])
+        if m is None:
+            m = {"id": row["name"], "name": row["name"],
+                 "group": row.get("group") or "양산"}
+            if row.get("part_number"):
+                m["part_number"] = row["part_number"]
+            models.append(m)
+            created.append(row["name"])
+            matcher = _pbx.Matcher(models)      # 새 줄도 다음 매칭에 쓰이게
+        touched = False
+        for f in _PLAN_FIELDS:
+            v = row.get(f)
+            if v in (None, ""):
+                continue
+            if f == "group" and str(v).strip() not in ("양산", "개발"):
+                continue
+            was_empty = _plan_field_empty(m.get(f), f)
+            if not was_empty and not overwrite:
+                continue                      # 값이 있는 칸은 그대로 둔다
+            m[f] = v
+            touched = True
+            if was_empty:
+                n_fill += 1
+            else:
+                n_over += 1
+        if row.get("part_number") and (overwrite or not str(
+                m.get("part_number") or "").strip()):
+            m["part_number"] = row["part_number"]
+        if touched:
+            updated += 1
+    return {"updated": updated, "created": created,
+            "filled": n_fill, "over": n_over}
+
+
+def _plan_apply_week_notes(proj, month, notes):
+    """'미달 사유' 줄 → 화면의 주차 미달 사유와 같은 자리에 넣는다."""
+    if not notes:
+        return 0
+    import datetime as _dtn
+
+    store = proj.setdefault("week_reasons", {})
+    if not isinstance(store, dict):
+        store = {}
+        proj["week_reasons"] = store
+    mon = store.setdefault(str(month), {})
+    now = _dtn.datetime.now().isoformat(timespec="seconds")
+    n_set = 0
+    for w, text in (notes or {}).items():
+        text = str(text or "").strip()
+        if not text:
+            continue
+        was = mon.get(w) if isinstance(mon.get(w), dict) else {}
+        # 화면에서 '참고' 로 적어 둔 주는 구분을 그대로 둔다
+        kind = was.get("kind") if was.get("kind") in _WEEK_REASON_KINDS else "문제"
+        mon[str(w)] = {"kind": kind, "text": text, "at": now}
+        n_set += 1
+    return n_set
+
+
 def _pbx_diff(proj, parsed):
     """엑셀 행 ↔ 등록 모델 대조표를 만든다. 저장은 하지 않는다."""
     import pbx_plan_import as _pbx
@@ -14688,6 +14985,65 @@ def _pbx_diff(proj, parsed):
     }
 
 
+def _pbx_apply_rows(proj: dict, parsed: dict) -> dict:
+    """읽어온 주차 행을 모델에 넣는다 → {'month','applied','unmatched'}.
+
+    /plan-file/apply 가 하는 일과 같다. 하바 현황 엑셀처럼 '주차표가 딸려
+    오는 다른 파일' 에서도 같은 계산을 쓰려고 떼어 놨다 — 두 벌로 두면
+    언젠가 한쪽만 고쳐진다.
+    """
+    diff = _pbx_diff(proj, parsed)
+    by_id = {}
+    for m in proj.get("models") or []:
+        by_id[str(m.get("id") or m.get("name"))] = m
+
+    mon = diff["month"]
+    applied = 0
+    for e in diff["rows"]:
+        m = by_id.get(str(e["model_id"] or e["model_name"]))
+        if m is None:
+            continue
+        wp_all = m.get("weekly_plan")
+        if not isinstance(wp_all, dict):
+            wp_all = {}
+            m["weekly_plan"] = wp_all
+        bucket = wp_all.setdefault(mon, {})
+        for c in e["cells"]:
+            bucket[c["week"]] = {"plan": c["new"]["plan"], "actual": c["new"]["actual"]}
+        try:
+            m["weekly_progress"] = _ensure_mass_progress(wp_all, mon)
+        except Exception:
+            pass
+        applied += 1
+    return {"month": mon, "weeks": diff["weeks"], "applied": applied,
+            "unmatched": [u["label"] for u in diff["unmatched"]]}
+
+
+def _pbx_apply_sheet_months(proj: dict, ws) -> list:
+    """시트 하나에 딸린 주차표를 달별로 반영한다. 없으면 빈 목록.
+
+    시트 **하나**만 본다. 하바 현황 파일에는 W6~W40 스냅샷이 서른 몇 장
+    들어 있고 장마다 그 시점의 주차표가 붙어 있다. 전부 반영하면 지난
+    스냅샷이 최신 값을 덮는다. 올린 사람이 말하는 '지금' 은 마지막 장이다.
+    """
+    import pbx_plan_import as _pbx
+
+    out = []
+    try:
+        got = _pbx.parse_sheet_all(ws)
+    except Exception as _e:
+        print(f"[plan-in-file] 주차표 읽기 실패(무시): {_e}")
+        return out
+    for parsed in got:
+        if not parsed.get("rows"):
+            continue
+        try:
+            out.append(_pbx_apply_rows(proj, parsed))
+        except Exception as _e:
+            print(f"[plan-in-file] {parsed.get('month')} 반영 실패(무시): {_e}")
+    return out
+
+
 async def _pbx_open_upload(file):
     """업로드된 엑셀을 연다 → (원본 파일명, 워크북)"""
     orig = file.filename or "plan.xlsx"
@@ -14725,6 +15081,46 @@ def _pbx_pick_sheet(wb, month):
             detail="주차(W36 같은) 머리글이 있는 시트를 찾지 못했습니다")
     parsed["available"] = available
     return parsed
+
+
+def _pbx_pick_months(wb, month):
+    """파일에 든 달을 전부 읽는다 → [parsed, ...]. 고른 달이 있으면 맨 앞.
+
+    한 파일에 여러 달이 오는 건 드문 일이 아니다 — 양식 받기가 몇 달치를
+    한 파일로 내려주고, 1년치 계획을 한 번에 올리기도 한다. 그때 화면이
+    보고 있는 달 하나만 넣으면 나머지 열두 달이 조용히 버려진다.
+
+    달을 하나도 못 찾으면 _pbx_pick_sheet 와 똑같은 말로 멈춘다 — 그 말을
+    위에서 받아 '주차표 없는 파일' 로 넘긴다.
+    """
+    import pbx_plan_import as _pbx
+
+    available = _pbx.sheet_months(wb)
+    if not available:
+        _pbx_pick_sheet(wb, month)          # 여기서 멈춘다 (멈추지 않으면 아래로)
+        raise HTTPException(status_code=400,
+                            detail="주차 숫자가 적힌 시트를 찾지 못했습니다")
+
+    order, seen = [], set()
+    for g in available:
+        if g["month"] in seen:
+            continue
+        seen.add(g["month"])
+        order.append(g["month"])
+    want = (month or "").strip()
+    if want in seen:
+        order = [want] + [m for m in order if m != want]
+
+    out = []
+    for mo in order:
+        got = _pbx.parse(wb, mo)
+        if got:
+            got["available"] = available
+            out.append(got)
+    if not out:
+        raise HTTPException(status_code=400,
+                            detail="주차 숫자가 적힌 시트를 찾지 못했습니다")
+    return out
 
 
 async def _pbx_read_upload(file, month):
@@ -15110,12 +15506,73 @@ async def admin_plan_file_preview(
         return {"ok": True, "kind": "status", "project_key": key,
                 "file_name": orig, "sheets": [s[1] for s in status_sheets]}
 
-    parsed = _pbx_pick_sheet(wb, month)
+    # 주차표가 없는 파일이면 모델 값만 받는다 (올리는 곳이 하나라서).
+    try:
+        parsed_all = _pbx_pick_months(wb, month)
+        parsed = parsed_all[0]
+    except HTTPException:
+        # 개발 프로세스 일정표 — 모델보다 먼저 본다 (첫 칸 머리글이 '모델' 인
+        # 일정표가 있어서, 모델 쪽을 먼저 보면 일정을 모델로 읽는다)
+        _pk = _plan_process_peek(wb)
+        if _pk:
+            return {"ok": True, "kind": "process", "project_key": key,
+                    "file_name": orig, "sheet": _pk["sheet"],
+                    "rows": _pk["rows"], "steps": _pk["steps"]}
+        _data0 = _load_models()
+        _proj0 = (_data0.get("projects") or {}).get(key) or {"models": []}
+        _sheet, _rows = _plan_models_anywhere(wb)
+        if not _rows:
+            raise
+        _ch, _cr = _plan_model_changes(_proj0, _rows)
+        return {"ok": True, "kind": "models", "project_key": key,
+                "file_name": orig, "sheet": _sheet, "rows": len(_rows),
+                "model_changed": _ch, "model_created": _cr}
+
     data = _load_models()
     proj = (data.get("projects") or {}).get(key) or {"models": []}
-    out = _pbx_diff(proj, parsed)
+    diffs = [_pbx_diff(proj, p) for p in parsed_all]
+    out = diffs[0]
+
+    # 달마다 한 줄씩. 표는 맨 앞 달만 그리지만, 저장하면 전부 들어간다 —
+    # 무엇이 들어가는지 보이지 않는 채로 저장하게 두면 안 된다.
+    out["months"] = [
+        {"month": d["month"], "sheet": d.get("sheet"), "weeks": d["weeks"],
+         "rows": len(d["rows"]),
+         "changed": sum(1 for e in d["rows"] if e.get("changed")),
+         "plan": (d.get("totals") or {}).get("plan") or 0,
+         "actual": (d.get("totals") or {}).get("actual") or 0,
+         "notes": len(p.get("week_notes") or {})}
+        for d, p in zip(diffs, parsed_all)]
+
+    # 못 맞춘 줄은 달마다 같은 줄이 또 나온다. 라벨로 한 번만 모은다.
+    _un, _useen = [], set()
+    for d in diffs:
+        for u in d.get("unmatched") or []:
+            if u.get("label") in _useen:
+                continue
+            _useen.add(u.get("label"))
+            _un.append(u)
+    out["unmatched"] = _un
+
+    # 같은 줄에 모델 값(판가·재료비·PO·실적)이 같이 올 수 있다.
+    mrows, mchanged, mcreated = [], [], []
+    try:
+        _ws = wb[parsed["sheet"]] if parsed.get("sheet") in wb.sheetnames else None
+        if _ws is not None:
+            mrows = _plan_sheet_models(_ws)
+            mchanged, mcreated = _plan_model_changes(proj, mrows)
+    except Exception as _e:
+        print(f"[plan-file] 모델 칸 읽기 실패(무시): {_e}")
+
+    # 새로 생길 모델은 '건너뛰는 행' 이 아니다 — 저장하면 들어간다.
+    _new = {c["name"] for c in mcreated}
+    out["unmatched"] = [u for u in out.get("unmatched") or []
+                        if u.get("label") not in _new]
+
     out.update({"ok": True, "kind": "plan", "project_key": key, "file_name": orig,
-                "available": parsed.get("available") or []})
+                "available": parsed.get("available") or [],
+                "week_notes": parsed.get("week_notes") or {},
+                "model_changed": mchanged, "model_created": mcreated})
     return out
 
 
@@ -15125,14 +15582,49 @@ async def admin_plan_file_apply(
     file: UploadFile = File(...),
     month: str = Form(""),
     skip: str = Form(""),
+    overwrite: str = Form(""),
     _admin: int = Depends(get_admin_session),
 ):
-    """미리보기에서 확인한 내용을 저장한다. 주차 계획/실적만 손댄다."""
+    """미리보기에서 확인한 내용을 저장한다.
+
+    overwrite 를 보내지 않으면 모델 칸은 **비어 있던 것만** 채운다.
+    """
     key = project_key.strip()
-    orig, parsed = await _pbx_read_upload(file, month)
+    orig, wb = await _pbx_open_upload(file)
+    try:
+        parsed_all = _pbx_pick_months(wb, month)
+        parsed = parsed_all[0]
+    except HTTPException:
+        # 주차표가 없는 파일 — 모델 값만 넣는다
+        _data0 = _load_models()
+        _proj0 = _data0.setdefault("projects", {}).setdefault(key, {"models": []})
+        _sheet, _rows = _plan_models_anywhere(wb)
+        if not _rows:
+            raise
+        _r = _plan_apply_models(_proj0, _rows, overwrite=_plan_over(overwrite))
+        _save_models(_data0)
+        print(f"[plan-file] {key} '{orig}': 모델만 {_r['updated']}건"
+              f"(채움 {_r['filled']} · 덮어씀 {_r['over']} · 신규 {len(_r['created'])})")
+        return {"ok": True, "kind": "models", "project_key": key,
+                "file_name": orig, "month": "", "weeks": [], "applied": 0,
+                "skipped": 0, "unmatched": [],
+                "model_updated": _r["updated"], "model_created": _r["created"],
+                "week_notes": 0}
+
     data = _load_models()
     proj = data.setdefault("projects", {}).setdefault(key, {"models": []})
-    diff = _pbx_diff(proj, parsed)
+
+    # 모델 먼저. 새 모델이 생겨야 그 줄의 주차 숫자가 붙을 자리가 있다.
+    mres = {"updated": 0, "created": [], "filled": 0, "over": 0}
+    try:
+        _ws = wb[parsed["sheet"]] if parsed.get("sheet") in wb.sheetnames else None
+        if _ws is not None:
+            mrows = _plan_sheet_models(_ws)
+            if mrows:
+                mres = _plan_apply_models(proj, mrows,
+                                          overwrite=_plan_over(overwrite))
+    except Exception as _e:
+        print(f"[plan-file] 모델 칸 반영 실패(무시): {_e}")
 
     # 미리보기에서 체크를 푼 행 (라벨을 | 로 이어 보낸다)
     drop = {s.strip() for s in (skip or "").split("|") if s.strip()}
@@ -15141,36 +15633,64 @@ async def admin_plan_file_apply(
     for m in proj.get("models") or []:
         by_id[str(m.get("id") or m.get("name"))] = m
 
-    mon = diff["month"]
-    applied = 0
-    for e in diff["rows"]:
-        if e["label"] in drop:
-            continue
-        m = by_id.get(str(e["model_id"] or e["model_name"]))
-        if m is None:
-            continue
-        wp_all = m.setdefault("weekly_plan", {})
-        bucket = wp_all.setdefault(mon, {})
-        for c in e["cells"]:
-            bucket[c["week"]] = {"plan": c["new"]["plan"], "actual": c["new"]["actual"]}
+    applied, n_notes, done = 0, 0, []
+    un_all, un_seen = [], set()
+    for p in parsed_all:
+        diff = _pbx_diff(proj, p)
+        mon = diff["month"]
+        hit = 0
+        for e in diff["rows"]:
+            if e["label"] in drop:
+                continue
+            m = by_id.get(str(e["model_id"] or e["model_name"]))
+            if m is None:
+                continue
+            wp_all = m.setdefault("weekly_plan", {})
+            bucket = wp_all.setdefault(mon, {})
+            for c in e["cells"]:
+                bucket[c["week"]] = {"plan": c["new"]["plan"],
+                                     "actual": c["new"]["actual"]}
+            try:
+                m["weekly_progress"] = _ensure_mass_progress(wp_all, mon)
+            except Exception:
+                pass
+            hit += 1
+        # 미달 사유 — 화면의 '계획 미달' 패널과 같은 자리
         try:
-            m["weekly_progress"] = _ensure_mass_progress(wp_all, mon)
-        except Exception:
-            pass
-        applied += 1
+            n_notes += _plan_apply_week_notes(proj, mon, p.get("week_notes"))
+        except Exception as _e:
+            print(f"[plan-file] {mon} 미달 사유 반영 실패(무시): {_e}")
+        for u in diff.get("unmatched") or []:
+            if u.get("label") in un_seen:
+                continue
+            un_seen.add(u.get("label"))
+            un_all.append(u)
+        applied += hit
+        done.append({"month": mon, "applied": hit, "weeks": diff["weeks"]})
+
+    diff = _pbx_diff(proj, parsed)      # 맨 앞 달 — 응답의 대표 값
+    mon = diff["month"]
 
     proj["plan_file"] = {
         "file_name": orig,
-        "sheet": diff.get("sheet"),
+        "sheet": parsed.get("sheet"),
         "month": mon,
+        "months": [d["month"] for d in done],
         "uploaded_at": __import__("datetime").datetime.now().isoformat(),
     }
+
     _save_models(data)
-    print(f"[plan-file] {key} {mon} '{orig}': {applied}행 반영, "
-          f"건너뜄 {len(drop)}, 미매칭 {len(diff['unmatched'])}")
+    print(f"[plan-file] {key} {'·'.join(d['month'] for d in done)} '{orig}': "
+          f"주차 {applied}행, 모델 {mres['updated']}건"
+          f"(채움 {mres.get('filled', 0)} · 덮어씀 {mres.get('over', 0)} · "
+          f"신규 {len(mres['created'])}), 사유 {n_notes}주차, "
+          f"건너뛴 {len(drop)}, 미매칭 {len(un_all)}")
     return {"ok": True, "project_key": key, "month": mon, "weeks": diff["weeks"],
-            "applied": applied, "skipped": len(drop),
-            "unmatched": diff["unmatched"], "file_name": orig}
+            "applied": applied, "skipped": len(drop), "months": done,
+            "model_updated": mres["updated"], "model_created": mres["created"],
+            "model_filled": mres.get("filled", 0), "model_over": mres.get("over", 0),
+            "week_notes": n_notes,
+            "unmatched": un_all, "file_name": orig}
 
 
 @app.delete("/admin/projects/{project_key}/weekly-plan")
@@ -23500,7 +24020,19 @@ async def admin_import_status_excel(project_key: str,
             tgt["dev_type"] = str(row["dev_type"]).upper()
         updated += 1
 
+    # 같은 파일 맨 아래의 주차표(파트번호 x 주차 계획·실적)도 같이 넣는다.
+    #
+    # 하바는 통일 양식으로 옮겨 가는 중이지만, 옮기는 동안 주차 숫자가
+    # 어디에도 안 들어가는 구간을 만들면 안 된다. 이 표는 이미 파일에
+    # 있고 모양도 우리가 읽는 그대로다 — 안 읽고 있었을 뿐이다.
+    _weeks_in_file = _pbx_apply_sheet_months(proj, wb[last_name]) \
+        if last_name in wb.sheetnames else []
+
     _save_models(data)
+    if _weeks_in_file:
+        print("[status-excel] %s 주차표도 반영: %s" % (
+            _key, ", ".join("%s %d행" % (x["month"], x["applied"])
+                            for x in _weeks_in_file)))
     return {
         "ok": True, "project_key": _key,
         "sheets": [n for _, n, _ in sheets],
@@ -23508,6 +24040,7 @@ async def admin_import_status_excel(project_key: str,
         "updated": updated, "created": created,
         "group_diff": group_diff,
         "history_weeks": len(hist_weeks),
+        "weeks_in_file": _weeks_in_file,
         "status": st,
     }
 
@@ -24298,6 +24831,59 @@ def _bloom_merge(old: dict, parsed: dict):
     return board, diff
 
 
+def _bloom_with_month_totals(board: dict) -> dict:
+    """'월 합계' 가 비어 있으면 날짜 칸을 더해서 채운 사본.
+
+    파일마다 '9월 합계' 열이 있기도 하고 없기도 하다. 없는 달은
+    month_plan / month_actual 이 통째로 None 이라, 날짜별 계획·실적이
+    21일치 들어 있어도 월간 보기가 텅 빈 채로 보였다.
+
+    저장된 값은 건드리지 않는다 — 엑셀에 없는 숫자를 보드에 적어 두면
+    다음에 진짜 합계가 올라올 때 무엇이 사람이 적은 값인지 알 수 없다.
+    화면에 내보낼 때만 더해서 채운다.
+    """
+    items = []
+    for it in (board.get("items") or []):
+        if not isinstance(it, dict):
+            continue
+        steps = []
+        for st in (it.get("steps") or []):
+            if not isinstance(st, dict):
+                continue
+            if st.get("month_plan") is None or st.get("month_actual") is None:
+                st = dict(st)
+                days = st.get("days") or {}
+                for fld, key, prior in (("month_plan", "plan", "prior_plan"),
+                                        ("month_actual", "actual", "prior_actual")):
+                    if st.get(fld) is not None:
+                        continue
+                    tot, found = 0, False
+                    base = st.get(prior)          # 날짜 칸 앞의 '이전 데이터'
+                    if base is not None:
+                        try:
+                            tot, found = int(base), True
+                        except (TypeError, ValueError):
+                            pass
+                    for v in days.values():
+                        x = (v or {}).get(key)
+                        if x is None:
+                            continue
+                        try:
+                            tot += int(x)
+                        except (TypeError, ValueError):
+                            continue
+                        found = True
+                    if found:
+                        st[fld] = tot
+            steps.append(st)
+        it = dict(it)
+        it["steps"] = steps
+        items.append(it)
+    out = dict(board)
+    out["items"] = items
+    return out
+
+
 def _bloom_summary(board: dict, date: str = ""):
     """그 날 공정별 계획/실적 합계 + 직전에 실적이 있던 날.
 
@@ -24510,24 +25096,150 @@ def _bloom_chat_answer(project_key: str, text: str) -> str:
 
 
 @app.get("/projects/{project_key}/daily-board")
-def get_daily_board(project_key: str, date: str = ""):
-    """블룸 일 보드. Admin 도 앱도 이걸 읽는다."""
+def get_daily_board(project_key: str, date: str = "", month: str = ""):
+    """블룸 일 보드. Admin 도 앱도 이걸 읽는다.
+
+    month  'YYYY-MM'. 없으면 가장 최근 달. 10월이 되어도 9월 계획 대비
+           실적을 볼 수 있어야 해서 달을 고를 수 있게 뒀다.
+    """
     _key = _model_key_alias(project_key)
     _item = _bloom_item_of(_key)
     _store = _BLOOM_STORE if _item else _key
     proj = (_load_models().get("projects") or {}).get(_store) or {}
-    board = proj.get("daily_board")
+    allm = _bloom_store_months(proj)
+    months = sorted(allm)
+    pick = month if month in allm else (months[-1] if months else "")
+    board = allm.get(pick)
     if isinstance(board, dict) and _item:
         board = _bloom_slice(board, _item)
     if not isinstance(board, dict) or not board.get("items"):
-        return {"project_key": _key, "has_board": False, "items": [], "dates": []}
+        return {"project_key": _key, "has_board": False, "items": [], "dates": [],
+                "months": months, "month": pick}
     import datetime as _dt
+    board = _bloom_with_month_totals(board)
     out = dict(board)
     out["project_key"] = _key
     out["item"] = _item
     out["has_board"] = True
+    out["months"] = months
+    out["month"] = pick
     out["today"] = _dt.date.today().strftime("%Y-%m-%d")
     out["summary"] = _bloom_summary(board, date)
+    return out
+
+
+# 지난 달은 몇 개까지 둘지. 보드 한 달이 20KB 쯤이고 models.json 은
+# 요청마다 통째로 다시 읽는다 — 무한정 쌓으면 그 값을 치르게 된다.
+_BLOOM_KEEP_MONTHS = 5
+
+
+def _bloom_month_of(board: dict) -> str:
+    """그 보드가 어느 달 것인가. **날짜**가 기준이다 — 제목은 못 믿는다.
+
+    9월 시트의 제목도 '블룸 계획 대비 실적 보고(10/01)' 이라 적혀 있다.
+    마지막으로 손댄 날이 제목에 남은 것이라, 제목으로 달을 잡으면 9월
+    자료가 10월 자리로 들어간다.
+    """
+    ds = (board or {}).get("dates") or []
+    return str(ds[0])[:7] if ds else ""
+
+
+def _bloom_store_months(proj: dict) -> dict:
+    """{'2026-09': 보드, '2026-10': 보드} — 지난 달 + 이번 달.
+
+    이번 달은 daily_board 에 그대로 있다. 그걸 읽는 곳이 여럿이라
+    (챗봇·매출 집계·RAG) 자리를 안 옮긴다. 지난 달만 따로 쌓는다.
+    """
+    out = {}
+    prev = proj.get("daily_board_months")
+    if isinstance(prev, dict):
+        for m, b in prev.items():
+            if isinstance(b, dict) and b.get("items"):
+                out[str(m)] = b
+    cur = proj.get("daily_board")
+    if isinstance(cur, dict) and cur.get("items"):
+        m = _bloom_month_of(cur)
+        if m:
+            out[m] = cur
+    return out
+
+
+def _bloom_parse_months(raw: bytes) -> dict:
+    """파일에 든 달 전부. {'2026-09': parsed, ...}
+
+    금액 실적 시트는 파일에 한 장뿐이라 **가장 늦은 달**에만 붙인다.
+    """
+    import io as _io
+
+    import openpyxl as _xl
+
+    import bloom_daily_import as _bd
+    try:
+        wb = _xl.load_workbook(_io.BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"엑셀을 열 수 없습니다: {e}")
+
+    out = {}
+    for ws, _last in _bd.find_sheets(wb):
+        try:
+            p = _bd.parse_daily(wb, sheet_name=ws.title)
+        except Exception as _e:
+            print(f"[bloom] 시트 읽기 실패(넘어감) {ws.title}: {_e}")
+            continue
+        if not p.get("items"):
+            continue
+        mon = _bloom_month_of(p)
+        if not mon:
+            continue
+        # 같은 달 시트가 둘이면 날짜가 더 많은 쪽
+        if mon in out and \
+                len(out[mon].get("dates") or []) >= len(p.get("dates") or []):
+            continue
+        out[mon] = p
+    if not out:
+        raise HTTPException(
+            status_code=400,
+            detail="'대표님 일 보고 자료' 모양의 시트를 찾지 못했습니다. "
+                   "품목·공정 열과 날짜별 계획/실적 칸이 있는 파일인지 확인해 주세요.")
+    try:
+        out[max(out)]["money"] = _bd.parse_money(wb)
+    except Exception as _e:
+        print(f"[bloom] 금액 실적 시트 읽기 실패(무시): {_e}")
+        out[max(out)]["money"] = None
+    return out
+
+
+def _bloom_apply_months(proj: dict, months_in: dict):
+    """달별로 합친다 → ({'2026-09': 보드}, {'2026-09': diff}, 최신달).
+
+    저장은 안 한다 — 미리보기와 저장이 **같은 계산**을 쓰게 하려고
+    여기서 끊었다. 미리보기에 보인 숫자와 저장되는 숫자가 다르면
+    무엇을 보고 눌렀는지 알 수 없게 된다.
+    """
+    store = _bloom_store_months(proj)
+    diffs = {}
+    for mon in sorted(months_in):
+        b, d = _bloom_merge(store.get(mon) or {}, months_in[mon])
+        store[mon] = b
+        diffs[mon] = d
+    keep = sorted(store)[-(_BLOOM_KEEP_MONTHS + 1):]
+    store = {m: store[m] for m in keep}
+    return store, diffs, (keep[-1] if keep else "")
+
+
+def _bloom_months_brief(store: dict, diffs: dict):
+    """화면에 '어느 달이 얼마나 바뀌는지' 한 줄씩."""
+    out = []
+    for mon in sorted(store):
+        b, d = store[mon], (diffs.get(mon) or {})
+        out.append({
+            "month": mon,
+            "items": len(b.get("items") or []),
+            "dates": len(b.get("dates") or []),
+            "touched": mon in diffs,
+            "days_added": d.get("days_added", 0),
+            "day_changes": len(d.get("day_changes") or []),
+        })
     return out
 
 
@@ -24562,16 +25274,20 @@ async def admin_bloom_daily_preview(project_key: str, file: UploadFile = File(..
     # 엑셀은 품목 전체가 한 장이다. 어느 품목 화면에서 올리든 원본은 한 곳에.
     _key = _BLOOM_STORE if _bloom_item_of(_model_key_alias(project_key)) \
         else _model_key_alias(project_key)
-    parsed = _bloom_parse_upload(await file.read())
+    months_in = _bloom_parse_months(await file.read())
     proj = (_load_models().get("projects") or {}).get(_key) or {}
-    board, diff = _bloom_merge(proj.get("daily_board") or {}, parsed)
+    store, diffs, newest = _bloom_apply_months(proj, months_in)
+    board = store.get(newest) or {}
+    parsed = months_in.get(newest) or {}
     return {"ok": True, "project_key": _key, "file_name": file.filename,
             "sheet": parsed.get("sheet"), "title": parsed.get("title"),
             "report_date": parsed.get("report_date"),
             "items": len(board.get("items") or []),
             "dates": board.get("dates") or [],
             "notes": parsed.get("notes") or [],
-            "diff": diff}
+            "month": newest,
+            "months": _bloom_months_brief(store, diffs),
+            "diff": diffs.get(newest) or {}}
 
 
 @app.post("/admin/projects/{project_key}/bloom-daily")
@@ -24580,21 +25296,32 @@ async def admin_bloom_daily_apply(project_key: str, file: UploadFile = File(...)
     """합쳐서 저장한다."""
     _key = _BLOOM_STORE if _bloom_item_of(_model_key_alias(project_key)) \
         else _model_key_alias(project_key)
-    parsed = _bloom_parse_upload(await file.read())
+    months_in = _bloom_parse_months(await file.read())
     data = _load_models()
     proj = data.setdefault("projects", {}).setdefault(_key, {"models": []})
-    board, diff = _bloom_merge(proj.get("daily_board") or {}, parsed)
+    store, diffs, newest = _bloom_apply_months(proj, months_in)
+    board = store.get(newest) or {}
     board["updated_at"] = datetime.now().isoformat(timespec="seconds")
     board["file_name"] = file.filename or ""
+    # 이번 달은 지금까지처럼 daily_board 에 둔다 — 챗봇·매출·RAG 가 거기를
+    # 본다. 지난 달만 옆에 쌓는다.
     proj["daily_board"] = board
+    older = {m: b for m, b in store.items() if m != newest}
+    if older:
+        proj["daily_board_months"] = older
+    else:
+        proj.pop("daily_board_months", None)
     _save_models(data)
-    print(f"[bloom] 일 보드 저장 {_key}: {file.filename} · "
+    diff = diffs.get(newest) or {"days_added": 0, "day_changes": []}
+    print(f"[bloom] 일 보드 저장 {_key}: {file.filename} · 달 {sorted(store)} · "
           f"품목 {len(board.get('items') or [])} · 날짜 {len(board.get('dates') or [])} · "
-          f"새 칸 {diff['days_added']} · 바뀐 칸 {len(diff['day_changes'])}")
+          f"새 칸 {diff.get('days_added', 0)} · 바뀐 칸 {len(diff.get('day_changes') or [])}")
     return {"ok": True, "project_key": _key, "file_name": board["file_name"],
             "report_date": board.get("report_date"),
             "items": len(board.get("items") or []),
             "dates": board.get("dates") or [],
+            "month": newest,
+            "months": _bloom_months_brief(store, diffs),
             "diff": diff}
 
 # ─────────────────────────────────────────────────────────────
@@ -25456,8 +26183,13 @@ def _step_actual(raw: str):
 
 @app.post("/admin/projects/{project_key}/import-xlsx")
 @app.post("/admin/projects/{project_key}/process/import-xlsx")
-async def admin_import_unified(project_key: str, file: UploadFile = File(...)):
-    """통합 업로드: MajorModule/PBX/EMA 시트 자동 인식, 프로세스+가격 한번에"""
+async def admin_import_unified(project_key: str, file: UploadFile = File(...),
+                               _admin: int = Depends(get_admin_session)):
+    """통합 업로드: MajorModule/PBX/EMA 시트 자동 인식, 프로세스+가격 한번에
+
+    관리자 확인이 빠져 있었다 — 로그인 없이 모델 데이터를 바꿀 수 있었다.
+    다른 업로드 라우트와 같은 것을 건다.
+    """
     import io, openpyxl, re as _re
     data = _load_models()
     applied, skipped = [], []
@@ -27444,3 +28176,267 @@ async def admin_overtime_import(
     out["updated_at"] = saved.get("updated_at", "")
     out["state"] = _ot.for_admin(saved, wk)
     return out
+
+
+# ── 일일 백업 ───────────────────────────────────────────────────────
+#
+# 요청이 들어올 때 '오늘 것이 있나' 를 보고 없으면 만든다. fly 머신이
+# auto_stop 이라 자정에 깨어 있지 않아서, 시계에 기대는 스케줄러를 쓸 수
+# 없다. 아침에 누가 앱을 처음 열면 그때 그날 백업이 생긴다.
+#
+# 백업은 /data/backups/ 안에서만 지운다. 운영 데이터는 건드리지 않는다.
+import backups as _bk
+
+
+@app.middleware("http")
+async def _daily_backup_mw(request, call_next):
+    # 백업이 실패해도 요청은 그대로 흘러가야 한다. 백업 때문에 앱이
+    # 멈추는 쪽이 백업이 하루 빠지는 쪽보다 나쁘다.
+    try:
+        if request.method == "GET" and not request.url.path.startswith(
+                ("/static", "/slides", "/slide_images", "/cropped", "/note_photos")):
+            await _run_in_threadpool_safe(_bk.ensure_today, DATA_DIR)
+    except Exception as e:
+        print(f"[backup] 건너뜀: {e}")
+    return await call_next(request)
+
+
+async def _run_in_threadpool_safe(fn, *a):
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(fn, *a)
+
+
+@app.get("/admin/backups")
+def admin_backups(name: str = "", _admin: int = Depends(get_admin_session)):
+    """백업 목록 + 지금 보관 계획. name 을 주면 그 안을 들여다본다."""
+    rows = _bk.list_backups(DATA_DIR)
+    out = {"ok": True,
+           "backups": rows,
+           "usage": _bk.usage(DATA_DIR),
+           "has_today": _bk.has_today(DATA_DIR),
+           "policy": {"daily_days": _bk.DAILY_KEEP_DAYS,
+                      "weekly_weeks": _bk.WEEKLY_KEEP_WEEKS,
+                      "monthly_months": _bk.MONTHLY_KEEP_MONTHS,
+                      "min_keep": _bk.MIN_KEEP},
+           "plan": _bk.plan_prune([r["name"] for r in rows]),
+           "sources": [p.name for p in _bk.source_files(DATA_DIR)]}
+    if name:
+        try:
+            out["peek"] = _bk.peek(DATA_DIR, name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="그런 백업이 없습니다")
+    return out
+
+
+@app.post("/admin/backups/run")
+def admin_backups_run(payload: dict = Body(default=None),
+                      _admin: int = Depends(get_admin_session)):
+    """지금 한 벌 뜬다. 오늘 것이 있으면 그 위에 덮어쓴다."""
+    label = str((payload or {}).get("label") or "")[:24]
+    res = _bk.snapshot(DATA_DIR, label=label)
+    if not res.get("ok"):
+        raise HTTPException(status_code=500,
+                            detail="백업하지 못했습니다: %s" % res.get("reason"))
+    res["prune"] = _bk.prune(DATA_DIR)
+    res["assets"] = _bk.ensure_assets_weekly(DATA_DIR)
+    res["usage"] = _bk.usage(DATA_DIR)
+    return res
+
+
+@app.post("/admin/backups/prune")
+def admin_backups_prune(payload: dict = Body(default=None),
+                        _admin: int = Depends(get_admin_session)):
+    """보관 기간 지난 것 정리. dry_run 이면 무엇을 지울지만 알려준다."""
+    dry = bool((payload or {}).get("dry_run"))
+    return {"ok": True, **_bk.prune(DATA_DIR, dry_run=dry), "dry_run": dry}
+
+
+@app.post("/admin/backups/restore")
+def admin_backups_restore(payload: dict,
+                          _admin: int = Depends(get_admin_session)):
+    """되돌리기. payload = {name, files?: [파일명...]}
+
+    files 를 주면 그 파일만 바꾼다. 덮어쓰기 전에 지금 상태를 먼저
+    한 벌 떠 두므로 되돌린 게 잘못이어도 다시 되돌릴 수 있다.
+    """
+    name = str((payload or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="백업 이름이 필요합니다")
+    only = [str(x) for x in ((payload or {}).get("files") or []) if str(x).strip()]
+    try:
+        res = _bk.restore(DATA_DIR, name, only=only or None)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="그런 백업이 없습니다")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="되돌리지 못했습니다: %s" % e)
+    return res
+
+
+@app.get("/admin/backups/download")
+def admin_backups_download(name: str, _admin: int = Depends(get_admin_session)):
+    """백업 파일 내려받기. 서버 밖에도 한 벌 두고 싶을 때."""
+    from fastapi.responses import FileResponse
+    import os as _os
+    safe = _os.path.basename(name)
+    p = _bk.backups_dir(DATA_DIR) / safe
+    if not p.exists() or not p.is_file() or not safe.endswith(".tar.gz"):
+        raise HTTPException(status_code=404, detail="그런 백업이 없습니다")
+    return FileResponse(str(p), media_type="application/gzip", filename=safe)
+
+
+# ── 주차별 계획·실적 양식 내려받기 ──────────────────────────────────
+#
+# 주차는 반드시 week_calendar 에서 받는다. 손으로 적으면 어긋난다 —
+# 2026-10 의 주차는 W41~W44 이고 W40 은 9월 소유다. 양식과 보드가 서로
+# 다른 주차를 말하면 올려도 칸이 안 맞는다.
+#
+# 모델 칸을 채워 보내는 이유는 따로 있다. 매주 품번 수십 개를 손으로
+# 적게 하면 언젠가 하나를 다르게 적고, 다르게 적힌 줄은 어느 모델에도
+# 안 붙어 조용히 사라진다.
+import weekly_template as _wt
+
+
+@app.get("/admin/projects/{project_key}/weekly-template")
+def admin_weekly_template(project_key: str, month: str = "", months: int = 1,
+                          _admin: int = Depends(get_admin_session)):
+    """그 프로젝트의 주차별 계획·실적 양식.
+
+    month  기준 달 (YYYY-MM). 없으면 이번 달.
+    months 몇 달치 시트를 넣을지 (1~6).
+    """
+    import datetime as _dt
+    from urllib.parse import quote
+
+    key = _model_key_alias((project_key or "").strip())
+    if not key:
+        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
+
+    base = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    try:
+        y, m = int(base[:4]), int(base[5:7])
+        if not (1 <= m <= 12):
+            raise ValueError
+    except Exception:
+        raise HTTPException(status_code=400, detail="달을 YYYY-MM 으로 적어 주세요.")
+
+    n = max(1, min(int(months or 1), 6))
+    sheets = []
+    for i in range(n):
+        yy, mm = y + (m - 1 + i) // 12, (m - 1 + i) % 12 + 1
+        mon = "%04d-%02d" % (yy, mm)
+        wks = _get_month_weeks(mon)        # ← 보드와 같은 달력을 쓴다
+        if wks:
+            sheets.append({"month": mon, "weeks": wks})
+    if not sheets:
+        raise HTTPException(status_code=400, detail="그 달의 주차를 계산하지 못했습니다.")
+
+    proj = (_load_models().get("projects") or {}).get(key) or {}
+    models = [m for m in (proj.get("models") or []) if isinstance(m, dict)]
+    try:
+        label = _display_project_label(key)
+    except Exception:
+        label = key
+
+    # 서로 구분이 안 되는 줄이 있으면 로그에 남긴다. 파트넘버도 모델명도
+    # 같은 줄이 여럿이면 올렸을 때 어느 줄의 숫자인지 알 수 없다.
+    dups = _wt.duplicate_rows(models)
+    if dups:
+        print(f"[weekly-template] {key}: 구분 안 되는 줄 {len(dups)}개 — "
+              + ", ".join(str(d.get('name')) for d in dups[:5]))
+
+    # 미달 사유도 같이 — '문제' 로 적힌 것만. '참고' 는 미달 사유가 아니라서
+    # 그 칸에 넣어 보내면 다시 올릴 때 참고가 미달 사유로 바뀐다.
+    for s in sheets:
+        s["notes"] = {w: r.get("text") or ""
+                      for w, r in _week_reasons_of(proj, s["month"]).items()
+                      if (r.get("kind") or "") != "참고" and (r.get("text") or "").strip()}
+
+    # 숫자를 채워서 내려준다. 빈 양식을 따로 두지 않는 이유 —
+    #   · 숫자가 없는 프로젝트는 채워도 비어 있다
+    #   · 숫자가 있는 프로젝트에서 빈 양식은 '지난 주 실적이 뭐였나' 를
+    #     보드에서 따로 찾게 만든다
+    #   · 받은 파일에 이번 주만 적어 그대로 올리면 되니 손이 덜 간다
+    data = _wt.build_weekly_template(label, sheets=sheets, models=models,
+                                     filled=True)
+    fname = "%s_주차별계획_%s.xlsx" % (label or key, sheets[0]["month"])
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f"attachment; filename=weekly_template.xlsx; "
+                 f"filename*=UTF-8''{quote(fname)}"})
+
+
+# ── 블룸 일 보고 — 빈 양식 내려주기 ──────────────────────────────────
+#
+# 기준은 사람이 쓰던 '블룸_보고자료_..._ver4_1.xlsx' 의 '10월 보고자료'
+# 시트다. 새 모양을 짜내지 않고 그 모양을 그대로 만든다 — 받는 분들이
+# 지금 쓰던 대로 채우면 되고, 파서도 그 머리글을 보고 열을 찾는다.
+#
+# 품목 칸은 미리 채워 보낸다. 매달 품목 여덟 개를 손으로 적게 하면
+# 언젠가 하나를 다르게 적고, 다르게 적힌 줄은 어느 품목에도 안 붙어
+# 조용히 사라진다. config 의 bloom_item 순서대로 깔고, 이미 올라와 있는
+# 보드에만 있는 품목(SS8 처럼 프로젝트가 없는 것)을 뒤에 붙인다.
+import bloom_template as _bt
+
+
+@app.get("/admin/projects/{project_key}/bloom-template")
+def admin_bloom_template(project_key: str, month: str = "",
+                         _admin: int = Depends(get_admin_session)):
+    """블룸 일 보고 자료 빈 양식 (품목 칸은 채워서)."""
+    import datetime as _dt
+    from urllib.parse import quote
+
+    import bloom_daily_import as _bd
+
+    key = _model_key_alias((project_key or "").strip())
+    try:
+        proj = _cl.get_project(key) or {}
+    except Exception:
+        proj = {}
+    if str(proj.get("division_id") or "") != "bloom":
+        raise HTTPException(status_code=400,
+                            detail="블룸 양식은 블룸 프로젝트에서만 받습니다.")
+
+    base = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    try:
+        y, m = int(base[:4]), int(base[5:7])
+        if not (1 <= m <= 12):
+            raise ValueError
+    except Exception:
+        raise HTTPException(status_code=400, detail="달을 YYYY-MM 으로 적어 주세요.")
+    base = "%04d-%02d" % (y, m)
+
+    items, seen = [], set()
+
+    def _add(nm):
+        nm = str(nm or "").strip()
+        if not nm:
+            return
+        k = _norm_label(_bd.clean_item(nm))
+        if not k or k in seen:
+            return
+        seen.add(k)
+        items.append(nm)
+
+    try:
+        for p in (_cl.get_projects(division_id="bloom", visible_only=False) or []):
+            _add(p.get("bloom_item"))
+    except Exception:
+        pass
+    try:
+        _board, _ = _bloom_board_for(_BLOOM_STORE)
+        for it in ((_board or {}).get("items") or []):
+            if isinstance(it, dict):
+                _add(it.get("item"))
+    except Exception:
+        pass
+
+    data = _bt.build_bloom_template(base, items=items)
+    fname = "블룸_일보고_양식_%s.xlsx" % base
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f"attachment; filename=bloom_template.xlsx; "
+                 f"filename*=UTF-8''{quote(fname)}"})

@@ -36,9 +36,8 @@ var els = {
   'v2-division-select': {selectedIndex: 1,
     options: [{text:'반도체사업부'}, {text:'블룸'}], value: 'bloom'},
   'mdl-bloom-btn': {hidden: true, dataset: {}, onclick: null},
-  'mdl-excel-btn': {hidden: false},
-  'mdl-proc-excel-btn': {hidden: false},
-  'mdl-excel-tpl-btn': {hidden: false},
+  'mdl-lead-btn': {hidden: false},
+  
   'mdl-proc-reset-btn': {hidden: false},
   'mdl-import-menu': {hidden: true},
   'pf-file': {clicked: 0, click: function(){ this.clicked++; }}
@@ -58,18 +57,18 @@ window._bdSyncMenu('bloom_main');
 var afterBloom = {
   crumb: els['v2-crumb-biz'].textContent,
   bloom: els['mdl-bloom-btn'].hidden,
-  excel: els['mdl-excel-btn'].hidden,
+  excel: els['mdl-lead-btn'].hidden,
   sep: seps[0].hidden
 };
 // 툴바가 다시 그려진 상황 — hidden 이 마크업 기본값으로 돌아간다
 els['mdl-bloom-btn'].hidden = true;
-els['mdl-excel-btn'].hidden = false;
+els['mdl-lead-btn'].hidden = false;
 seps[0].hidden = false;
 window._bdSyncMenu('bloom_main');      // 메뉴를 다시 열었다
-var afterRerender = { bloom: els['mdl-bloom-btn'].hidden, excel: els['mdl-excel-btn'].hidden };
+var afterRerender = { bloom: els['mdl-bloom-btn'].hidden, excel: els['mdl-lead-btn'].hidden };
 // 반도체 프로젝트로 넘어가면 원래대로
 window._bdSyncMenu('chamber');
-var afterSemi = { bloom: els['mdl-bloom-btn'].hidden, excel: els['mdl-excel-btn'].hidden,
+var afterSemi = { bloom: els['mdl-bloom-btn'].hidden, excel: els['mdl-lead-btn'].hidden,
                   sep: seps[0].hidden };
 // 사업부를 반도체로 되돌리면 breadcrumb 도 따라온다
 els['v2-division-select'].selectedIndex = 0;

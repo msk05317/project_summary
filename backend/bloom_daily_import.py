@@ -103,19 +103,50 @@ def _grid(ws):
     return g
 
 
-def find_sheet(wb):
-    """'일 보고' 시트 찾기. 이름이 바뀌어도 모양으로 찾는다."""
+def _sheet_last_date(ws, g):
+    """그 시트가 다루는 가장 늦은 날짜. 어느 달 시트인지 가리는 데 쓴다."""
+    last = None
+    for r in range(1, min(ws.max_row, 16) + 1):
+        for c in range(1, ws.max_column + 1):
+            d = _as_date(g.get((r, c)))
+            if d and (last is None or d > last):
+                last = d
+    return last
+
+
+def find_sheets(wb):
+    """'일 보고' 모양 시트 **전부** — 이른 달부터 [(시트, 마지막날)].
+
+    한 파일에 '9월 보고자료' 와 '10월 보고자료' 가 같이 온다. 한 장만
+    읽으면 10월 파일을 올리는 순간 9월 자료를 볼 길이 없어진다. 그래서
+    모양이 맞는 시트를 다 돌려주고, 어느 달을 볼지는 부르는 쪽이 정한다.
+    """
+    named, shaped = [], []
     for name in wb.sheetnames:
-        if "일" in name and "보고" in name:
-            return wb[name]
-    for name in wb.sheetnames:                     # 이름을 못 믿을 때
         ws = wb[name]
         g = _grid(ws)
-        for r in range(1, min(ws.max_row, 12) + 1):
+        if "일" in name and "보고" in name:
+            named.append((ws, g))
+            continue
+        for r in range(1, min(ws.max_row, 12) + 1):   # 이름을 못 믿을 때
             if sum(1 for c in range(1, ws.max_column + 1)
                    if _s(g.get((r, c))) == "계획") >= 4:
-                return ws
-    return None
+                shaped.append((ws, g))
+                break
+    cands = named or shaped
+    out = [(ws, _sheet_last_date(ws, g)) for ws, g in cands]
+    out.sort(key=lambda x: (x[1] is None, x[1] or _dt.date.min))
+    return out
+
+
+def find_sheet(wb):
+    """'일 보고' 시트 한 장 — 가장 최근 날짜가 든 것.
+
+    시트 순서대로 먼저 걸리는 것을 집으면 10월 1일에 올리면서 9월 자료가
+    들어간다. 그래서 가장 늦은 날짜가 든 시트를 고른다.
+    """
+    ss = find_sheets(wb)
+    return ss[-1][0] if ss else None
 
 
 def find_layout(ws, g):
@@ -149,7 +180,12 @@ def find_layout(ws, g):
             cols.setdefault("wait_ship", c)
         elif "구매품대기" in flat:
             cols.setdefault("wait_part", c)
-        elif flat in ("공정", "공정명") and "step" not in cols:
+        elif (flat.startswith("공정") and "재고" not in flat
+              and "step" not in cols):
+            # '공정⏎구분' 은 납작하게 펴면 '공정구분' 이다. 예전에는 '공정' 과
+            # '공정명' 만 받아서 이 머리글을 통째로 놓쳤고, step 이 비면 모든
+            # 줄이 아래에서 걸러져 품목이 0개가 됐다. '공정재고' 는 다른
+            # 열이라 여기서 빼낸다.
             cols["step"] = c
         elif "공정재고" in flat:
             cols.setdefault("wip", c)
