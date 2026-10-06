@@ -154,11 +154,40 @@ def _layout(mons: list) -> tuple:
     return plan, c - 1
 
 
+def months_with_weeks(models: list, year: int) -> list:
+    """그 해에 주차 숫자가 하나라도 적힌 달."""
+    out = set()
+    for m in models or []:
+        if not isinstance(m, dict):
+            continue
+        for ym, bucket in (m.get("weekly_plan") or {}).items():
+            if not str(ym).startswith("%04d-" % int(year)):
+                continue
+            if not isinstance(bucket, dict):
+                continue
+            for cell in bucket.values():
+                if isinstance(cell, dict) and (cell.get("plan") or cell.get("actual")):
+                    out.add(str(ym))
+                    break
+    return sorted(out)
+
+
 def build_year_export(project_label: str, year: int, models: list,
-                      sheet_name: str = "") -> bytes:
-    """한 해치 주차별 계획·실적 엑셀 바이트."""
+                      sheet_name: str = "", expand=None) -> bytes:
+    """한 해치 주차별 계획·실적 엑셀 바이트.
+
+    expand  주차를 펼쳐 둘 달 ['2026-09', ...]. 안 주면 주차 숫자가 적힌
+            달만 펼친다. 나머지 달은 주차 칸을 접어서 **월 합계 두 칸만**
+            보인다 — 쉰두 주를 다 늘어놓으면 눈이 어디를 봐야 할지 모른다.
+
+            접은 것뿐이라 지워지지 않는다. 엑셀에서 머리 위 [+] 를 누르면
+            그 자리에서 펼쳐진다 — 달을 바꿔 보려고 다시 뽑을 일이 없다.
+    """
     year = int(year)
     mons = months_of(year)
+    if expand is None:
+        expand = months_with_weeks(models, year)
+    open_set = {str(x).strip() for x in (expand or []) if str(x).strip()}
     blocks, last = _layout(mons)
     groups = group_models([m for m in (models or []) if isinstance(m, dict)])
     prev_y = year - 1
@@ -314,6 +343,18 @@ def build_year_export(project_label: str, year: int, models: list,
     # 총 합계 — 묶음 합계끼리 더한다 (모델 줄을 다시 더하면 두 번 세어진다)
     if sum_rows:
         _total_row(ws, r, sum_rows, last)
+
+    # 주차 칸 접기 — 월 합계 두 칸은 남긴다.
+    #
+    # 접힌 달도 '그 달 계획·실적' 은 보인다. 주차만 안 보일 뿐이라
+    # 한 해를 훑다가 궁금한 달만 [+] 로 펼치면 된다.
+    for b in blocks:
+        if not b["cols"] or b["month"] in open_set:
+            continue
+        ws.column_dimensions.group(
+            get_column_letter(b["cols"][0]),
+            get_column_letter(b["cols"][-1] + 1),
+            hidden=True, outline_level=1)
 
     ws.freeze_panes = ws.cell(FIRST_ROW, FIRST_MONTH_COL)
     ws.sheet_view.showGridLines = False

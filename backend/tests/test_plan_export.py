@@ -170,7 +170,62 @@ ok(not any("판가" in h or "재료비" in h for h in heads),
 ok(any("잔여수량" in h for h in heads), "잔여수량 칸이 없다: %s" % heads)
 
 
-# ── 7. 라우트가 등록 순서를 안 흔드는가 ─────────────────────────────
+# ── 7. 안 쓰는 달은 접혀 있는가 ─────────────────────────────────────
+#
+# 쉰두 주를 다 늘어놓으면 눈이 어디를 봐야 할지 모른다. 숫자가 있는 달만
+# 펼치고 나머지는 접는다 — **지우는 게 아니라 접는 것**이라, 엑셀에서
+# [+] 를 누르면 그 자리에서 펼쳐진다.
+def hidden_cols(w):
+    out = set()
+    for _k, d in w.column_dimensions.items():
+        if d.hidden and d.min and d.max:
+            out |= set(range(d.min, d.max + 1))
+    return out
+
+
+def week_cols_of(w, mon):
+    c0 = tops["%d월" % int(mon[5:7])]
+    return [c0 + i for i in range(len(wcal.get_month_weeks(mon)) * 2)]
+
+
+def total_cols_of(w, mon):
+    c0 = tops["%d월" % int(mon[5:7])]
+    return [c0 + len(wcal.get_month_weeks(mon)) * 2 + j for j in (0, 1)]
+
+
+hid = hidden_cols(ws)
+has = pe.months_with_weeks(MODELS, YEAR)
+ok(sorted(has) == sorted(["%d-09" % YEAR, "%d-10" % YEAR]),
+   "숫자가 있는 달을 잘못 골랐다: %s" % has)
+for m in range(1, 13):
+    mon = "%d-%02d" % (YEAR, m)
+    wk, tot = week_cols_of(ws, mon), total_cols_of(ws, mon)
+    if mon in has:
+        ok(not (set(wk) & hid), "%s 는 숫자가 있는데 접혔다" % mon)
+    else:
+        ok(set(wk) <= hid, "%s 가 안 접혔다" % mon)
+    # 접혀도 월 합계는 늘 보인다 — 그 달 계획·실적은 읽을 수 있어야 한다
+    ok(not (set(tot) & hid), "%s 의 월 합계까지 접혔다" % mon)
+
+# 접은 것뿐이지 지운 게 아니다
+ok(len(seen) == sum(len(wcal.get_month_weeks("%d-%02d" % (YEAR, m)))
+                    for m in range(1, 13)),
+   "접으면서 주차 칸이 사라졌다")
+# 엑셀에서 펼칠 수 있게 묶음(outline)으로 접었는가
+ok(any((d.outline_level or 0) > 0 for _k, d in ws.column_dimensions.items()),
+   "그냥 숨겼다 — 엑셀에서 [+] 로 펼칠 수가 없다")
+
+# 골라서 펼칠 수도 있어야 한다
+d2 = pe.build_year_export("T", YEAR, MODELS, sheet_name="S",
+                          expand=["%d-03" % YEAR])
+w2 = load_workbook(BytesIO(d2))["S"]
+h2 = hidden_cols(w2)
+ok(not (set(week_cols_of(w2, "%d-03" % YEAR)) & h2), "고른 달이 안 펼쳐졌다")
+ok(set(week_cols_of(w2, "%d-09" % YEAR)) <= h2,
+   "고른 달만 펼쳐야 하는데 다른 달도 펼쳐졌다")
+
+
+# ── 8. 라우트가 등록 순서를 안 흔드는가 ─────────────────────────────
 SRC = (BACK / "main.py").read_text(encoding="utf-8")
 ok('@app.get("/admin/projects/{project_key}/plan-export")' in SRC, "라우트가 없다")
 _body = SRC[SRC.index("def admin_plan_export("):]
@@ -181,6 +236,7 @@ ok("get_admin_session" in _body, "라우트에 관리자 확인이 없다")
 
 AV2 = (BACK / "admin_v2.html").read_text(encoding="utf-8")
 ok("plan-export?year=" in AV2, "화면이 연간 내보내기를 안 부른다")
+ok("months: str" in SRC, "라우트가 펼칠 달을 안 받는다")
 ok("wp-year" in AV2, "연간 내보내기 버튼이 없다")
 
 
@@ -189,4 +245,4 @@ if FAIL:
     for f in FAIL:
         print("  -", f)
     raise SystemExit(1)
-print("전부 통과 · 검사 7묶음 · 달 12개 · 주차 %d개" % len(seen))
+print("전부 통과 · 검사 8묶음 · 달 12개 · 주차 %d개" % len(seen))

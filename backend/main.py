@@ -28469,9 +28469,14 @@ import plan_export as _pex
 
 
 @app.get("/admin/projects/{project_key}/plan-export")
-def admin_plan_export(project_key: str, year: int = 0,
+def admin_plan_export(project_key: str, year: int = 0, months: str = "",
                       _admin: int = Depends(get_admin_session)):
-    """그 프로젝트 한 해치 주차별 계획·실적 엑셀."""
+    """그 프로젝트 한 해치 주차별 계획·실적 엑셀.
+
+    months  주차를 펼쳐 둘 달 ('2026-09,2026-10'). 안 주면 주차 숫자가
+            적힌 달만 펼친다. 나머지는 접혀서 월 합계 두 칸만 보인다 —
+            쉰두 주를 다 늘어놓으면 눈이 어디를 봐야 할지 모른다.
+    """
     import datetime as _dt
     from urllib.parse import quote
 
@@ -28490,8 +28495,10 @@ def admin_plan_export(project_key: str, year: int = 0,
     except Exception:
         label = key
 
+    want = [x.strip() for x in (months or "").split(",") if x.strip()]
     data = _pex.build_year_export(label, y, models,
-                                  sheet_name=key.replace("-", "_").upper())
+                                  sheet_name=key.replace("-", "_").upper(),
+                                  expand=want or None)
     fname = "%s_%d_주차별계획.xlsx" % (label or key, y)
     return Response(
         content=data,
