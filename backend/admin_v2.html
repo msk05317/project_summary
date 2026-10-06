@@ -8203,6 +8203,10 @@ var sidebarSel = document.getElementById('v2-division-select');
                 'title="지금 보고 있는 달의 주차 계획·실적·미달 사유가 채워진 엑셀입니다. ' +
                       '이번 주 칸만 더 적어 그대로 다시 올리시면 됩니다.">' +
                 '📥 엑셀로 받기</button>' +
+              '<button type="button" class="ov-btn" id="wp-year" ' +
+                'title="한 해를 한 장에 놓고 보는 파일입니다. 열두 달이 가로로 늘어서고, ' +
+                      '보고 쓰던 모양 그대로 나옵니다 — 올리는 양식과는 다릅니다.">' +
+                '📤 연간 내보내기</button>' +
               '<button type="button" class="ov-btn" id="pf-upload">📁 엑셀 올리기</button>' +
               '<button type="button" class="ov-btn" id="wb-edit">PO · 실적 · 증감 입력</button>' +
             '</div>' +
@@ -8543,6 +8547,21 @@ var sidebarSel = document.getElementById('v2-division-select');
       var mon = (ms && ms.value) || '';
       window.location = '/admin/projects/' + encodeURIComponent(sel.value) +
         '/weekly-template' + (mon ? '?month=' + encodeURIComponent(mon) : '');
+    });
+
+    // 연간 내보내기 — 지금 보고 있는 달의 **연도** 한 해치.
+    //
+    // 연도를 따로 고르게 하지 않는다. 달 고르개가 이미 위에 있는데 연도
+    // 고르개를 하나 더 두면, 둘이 다른 해를 가리키고 있을 때 어느 쪽이
+    // 맞는지 알 수 없다.
+    var yearBtn = document.getElementById('wp-year');
+    if (yearBtn) yearBtn.addEventListener('click', function() {
+      if (!sel.value) { alert('프로젝트를 먼저 선택하세요'); return; }
+      var ms = document.getElementById('wp-month-sel');
+      var mon = (ms && ms.value) || '';
+      var y = /^\d{4}/.test(mon) ? mon.slice(0, 4) : String(new Date().getFullYear());
+      window.location = '/admin/projects/' + encodeURIComponent(sel.value) +
+        '/plan-export?year=' + y;
     });
 
     saveBtn.addEventListener('click', function() {
@@ -10867,6 +10886,8 @@ window._ovProjectKey = function() {
     if (fm) fm.style.display = (!lead && window._bdIsDaily(pk)) ? '' : 'none';
     var wfm = document.getElementById('wp-form');
     if (wfm) wfm.style.display = 'none';   // 블룸은 주차 양식을 안 쓴다
+    var wyr = document.getElementById('wp-year');
+    if (wyr) wyr.style.display = 'none';
     if (!lead || !card || !card.parentNode) return;
     var meta = (window.UPLOAD_LEAD_PROJECT || {})[lead] || {};
     var bar = document.createElement('div');

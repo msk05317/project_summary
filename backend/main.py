@@ -28460,6 +28460,47 @@ def admin_weekly_template(project_key: str, month: str = "", months: int = 1,
                  f"filename*=UTF-8''{quote(fname)}"})
 
 
+# ── 연간 내보내기 ───────────────────────────────────────────────────
+#
+# 받는 양식과 모양이 다르다. 받는 쪽은 한 달이 한 시트(세로로 길다),
+# 이건 한 해가 한 시트(가로로 길다)다. 한 해를 한 장에 놓고 보려고
+# 쓰던 파일이라 그 모양을 그대로 따라간다.
+import plan_export as _pex
+
+
+@app.get("/admin/projects/{project_key}/plan-export")
+def admin_plan_export(project_key: str, year: int = 0,
+                      _admin: int = Depends(get_admin_session)):
+    """그 프로젝트 한 해치 주차별 계획·실적 엑셀."""
+    import datetime as _dt
+    from urllib.parse import quote
+
+    key = _model_key_alias((project_key or "").strip())
+    if not key:
+        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
+    y = int(year or 0) or _dt.date.today().year
+    if not (2000 <= y <= 2100):
+        raise HTTPException(status_code=400, detail="연도를 네 자리로 적어 주세요.")
+
+    proj = (_load_models().get("projects") or {}).get(key) or {}
+    # 등록된 순서 그대로 넘긴다 — plan_export 가 유형으로만 묶고 순서는 안 바꾼다
+    models = [m for m in (proj.get("models") or []) if isinstance(m, dict)]
+    try:
+        label = _display_project_label(key)
+    except Exception:
+        label = key
+
+    data = _pex.build_year_export(label, y, models,
+                                  sheet_name=key.replace("-", "_").upper())
+    fname = "%s_%d_주차별계획.xlsx" % (label or key, y)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f"attachment; filename=plan_export.xlsx; "
+                 f"filename*=UTF-8''{quote(fname)}"})
+
+
 # ── 블룸 일 보고 — 빈 양식 내려주기 ──────────────────────────────────
 #
 # 기준은 사람이 쓰던 '블룸_보고자료_..._ver4_1.xlsx' 의 '10월 보고자료'
