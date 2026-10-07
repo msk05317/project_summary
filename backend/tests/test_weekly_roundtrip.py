@@ -328,7 +328,10 @@ for frag, why in [
     ok(frag in MAIN, why)
 
 AV2 = (BACK / "admin_v2.html").read_text(encoding="utf-8")
-ok("'/weekly-template'" in AV2, "양식 받기 버튼이 화면에 없다")
+# 화면이 부르는 건 작성용(plan-form)이다. /weekly-template 라우트는
+# 그대로 살아 있지만 버튼에서는 안 부른다.
+ok("'/plan-form'" in AV2, "작성용 받기를 부르는 데가 없다")
+ok("_dlItem('form'" in AV2, "받기 메뉴에 작성용 항목이 없다")
 ok("plan-file/preview" in AV2, "올리기가 미리보기를 안 거친다")
 
 

@@ -28466,6 +28466,65 @@ def admin_weekly_template(project_key: str, month: str = "", months: int = 1,
 # 이건 한 해가 한 시트(가로로 길다)다. 한 해를 한 장에 놓고 보려고
 # 쓰던 파일이라 그 모양을 그대로 따라간다.
 import plan_export as _pex
+import plan_form as _pfm
+
+
+@app.get("/admin/projects/{project_key}/plan-form")
+def admin_plan_form(project_key: str, month: str = "",
+                    _admin: int = Depends(get_admin_session)):
+    """작성용 양식 — 한 해 한 장, 고른 달만 주차 칸이 열린다.
+
+    달마다 한 장이던 때는, 이번 주를 적는 사람이 '지난 달까지 얼마나
+    나갔더라' 를 보려면 시트를 넘기거나 보드를 따로 띄워야 했다. 한 해를
+    한 장에 놓고 지난 달은 월 합계 두 칸만 둔다 — 보는 자리지 고치는
+    자리가 아니다. 지난 달 주차 칸을 같이 두지 않는 이유는 분명하다.
+    올리는 쪽은 시트 이름으로 달을 정하고 그 달 주차만 읽으니, 지난 달
+    칸은 적어도 조용히 안 들어간다. 적을 수 있게 생겼는데 안 먹는 칸이
+    제일 나쁘다.
+    """
+    import datetime as _dt
+    from urllib.parse import quote
+
+    key = _model_key_alias((project_key or "").strip())
+    if not key:
+        raise HTTPException(status_code=400, detail="사업부를 지정해 주세요.")
+
+    base = (month or "").strip() or _dt.date.today().strftime("%Y-%m")
+    try:
+        y, m = int(base[:4]), int(base[5:7])
+        if not (1 <= m <= 12):
+            raise ValueError
+    except Exception:
+        raise HTTPException(status_code=400, detail="달을 YYYY-MM 으로 적어 주세요.")
+    mon = "%04d-%02d" % (y, m)
+    if not _get_month_weeks(mon):
+        raise HTTPException(status_code=400, detail="그 달의 주차를 계산하지 못했습니다.")
+
+    proj = (_load_models().get("projects") or {}).get(key) or {}
+    models = [x for x in (proj.get("models") or []) if isinstance(x, dict)]
+    try:
+        label = _display_project_label(key)
+    except Exception:
+        label = key
+
+    dups = _wt.duplicate_rows(models)
+    if dups:
+        print(f"[plan-form] {key}: 구분 안 되는 줄 {len(dups)}개 — "
+              + ", ".join(str(d.get('name')) for d in dups[:5]))
+
+    # 미달 사유도 같이 — '참고' 는 미달 사유가 아니라서 빼고 보낸다
+    notes = {w: r.get("text") or ""
+             for w, r in _week_reasons_of(proj, mon).items()
+             if (r.get("kind") or "") != "참고" and (r.get("text") or "").strip()}
+
+    data = _pfm.build_year_form(label, y, mon, models, notes=notes)
+    fname = "%s_작성용_%s.xlsx" % (label or key, mon)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f"attachment; filename=plan_form.xlsx; "
+                 f"filename*=UTF-8''{quote(fname)}"})
 
 
 @app.get("/admin/projects/{project_key}/plan-export/months")

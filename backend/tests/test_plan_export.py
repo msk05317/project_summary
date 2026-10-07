@@ -267,7 +267,9 @@ _i = AV2.index('id="yr-prev"')
 ok("justify-content:center" in AV2[_i - 200:_i + 200], "이전 해 화살표가 안 가운데다")
 _i = AV2.index('id="yr-next"')
 ok("justify-content:center" in AV2[_i - 200:_i + 200], "다음 해 화살표가 안 가운데다")
-ok("wp-year" in AV2, "연간 내보내기 버튼이 없다")
+# 버튼은 '엑셀 받기 ▾' 하나로 묶였다. 보고용이 그 안의 한 항목이다.
+ok("_yrExport" in AV2, "보고용(연간) 내보내기를 부르는 데가 없다")
+ok("_dlItem('report'" in AV2, "받기 메뉴에 보고용 항목이 없다")
 
 
 if FAIL:
