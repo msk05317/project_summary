@@ -26,7 +26,10 @@ mkdir -p "$OUT"
 # ── 1. models.json 원본 ───────────────────────────────────────────
 if command -v flyctl >/dev/null 2>&1; then
   echo "==> models.json 원본 받는 중..."
-  if flyctl ssh console -a "$APP" -C "cat /data/models.json" > "$OUT/models_$STAMP.json" 2>/dev/null; then
+  # flyctl 의 stderr 를 버리지 않는다. 가장 중요한 백업이라, 못 받았으면
+  # 왜 못 받았는지(로그인 안 됨 / 머신이 자고 있음 / ssh 키 없음)가 보여야 한다.
+  ERRLOG="$OUT/.flyctl_err_$STAMP"
+  if flyctl ssh console -a "$APP" -C "cat /data/models.json" > "$OUT/models_$STAMP.json" 2>"$ERRLOG"; then
     python3 - "$OUT/models_$STAMP.json" "$OUT/models_$STAMP.shape" <<'PY' || FAILED="$FAILED models.json"
 import json, os, sys
 
@@ -70,22 +73,33 @@ PY
   else
     rm -f "$OUT/models_$STAMP.json"
     echo "   flyctl 로 접속하지 못했습니다."
+    if [ -s "$ERRLOG" ]; then
+      echo "   ── flyctl 이 한 말 ──"
+      sed 's/^/   /' "$ERRLOG" | head -5
+    fi
+    echo "   확인해 볼 것:"
+    echo "     flyctl auth whoami              (로그인 돼 있나)"
+    echo "     flyctl status -a $APP           (머신이 떠 있나 — 자고 있으면 ssh 가 안 된다)"
+    echo "     flyctl ssh issue --agent -a $APP (ssh 키가 없을 때)"
     FAILED="$FAILED models.json"
   fi
 
   # ── 2. 사진 ─────────────────────────────────────────────────────
   # ssh console 로 tar 를 그대로 흘리면 깨진다. 서버에서 먼저 묶고 sftp 로 받는다.
-  echo "==> 사진 받는 중..."
-  if flyctl ssh console -a "$APP" -C "tar czf /tmp/np_$STAMP.tgz -C /data note_photos" >/dev/null 2>&1 \
-     && flyctl ssh sftp get "/tmp/np_$STAMP.tgz" "$OUT/photos_$STAMP.tgz" >/dev/null 2>&1 \
-     && tar tzf "$OUT/photos_$STAMP.tgz" >/dev/null 2>&1; then
-    echo "   $(tar tzf "$OUT/photos_$STAMP.tgz" | wc -l | tr -d ' ') 개"
+  # 사진과 표는 /data/note_assets/{photos,tables} 에 있다.
+  # 예전에는 /data/note_photos 를 묶으려 했는데 그건 폴더가 아니라 URL 경로다
+  # (app.mount 로 붙인 것). 그래서 한 번도 받아진 적이 없었다.
+  echo "==> 첨부(사진·표) 받는 중..."
+  if flyctl ssh console -a "$APP" -C "tar czf /tmp/na_$STAMP.tgz -C /data note_assets" >/dev/null 2>&1 \
+     && flyctl ssh sftp get "/tmp/na_$STAMP.tgz" "$OUT/assets_$STAMP.tgz" >/dev/null 2>&1 \
+     && tar tzf "$OUT/assets_$STAMP.tgz" >/dev/null 2>&1; then
+    echo "   $(tar tzf "$OUT/assets_$STAMP.tgz" | grep -cv '/$') 개"
   else
-    rm -f "$OUT/photos_$STAMP.tgz"
-    echo "   사진은 못 받았습니다 (원래 없을 수도 있습니다)"
-    FAILED="$FAILED 사진"
+    rm -f "$OUT/assets_$STAMP.tgz"
+    echo "   첨부는 못 받았습니다 (올린 사진·표가 하나도 없으면 원래 비어 있습니다)"
+    FAILED="$FAILED 첨부"
   fi
-  flyctl ssh console -a "$APP" -C "rm -f /tmp/np_$STAMP.tgz" >/dev/null 2>&1
+  flyctl ssh console -a "$APP" -C "rm -f /tmp/na_$STAMP.tgz" >/dev/null 2>&1
 else
   echo "==> flyctl 이 없어 models.json 원본은 건너뜁니다."
   FAILED="$FAILED models.json(flyctl없음)"
