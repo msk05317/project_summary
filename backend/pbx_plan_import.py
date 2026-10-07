@@ -269,6 +269,65 @@ def parse_sheet_all(ws):
     return out
 
 
+def sheet_months_of(ws):
+    """한 시트가 한 해를 통째로 담고 있으면 그 달들 → ['2026-01', ...]
+
+    아니면 빈 목록. 그러면 예전처럼 시트 하나를 달 하나로 읽는다.
+
+    작성용 양식(plan_form)이 한 장에 열두 달을 넣는다. 적는 달만 펼쳐져
+    있고 나머지는 접혀 있지만, 접힌 건 숨긴 것뿐이라 펴서 적을 수 있다.
+    펴서 적은 달이 안 읽히면 적을 수 있게 생겼는데 안 먹는 칸이 된다.
+
+    남의 파일을 잘못 건드리지 않으려고 조건을 좁게 잡는다 —
+      · 시트 이름이 'YYYY-MM' 이어야 한다 (OneView 가 내려준 양식)
+      · 그 달이 안 가진 주차를 들고 있어야 한다
+    둘 다 맞을 때만 한 해로 본다. 파워박스 파일처럼 한 표가 두 달에
+    걸치는 건 지금 하던 대로 parse_sheet 가 알아서 한다.
+    """
+    hdr = _find_week_header(ws)
+    if not hdr:
+        return []
+    week_row, week_cols = hdr
+    _sub_row, pairs, _notes = _find_sub_header(ws, week_row, week_cols)
+    if not pairs:
+        return []
+    m = re.match(r"^\s*(\d{4})-(\d{1,2})\s*$", _s(ws.title))
+    if not m:
+        return []
+    year, mm = int(m.group(1)), int(m.group(2))
+    if not (1 <= mm <= 12):
+        return []
+    own = set(_wcal.get_month_weeks("%04d-%02d" % (year, mm)) or [])
+    have = {f"W{n:02d}" for n in pairs}
+    if not own or have <= own:
+        return []                      # 그 달 것만 있다 — 예전 그대로
+    out = []
+    for i in range(1, 13):
+        ym = "%04d-%02d" % (year, i)
+        if set(_wcal.get_month_weeks(ym) or []) & have:
+            out.append(ym)
+    return out
+
+
+def _sheet_parts(ws):
+    """시트 하나에서 읽어 낸 달들 → [parsed, ...]"""
+    out = []
+    for mo in (sheet_months_of(ws) or []):
+        try:
+            got = parse_sheet(ws, month=mo)
+        except Exception:
+            got = None
+        if got and got["rows"]:
+            out.append(got)
+    if out:
+        return out
+    try:
+        got = parse_sheet(ws)
+    except Exception:
+        got = None
+    return [got] if (got and got["rows"]) else []
+
+
 def parse(wb, month=None):
     """워크북에서 쓸 만한 시트를 모두 읽어 월별로 돌려준다.
 
@@ -276,12 +335,7 @@ def parse(wb, month=None):
     """
     found = []
     for ws in wb.worksheets:
-        try:
-            got = parse_sheet(ws)
-        except Exception:
-            got = None
-        if got and got["rows"]:
-            found.append(got)
+        found.extend(_sheet_parts(ws))
     if not found:
         return None
     if month:
@@ -301,11 +355,7 @@ def sheet_months(wb):
     """어떤 달 자료가 들어 있는지만 훑는다."""
     out = []
     for ws in wb.worksheets:
-        try:
-            got = parse_sheet(ws)
-        except Exception:
-            continue
-        if got and got["rows"]:
+        for got in _sheet_parts(ws):
             out.append({"sheet": got["sheet"], "month": got["month"],
                         "weeks": got["weeks"], "rows": len(got["rows"])})
     return out

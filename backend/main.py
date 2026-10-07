@@ -28512,10 +28512,16 @@ def admin_plan_form(project_key: str, month: str = "",
         print(f"[plan-form] {key}: 구분 안 되는 줄 {len(dups)}개 — "
               + ", ".join(str(d.get('name')) for d in dups[:5]))
 
-    # 미달 사유도 같이 — '참고' 는 미달 사유가 아니라서 빼고 보낸다
-    notes = {w: r.get("text") or ""
-             for w, r in _week_reasons_of(proj, mon).items()
-             if (r.get("kind") or "") != "참고" and (r.get("text") or "").strip()}
+    # 미달 사유도 같이 — 열두 달 전부. 접힌 달을 펴서 고칠 수 있으니
+    # 그 달 사유도 같이 보여야 한다. '참고' 는 미달 사유가 아니라서 뺀다.
+    notes = {}
+    for _i in range(1, 13):
+        _ym = "%04d-%02d" % (y, _i)
+        _got = {w: r.get("text") or ""
+                for w, r in _week_reasons_of(proj, _ym).items()
+                if (r.get("kind") or "") != "참고" and (r.get("text") or "").strip()}
+        if _got:
+            notes[_ym] = _got
 
     data = _pfm.build_year_form(label, y, mon, models, notes=notes)
     fname = "%s_작성용_%s.xlsx" % (label or key, mon)
