@@ -8554,6 +8554,14 @@ var sidebarSel = document.getElementById('v2-division-select');
     // 열두 달 쉰두 주를 다 펼치면 가로로 열세 장이다. 체크 안 한 달은
     // 월 합계 두 칸만 나온다 — 지워지는 게 아니라 접히는 것이라, 받은
     // 뒤에도 엑셀에서 [+] 로 펼 수 있다.
+    // 연도 좌우 화살표. 글자 대신 그린다 — 글자는 글꼴마다 위로 떠 보인다.
+    function _yrChev(dir) {
+      var d = dir < 0 ? 'M7 1L2 7l5 6' : 'M2 1l5 6-5 6';
+      return '<svg width="9" height="14" viewBox="0 0 9 14" aria-hidden="true" ' +
+        'style="display:block"><path d="' + d + '" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+
     function _yrExport(pk, y) {
       var back = document.createElement('div');
       back.className = 'ph-back';
@@ -8583,11 +8591,17 @@ var sidebarSel = document.getElementById('v2-division-select');
           '<div style="padding:14px 16px">' +
             '<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">' +
               '<span style="font-size:13px;font-weight:700">연도</span>' +
-              '<button type="button" class="ov-btn" id="yr-prev" style="height:30px;width:32px;padding:0">‹</button>' +
+              // 글자 '‹' 는 글꼴마다 높이가 달라 칸 안에서 위로 떠 보인다.
+              // 그려서 넣으면 어느 글꼴에서나 가운데다.
+              '<button type="button" class="ov-btn" id="yr-prev" aria-label="이전 해" ' +
+                'style="height:30px;width:32px;padding:0;justify-content:center">' +
+                _yrChev(-1) + '</button>' +
               '<input id="yr-y" value="' + y + '" inputmode="numeric" ' +
                 'style="width:84px;height:30px;text-align:center;font-size:14px;font-weight:800;' +
                 'border:1px solid #D8DEE7;border-radius:8px">' +
-              '<button type="button" class="ov-btn" id="yr-next" style="height:30px;width:32px;padding:0">›</button>' +
+              '<button type="button" class="ov-btn" id="yr-next" aria-label="다음 해" ' +
+                'style="height:30px;width:32px;padding:0;justify-content:center">' +
+                _yrChev(1) + '</button>' +
               '<span style="flex:1"></span>' +
               '<button type="button" class="ov-btn" id="yr-all" style="height:30px">전체 선택</button>' +
               '<button type="button" class="ov-btn" id="yr-none" style="height:30px">전체 해제</button>' +

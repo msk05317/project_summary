@@ -257,8 +257,16 @@ for frag, why in [
     ("&months=", "창이 고른 달을 안 보낸다"),
     ("yr-all", "전체 선택이 없다"),
     ("yr-none", "전체 해제가 없다"),
+    ("_yrChev", "연도 화살표를 글자로 그린다 — 글꼴마다 위로 떠 보인다"),
 ]:
     ok(frag in AV2, why)
+
+# 화살표 칸은 가로·세로 둘 다 가운데여야 한다. .ov-btn 에 align-items 는
+# 있지만 justify-content 가 없어서, 칸 너비를 32px 로 줄이면 왼쪽에 붙는다.
+_i = AV2.index('id="yr-prev"')
+ok("justify-content:center" in AV2[_i - 200:_i + 200], "이전 해 화살표가 안 가운데다")
+_i = AV2.index('id="yr-next"')
+ok("justify-content:center" in AV2[_i - 200:_i + 200], "다음 해 화살표가 안 가운데다")
 ok("wp-year" in AV2, "연간 내보내기 버튼이 없다")
 
 
