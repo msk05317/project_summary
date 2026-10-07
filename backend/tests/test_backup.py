@@ -72,5 +72,22 @@ assert SH.index('models.json 원본 받는 중') < SH.index('공개 API 스냅�
     '제일 중요한 백업을 먼저 받아야 한다'
 ok += 1
 
+# 서버를 깨우고 나서 ssh 를 쓴다.
+#
+# 운영 서버는 안 쓰면 잔다. HTTP 는 깨우지만 flyctl ssh 는 못 깨운다 —
+# 자고 있으면 "has no started VMs" 로 끝난다. models.json 과 첨부가 둘 다
+# ssh 라서, 깨우지 않고 시작하면 아침마다 반드시 실패한다. 실제로 겪었다.
+assert '서버 깨우는 중' in SH, '서버를 깨우는 단계가 없다'
+assert SH.index('서버 깨우는 중') < SH.index('models.json 원본 받는 중'), \
+    'ssh 를 쓰기 전에 깨워야 한다 — 순서가 뒤집히면 아침마다 백업이 빈다'
+assert '/health' in SH, '깨울 때 HTTP 를 두드려야 한다 (ssh 로는 안 깨어난다)'
+ok += 1
+
+# 첨부는 /data/note_assets 에 있다. note_photos 는 폴더가 아니라 URL 경로다.
+assert 'note_assets' in SH, '첨부를 note_assets 에서 받아야 한다'
+assert '-C /data note_photos' not in SH, \
+    'note_photos 는 폴더가 아니다 — 그래서 사진이 한 번도 안 받아졌다'
+ok += 1
+
 os.unlink(f.name)
-print(f'전부 통과 ({ok}/{len(cases) + 4})')
+print(f'전부 통과 ({ok}/{len(cases) + 6})')

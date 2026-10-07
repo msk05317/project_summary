@@ -23,6 +23,29 @@ STAMP=$(date +%Y%m%d_%H%M%S)
 FAILED=""
 mkdir -p "$OUT"
 
+# ── 0. 서버 깨우기 ────────────────────────────────────────────────
+#
+# 운영 서버는 안 쓰면 잔다. HTTP 요청은 깨우지만 flyctl ssh 는 못 깨운다 —
+# 자고 있으면 "app ... has no started VMs" 로 끝난다. 아래 1·2 단계가 ssh 라서,
+# 깨우지 않고 시작하면 아침마다 둘 다 실패한다.
+URL=${ONEVIEW_URL:-https://project-summary-mkoo.fly.dev}
+echo "==> 서버 깨우는 중..."
+WOKE=""
+for i in 1 2 3 4 5 6; do
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$URL/health" 2>/dev/null || echo 000)
+  if [ "$CODE" = "200" ]; then WOKE=1; break; fi
+  echo "   아직 안 깨어났습니다 (${CODE}) — 5초 뒤 다시"
+  sleep 5
+done
+if [ -n "$WOKE" ]; then
+  echo "   깨어났습니다"
+  # 깨어난 직후에는 ssh 가 아직 안 붙을 수 있다. 조금 기다린다.
+  sleep 3
+else
+  echo "   못 깨웠습니다. 아래 단계가 실패하면 그 때문일 수 있습니다."
+  FAILED="$FAILED 서버깨우기"
+fi
+
 # ── 1. models.json 원본 ───────────────────────────────────────────
 if command -v flyctl >/dev/null 2>&1; then
   echo "==> models.json 원본 받는 중..."
