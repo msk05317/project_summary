@@ -14565,8 +14565,14 @@ def get_admin_project_types(project_key: str, _admin: int = Depends(get_admin_se
 
 
 @app.put("/admin/projects/{project_key}/types")
-def save_project_types(project_key: str, payload: dict):
-    """프로젝트별 유형 목록 저장"""
+def save_project_types(project_key: str, payload: dict,
+                       _admin: int = Depends(get_admin_session)):
+    """프로젝트별 유형 목록 저장.
+
+    유형은 보드에서 줄을 묶는 기준이라, 통째로 갈아끼우면 그 유형으로 묶이던
+    줄이 사라진다. 바로 위 GET 에는 관리자 확인이 걸려 있는데 이 PUT 만
+    빠져 있었다.
+    """
     types = payload.get("types")
     if not isinstance(types, list):
         raise HTTPException(status_code=400, detail="types는 배열이어야 합니다")

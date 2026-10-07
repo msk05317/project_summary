@@ -7697,10 +7697,17 @@ if (!_currentProjectKey) { /* 프로젝트 선택 대기 중 */ return; }
 if (!projKey) { /* 프로젝트 선택 대기 중 */ return; }
     fetch('/admin/projects/' + encodeURIComponent(projKey) + '/types', {
       method: 'PUT',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ types: _projTypes })
     })
-      .then(function(r) { return r.json(); })
+      // 401 도 응답은 응답이라, 그냥 json() 으로 넘기면 성공한 것처럼 보인다.
+      // 로그인이 풀린 채로 유형을 고치면 조용히 사라졌다.
+      .then(function(r) {
+        if (r.status === 401) throw new Error('로그인이 풀렸습니다. 다시 로그인해 주세요.');
+        if (!r.ok) throw new Error('서버가 ' + r.status + ' 를 돌려줬습니다.');
+        return r.json();
+      })
       .then(function() {
         renderTypeChips();
         var tableBox = document.getElementById('mdl-table-box');
