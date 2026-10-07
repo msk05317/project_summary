@@ -72,16 +72,42 @@ assert po_wait({'group': '양산'}) is True
 ok += 1
 
 # ── 실제 데이터로 확인 ──
+#
+# 한 모델에 묶어 두면 안 된다. 처음에는 파워박스 853-177575-015 를 찍어서
+# 봤는데(그때 비고가 '드롭 예정' 이었다), 나중에 그 비고가 지워지고 HRVA
+# 두 모델이 상태를 '드롭예정' 으로 고르는 식으로 바뀌었다. 적는 자리가
+# 비고에서 상태 칸으로 옮겨간 것이라 데이터가 없어진 게 아닌데, 검사만
+# 옛 예시에 묶여서 깨졌다. 그래서 '그 모델' 이 아니라 '그 규칙' 을 본다.
 import json
 bk = sorted((ROOT.parent / 'backups').glob('models_*.json'))
+data = None
 if bk:
     data = json.loads(bk[-1].read_text(encoding='utf-8'))
-    ms = [m for m in (data['projects'].get('powerbox') or {}).get('models', [])
-          if m.get('id') == '853-177575-015']
-    if ms:
-        m = ms[0]
-        assert hold(m) == '드롭예정', f"VCTR-XPRSMS 가 드롭예정으로 안 잡힌다: {m.get('note')!r}"
-        ok += 1
+
+    # 말을 적어 둔 모델은 전부 잡혀야 한다 (비고든 이슈든 상태든)
+    said, caught, clean = [], [], 0
+    for pk, p in (data['projects'] or {}).items():
+        for m in (p.get('models') or []):
+            blob = ' '.join(str(m.get(f) or '')
+                            for f in ('note', 'issues', 'status'))
+            if any(w in blob for w in ('드롭', 'drop', 'DROP', '보류', '홀딩', 'hold')):
+                said.append((pk, m.get('id'), blob.strip()))
+                if hold(m):
+                    caught.append((pk, m.get('id')))
+            elif not hold(m):
+                clean += 1
+
+    missed = [x for x in said if (x[0], x[1]) not in caught]
+    assert not missed, '드롭·보류라고 적혀 있는데 안 잡힌다: %r' % (missed[:3],)
+    assert clean, '아무 말 없는 모델이 하나도 없다 — 백업을 못 읽은 듯하다'
+
+    if said:
+        print('   실제 데이터: %d종이 드롭·보류라고 적혀 있고 전부 잡힌다 (%s)'
+              % (len(said), bk[-1].name))
+    else:
+        # 실패가 아니다. 지금은 그런 모델이 없을 수도 있다.
+        print('   실제 데이터: 드롭·보류라고 적힌 모델이 지금은 없다 (넘어감)')
+    ok += 1
 
 # ── 프로젝트 전체 보류 ──
 # CUP 은 현황에 '컵 이슈 해결될 때까지 ... 홀딩' 이라고 적혀 있는데도
