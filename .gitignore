@@ -173,3 +173,16 @@ backend/_tmp_upload/
 
 # Xcode 가 알아서 쓰는 것 — 사람이 고칠 파일이 아니다
 **/xcshareddata/swiftpm/
+
+# === 운영 데이터 사본 — git 에 두지 않는다 (2026-10) ===
+# 서버 /data 의 models.json 을 받아 보던 작업 사본들. 운영과 섞이면
+# 어느 것이 진짜인지 알 수 없다. 진짜는 서버 /data/models.json 하나뿐이고,
+# 저장소에는 씨앗(backend/models.seed.json) 만 둔다.
+backend/models_backup_today.json
+backend/models_check.json
+backend/models_current.json
+backend/models_merged.json
+backend/models_prod_backup_0826.json
+backend/models_recovered.json
+backend/models_trace.json
+backend/models.json

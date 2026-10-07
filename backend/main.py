@@ -3112,19 +3112,41 @@ def _save_notes(data: dict) -> None:
 # ─── 프로젝트 모델 (양산/개발 구조) 헬퍼 ───
 MODELS_FILE = DATA_DIR / "models.json"
 
+#: 볼륨이 비었을 때 한 번 쓰는 씨앗. 저장소에 커밋된 사본이라 운영 중에는
+#: 읽히지도 쓰이지도 않는다. 이름이 models.json 이던 때는 저장소 파일을 열어
+#: 보고 "데이터가 왜 두 달 전이지" 하게 됐다.
+SEED_MODELS_FILE = BASE_DIR / "models.seed.json"
+_seed_warned = False
+
 
 def _load_models() -> dict:
-    import os
-    # /data/models.json (볼륨, 운영 데이터) 우선 읽기
-    # /app/models.json (Docker 이미지, 초기 데이터)는 fallback
-    candidates = [MODELS_FILE, "/app/models.json"]
-    for path in candidates:
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                continue
+    """운영 데이터를 읽는다. 씨앗으로 떨어질 때는 조용히 넘어가지 않는다.
+
+    예전에는 /app/models.json 으로 말없이 떨어졌다. 볼륨이 안 붙거나 비면
+    에러 없이 몇 달 전 자료가 그대로 서비스돼서, 화면은 멀쩡한데 숫자만
+    옛날 것인 상태가 된다 — 아무도 못 알아챈다. 그래서 떨어질 때마다
+    로그에 크게 남긴다.
+    """
+    global _seed_warned
+    if MODELS_FILE.exists():
+        try:
+            with open(MODELS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as _e:
+            print(f"[models] !! {MODELS_FILE} 를 읽지 못했습니다: {_e}")
+    if SEED_MODELS_FILE.exists():
+        if not _seed_warned:
+            _seed_warned = True
+            print("=" * 64)
+            print(f"[models] !! 운영 데이터가 없습니다: {MODELS_FILE}")
+            print(f"[models] !! 씨앗으로 돌아갑니다: {SEED_MODELS_FILE.name}")
+            print("[models] !! 볼륨이 안 붙었거나 비었을 수 있습니다. 확인하세요.")
+            print("=" * 64)
+        try:
+            with open(SEED_MODELS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as _e:
+            print(f"[models] !! 씨앗도 읽지 못했습니다: {_e}")
     return {"version": 1, "updated_at": None, "projects": {}}
 
 
