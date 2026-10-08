@@ -3168,8 +3168,17 @@ def _save_models(data: dict) -> None:
     except Exception as _e:
         print(f"[save_models] 백업 실패(무시): {_e}")
     data["updated_at"] = datetime.now().isoformat()
-    with open(MODELS_FILE, "w", encoding="utf-8") as f:
+    # 운영 파일을 직접 열어서 쓰지 않는다. 쓰는 도중에 서버가 죽거나 배포로
+    # 교체되면 JSON 이 반만 적힌 파일이 남고, 그건 다시 읽을 수 없다.
+    # 옆에 다 쓰고 → 디스크에 앉히고 → 이름만 바꾼다. os.replace 는 같은
+    # 파일 시스템 안에서 원자적이라, 어느 순간에 죽어도 파일은 '옛날 것'
+    # 아니면 '새 것'이지 중간이 없다.
+    tmp = f"{MODELS_FILE}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, MODELS_FILE)
     _pj = {k: len(v.get("models", [])) for k, v in data.get("projects", {}).items()}
     print(f"[save_models] wrote {MODELS_FILE} | projects={len(_pj)} | {_pj}")
 
