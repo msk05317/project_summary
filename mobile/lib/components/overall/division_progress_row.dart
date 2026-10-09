@@ -29,7 +29,7 @@ class DivisionProgressRow extends StatelessWidget {
       case '지연':
         return const Color(0xFFFF0000);
       case '주의':
-        return const Color(0xFFE97132);
+        return const Color(0xFFF59E0B);
       case '정상':
       default:
         return const Color(0xFF196B24);

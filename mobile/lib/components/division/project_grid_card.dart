@@ -39,7 +39,7 @@ class ProjectGridCard extends StatelessWidget {
       case '지연':
         return const Color(0xFFDC2626);
       case '주의':
-        return const Color(0xFFD97706);
+        return const Color(0xFFF59E0B);
       default:
         return AppColors.headerNavy;
     }

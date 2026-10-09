@@ -357,7 +357,7 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
                             ModelBucket.delayed),
                         const SizedBox(width: 6),
                         _pill(StatusWords.soon, watched,
-                            const Color(0xFFE97132), models, ModelBucket.soon),
+                            const Color(0xFFF59E0B), models, ModelBucket.soon),
                       ]),
                     ],
                   ),
@@ -623,9 +623,9 @@ class _ProjectOverviewScreenState extends State<ProjectOverviewScreen> {
       case StatusWords.delayed:
         return const Color(0xFFDC2626);
       case StatusWords.soon:
-        return const Color(0xFFE97132);
+        return const Color(0xFFF59E0B);
       case StatusWords.issue:
-        return const Color(0xFFDC2626);
+        return const Color(0xFFEA580C);
       case '비고':
         return const Color(0xFF9CA3AF);
       default:

@@ -153,7 +153,7 @@ class DivisionSummaryCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 _statusRow(const Color(0xFFFF0000), '지연', delayedCount),
                 const SizedBox(height: 8),
-                _statusRow(const Color(0xFFE97132), '주의', warningCount),
+                _statusRow(const Color(0xFFF59E0B), '주의', warningCount),
                 const SizedBox(height: 8),
                 _statusRow(const Color(0xFF196B24), '정상', normalCount),
                 if (noDataCount > 0) ...[

@@ -86,10 +86,11 @@ class _AlertListScreenState extends State<AlertListScreen> {
   static Color _tintOf(String kind) {
     switch (kind) {
       case '지연':
-      case '이슈':
         return const Color(0xFFDC2626);
+      case '이슈':
+        return const Color(0xFFEA580C);
       case '임박':
-        return const Color(0xFFE97132);
+        return const Color(0xFFF59E0B);
       case '정상':
         return const Color(0xFF196B24);
       case 'PO 대기':
@@ -102,10 +103,11 @@ class _AlertListScreenState extends State<AlertListScreen> {
   static Color _softOf(String kind) {
     switch (kind) {
       case '지연':
-      case '이슈':
         return const Color(0xFFFEE2E2);
-      case '임박':
+      case '이슈':
         return const Color(0xFFFFEDD5);
+      case '임박':
+        return const Color(0xFFFEF3C7);
       case '정상':
         return const Color(0xFFD1FAE5);
       case 'PO 대기':
@@ -287,10 +289,10 @@ class _AlertListScreenState extends State<AlertListScreen> {
                       const Color(0xFFDC2626)),
                   _chip(StatusWords.issue, a.issue, _filter == '이슈',
                       () => setState(() => _filter = '이슈'),
-                      const Color(0xFFDC2626)),
+                      const Color(0xFFEA580C)),
                   _chip(StatusWords.soon, a.soon, _filter == '임박',
                       () => setState(() => _filter = '임박'),
-                      const Color(0xFFE97132)),
+                      const Color(0xFFF59E0B)),
                   _chip('PO 대기', a.poWait, _filter == 'PO 대기',
                       () => setState(() => _filter = 'PO 대기'),
                       const Color(0xFFB45309)),

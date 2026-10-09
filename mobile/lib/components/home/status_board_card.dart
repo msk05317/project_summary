@@ -76,7 +76,7 @@ class _StatusBoardCardState extends State<StatusBoardCard> {
     _Kind.normal: AppColors.summaryNormal,
     _Kind.delayed: Color(0xFFDC2626),
     _Kind.issue: Color(0xFFEA580C),
-    _Kind.soon: Color(0xFFD97706),
+    _Kind.soon: Color(0xFFF59E0B),
   };
 
   int _countOf(_Kind k) {

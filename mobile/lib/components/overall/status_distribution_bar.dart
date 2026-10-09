@@ -73,7 +73,7 @@ class StatusDistributionBar extends StatelessWidget {
                         if (warningFlex > 0)
                           Expanded(
                             flex: warningFlex,
-                            child: Container(color: AppColors.summaryCaution),
+                            child: Container(color: const Color(0xFFF59E0B)),
                           ),
                         if (delayedFlex > 0)
                           Expanded(
@@ -90,7 +90,7 @@ class StatusDistributionBar extends StatelessWidget {
             children: [
               _legendDot(AppColors.summaryNormal, '정상 $normalCount건'),
               const SizedBox(width: 12),
-              _legendDot(AppColors.summaryCaution, '주의 $warningCount건'),
+              _legendDot(const Color(0xFFF59E0B), '주의 $warningCount건'),
               const SizedBox(width: 12),
               _legendDot(AppColors.summaryDelayed, '지연 $delayedCount건'),
             ],

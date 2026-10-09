@@ -108,7 +108,7 @@ class OverallProgressCard extends StatelessWidget {
             children: [
               _kpi('전체', totalCount, AppColors.headerNavy),
               _kpi('정상', normalCount, const Color(0xFF196B24)),
-              _kpi('주의', warningCount, const Color(0xFFE97132)),
+              _kpi('주의', warningCount, const Color(0xFFF59E0B)),
               _kpi('지연', delayedCount, const Color(0xFFFF0000)),
             ],
           ),

@@ -267,7 +267,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
           chip(StatusWords.soon, c[ModelBucket.soon] ?? 0,
               _filter == ModelBucket.soon,
               () => setState(() => _filter = ModelBucket.soon),
-              const Color(0xFFE97132)),
+              const Color(0xFFF59E0B)),
           chip(StatusWords.normal, c[ModelBucket.running] ?? 0,
               _filter == ModelBucket.running,
               () => setState(() => _filter = ModelBucket.running),
@@ -311,7 +311,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
       final daysLeft = expectedDate.difference(now).inDays;
       
       if (daysLeft < 0) return const Color(0xFFDC2626); // 지연 → 빨강
-      if (daysLeft <= 7) return const Color(0xFFD97706); // 곧 다가옴 → 주황
+      if (daysLeft <= 7) return const Color(0xFFF59E0B); // 곧 다가옴 → 노랑
       return const Color(0xFF059669); // 진행 중 → 초록
     } catch (_) {
       return const Color(0xFF9CA3AF); // 파싱 실패 → 회색
@@ -350,7 +350,7 @@ class _ModelListScreenState extends State<ModelListScreen> {
 
   Color _statusColor(String s) {
     if (s == '지연') return const Color(0xFFDC2626);
-    if (s == '주의') return const Color(0xFFD97706);
+    if (s == '주의') return const Color(0xFFF59E0B);
     return const Color(0xFF059669);
   }
 
